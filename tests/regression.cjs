@@ -28,11 +28,106 @@ await test('vendor suggestions match category and subcategory without replacing 
  const heads=await p.evaluate(async()=>Object.entries((await import('./utils.js')).EXPENSE_HEADS));const cat=heads[0][0],head=heads[0][1][0],head2=heads[0][1][1],otherCat=heads[1][0];
  await seed({...empty(),events:[ev],vendors:[{id:'other',name:'AAA Other',cat:otherCat,specialty:head},{id:'category',name:'BBB Category',cat,specialty:head2},{id:'42',name:'ZZZ Exact',cat,specialty:head.split(' – ')[0]}]});
  await p.locator('[data-action="quick"][data-id="expense"]').click();await p.locator(`#exp-cats [data-cat="${cat}"]`).click();await p.locator('#exp-head').selectOption(head);await p.locator('#exp-pay [data-pay="credit"]').click();
- const values=()=>p.locator('#exp-vendor option').evaluateAll(os=>os.map(o=>o.value));assert.deepEqual(await values(),['','42','category','other','__new']);assert.equal(await p.locator('#exp-vendor').inputValue(),'');assert.match(await p.locator('#exp-vendor optgroup').first().getAttribute('label'),/Matching category/);
- await p.locator('#exp-vendor').selectOption('42');await p.locator('#exp-head').selectOption(head2);assert.deepEqual(await values(),['','category','42','other','__new']);assert.equal(await p.locator('#exp-vendor').inputValue(),'42');
+ const values=()=>p.locator('#exp-vendor option').evaluateAll(os=>os.map(o=>o.value));assert.deepEqual(await values(),['','42','category','other','__new','__newperson']);assert.equal(await p.locator('#exp-vendor').inputValue(),'');assert.match(await p.locator('#exp-vendor optgroup').first().getAttribute('label'),/Usual for this item/);
+ await p.locator('#exp-vendor').selectOption('42');await p.locator('#exp-head').selectOption(head2);assert.deepEqual(await values(),['','category','42','other','__new','__newperson']);assert.equal(await p.locator('#exp-vendor').inputValue(),'42');
  await p.locator(`#exp-cats [data-cat="${otherCat}"]`).click();assert.equal((await values())[1],'other');assert.equal(await p.locator('#exp-vendor').inputValue(),'42');
  await p.locator('#exp-amt').fill('321');await p.locator('#btn-save-exp').click();await p.waitForTimeout(300);assert.equal((await db(async d=>d.getAll('expenses'))).filter(x=>String(x.venId)==='42'&&x.amt===321&&x.pay==='credit').length,1);
- await p.locator('#n-expenses').click();await p.locator('#exp-list [data-action="edit-exp"]').click();assert.equal(await p.locator('#exp-vendor').inputValue(),'42');
+ await p.locator('#n-expenses').click();await p.locator('#exp-list [data-action="edit-exp"]').first().click();assert.equal(await p.locator('#exp-vendor').inputValue(),'42');
+});
+await test('usual vendors are one-tap suggestions and pending credit is listed first',async()=>{
+ const H=await p.evaluate(async()=>(await import('./utils.js')).EXPENSE_HEADS);const pick=(cat,word)=>H[cat].find(h=>h.startsWith(word));
+ const chaat=pick('Live Counter','Chaat'),dosa=pick('Live Counter','Dosa'),ice=pick('Live Counter','Ice Cream'),grocery=pick('Raw Material','Grocery');
+ await seed({...empty(),events:[ev],vendors:[{id:'rajiv',name:'Rajiv Chaat',cat:'Live Counter',specialty:chaat},{id:'murugan',name:'Murugan',cat:'Live Counter',specialty:dosa},{id:'patel',name:'New Patel',cat:'Raw Material',specialty:grocery}],
+  expenses:[{id:'ice1',evId:'e',cat:'Live Counter',head:ice,amt:12000,date:'2026-10-27',pay:'paid',venId:'rajiv'},
+            {id:'gro1',evId:'e',cat:'Raw Material',head:grocery,amt:24000,date:'2026-10-26',pay:'credit',venId:'patel'},
+            {id:'dosa1',evId:'e',cat:'Live Counter',head:dosa,amt:15000,date:'2026-10-27',pay:'credit',venId:'murugan',dueDate:'2026-10-01'}]});
+ await p.locator('[data-action="quick"][data-id="expense"]').click();await p.waitForSelector('#exp-modal.active');
+ await p.locator('#exp-cats [data-cat="Live Counter"]').click();
+ const firstHead=await p.locator('#exp-head option').first().getAttribute('value');assert(firstHead===ice||firstHead===dosa,'a used item is listed first');
+ await p.locator('#exp-head').selectOption(ice);
+ const chips=()=>p.locator('#exp-ven-quick [data-ven]').evaluateAll(b=>b.map(x=>x.dataset.ven));
+ assert.equal((await chips())[0],'rajiv','vendor who supplied this item before is suggested');
+ assert.equal(await p.locator('#exp-vendor').inputValue(),'','suggestion does not choose a vendor by itself');
+ await p.locator('#exp-ven-quick [data-ven="rajiv"]').click();assert.equal(await p.locator('#exp-vendor').inputValue(),'rajiv');
+ await p.locator('#exp-ven-quick [data-ven="rajiv"]').click();assert.equal(await p.locator('#exp-vendor').inputValue(),'');
+ await p.locator('#exp-head').selectOption(chaat);assert.equal((await chips())[0],'rajiv','listed speciality is suggested');
+ await p.locator('#exp-modal [data-action="close-modal"]').click();await p.waitForTimeout(150);
+ await p.locator('#n-expenses').click();
+ const firstSection=await p.locator('#exp-list .sec-title').first().innerText();assert.match(firstSection,/To pay/);
+ const owed=await p.locator('#to-pay-list .row .title-sm').allInnerTexts();assert.deepEqual(owed,['Murugan','New Patel'],'overdue first, then undated credit');
+ await p.locator('#to-pay-list [data-action="open-vpay"]').first().click();await p.waitForSelector('#vpay-modal.active');assert.equal(await p.locator('#vpay-amt').inputValue(),'15000');
+ await p.locator('#vpay-modal [data-action="close-modal"]').click();await p.waitForTimeout(150);
+ await p.locator('#n-home').click();assert.match(await p.locator('#nudges').innerText(),/See all 2 to pay/);
+});
+await test('lender credit, booking advance, newest events first and staff tips',async()=>{
+ const H=await p.evaluate(async()=>(await import('./utils.js')).EXPENSE_HEADS);const tips=H.Labour.find(h=>h.startsWith('Vendor Staff Tips'));assert(tips&&H.Labour.some(h=>h.startsWith('Staff Tips')),'both tip items exist under Labour');
+ await seed({...empty(),events:[ev,{...ev,id:'old',name:'Old Party',date:'2026-01-10'},{...ev,id:'far',name:'Far Wedding',date:'2027-05-01'},{...ev,id:'soon',name:'Soon Wedding',date:'2026-12-01'}],vendors:[{id:'rajiv',name:'Rajiv Chaat',cat:'Live Counter'},{id:'uncle',name:'Uncle Lender',kind:'person'}]});
+ await p.locator('#n-events').click();
+ assert.deepEqual(await p.locator('#ev-list [data-action="evdetail"] .title-sm').allInnerTexts(),['Far Wedding','Soon Wedding','Wedding','Old Party'],'latest date first');
+ await p.locator('#fab').click();await p.waitForSelector('#ev-modal.active');assert(await p.locator('#ev-adv-field').isVisible(),'advance offered when booking');
+ for(const [id,v] of [['ev-name','Advance Wedding'],['ev-date','2026-12-20'],['ev-venue','Hall'],['ev-billing','50000'],['ev-adv','60000']])await p.locator('#'+id).fill(v);
+ await p.locator('#btn-save-event').click();await p.waitForTimeout(200);assert.match(await p.locator('#ev-modal').innerText(),/more than the total bill/);
+ await p.locator('#ev-adv').fill('10000');await p.locator('#btn-save-event').click();await p.waitForTimeout(300);
+ const evs=await db(async d=>d.getAll('events'));const adv=evs.find(e=>e.name==='Advance Wedding');assert(adv);
+ const pays=(await db(async d=>d.getAll('cPays'))).filter(x=>x.evId===adv.id);assert.equal(pays.length,1);assert.equal(pays[0].amt,10000);
+ await p.locator('#fab').click();await p.waitForSelector('#ev-modal.active');for(const [id,v] of [['ev-name','No Advance'],['ev-date','2026-12-21'],['ev-venue','Hall'],['ev-billing','500']])await p.locator('#'+id).fill(v);await p.locator('#btn-save-event').click();await p.waitForTimeout(300);
+ const noAdv=(await db(async d=>d.getAll('events'))).find(e=>e.name==='No Advance');assert.equal((await db(async d=>d.getAll('cPays'))).filter(x=>x.evId===noAdv.id).length,0,'advance is optional');
+ await p.locator('#ev-list [data-action="evdetail"]').first().click();await p.locator('#hdr-edit').click();assert(!(await p.locator('#ev-adv-field').isVisible()),'no advance field when editing');await p.locator('#ev-modal [data-action="close-modal"]').click();await p.waitForTimeout(150);
+ await p.locator('#n-home').click();await p.locator('[data-action="quick"][data-id="expense"]').click();await p.waitForSelector('#exp-modal.active');
+ const opts=()=>p.locator('#exp-vendor option').evaluateAll(os=>os.map(o=>o.value));
+ assert(!(await opts()).includes('uncle'),'a lender is not offered for a cash expense');
+ await p.locator('#exp-cats [data-cat="Labour"]').click();await p.locator('#exp-head').selectOption(tips);assert.match(await p.locator('#exp-vendor-lbl').innerText(),/Whose staff/);
+ await p.locator('#exp-pay [data-pay="credit"]').click();assert((await opts()).includes('uncle'));assert(!(await p.locator('#exp-ven-quick [data-ven="uncle"]').count()),'never a usual-vendor suggestion');
+ await p.locator('#exp-cats [data-cat="Raw Material"]').click();await p.locator('#exp-amt').fill('8000');await p.locator('#exp-vendor').selectOption('uncle');await p.locator('#btn-save-exp').click();await p.waitForTimeout(300);
+ assert.equal((await db(async d=>d.getAll('expenses'))).filter(x=>x.venId==='uncle'&&x.pay==='credit'&&x.amt===8000).length,1);
+ await p.locator('#n-expenses').click();assert.match(await p.locator('#exp-list .sec .meta').first().innerText(),/1 person/);
+ await p.locator('#n-vendors').click();assert.match(await p.locator('#ven-list').innerText(),/Other people[\s\S]*Uncle Lender/);
+ await p.locator('#fab').click();await p.waitForSelector('#ven-modal.active');await p.locator('#ven-kind [data-kind="person"]').click();assert(!(await p.locator('#ven-cat-row').isVisible()));
+ await p.locator('#ven-name').fill('Cousin');await p.locator('#btn-save-ven').click();await p.waitForTimeout(300);
+ const cousin=(await db(async d=>d.getAll('vendors'))).find(v=>v.name==='Cousin');assert.equal(cousin.kind,'person');assert.equal(cousin.cat,'');
+ let rejected=false;try{await db(async(d,a)=>d.importAllData(a),{...empty(),vendors:[{id:'bad',name:'Bad',kind:'robot'}]})}catch{rejected=true}assert(rejected,'unknown kind rejected on restore');
+});
+await test('menu fills bill and expected cost; checklist shows missed usual costs',async()=>{
+ const H=await p.evaluate(async()=>(await import('./utils.js')).EXPENSE_HEADS);const dosa=H['Live Counter'].find(h=>h.startsWith('Dosa')),cook=H.Labour.find(h=>h.startsWith('Cook'));
+ const d=new Date();d.setDate(d.getDate()-3);const recent=d.toISOString().slice(0,10);
+ await seed({...empty(),vendors:[{id:'murugan',name:'Murugan',cat:'Live Counter'}],
+  events:[{...ev,id:'g1',name:'Golden One',menu:'golden',guests:200,date:'2026-09-01'},{...ev,id:'g2',name:'Golden Two',menu:'golden',guests:100,date:recent}],
+  expenses:[{id:'a',evId:'g1',cat:'Live Counter',head:dosa,amt:60000,date:'2026-09-01',pay:'paid',venId:'murugan'},{id:'b',evId:'g1',cat:'Labour',head:cook,amt:40000,date:'2026-09-01',pay:'paid'},
+            {id:'c',evId:'g2',cat:'Labour',head:cook,amt:20000,date:recent,pay:'paid'}]});
+ assert.match(await p.locator('#nudges').innerText(),/Check costs[\s\S]*Golden Two[\s\S]*1 usual cost not recorded/);
+ await p.locator('#n-events').click();await p.locator('#fab').click();await p.waitForSelector('#ev-modal.active');
+ await p.locator('#ev-menu').selectOption('golden');await p.locator('#ev-guests').fill('250');
+ assert.equal(await p.locator('#ev-billing').inputValue(),'225000','Golden 101-300 pax at 900');
+ assert.equal(await p.locator('#ev-budget').inputValue(),String(Math.round(120000/300)*250),'expected cost from past Golden cost per plate');
+ await p.locator('#ev-guests').fill('400');assert.equal(await p.locator('#ev-billing').inputValue(),'320000','301+ pax at 800');
+ assert.deepEqual(await p.locator('#ev-menu optgroup').evaluateAll(g=>g.map(x=>x.label.split(' – ')[0])),['Buffet','Banana leaf']);
+ await p.locator('#ev-menu').selectOption('maharashtrian');await p.locator('#ev-guests').fill('100');assert.equal(await p.locator('#ev-billing').inputValue(),'80000','banana leaf 50-150 pax at 800');
+ await p.locator('#ev-guests').fill('200');assert.equal(await p.locator('#ev-billing').inputValue(),'150000','banana leaf 151-300 pax at 750');
+ await p.locator('#ev-menu').selectOption('golden');
+ await p.locator('#ev-billing').fill('300000');await p.locator('#ev-guests').fill('350');assert.equal(await p.locator('#ev-billing').inputValue(),'300000','a typed bill is never overwritten');
+ for(const [id,v] of [['ev-name','Golden Three'],['ev-date','2026-12-10'],['ev-venue','Lawn']])await p.locator('#'+id).fill(v);await p.locator('#btn-save-event').click();await p.waitForTimeout(300);
+ assert.equal((await db(async d=>d.getAll('events'))).find(e=>e.name==='Golden Three').menu,'golden');
+ await p.locator('#ev-list [data-action="evdetail"]', {hasText:'Golden Two'}).click();await p.waitForSelector('#tab-evdetail [data-action="check-add"]');
+ const card=await p.locator('#tab-evdetail').innerText();assert.match(card,/Golden menu/);assert.match(card,/Cost checklist[\s\S]*Golden One[\s\S]*Dosa/);assert(!/Cook[^\n]*Last time/.test(card),'recorded items are not listed');
+ await p.locator('[data-action="check-add"]').first().click();await p.waitForSelector('#exp-modal.active');
+ assert.equal(await p.locator('#exp-head').inputValue(),dosa);assert.equal(await p.locator('#exp-vendor').inputValue(),'murugan');assert.equal(await p.locator('#exp-amt').inputValue(),'','amount is never guessed');
+ assert.match(await p.locator('#exp-amt').getAttribute('placeholder'),/60,000/);assert.equal(await p.locator('#exp-ev').inputValue(),'g2');
+ await p.locator('#exp-amt').fill('30000');await p.locator('#btn-save-exp').click();await p.waitForTimeout(500);
+ assert.match(await p.locator('#tab-evdetail').innerText(),/All recorded/);
+ await p.locator('#n-summary').click();await p.locator('#tab-summary [data-period-seg] [data-id="all"]').click();assert.match(await p.locator('#summary-content').innerText(),/Per plate by menu[\s\S]*Golden/);
+});
+await test('outsourced event saves vendor charge as credit and shows commission',async()=>{
+ await seed({...empty(),events:[],vendors:[{id:'kaka',name:'Kaka Caterers',cat:'Live Counter'}]});
+ await p.locator('#n-events').click();await p.locator('#ev-list [data-action="quick"][data-id="event"]').click();await p.waitForSelector('#ev-modal.active');
+ for(const [id,v] of [['ev-name','Small Birthday'],['ev-date','2026-01-05'],['ev-venue','Flat'],['ev-billing','50000']])await p.locator('#'+id).fill(v);
+ await p.locator('#ev-handling [data-h="out"]').click();await p.locator('#btn-save-event').click();await p.waitForTimeout(200);assert.match(await p.locator('#ev-modal').innerText(),/Choose who does the event/);
+ await p.locator('#ev-out-ven').selectOption('kaka');await p.locator('#ev-out-charge').fill('44000');assert.match(await p.locator('#ev-out-hint').innerText(),/commission ₹6,000 \(12%\)/);
+ await p.locator('#btn-save-event').click();await p.waitForTimeout(300);
+ const e=(await db(async d=>d.getAll('events'))).find(x=>x.name==='Small Birthday');assert.equal(e.outsourced,true);assert.equal(e.outVenId,'kaka');
+ const xs=(await db(async d=>d.getAll('expenses'))).filter(x=>x.evId===e.id);assert.equal(xs.length,1);assert.equal(xs[0].amt,44000);assert.equal(xs[0].pay,'credit');assert.equal(xs[0].venId,'kaka');
+ await p.locator('#ev-list [data-action="evdetail"]').first().click();await p.waitForSelector('#tab-evdetail .detail-name');
+ const t=await p.locator('#tab-evdetail').innerText();assert.match(t,/Outsourced/);assert.match(t,/Commission/);assert(!/No expenses recorded yet/.test(t));
+ await p.locator('#n-expenses').click();assert.match(await p.locator('#to-pay-list').innerText(),/Kaka Caterers/);
 });
 results.push({name:'unexpected page errors',pass:errors.length===0,errors});fs.writeFileSync('test-artifacts/repair-test-results.json',JSON.stringify(results,null,2));await browser.close();console.log(JSON.stringify(results,null,2));if(results.some(r=>!r.pass))process.exitCode=1;
 })().catch(e=>{console.error(e);process.exitCode=1});

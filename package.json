@@ -1,6 +1,6 @@
 {
   "name": "caterdesk",
-  "version": "2.4.7",
+  "version": "3.0.0",
   "private": true,
   "description": "Offline expense app with isolated browser regression tests",
   "scripts": {

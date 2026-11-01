@@ -410,7 +410,7 @@ export async function prepareImport(payload) {
         throw new Error('Missing or duplicate ID in ' + name);
       seen.add(row.id);
       if (row._rev !== undefined && (!Number.isSafeInteger(row._rev) || row._rev < 0)) throw new Error('Invalid record revision');
-      for (const field of ['venue', 'mobile', 'type', 'notes', 'cat', 'head', 'mode', 'phone', 'specialty', 'dueDate', 'evId', 'venId', 'eventId', 'expenseId', 'createdAt']) {
+      for (const field of ['venue', 'mobile', 'type', 'notes', 'cat', 'head', 'mode', 'phone', 'specialty', 'dueDate', 'evId', 'venId', 'eventId', 'expenseId', 'createdAt', 'kind', 'menu', 'outVenId']) {
         if (row[field] === null) row[field] = '';
         if (row[field] !== undefined && typeof row[field] !== 'string') throw new Error('Invalid text field: ' + field);
       }
@@ -423,6 +423,8 @@ export async function prepareImport(payload) {
       for (const field of ['photoIds', 'billIds']) if (row[field]?.some(id => typeof id !== 'string' || !id)) throw new Error('Invalid attachment ID');
       if (name === 'photos' && (typeof row.data !== 'string' || !/^data:image\/(jpeg|png|webp|gif);base64,/.test(row.data))) throw new Error('Invalid photo data');
       if (row.pay && !['paid', 'credit'].includes(row.pay)) throw new Error('Invalid payment state');
+      if (row.outsourced !== undefined && typeof row.outsourced !== 'boolean') throw new Error('Invalid outsourced flag');
+      if (row.kind && !['vendor', 'person'].includes(row.kind)) throw new Error('Invalid vendor kind');
     }
   }
   for (const ev of copy.events) {
@@ -485,7 +487,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '2.4.7';
+export const APP_VERSION = '3.0.0';
 export async function checkAndMigrate() {
   await openDB();
   const storedVer = await getMeta('app_version');
