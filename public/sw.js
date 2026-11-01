@@ -1,6 +1,6 @@
 /** Activate updates without reloading open entries; pin each page to its release. */
-const RELEASE = '3.0.0';
-const CACHE_NAME = 'flavor-fusion-v2-cache-v18';
+const RELEASE = '3.0.1';
+const CACHE_NAME = 'flavor-fusion-v2-cache-v19';
 const CLIENT_RELEASES = 'caterdesk-client-releases';
 const PRECACHE = ['./', './index.html', './styles.css', './app.js', './register-sw.js', './db.js', './utils.js', './icons.js', './i18n.js', './manifest.json', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png'];
 function clientKey(id) { return new Request(new URL('./__client_release__/' + encodeURIComponent(id), self.registration.scope)); }

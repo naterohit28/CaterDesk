@@ -129,5 +129,12 @@ await test('outsourced event saves vendor charge as credit and shows commission'
  const t=await p.locator('#tab-evdetail').innerText();assert.match(t,/Outsourced/);assert.match(t,/Commission/);assert(!/No expenses recorded yet/.test(t));
  await p.locator('#n-expenses').click();assert.match(await p.locator('#to-pay-list').innerText(),/Kaka Caterers/);
 });
+await test('newer release found at start-up reloads once, never loops',async()=>{
+ const q=await c.newPage();q.setDefaultTimeout(10000);
+ await q.addInitScript(()=>{Object.defineProperty(window,'caterDeskUpdate',{configurable:true,get:()=>async()=>'9.9.9',set(){}});sessionStorage.setItem('loads',String(Number(sessionStorage.getItem('loads')||0)+1));});
+ await q.goto(BASE_URL);await q.waitForSelector('#kpi .card');await q.waitForTimeout(1500);await q.waitForSelector('#kpi .card');
+ assert.equal(await q.evaluate(()=>sessionStorage.getItem('loads')),'2','reloaded exactly once');
+ assert.equal(await q.evaluate(()=>sessionStorage.getItem('ff_autoupdate_9.9.9')),'1');await q.close();
+});
 results.push({name:'unexpected page errors',pass:errors.length===0,errors});fs.writeFileSync('test-artifacts/repair-test-results.json',JSON.stringify(results,null,2));await browser.close();console.log(JSON.stringify(results,null,2));if(results.some(r=>!r.pass))process.exitCode=1;
 })().catch(e=>{console.error(e);process.exitCode=1});
