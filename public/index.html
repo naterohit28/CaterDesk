@@ -263,6 +263,12 @@
     </div>
     <div class="field"><label>Category – प्रकार</label><div class="cat-chips" id="exp-cats" role="group" aria-label="Category"></div><input type="hidden" id="exp-cat"></div>
     <div class="field"><label for="exp-head">For – कशासाठी</label><select id="exp-head"></select></div>
+    <!-- One-tap picks for the vendors who usually supply this item (by speciality and past entries).
+         Suggestions only: nothing is chosen until tapped. -->
+    <div class="field" id="exp-ven-quick-field" hidden>
+      <label>Usual vendor – नेहमीचा विक्रेता</label>
+      <div class="chips-row" id="exp-ven-quick" role="group" aria-label="Usual vendors" style="margin:0;padding:0"></div>
+    </div>
     <div class="field"><label for="exp-ev">Event – कार्यक्रम <span class="req">*</span></label><select id="exp-ev"></select>
       <div class="meta" id="exp-ev-hint" data-nl style="margin-top:6px"></div></div>
     <div class="f2">

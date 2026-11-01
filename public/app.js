@@ -1360,8 +1360,54 @@ function setExpCat(cat, head = '') {
   q('exp-cat').value = cat;
   q('exp-cats').innerHTML = Object.keys(EXPENSE_HEADS).map(c =>
     `<button type="button" class="cat-chip" data-cat="${esc(c)}" aria-pressed="${c === cat}">${catIcon(c, 20)}${esc(c)}</button>`).join('');
-  populateSelect('exp-head', EXPENSE_HEADS[cat] || [], head);
+  populateSelect('exp-head', headsByUse(cat), head);
   populateVendorSelect(qv('exp-vendor'));
+}
+
+// Compare category / item names ignoring the Marathi half, spacing and case
+const normal = value => String(value || '').normalize('NFKC').split(' – ')[0].trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+
+// A category's items with the ones you record most at the top (the rest keep their usual order)
+function headsByUse(cat) {
+  const heads = EXPENSE_HEADS[cat] || [];
+  const uses = new Map();
+  for (const x of D.expenses) if (x.cat === cat && x.head) uses.set(x.head, (uses.get(x.head) || 0) + 1);
+  return heads.map((h, i) => ({ h, i, n: uses.get(h) || 0 })).sort((a, b) => (b.n - a.n) || (a.i - b.i)).map(r => r.h);
+}
+
+/* Vendors ranked for the chosen category and item:
+   [0] usual for this item — its listed speciality, or who has supplied it before
+   [1] same category        — listed category, or who has supplied this category before
+   [2] everyone else
+   Within a group: speciality match first, then most used, then name. */
+function rankVendors(cat, head) {
+  const c = normal(cat), h = normal(head);
+  const usesFor = new Map(), usesIn = new Map();
+  for (const x of D.expenses) {
+    if (!x.venId) continue;
+    if (c && normal(x.cat) === c) {
+      usesIn.set(x.venId, (usesIn.get(x.venId) || 0) + 1);
+      if (h && normal(x.head) === h) usesFor.set(x.venId, (usesFor.get(x.venId) || 0) + 1);
+    }
+  }
+  const groups = [[], [], []];
+  for (const v of D.vendors) {
+    const specialty = c && h && normal(v.cat) === c && normal(v.specialty) === h;
+    const forItem = specialty || usesFor.has(v.id);
+    const inCat = (c && normal(v.cat) === c) || usesIn.has(v.id);
+    groups[forItem ? 0 : inCat ? 1 : 2].push({ v, specialty, n: (usesFor.get(v.id) || 0) * 100 + (usesIn.get(v.id) || 0) });
+  }
+  const order = (a, b) => (b.specialty - a.specialty) || (b.n - a.n) || String(a.v.name || '').localeCompare(String(b.v.name || ''));
+  return groups.map(g => g.sort(order).map(r => r.v));
+}
+
+// One-tap buttons for the usual vendors (or, if none yet, the category's vendors)
+function renderVendorQuick() {
+  const [usual, inCat] = rankVendors(qv('exp-cat'), qv('exp-head'));
+  const picks = (usual.length ? usual : inCat).slice(0, 4);
+  q('exp-ven-quick-field').hidden = !picks.length;
+  q('exp-ven-quick').innerHTML = picks.map(v =>
+    `<button type="button" class="f-chip" data-ven="${esc(String(v.id))}" aria-pressed="${String(v.id) === qv('exp-vendor')}" data-nl>${esc(v.name)}</button>`).join('');
 }
 
 function setExpDue(date) {
@@ -1397,15 +1443,8 @@ function setExpPay(pay) {
 
 function populateVendorSelect(selected = '') {
   const selStr = String(selected ?? '').trim();
-  const normal = value => String(value || '').normalize('NFKC').split(' – ')[0].trim().replace(/\s+/g, ' ').toLocaleLowerCase();
-  const category = normal(qv('exp-cat')), head = normal(qv('exp-head'));
-  const groups = [[], [], []];
-  for (const vendor of [...D.vendors].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))) {
-    const sameCategory = category && normal(vendor.cat) === category;
-    const exact = sameCategory && head && normal(vendor.specialty) === head;
-    groups[exact ? 0 : sameCategory ? 1 : 2].push(vendor);
-  }
-  const labels = ['Matching category & subcategory – जुळणारे विक्रेते', 'Same category – त्याच प्रकारातील', 'Other vendors – इतर विक्रेते'];
+  const groups = rankVendors(qv('exp-cat'), qv('exp-head'));
+  const labels = ['Usual for this item – नेहमीचे विक्रेते', 'Same category – त्याच प्रकारातील', 'Other vendors – इतर विक्रेते'];
   const option = vendor => `<option value="${esc(String(vendor.id))}">${esc(vendor.name)}</option>`;
   q('exp-vendor').innerHTML = '<option value="">Choose vendor – विक्रेता निवडा</option>' +
     groups.map((vendors, i) => vendors.length ? `<optgroup label="${esc(labels[i])}">${vendors.map(option).join('')}</optgroup>` : '').join('') +
@@ -1413,6 +1452,7 @@ function populateVendorSelect(selected = '') {
   // Reordering suggestions must not replace an edited or explicitly chosen vendor.
   q('exp-vendor').value = D.vendors.some(v => String(v.id) === selStr) ? selStr : '';
   q('exp-vendor').dataset.prev = q('exp-vendor').value;
+  renderVendorQuick();
 }
 
 function openExpModal(arg) {
@@ -2089,8 +2129,16 @@ function bindAllEvents() {
   q('exp-due').addEventListener('change', e => setExpDue(e.target.value));
   q('exp-ev').addEventListener('change', updateExpEvHint);
   q('exp-head').addEventListener('change', () => populateVendorSelect(qv('exp-vendor')));
+  // Tapping a usual-vendor button picks that vendor (tap again to clear)
+  q('exp-ven-quick').addEventListener('click', e => {
+    const b = e.target.closest('[data-ven]'); if (!b) return;
+    const sel = q('exp-vendor');
+    sel.value = sel.value === b.dataset.ven ? '' : b.dataset.ven;
+    sel.dataset.prev = sel.value;
+    renderVendorQuick();
+  });
   q('exp-vendor').addEventListener('change', e => {
-    if (e.target.value !== '__new') { e.target.dataset.prev = e.target.value; return; }
+    if (e.target.value !== '__new') { e.target.dataset.prev = e.target.value; renderVendorQuick(); return; }
     e.target.value = e.target.dataset.prev || '';
     pickVendorForExpense = true;
     openVenModal();
