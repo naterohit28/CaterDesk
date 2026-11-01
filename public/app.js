@@ -23,7 +23,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '3.0.0';
+const APP_BUILD = '3.0.1';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -207,6 +207,24 @@ async function boot() {
     clearTimeout(stuckTimer);
     showLoading(false);
   }
+  autoUpdateOnStart();
+}
+
+/* A newer release found while the app is starting is switched to at once, so the phone never
+   keeps showing the old version. Only in the first seconds and only with nothing open or
+   saving; otherwise it waits for Settings › Reload or the next start, as before. */
+async function autoUpdateOnStart() {
+  let release;
+  try { release = await window.caterDeskUpdate?.(); } catch { return; }
+  if (!release || release === APP_BUILD) return;
+  const key = 'ff_autoupdate_' + release;
+  try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, '1'); } catch { return; }  // never loop
+  const busy = activeSaves.size || document.querySelector('.modal-ov.active, #lightbox.active') || history.state?.depth > 0;
+  if (busy || performance.now() > 20000) {   // 20s after the page opened
+    showToast(`CaterDesk v${release} is ready. It opens next time, or reload from Settings.`);
+    return;
+  }
+  location.reload();
 }
 
 async function loadAll() {
