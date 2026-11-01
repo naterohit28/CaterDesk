@@ -313,8 +313,9 @@ html[data-lang="mr"] .chip .t-mr { margin: 0; opacity: 1; }
 .qa:active { transform: scale(.97); }
 .qa-ic { width: 36px; height: 36px; border-radius: var(--r-md); background: var(--surface-2); color: var(--text-2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .qa.primary { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
-.qa.primary .qa-ic { background: rgba(255,255,255,.18); color: #fff; }
-.qa.primary .t-mr { color: rgba(255,255,255,.82); }
+/* Follow --on-brand so the icon reads on the dark brand (light theme) and the light mint brand (dark theme) */
+.qa.primary .qa-ic { background: rgba(255,255,255,.18); background: color-mix(in srgb, var(--on-brand) 16%, transparent); color: var(--on-brand); }
+.qa.primary .t-mr { color: var(--on-brand); opacity: .82; }
 
 /* ── LIST ROWS ── */
 .list { padding: 0 var(--s4); }

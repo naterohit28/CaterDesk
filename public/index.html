@@ -229,13 +229,35 @@
       <div class="field"><label for="ev-type">Type – प्रकार</label><select id="ev-type"></select></div>
     </div>
     <div class="field"><label for="ev-venue">Venue – ठिकाण <span class="req">*</span></label><input type="text" id="ev-venue" placeholder="Hall / location" autocapitalize="words" enterkeyhint="next"></div>
+    <!-- Menu + guests fill the bill from the rate card and the expected cost from what that menu
+         has cost before. Both stay editable. -->
+    <div class="f2">
+      <div class="field"><label for="ev-menu">Menu – मेनू</label><select id="ev-menu"></select></div>
+      <div class="field"><label for="ev-guests">Guests / plates – पाहुणे</label><input type="number" id="ev-guests" placeholder="e.g. 300" min="1" inputmode="numeric" enterkeyhint="next"></div>
+    </div>
+    <div class="meta" id="ev-menu-hint" data-nl hidden style="margin:-6px 0 var(--s3)"></div>
     <div class="f2">
       <div class="field"><label for="ev-billing">Total bill ₹ – एकूण बिल <span class="req">*</span></label><input type="number" id="ev-billing" placeholder="0" min="1" inputmode="decimal" enterkeyhint="next"></div>
-      <div class="field"><label for="ev-mobile">Client mobile – मोबाईल</label><input type="tel" id="ev-mobile" placeholder="9XXXXXXXXX" enterkeyhint="next"></div>
-    </div>
-    <div class="f2">
-      <div class="field"><label for="ev-guests">Guests / plates – पाहुणे</label><input type="number" id="ev-guests" placeholder="e.g. 300" min="1" inputmode="numeric" enterkeyhint="next"></div>
       <div class="field"><label for="ev-budget">Expected cost ₹ – अंदाजे खर्च</label><input type="number" id="ev-budget" placeholder="optional" min="1" inputmode="decimal" enterkeyhint="next"></div>
+    </div>
+    <!-- Outsourced: another caterer does the whole event and you keep the difference (your commission).
+         Their charge is saved as one credit expense to them, so it shows in "To pay". -->
+    <div class="field">
+      <div class="seg" role="group" aria-label="Who caters" id="ev-handling">
+        <button type="button" data-h="own" aria-pressed="true">We cater – आपण करणार</button>
+        <button type="button" data-h="out" aria-pressed="false">Outsourced – आउटसोर्स</button>
+      </div>
+    </div>
+    <div class="f2" id="ev-out-field" hidden>
+      <div class="field"><label for="ev-out-ven">Done by – कोण करणार</label><select id="ev-out-ven"></select></div>
+      <div class="field" id="ev-out-charge-field"><label for="ev-out-charge">Their charge ₹ – त्यांचे बिल</label><input type="number" id="ev-out-charge" placeholder="0" min="1" inputmode="decimal" enterkeyhint="next"></div>
+    </div>
+    <div class="meta" id="ev-out-hint" hidden style="margin:-6px 0 var(--s3)"></div>
+    <div class="field"><label for="ev-mobile">Client mobile – मोबाईल</label><input type="tel" id="ev-mobile" placeholder="9XXXXXXXXX" enterkeyhint="next"></div>
+    <!-- New events only, optional: the booking advance is saved as the event's first payment received -->
+    <div class="f2" id="ev-adv-field">
+      <div class="field"><label for="ev-adv">Advance received ₹ – अॅडव्हान्स</label><input type="number" id="ev-adv" placeholder="optional" min="1" inputmode="decimal" enterkeyhint="next"></div>
+      <div class="field"><label for="ev-adv-mode">Mode – पद्धत</label><select id="ev-adv-mode"></select></div>
     </div>
     <div class="field"><label for="ev-notes">Notes – नोंदी</label><textarea id="ev-notes" placeholder="Menu, special requests…"></textarea></div>
     <div class="s-foot"><button type="button" class="btn btn-primary" id="btn-save-event">Save event – जतन करा</button></div>
@@ -263,6 +285,12 @@
     </div>
     <div class="field"><label>Category – प्रकार</label><div class="cat-chips" id="exp-cats" role="group" aria-label="Category"></div><input type="hidden" id="exp-cat"></div>
     <div class="field"><label for="exp-head">For – कशासाठी</label><select id="exp-head"></select></div>
+    <!-- One-tap picks for the vendors who usually supply this item (by speciality and past entries).
+         Suggestions only: nothing is chosen until tapped. -->
+    <div class="field" id="exp-ven-quick-field" hidden>
+      <label>Usual vendor – नेहमीचा विक्रेता</label>
+      <div class="chips-row" id="exp-ven-quick" role="group" aria-label="Usual vendors" style="margin:0;padding:0"></div>
+    </div>
     <div class="field"><label for="exp-ev">Event – कार्यक्रम <span class="req">*</span></label><select id="exp-ev"></select>
       <div class="meta" id="exp-ev-hint" data-nl style="margin-top:6px"></div></div>
     <div class="f2">
@@ -318,8 +346,16 @@
     <div class="s-handle"></div>
     <div class="s-head"><div class="s-title" id="ven-mtitle">New vendor – नवीन विक्रेता</div><button type="button" class="icon-btn" data-action="close-modal" aria-label="Close"><i data-ic="x"></i></button></div>
     <input type="hidden" id="ven-id">
-    <div class="field"><label for="ven-name">Vendor name – विक्रेत्याचे नाव <span class="req">*</span></label><input type="text" id="ven-name" placeholder="Business / supplier name" autocapitalize="words"></div>
-    <div class="f2">
+    <!-- A person isn't a supplier: someone who lent money or paid a bill for you. They can be owed and repaid like a vendor. -->
+    <div class="field">
+      <div class="seg" role="group" aria-label="Type" id="ven-kind">
+        <button type="button" data-kind="vendor" aria-pressed="true">Vendor – विक्रेता</button>
+        <button type="button" data-kind="person" aria-pressed="false">Other person – इतर व्यक्ती</button>
+      </div>
+      <div class="meta" id="ven-kind-hint" hidden style="margin-top:6px">Someone who lent you money or paid a bill for you – ज्यांनी उधार दिले किंवा तुमच्यासाठी पैसे भरले</div>
+    </div>
+    <div class="field"><label for="ven-name" id="ven-name-lbl">Vendor name – विक्रेत्याचे नाव <span class="req">*</span></label><input type="text" id="ven-name" placeholder="Business / supplier name" autocapitalize="words"></div>
+    <div class="f2" id="ven-cat-row">
       <div class="field"><label for="ven-cat">Category – प्रकार <span class="req">*</span></label><select id="ven-cat"></select></div>
       <div class="field"><label for="ven-specialty">Specialty – विशेषता</label><select id="ven-specialty"></select></div>
     </div>

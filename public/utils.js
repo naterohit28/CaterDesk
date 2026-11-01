@@ -19,13 +19,14 @@ export const EXPENSE_HEADS = {
   'Labour': [
     'Rojiya Labour – रोजीया मजूर','Boys – बॉईज','Ghati – घाटी','Cook – स्वयंपाकी',
     'Helper Staff','Roti Labour – रोटी मजूर','Cleaner / Washing',
-    'PRO – पी.आर.О.','Supervisor','Loading / Unloading Labour'
+    'PRO – पी.आर.О.','Supervisor','Loading / Unloading Labour',
+    'Staff Tips – स्टाफ टीप','Vendor Staff Tips – विक्रेता स्टाफ टीप'
   ],
   'Operations': [
     'Transport – वाहतूक','Fuel / Diesel','Gas / Cylinder – सिलिंडर',
     'Rented Material – भाड्याचे साहित्य','Disposable – डिस्पोजेबल',
     'Packaging Material','New Utensils – नवीन भांडी','Equipment Repair',
-    'Generator / Power','Ice Blocks','Water Tanker'
+    'Generator / Power','Ice Blocks','Water Tanker','Outsourced Event – आउटसोर्स कार्यक्रम'
   ],
   'Admin': [
     'Royalty – रॉयल्टी','Office Expense','Phone / Internet',
@@ -47,7 +48,79 @@ export const EVENT_TYPES = [
   'Birthday – वाढदिवस','Corporate – कॉर्पोरेट','Other – इतर'
 ];
 
-export const PAY_MODES = ['Cash – रोख','UPI','NEFT','Cheque – चेक','Bank – बँक'];
+/* Menu packages from the rate card. A slab's rate applies from `min` guests up; below the
+   smallest slab the smallest slab's rate is used. The bill stays editable on every event. */
+export const MENUS = [
+  { id: 'party', name: 'Party Special', slabs: [{ min: 100, rate: 750 }], items: [
+    '1 Mocktail, 1 Fruit Juice', '2 Starters', '1 Chaat Counter', 'Any 1 (Paav Bhaji / Puri & Vegetable Gravy)',
+    '1 South Indian Live Counter', 'Any 1 Live Counter (Pasta or Chinese or Pizza)', '1 Dessert (Cold / Ice Gola / Kulfi Candy)',
+    'Russian Salad / Corn Salad, Papad', 'Water Bottles', 'Mukhwas'] },
+  { id: 'standard', name: 'Standard', slabs: [{ min: 101, rate: 600 }], items: [
+    '2 Flavoured Drinks', '2 Starters', '2 Veg Preparation', '(Any 1) Puri, Rumali, Phulka, Tawa Paratha', '1 Rice, 1 Dal',
+    '1 Basic Sweet', 'Ice Cream (V / S / P)', 'Koshimbir, Papad, Pickle, Chutney', 'Water Bottles', 'Mukhwas'] },
+  { id: 'silver', name: 'Silver', slabs: [{ min: 101, rate: 775 }, { min: 301, rate: 675 }], items: [
+    '1 Mocktail, 1 Fruit Juice', '2 Starters', '2 Veg Preparation', '(Any 2) Puri, Rumali, Phulka, Tawa Paratha', '1 Rice, 1 Dal',
+    '2 Indian Sweet (Basic, Milk)', 'Ice Cream (V / S / P)', 'Green Salad, Papad, Pickle, Chutney', 'Water Bottles', 'Mukhwas'] },
+  { id: 'golden', name: 'Golden', slabs: [{ min: 101, rate: 900 }, { min: 301, rate: 800 }], items: [
+    '1 Mocktail, 1 Fruit Juice', '2 Starters', '2 Veg Preparation', '(Any 2) Puri, Rumali, Phulka, Tawa Paratha', '1 Rice, 1 Dal',
+    '2 Indian Sweet (Basic, Milk)', '(Any 2 Live) 1 Chaat / 2 Chinese / 2 Dakshin', '1 Special Ice Cream',
+    'Green Salad, Papad, Pickle, Chutney', 'Water Bottles', 'Mukhwas'] },
+  { id: 'platinum', name: 'Platinum', slabs: [{ min: 101, rate: 1100 }, { min: 301, rate: 1000 }], items: [
+    '1 Mocktail, 2 Fruit Juice', '3 Starters', '1 Soup Station (Standard)', '3 Veg Preparation',
+    '3 Roti (Puri, Rumali, Tawa Paratha, Tandoor Basket)', '2 Rice, 1 Dal', '3 Indian Sweets (1 Basic, 2 Milk)',
+    '(Any 3 Live) 2 Chat / 2 Pasta / 2 Wok / 2 Dakshin', 'Sundae Ice Cream', 'Raita, Special Mix Salad, Papad, Pickle, Chutney',
+    'Branded Water Bottles', 'Mukhwas Counter'] },
+  { id: 'diamond', name: 'Diamond', slabs: [{ min: 101, rate: 1400 }, { min: 301, rate: 1300 }], items: [
+    '2 Mocktail, 2 Fruit Juice', '4 Starters or Barbeque', '2 Soup Station (Standard & Special)', '3 Veg Preparation (Live Setup)',
+    '3 Roti (Puri, Ulta Tawa Roti, Tandoor Basket)', '2 Rice, 2 Dal', '3 Indian Sweets (1 Basic, 1 Milk, 1 Special)',
+    '(Any 4 Live) 2 Chat / 2 Dakshin / 2 Wok / 2 Fusion', '3 Types Ice Cream Parlour', 'Fruit Counter 5 Indian or 3 Dessert Station',
+    'Special Salad Counter (5 items), PPC', 'Branded Water Bottles', 'Special Paan / Mukhwas Counter'] },
+  // Traditional menus served on banana leaf: 50–150 and 151–300 pax slabs
+  { id: 'udupi', leaf: true, name: 'Udupi (Basic)', slabs: [{ min: 50, rate: 700 }, { min: 151, rate: 650 }], items: [
+    '1 Mocktail, 1 Fruit Juice', 'Payasa (Kadle Bele / Hesaru Bele)', '1 Dry Veg, 1 Ghasi', '1 Dry Veg, 1 Ghasi', '1 Flavored Rice',
+    '1 Plain Rice', 'Tove (Dal), Ghee', 'Saaru (Rasam)', 'Huli (Sambar)', 'Papad', 'Menaskai (Sweet & Sour)',
+    'Holige (Puranpoli) or Boondi Laddoo', 'Butter Milk', 'Water Bottles'] },
+  { id: 'udupi-special', leaf: true, name: 'Udupi (Special)', slabs: [{ min: 50, rate: 775 }, { min: 151, rate: 725 }], items: [
+    '1 Mocktail, 1 Fruit Juice', 'Payasa (Kadle Bele / Hesaru Bele)', 'Salt, Pickle, Chutney, Kosambari', 'Raita', '1 Dry Veg, 1 Ghasi',
+    '1 Flavored Rice', '1 Plain Rice', 'Tove (Dal), Ghee', 'Tambuli or Udina Hittu', 'Saaru (Rasam)', 'Huli (Sambar)',
+    'Menaskai (Sweet & Sour)', 'Papad, 2 Khara Item', 'Any 2 Basic Sweets', 'Curd & Butter Milk', 'Pan Supari or Beeda',
+    'Water Bottles', 'Puri or Chapati (Optional)'] },
+  { id: 'onam', leaf: true, name: 'Onam Sadhya', slabs: [{ min: 50, rate: 750 }, { min: 151, rate: 700 }], items: [
+    '1 Mocktail, 1 Fruit Juice', 'Salt, Pickle', 'Puli Inji', 'Thair Pachadi, Sweet Pachadi', 'Kalan, Olan', 'Thoran', 'Avial',
+    'Erissery or Kootu Curry', 'Banana Cut Chips, Jaggery Chips', 'Plain Rice', 'Sambhar', 'Paruppu, Ghee', 'Rasam', 'Papadam',
+    'Pal Ada Payasam or Ada Pradhaman', 'Butter Milk', 'Yellow Banana', 'Water Bottles'] },
+  { id: 'tamil', leaf: true, name: 'Tamil (Special)', slabs: [{ min: 50, rate: 750 }, { min: 151, rate: 700 }], items: [
+    '1 Mocktail, 1 Fruit Juice', 'Pickle, Chutney', 'Sweet Pachadi, Thair Pachadi', 'Aviyal', 'Vatha Kuzhambu', 'Mor Kulambu', 'Rasam',
+    'Kadamba Sambhar', 'Plain Rice, Paruppu, Ghee', 'Appalam', 'Pal Payasam', '1 Sweet Item', '1 Fried Item', '1 Flavored Rice',
+    'Curd & Butter Milk', 'Mor Milagai (Curd Chilly)', 'Beeda, Water Bottles'] },
+  { id: 'hubli', leaf: true, name: 'Hubli / Dharwad', slabs: [{ min: 50, rate: 750 }, { min: 151, rate: 700 }], items: [
+    '1 Mocktail, 1 Fruit Juice', 'Salt, Pickle, Chutney, Kosambari', 'Kayirasa', 'Raita', 'Mudde Palya', 'Palya', 'Rice, Tove, Ghee',
+    'Huli (Sambhar)', 'Saaru (Rasam)', '1 Flavored Rice', 'Holige (Puranpoli Gud), Milk, Ghee', 'Mix Bhajiya (Burburi)', 'Payasa',
+    'Butter Milk', 'Ambika Appalam', 'Pan Supari, Water Bottles', 'Puri or Chapati (Optional)'] },
+  { id: 'gsb', leaf: true, name: 'GSB', slabs: [{ min: 50, rate: 750 }, { min: 151, rate: 700 }], items: [
+    '1 Mocktail, 1 Fruit Juice', 'Salt, Pickle, Chutney, Raita', '1 Upkari', '1 Ghasi', 'Fruit Saasam', 'Puri', 'Rice', 'Dali Toy, Ghee',
+    'Saaru (Rasam)', 'Fried Papad', '1 Basic Sweet, Laddoo', 'Mix Bhajiya / Fodi', 'Butter Milk', 'Beeda or Mukhwas', 'Water Bottles',
+    'Optional: Saat, Boondi Laddoo, Mixture Packet, Kaju Kadi'] },
+  { id: 'maharashtrian', leaf: true, name: 'Maharashtrian', slabs: [{ min: 50, rate: 800 }, { min: 151, rate: 750 }], items: [
+    '1 Mocktail, 1 Fruit Juice', 'Salt, Pickle, 2 Chutney (Sweet, Spicy)', 'Koshimbir, Papad, Kurdya', 'Any 1 (Mix Bhajya, Vadi)',
+    'Any 2 (Puri, Phulka, Bhakri, Vade)', '1 Usal (Gravy Bhaji)', '1 Dry Veg, 1 Kurma / Mix Bhaji', 'Sadha Bhaat', 'Varan, Tup or Amti',
+    'Masale Bhaat / Pulav', 'Tomato Saar / Kadhi', '2 Sweet (Basic, Milk)', 'Chaas or Mattha or Solkadhi', 'Water Bottles'] }
+];
+
+export function menuById(id) {
+  return MENUS.find(m => m.id === id) || null;
+}
+
+// Per-plate rate of a menu for a guest count
+export function menuRate(menu, guests) {
+  if (!menu) return 0;
+  const slabs = [...menu.slabs].sort((a, b) => a.min - b.min);
+  let rate = slabs[0].rate;
+  for (const s of slabs) if ((Number(guests) || 0) >= s.min) rate = s.rate;
+  return rate;
+}
+
+export const PAY_MODES =['Cash – रोख','UPI','NEFT','Cheque – चेक','Bank – बँक'];
 
 /* ── ID / DATE ───────────────────────────────────── */
 export function uid(prefix = 'id') {
@@ -192,6 +265,47 @@ export function calcEventPL(ev, cPays, expenses) {
   };
 }
 
+/* What a menu has actually cost per plate: past events on that menu with a guest count and
+   recorded costs (events with no costs would drag the average to zero). */
+export function menuCostPerPlate(menuId, events, expenses, excludeId = '') {
+  const spent = new Map();
+  for (const x of expenses) spent.set(x.evId, (spent.get(x.evId) || 0) + (Number(x.amt) || 0));
+  let guests = 0, cost = 0, n = 0;
+  for (const e of events) {
+    if (e.menu !== menuId || e.id === excludeId || e.outsourced || !(Number(e.guests) > 0) || !spent.get(e.id)) continue;
+    guests += Number(e.guests); cost += spent.get(e.id); n++;
+  }
+  return n ? { n, perPlate: Math.round(cost / guests) } : null;
+}
+
+/* Usual costs for an event, taken from the latest other event with costs on the same menu
+   (else of the same type): one line per item, with what it cost there and whether this
+   event has it recorded yet. Catches costs that were forgotten. */
+export function costChecklist(ev, events, expenses) {
+  if (ev.outsourced) return null;
+  const norm = v => String(v || '').split(' – ')[0].trim().toLowerCase();
+  const withCosts = new Set(expenses.map(x => x.evId));
+  const others = events.filter(e => e.id !== ev.id && !e.outsourced && withCosts.has(e.id)).sort((a, b) => b.date.localeCompare(a.date));
+  const ref = (ev.menu && others.find(e => e.menu === ev.menu)) || others.find(e => e.type === ev.type);
+  if (!ref) return null;
+  const items = new Map();
+  for (const x of expenses.filter(x => x.evId === ref.id).sort((a, b) => (a.date || '').localeCompare(b.date || ''))) {
+    const key = norm(x.head || x.cat);
+    const it = items.get(key) || { cat: x.cat, head: x.head, amt: 0, venId: '' };
+    it.amt += Number(x.amt) || 0;
+    if (x.venId) it.venId = x.venId;
+    items.set(key, it);
+  }
+  const mine = new Map();
+  for (const x of expenses.filter(x => x.evId === ev.id)) {
+    const key = norm(x.head || x.cat);
+    mine.set(key, (mine.get(key) || 0) + (Number(x.amt) || 0));
+  }
+  const list = [...items].map(([key, it]) => ({ ...it, done: mine.get(key) || 0 }))
+    .sort((a, b) => (!!a.done - !!b.done) || (b.amt - a.amt));
+  return { ref, list, missing: list.filter(i => !i.done).length };
+}
+
 /* Credit purchases still unpaid, each with what's left on it. Vendor payments aren't
    tied to a particular purchase, so they settle that vendor's oldest credit first. */
 export function unpaidCredit(expenses, vPays) {
@@ -230,6 +344,13 @@ export function addDays(iso, n) {
 /* An expense is either paid on the spot (pay: 'paid') or taken on credit from
    its vendor (pay: 'credit'). Older records have no `pay` field; a vendor-linked
    one was always treated as owed, so it stays credit. */
+/* The vendors store also holds people who aren't suppliers — a friend, relative or
+   financier who lent money or paid a bill for you (kind: 'person'). They share the
+   vendors' credit and repayment records but never appear as suggested suppliers. */
+export function isPerson(v) {
+  return v?.kind === 'person';
+}
+
 export function isOnCredit(x) {
   return x.pay ? x.pay === 'credit' : !!x.venId;
 }
@@ -285,7 +406,7 @@ export function sliceByPeriod(D, period) {
 // Past events with no expense recorded — their profit figure is not real yet
 export function eventsMissingCosts(events, expenses) {
   const withCosts = new Set(expenses.map(x => x.evId));
-  return events.filter(e => isOverdue(e) && !withCosts.has(e.id))
+  return events.filter(e => isOverdue(e) && !withCosts.has(e.id) && !e.outsourced)
                .sort((a, b) => b.date.localeCompare(a.date));
 }
 
