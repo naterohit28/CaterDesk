@@ -23,7 +23,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '3.1.1';
+const APP_BUILD = '3.1.2';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -952,6 +952,21 @@ function costingBlock(pl, noCosts) {
   return plate + budget + ask;
 }
 
+/* Vendor's account as a WhatsApp message: totals, then each unpaid credit purchase.
+   Opens WhatsApp with the text filled in; nothing is sent until you press send. */
+function vendorDuesLink(vn, bal) {
+  const items = pendingCredit().filter(u => u.x.venId === vn.id).map(({ x, left }) => {
+    const ev = D.events.find(e => e.id === x.evId);
+    return `• ${(x.head || x.cat || '').split(' – ')[0]}${ev ? ' – ' + ev.name : ''} (${fmtDate(x.date)}): ${fmtCurrency(left)}`;
+  });
+  const msg = `Namaste ${vn.name}! As per my records:\n`
+    + `${isPerson(vn) ? 'Lent / paid for me' : 'Supplied'}: ${fmtCurrency(bal.supplied)}\nPaid: ${fmtCurrency(bal.paid)}\n`
+    + `Balance due to you: ${fmtCurrency(bal.balance)}\n`
+    + (items.length ? `\nPending:\n${items.join('\n')}\n` : '')
+    + `\nPlease check and confirm. Thank you!`;
+  return `https://wa.me/${phoneDigits(vn.phone)}?text=${encodeURIComponent(msg)}`;
+}
+
 function reminderLink(ev, pending) {
   const msg = `Namaste! A gentle reminder from CaterDesk: ${fmtCurrency(pending)} is pending for ${ev.name} (${fmtDate(ev.date)}). Kindly arrange the payment. Thank you!\n\n`
             + `नमस्कार! ${ev.name} साठी ${fmtCurrency(pending)} बाकी आहे. कृपया देयक करावे. धन्यवाद!`;
@@ -1002,9 +1017,11 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
         <div class="metric"><div class="label">Margin – मार्जिन</div><div class="amt-md ${noCosts ? 'muted' : profit >= 0 ? 'pos' : 'neg'}">${ev.billing > 0 ? margin + '%' : '—'}</div></div>
       </div>
       ${ev.outsourced ? '' : costingBlock(plFull, noCosts)}
-      ${pend > 0 && phone ? `<div class="btn-row" style="margin-top:var(--s4)">
+      ${phone ? `<div class="btn-row" style="margin-top:var(--s4)" id="ev-contact">
         <a class="btn btn-secondary" href="tel:+${esc(phone)}">${icon('phone', 18)}${tr('Call', 'कॉल')}</a>
-        <a class="btn btn-wa" href="${esc(reminderLink(ev, pend))}" target="_blank" rel="noopener">${icon('message', 18)}${tr('Remind', 'आठवण')}</a>
+        ${pend > 0
+          ? `<a class="btn btn-wa" href="${esc(reminderLink(ev, pend))}" target="_blank" rel="noopener">${icon('message', 18)}${tr('Remind', 'आठवण')}</a>`
+          : `<a class="btn btn-wa" href="https://wa.me/${esc(phone)}" target="_blank" rel="noopener">${icon('message', 18)}WhatsApp</a>`}
       </div>` : ''}
     </div>
 
@@ -1274,6 +1291,12 @@ function showVenDetail(id, { fromHistory = false } = {}) {
         <div class="metric"><div class="label">${bal.balance < 0 ? 'Advance – आगाऊ' : 'You owe – देणे'}</div><div class="amt-md ${bal.balance > 0 ? 'due' : bal.balance < 0 ? 'info' : 'muted'}">${fmtCurrency(Math.abs(bal.balance))}</div></div>
       </div>`
       : `<div class="meta">${tr('Nothing recorded with this vendor yet. Add an expense and pick this vendor, or record a payment.', 'या विक्रेत्याची अजून नोंद नाही.')}</div>`}
+      ${phone ? `<div class="btn-row" style="margin-top:var(--s4)" id="ven-contact">
+        <a class="btn btn-secondary" href="tel:+${esc(phone)}">${icon('phone', 18)}${tr('Call', 'कॉल')}</a>
+        <a class="btn btn-wa" href="https://wa.me/${esc(phone)}" target="_blank" rel="noopener">${icon('message', 18)}WhatsApp</a>
+      </div>
+      ${bal.balance > 0 ? `<a class="btn btn-ghost" style="margin-top:var(--s2);width:100%" href="${esc(vendorDuesLink(vn, bal))}" target="_blank" rel="noopener">${icon('message', 18)}${tr('Share dues on WhatsApp', 'देणे WhatsApp वर पाठवा')}</a>` : ''}`
+      : `<button type="button" class="btn-sm" style="margin-top:var(--s3)" data-action="open-ven-edit" data-id="${esc(vn.id)}">${icon('phone', 16)}${tr('Add phone for Call / WhatsApp', 'कॉल / WhatsApp साठी नंबर जोडा')}</button>`}
     </div>
 
     <div class="sec"><span class="sec-title">${isPerson(vn) ? 'Paid for you – तुमच्यासाठी भरलेले खर्च' : 'Supplied – पुरवलेले खर्च'}</span>
@@ -2432,6 +2455,7 @@ function bindAllEvents() {
       case 'bill-view':    viewBill(id); break;
       case 'fill-draft':   openExpModal(D.drafts.find(d => d.id === id)); break;
       case 'open-ev-edit': openEvModal(curRef); break;
+      case 'open-ven-edit': openVenModal(id); break;
       case 'delete':       await deleteRow(el.dataset.type, id); break;
       case 'export':       exportData(); break;
       case 'period':       period = id; writePref('ffv2_period', id); renderPage(CT); break;

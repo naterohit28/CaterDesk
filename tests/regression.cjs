@@ -165,5 +165,16 @@ await test('v3.1: reopens last screen, resumes unsaved expense, vendor habits, c
  await q.goto(BASE_URL);await q.waitForSelector('#kpi .card');await q.locator('#n-vendors').click();await q.reload();await q.waitForSelector('#tab-vendors.active');
  assert(await q.locator('#n-vendors[aria-current="page"]').count());await q.locator('#n-home').click();await q.close();
 });
+await test('call and WhatsApp for clients and vendors; vendor dues message',async()=>{
+ await seed({...empty(),events:[{...ev,mobile:'9876543210'}],vendors:[{id:'m',name:'Murugan',cat:'Live Counter',phone:'9123456780'},{id:'n',name:'No Phone',cat:'Live Counter'}],
+  expenses:[{id:'x',evId:'e',cat:'Live Counter',head:'Dosa – डोसा',amt:15000,date:'2026-10-25',pay:'credit',venId:'m'}],cPays:[{id:'cp',evId:'e',amt:10000,date:'2026-10-25'}]});
+ await p.locator('#n-events').click();await p.locator('#ev-list [data-action="evdetail"]').first().click();await p.waitForSelector('#ev-contact');
+ const evLinks=await p.locator('#ev-contact a').evaluateAll(a=>a.map(x=>x.getAttribute('href')));assert.equal(evLinks[0],'tel:+919876543210');assert.equal(evLinks[1],'https://wa.me/919876543210','paid event: plain WhatsApp chat');
+ await p.locator('#n-vendors').click();await p.locator('#ven-list [data-action="vendetail"]',{hasText:'Murugan'}).click();await p.waitForSelector('#ven-contact');
+ const vLinks=await p.locator('#ven-contact a').evaluateAll(a=>a.map(x=>x.getAttribute('href')));assert.equal(vLinks[0],'tel:+919123456780');assert.equal(vLinks[1],'https://wa.me/919123456780');
+ const dues=decodeURIComponent(await p.locator('a',{hasText:'Share dues on WhatsApp'}).getAttribute('href'));assert.match(dues,/^https:\/\/wa\.me\/919123456780\?text=Namaste Murugan![\s\S]*Balance due to you: ₹15,000[\s\S]*• Dosa – Wedding/);
+ await p.locator('#n-vendors').click();await p.locator('#ven-list [data-action="vendetail"]',{hasText:'No Phone'}).click();await p.locator('[data-action="open-ven-edit"]').click();await p.waitForSelector('#ven-modal.active');assert.equal(await p.locator('#ven-name').inputValue(),'No Phone');
+ await p.locator('#ven-modal [data-action="close-modal"]').click();await p.waitForTimeout(150);
+});
 results.push({name:'unexpected page errors',pass:errors.length===0,errors});fs.writeFileSync('test-artifacts/repair-test-results.json',JSON.stringify(results,null,2));await browser.close();console.log(JSON.stringify(results,null,2));if(results.some(r=>!r.pass))process.exitCode=1;
 })().catch(e=>{console.error(e);process.exitCode=1});
