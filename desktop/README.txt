@@ -1,4 +1,4 @@
-CATERDESK DESKTOP TEST v3.0.1
+CATERDESK DESKTOP TEST v3.1.0
 
 1. Extract the ENTIRE ZIP into a folder.
 2. Open CaterDesk-Desktop.exe. Microsoft Edge opens in an app window.
@@ -8,7 +8,7 @@ CATERDESK DESKTOP TEST v3.0.1
 Requires Windows with .NET Framework 4.x and Microsoft Edge. No Node/Python or
 administrator installation is needed. This is an unsigned local test launcher.
 
-The test app serves its included v3.0.1 files locally. It does not automatically
+The test app serves its included v3.1.0 files locally. It does not automatically
 update from the website. Its dedicated Edge profile and records are separate
 from normal browser profiles and from your phone. It opens at the same fixed
 loopback address on every launch so records persist between sessions.

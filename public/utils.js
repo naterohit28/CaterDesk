@@ -265,6 +265,39 @@ export function calcEventPL(ev, cPays, expenses) {
   };
 }
 
+/* Cost per plate by category for an event, against its usual: the same categories averaged
+   over the other events on the same menu (else the same type) that have guests and costs.
+   `costs` is a Map evId → Map cat → amount, built once by the caller. */
+export function costByCategory(events, expenses) {
+  const costs = new Map();
+  for (const x of expenses) {
+    if (!costs.has(x.evId)) costs.set(x.evId, new Map());
+    const m = costs.get(x.evId);
+    m.set(x.cat || 'Other', (m.get(x.cat || 'Other') || 0) + (Number(x.amt) || 0));
+  }
+  return costs;
+}
+
+export function costVsUsual(ev, events, costs) {
+  const guests = Number(ev.guests) || 0;
+  const mine = costs.get(ev.id);
+  if (ev.outsourced || !guests || !mine) return null;
+  const usable = e => e.id !== ev.id && !e.outsourced && Number(e.guests) > 0 && costs.has(e.id);
+  let peers = ev.menu ? events.filter(e => usable(e) && e.menu === ev.menu) : [];
+  let basis = peers.length ? 'menu' : 'type';
+  if (!peers.length) peers = events.filter(e => usable(e) && e.type === ev.type);
+  if (!peers.length) return null;
+  const plates = peers.reduce((s, e) => s + Number(e.guests), 0);
+  const usual = new Map();
+  for (const e of peers) for (const [cat, amt] of costs.get(e.id)) usual.set(cat, (usual.get(cat) || 0) + amt);
+  const cats = new Set([...mine.keys(), ...usual.keys()]);
+  const rows = [...cats].map(cat => {
+    const m = Math.round((mine.get(cat) || 0) / guests), u = Math.round((usual.get(cat) || 0) / plates);
+    return { cat, mine: m, usual: u, diff: m - u, pct: u ? Math.round((m - u) / u * 100) : null };
+  }).sort((a, b) => b.diff - a.diff);
+  return { basis, n: peers.length, guests, rows };
+}
+
 /* What a menu has actually cost per plate: past events on that menu with a guest count and
    recorded costs (events with no costs would drag the average to zero). */
 export function menuCostPerPlate(menuId, events, expenses, excludeId = '') {

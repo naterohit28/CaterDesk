@@ -487,7 +487,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '3.0.1';
+export const APP_VERSION = '3.1.0';
 export async function checkAndMigrate() {
   await openDB();
   const storedVer = await getMeta('app_version');

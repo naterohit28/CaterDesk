@@ -3,7 +3,7 @@ const {chromium}=require('playwright');const fs=require('fs');const assert=requi
 (async()=>{const browser=await chromium.launch({channel:'msedge',headless:true});const c=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,timezoneId:'Asia/Kolkata'});const p=await c.newPage();p.setDefaultTimeout(10000);const errors=[];p.on('pageerror',e=>errors.push(e.message));const results=[];const test=async(name,fn)=>{try{const detail=await fn();results.push({name,pass:true,detail})}catch(e){results.push({name,pass:false,error:e.stack})}fs.writeFileSync('test-artifacts/repair-test-results.json',JSON.stringify(results,null,2));console.log(name,results.at(-1).pass?'PASS':'FAIL');};await p.goto(BASE_URL);await p.waitForSelector('#kpi .card');
 const ev={id:'e',name:'Wedding',date:'2026-10-25',venue:'Pune',billing:10000,photoIds:[]};const empty=()=>({version:'ffv2',events:[],expenses:[],vendors:[],cPays:[],vPays:[],photos:[]});
 const db=(fn,arg)=>p.evaluate(async({fn,arg})=>new Function('d','arg','return ('+fn+')(d,arg)')(await import('./db.js'),arg),{fn:fn.toString(),arg});
-const seed=async(a)=>{await db(async(d,a)=>{await d.setMeta('pin_hash',null);await d.importAllData(a)},a||{...empty(),events:[ev]});await p.reload();await p.waitForSelector('#kpi .card');};
+const seed=async(a)=>{await db(async(d,a)=>{await d.setMeta('pin_hash',null);await d.importAllData(a)},a||{...empty(),events:[ev]});await p.evaluate(()=>{localStorage.removeItem('ffv2_last');localStorage.removeItem('ffv2_expdraft')});await p.reload();await p.waitForSelector('#kpi .card');};
 await test('valid all-store roundtrip',async()=>{const a=empty();a.events=[ev];a.vendors=[{id:'v',name:'Vendor'}];a.expenses=[{id:'x',evId:'e',venId:'v',amt:100,date:'2026-10-25',pay:'credit',billIds:['b']},{id:'draft',draft:true,evId:'e',amt:0}];a.cPays=[{id:'cp',evId:'e',amt:10,date:'2026-10-25'}];a.vPays=[{id:'vp',venId:'v',amt:10,date:'2026-10-25'}];a.photos=[{id:'b',expenseId:'x',data:'data:image/png;base64,AA=='}];await seed(a);const before=await db(async d=>d.exportAllData());await db(async(d,a)=>d.importAllData(a),before);const after=await db(async d=>d.exportAllData());for(const k of ['events','expenses','vendors','cPays','vPays','photos']){assert.equal(before[k].length,after[k].length);assert.deepEqual(before[k].map(({_rev,...r})=>r),after[k].map(({_rev,...r})=>r));}return 'All six stores and drafts retained';});
 await test('malformed restore preserves original',async()=>{await seed();let rejected=false;try{await db(async(d,a)=>d.importAllData(a),{...empty(),events:[{name:'Missing ID'}]})}catch{rejected=true}assert(rejected);assert.equal((await db(async d=>d.getAll('events'))).length,1);});
 await test('late transaction failure rolls back clears and writes',async()=>{await seed();const result=await db(async(d,a)=>{const native=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(...args){if(this.name==='vendors')throw new DOMException('Injected failure','QuotaExceededError');return native.apply(this,args)};let rejected=false;try{await d.importAllData(a)}catch{rejected=true}finally{IDBObjectStore.prototype.put=native}return {rejected,events:await d.getAll('events')}},{...empty(),events:[{...ev,id:'new'}],vendors:[{id:'v',name:'Vendor'}]});assert(result.rejected);assert.equal(result.events[0].id,'e');});
@@ -114,7 +114,7 @@ await test('menu fills bill and expected cost; checklist shows missed usual cost
  assert.match(await p.locator('#exp-amt').getAttribute('placeholder'),/60,000/);assert.equal(await p.locator('#exp-ev').inputValue(),'g2');
  await p.locator('#exp-amt').fill('30000');await p.locator('#btn-save-exp').click();await p.waitForTimeout(500);
  assert.match(await p.locator('#tab-evdetail').innerText(),/All recorded/);
- await p.locator('#n-summary').click();await p.locator('#tab-summary [data-period-seg] [data-id="all"]').click();assert.match(await p.locator('#summary-content').innerText(),/Per plate by menu[\s\S]*Golden/);
+ await p.locator('#n-summary').click();await p.locator('#tab-summary [data-period-seg] [data-id="all"]').click();assert.match(await p.locator('#summary-content').innerText(),/Menu profit ranking[\s\S]*1\. Golden/);
 });
 await test('outsourced event saves vendor charge as credit and shows commission',async()=>{
  await seed({...empty(),events:[],vendors:[{id:'kaka',name:'Kaka Caterers',cat:'Live Counter'}]});
@@ -135,6 +135,35 @@ await test('newer release found at start-up reloads once, never loops',async()=>
  await q.goto(BASE_URL);await q.waitForSelector('#kpi .card');await q.waitForTimeout(1500);await q.waitForSelector('#kpi .card');
  assert.equal(await q.evaluate(()=>sessionStorage.getItem('loads')),'2','reloaded exactly once');
  assert.equal(await q.evaluate(()=>sessionStorage.getItem('ff_autoupdate_9.9.9')),'1');await q.close();
+});
+await test('v3.1: reopens last screen, resumes unsaved expense, vendor habits, cost vs usual, cash 30 days',async()=>{
+ const H=await p.evaluate(async()=>(await import('./utils.js')).EXPENSE_HEADS);const chaat=H['Live Counter'].find(h=>h.startsWith('Chaat')),cook=H.Labour.find(h=>h.startsWith('Cook'));
+ const soon=new Date();soon.setDate(soon.getDate()+10);const soonIso=soon.toISOString().slice(0,10);
+ await seed({...empty(),vendors:[{id:'rajiv',name:'Rajiv Chaat',cat:'Live Counter'}],
+  events:[{...ev,id:'a',name:'Golden A',menu:'golden',guests:100,date:'2026-08-01',billing:90000},{...ev,id:'b',name:'Golden B',menu:'golden',guests:100,date:'2026-09-01',billing:90000},{...ev,id:'s',name:'Soon Party',date:soonIso,billing:50000}],
+  cPays:[{id:'cp',evId:'s',amt:20000,date:'2026-10-01'}],
+  expenses:[{id:'1',evId:'a',cat:'Live Counter',head:chaat,amt:20000,date:'2026-08-01',pay:'credit',venId:'rajiv'},{id:'2',evId:'a',cat:'Labour',head:cook,amt:10000,date:'2026-08-01',pay:'paid',mode:'UPI'},
+            {id:'3',evId:'b',cat:'Live Counter',head:chaat,amt:30000,date:'2026-09-01',pay:'credit',venId:'rajiv'},{id:'4',evId:'b',cat:'Labour',head:cook,amt:10000,date:'2026-09-01',pay:'paid',mode:'UPI'}]});
+ // Cash: collect 1,60,000 (a, b overdue: 90k each; s: 30k) → to pay: 50,000 undated credit
+ const cash=await p.locator('#cash-30').innerText();assert.match(cash,/Next 30 days[\s\S]*₹2,10,000[\s\S]*₹50,000[\s\S]*\+₹1,60,000/);
+ // Cost vs usual: B's live counter 300/plate vs usual (from A) 200 → +50%
+ await p.locator('#n-events').click();await p.locator('#ev-list [data-action="evdetail"]',{hasText:'Golden B'}).click();await p.waitForSelector('#cost-vs-usual');
+ assert.match(await p.locator('#cost-vs-usual').innerText(),/Live Counter[\s\S]*₹300 · usual ₹200[\s\S]*\+50%/);
+ await p.locator('#n-summary').click();await p.locator('#tab-summary [data-period-seg] [data-id="all"]').click();
+ assert.match(await p.locator('#costs-higher').innerText(),/Live Counter[\s\S]*₹10,000/);
+ // Vendor first: picking Rajiv fills Chaat and credit; a hand-picked item is never overridden
+ await p.locator('#n-home').click();await p.locator('[data-action="quick"][data-id="expense"]').click();await p.waitForSelector('#exp-modal.active');
+ await p.locator('#exp-vendor').selectOption('rajiv');assert.equal(await p.locator('#exp-head').inputValue(),chaat);assert.equal(await p.locator('#exp-pay').getAttribute('data-value'),'credit');
+ await p.locator('#exp-cats [data-cat="Labour"]').click();await p.locator('#exp-vendor').selectOption('');await p.locator('#exp-vendor').selectOption('rajiv');assert.equal(await p.locator('#exp-cat').inputValue(),'Labour','hand-picked item kept');
+ // Unsaved entry survives the app closing, and is offered back
+ await p.locator('#exp-amt').fill('4321');await p.waitForTimeout(100);await p.reload();await p.waitForSelector('#kpi .card');
+ assert.match(await p.locator('#toast').innerText(),/Unsaved expense ₹4,321/);await p.locator('#toast-action').click();await p.waitForSelector('#exp-modal.active');
+ assert.equal(await p.locator('#exp-amt').inputValue(),'4321');assert.equal(await p.locator('#exp-cat').inputValue(),'Labour');
+ await p.locator('#exp-modal [data-action="close-modal"]').click();await p.waitForTimeout(200);assert.equal(await p.evaluate(()=>localStorage.getItem('ffv2_expdraft')),null,'closing on purpose discards it');
+ // Installed app reopens the last screen
+ const q=await c.newPage();q.setDefaultTimeout(10000);await q.addInitScript(()=>{const mm=window.matchMedia.bind(window);window.matchMedia=m=>m.includes('standalone')?{matches:true,addEventListener(){},removeEventListener(){}}:mm(m);});
+ await q.goto(BASE_URL);await q.waitForSelector('#kpi .card');await q.locator('#n-vendors').click();await q.reload();await q.waitForSelector('#tab-vendors.active');
+ assert(await q.locator('#n-vendors[aria-current="page"]').count());await q.locator('#n-home').click();await q.close();
 });
 results.push({name:'unexpected page errors',pass:errors.length===0,errors});fs.writeFileSync('test-artifacts/repair-test-results.json',JSON.stringify(results,null,2));await browser.close();console.log(JSON.stringify(results,null,2));if(results.some(r=>!r.pass))process.exitCode=1;
 })().catch(e=>{console.error(e);process.exitCode=1});
