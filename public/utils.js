@@ -381,6 +381,63 @@ export function addDays(iso, n) {
 /* An expense is either paid on the spot (pay: 'paid') or taken on credit from
    its vendor (pay: 'credit'). Older records have no `pay` field; a vendor-linked
    one was always treated as owed, so it stays credit. */
+/* ── EVENT MENU → COUNTER ORDERS ─────────────────── */
+// Words in a dish name that tell which live counter supplies it. Anything not matched is
+// cooked in your own kitchen. Your own choices (tap a dish → counter) win over this list.
+const DISH_WORDS = [
+  ['Chaat', ['pani puri', 'panipuri', 'golgappa', 'gol gappa', 'sev puri', 'dahi puri', 'bhel', 'ragda', 'chaat', 'chat', 'papdi', 'aloo tikki', 'dahi vada', 'dahi bhalla', 'basket']],
+  ['Dosa', ['dosa', 'idli', 'uttapam', 'uthappam', 'appam', 'medu vada', 'dakshin', 'south indian']],
+  ['Chinese', ['noodle', 'manchurian', 'hakka', 'schezwan', 'szechuan', 'chopsuey', 'chop suey', 'wok', 'spring roll', 'momo', 'chilli paneer', 'chilli potato']],
+  ['Pav Bhaji Counter', ['pav bhaji', 'pavbhaji']],
+  ['Pizza / Italian Counter', ['pizza', 'pasta', 'garlic bread', 'lasagna', 'italian']],
+  ['Soup Station', ['soup']],
+  ['Barbeque / Tandoor', ['barbeque', 'barbecue', 'bbq', 'tandoor']],
+  ['Starter', ['tikka', 'kebab', 'kabab', 'cutlet', 'starter', 'crispy', 'nuggets', 'shashlik']],
+  ['Kulfi / Ice Gola', ['kulfi', 'gola']],
+  ['Ice Cream', ['ice cream', 'icecream', 'sundae', 'gelato']],
+  ['Paan Mukhwas', ['paan', 'mukhwas', 'beeda', 'meetha pan']],
+  ['Beverage Counter', ['mocktail', 'mojito', 'cold coffee', 'shake', 'lassi', 'soda', 'beverage']],
+  ['Fruit Counter', ['fruit counter', 'fruit platter', 'cut fruit']],
+  ['Salad Counter', ['salad counter']],
+  ['Dessert Counter', ['jalebi', 'rabdi', 'malpua', 'dessert counter']],
+  ['Fusion Counter', ['fusion', 'taco', 'nachos', 'burger', 'sizzler']]
+];
+
+const dishKey = name => String(name || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+// The full Live Counter item for a short name ('Chaat' → 'Chaat – चाट')
+export function counterHead(short) {
+  return EXPENSE_HEADS['Live Counter'].find(h => h.split(' – ')[0] === short) || '';
+}
+
+// What you have assigned dishes to before (latest wins), from every event's menu
+export function learnedDishes(events) {
+  const map = new Map();
+  for (const e of [...events].sort((a, b) => (a.date || '').localeCompare(b.date || '')))
+    for (const d of e.dishes || []) if (d.manual) map.set(dishKey(d.name), d.head || '');
+  return map;
+}
+
+export function dishCounter(name, learned) {
+  const k = dishKey(name);
+  if (learned?.has(k)) return learned.get(k);
+  for (const [short, words] of DISH_WORDS) if (words.some(w => k.includes(w))) return counterHead(short);
+  return '';
+}
+
+// Pasted menu text (WhatsApp message, Google Lens copy, a typed list) → dish names
+export function parseMenu(text) {
+  const seen = new Set(), out = [];
+  for (let line of String(text || '').split(/\n|,|;|•|·|\|/)) {
+    line = line.replace(/^\s*(\d+[.)]|[-*–>]+)\s*/, '').replace(/\s+/g, ' ').trim();
+    if (/:./.test(line)) line = line.slice(line.lastIndexOf(':') + 1).trim();   // "Welcome drink: Mango mojito
+    if (line.length < 2 || line.length > 60 || line.endsWith(':')) continue;
+    const k = dishKey(line);
+    if (!seen.has(k)) { seen.add(k); out.push(line); }
+  }
+  return out;
+}
+
 /* The vendors store also holds people who aren't suppliers — a friend, relative or
    financier who lent money or paid a bill for you (kind: 'person'). They share the
    vendors' credit and repayment records but never appear as suggested suppliers. */

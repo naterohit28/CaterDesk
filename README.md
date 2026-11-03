@@ -8,7 +8,7 @@ The icon uses a bold serving cloche above two ledger lines, with deep teal (`#12
 
 An offline-first app for recording event expenses, client collections, vendor purchases and payments, with bill photographs and event profitability views.
 
-**Current release: v3.2.1** · Android package: `com.flavorfusion.expenses`
+**Current release: v3.3.0** · Android package: `com.flavorfusion.expenses`
 
 [Open the live app](https://expense-calculator-kohl.vercel.app/) · [Download releases](https://github.com/naterohit28/Expense-Calculator/releases) · [Reliability notes](docs/RELIABILITY.md) · [Report a bug](https://github.com/naterohit28/Expense-Calculator/issues)
 
@@ -122,7 +122,7 @@ For safe testing, import a **copy** into the desktop test app or a separate brow
 2. Export a backup from the existing app.
 3. Transfer the APK to the phone and install it **over the existing app**. Android may ask you to allow installation from the application used to open the file.
 4. Close the APK and any browser tabs open to the same site, then reopen it.
-5. Check the web build shown in **Settings**; the current expected value is **v3.2.1**.
+5. Check the web build shown in **Settings**; the current expected value is **v3.3.0**.
 
 Do not uninstall the old app or clear Chrome/site data just to force an update. If Android refuses an update because of a signing conflict, stop and check the package/signing identity first.
 
@@ -143,7 +143,7 @@ No Node.js, Python or administrator installation is required to use the prepared
 
 - Fixed local address: `http://127.0.0.1:19891/`
 - Dedicated profile: `%LOCALAPPDATA%\FlavorFusionDesktopTest\EdgeProfile`
-- Included web build: v3.2.1
+- Included web build: v3.3.0
 
 Desktop test records are separate from the phone and normal browser profiles. Import a backup copy if you want to test existing records. The desktop package does not automatically update from the website; download a new package for a newer packaged build. Replacing app assets does not require deleting the profile.
 
@@ -388,3 +388,9 @@ Expense items added from the menu cards (no duplicates): Banana Leaves, Coconut,
 Call and WhatsApp buttons for clients (event page; WhatsApp becomes a payment reminder while money is pending) and for vendors and other people. When you owe a vendor, "Share dues on WhatsApp" fills in their account and unpaid items. Nothing is sent until you press send in WhatsApp.
 
 Also: **Contacts** buttons next to the client mobile and vendor phone fields fill the name and number from the phone contact list (Android; only the chosen contact is shared).
+
+### Version 3.3.0
+
+- **Event menu:** paste the dishes agreed with the client (from WhatsApp, or from a photo via Google Lens → Copy text). Numbering, bullets, headings and duplicates are cleaned up.
+- **Dishes → counters:** each dish is matched to the live counter that supplies it (chaat, dosa, Chinese, pizza, soup, tandoor, ice cream, kulfi, paan, desserts…); the rest are "Our kitchen". Tap a dish to change it — the app remembers your choice for future menus.
+- **Vendor orders:** one order per counter with the usual vendor, plates (guests), date, time, venue and items, sent on WhatsApp in one tap. Status Sent → Confirmed → Delivered; Delivered opens the expense form for that counter and vendor. Home shows deliveries due today and tomorrow.
