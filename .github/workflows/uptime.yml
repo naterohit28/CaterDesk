@@ -1,0 +1,30 @@
+# Checks the live app every 30 minutes. A failed run makes GitHub email the repository owner.
+name: Uptime
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SITE: https://expense-calculator-kohl.vercel.app
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: App page loads
+        run: |
+          body=$(curl -fsS --retry 2 --retry-delay 20 --max-time 30 "$SITE/")
+          echo "$body" | grep -q "<title>CaterDesk</title>" || { echo "The page loaded but is not CaterDesk."; exit 1; }
+
+      - name: App script loads
+        run: curl -fsS --retry 2 --retry-delay 20 --max-time 30 -o /dev/null "$SITE/app.js"
+
+      - name: Error reporting endpoint answers
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$SITE/api/client-error")
+          [ "$code" = "405" ] || { echo "Expected 405 from the error endpoint, got $code."; exit 1; }

@@ -23,7 +23,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '3.1.2';
+const APP_BUILD = '3.2.1';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1616,6 +1616,29 @@ function updateOutHint() {
   hint.hidden = false;
 }
 
+/* Fill a name and number from the phone's contact list (Contact Picker API, Android Chrome).
+   Only the contact chosen is shared with the app. The name fills an empty name field only. */
+const canPickContact = 'contacts' in navigator && 'ContactsManager' in window;
+function cleanPhone(raw) {
+  let d = String(raw || '').replace(/\D/g, '');
+  if (d.length === 12 && d.startsWith('91')) d = d.slice(2);
+  else if (d.length === 11 && d.startsWith('0')) d = d.slice(1);
+  return d;
+}
+async function pickContact(nameId, phoneId) {
+  let picked;
+  try { [picked] = await navigator.contacts.select(['name', 'tel'], { multiple: false }); }
+  catch { showToast('Could not open contacts – संपर्क उघडता आले नाहीत', 'error'); return; }
+  if (!picked) return;
+  const numbers = [...new Set((picked.tel || []).map(cleanPhone).filter(Boolean))];
+  const phone = numbers.length > 1
+    ? await askSheet({ title: 'Which number? – कोणता नंबर?', actions: numbers.map(n => ({ label: n, value: n, style: 'btn-secondary' })) })
+    : numbers[0];
+  if (phone) { q(phoneId).value = phone; q(phoneId).dispatchEvent(new Event('input')); }
+  const name = (picked.name || [])[0];
+  if (name && !qv(nameId)) q(nameId).value = name;
+}
+
 async function saveEvent() {
   const data = {
     name:    qv('ev-name'),
@@ -2573,6 +2596,10 @@ function bindAllEvents() {
   // Dependent select
   q('ven-cat').addEventListener('change', () => loadVenSpecialty());
   q('ev-menu').addEventListener('change', updateMenuHint);
+  document.querySelectorAll('[data-contact]').forEach(b => {
+    b.hidden = !canPickContact;
+    b.addEventListener('click', () => b.dataset.contact === 'ev' ? pickContact('ev-name', 'ev-mobile') : pickContact('ven-name', 'ven-phone'));
+  });
   q('ev-handling').addEventListener('click', e => { const b = e.target.closest('[data-h]'); if (b) setEvHandling(b.dataset.h); });
   ['ev-billing', 'ev-out-charge'].forEach(id => q(id).addEventListener('input', updateOutHint));
   q('ev-guests').addEventListener('input', updateMenuHint);

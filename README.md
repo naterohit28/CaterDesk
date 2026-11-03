@@ -8,7 +8,7 @@ The icon uses a bold serving cloche above two ledger lines, with deep teal (`#12
 
 An offline-first app for recording event expenses, client collections, vendor purchases and payments, with bill photographs and event profitability views.
 
-**Current release: v3.1.2** · Android package: `com.flavorfusion.expenses`
+**Current release: v3.2.1** · Android package: `com.flavorfusion.expenses`
 
 [Open the live app](https://expense-calculator-kohl.vercel.app/) · [Download releases](https://github.com/naterohit28/Expense-Calculator/releases) · [Reliability notes](docs/RELIABILITY.md) · [Report a bug](https://github.com/naterohit28/Expense-Calculator/issues)
 
@@ -122,7 +122,7 @@ For safe testing, import a **copy** into the desktop test app or a separate brow
 2. Export a backup from the existing app.
 3. Transfer the APK to the phone and install it **over the existing app**. Android may ask you to allow installation from the application used to open the file.
 4. Close the APK and any browser tabs open to the same site, then reopen it.
-5. Check the web build shown in **Settings**; the current expected value is **v3.1.2**.
+5. Check the web build shown in **Settings**; the current expected value is **v3.2.1**.
 
 Do not uninstall the old app or clear Chrome/site data just to force an update. If Android refuses an update because of a signing conflict, stop and check the package/signing identity first.
 
@@ -143,7 +143,7 @@ No Node.js, Python or administrator installation is required to use the prepared
 
 - Fixed local address: `http://127.0.0.1:19891/`
 - Dedicated profile: `%LOCALAPPDATA%\FlavorFusionDesktopTest\EdgeProfile`
-- Included web build: v3.1.2
+- Included web build: v3.2.1
 
 Desktop test records are separate from the phone and normal browser profiles. Import a backup copy if you want to test existing records. The desktop package does not automatically update from the website; download a new package for a newer packaged build. Replacing app assets does not require deleting the profile.
 
@@ -230,6 +230,8 @@ Expense-Calculator/
 ├── package.json              Development/test commands
 ├── package-lock.json         Locked test dependencies
 ├── vercel.json               Deploy public/ and apply security/cache headers
+├── api/client-error.js       Vercel function that logs error reports and sends alerts
+├── .github/workflows/        Release tagging and uptime checks
 ├── public/                   Only the files served to app users
 │   ├── index.html            Screens and forms
 │   ├── app.js                UI, navigation, entry forms and reports
@@ -241,6 +243,7 @@ Expense-Calculator/
 │   ├── manifest.json         Web app installation metadata
 │   ├── sw.js                 Offline release cache
 │   ├── register-sw.js        Service-worker registration/update check
+│   ├── error-reporter.js     Sends uncaught errors to api/client-error
 │   ├── icons/                App icons
 │   └── .well-known/assetlinks.json Android certificate association
 ├── desktop/                  Windows launcher source, build script and instructions
@@ -291,6 +294,22 @@ The current hosted site deploys from this repository's main branch on Vercel. Ve
 7. Merge the reviewed change, confirm deployment status and verify the live build/files.
 8. Publish versioned APK/desktop assets and checksums through GitHub Releases.
 9. Close old same-site clients and reopen; confirm the new web build in Settings without clearing data.
+
+`node tests/check-version.cjs` confirms that `package.json`, `app.js`, `db.js`, `sw.js`, `error-reporter.js` and the desktop README carry the same release number. The **Release tag** workflow runs it on every pull request.
+
+### Releases and rollback
+
+When a release reaches `main`, the **Release tag** workflow tags that commit as `vX.Y.Z` (from `package.json`) unless the tag already exists. Every live release therefore has a tag to return to.
+
+To roll back the website, open the Vercel project, go to **Deployments**, pick the last good deployment and choose **Instant Rollback**. The Android app loads the hosted site, so it follows. Then revert the bad change on `main` (or fix forward) so the next deploy does not bring the problem back. To inspect what any release contained, run `git checkout vX.Y.Z`.
+
+### Error reporting and alerts
+
+`public/error-reporter.js` sends uncaught errors from the hosted app to `api/client-error.js`, a Vercel function. Each report holds only the error text, stack, page path, release and browser; event, expense, vendor and client records are never sent. Reports are skipped on `localhost`, `127.0.0.1` and `file://`, so local tests and the desktop app send nothing. A phone sends at most 10 distinct errors per session, and errors raised while offline are sent when it reconnects.
+
+- **Read errors:** Vercel project → **Logs**, filter for `[client-error]`.
+- **Get alerts:** create an incoming webhook in Discord, Slack or Google Chat and add it in Vercel → **Settings** → **Environment Variables** as `ALERT_WEBHOOK_URL`, then redeploy. Each new error message is posted once per hour at most.
+- **Uptime:** the **Uptime** workflow checks the live page, `app.js` and the error endpoint every 30 minutes. GitHub emails the repository owner when a run fails. GitHub pauses scheduled workflows after 60 days without repository activity; re-enable it from the **Actions** tab if that happens.
 
 ## Troubleshooting
 
@@ -359,6 +378,13 @@ When the app starts and finds a newer release, it switches to it straight away (
 
 Expense items added from the menu cards (no duplicates): Banana Leaves, Coconut, Papad / Fryums, Farsan / Namkeen (Raw Material); Soup Station, Barbeque / Tandoor, Kulfi / Ice Gola, Fruit Counter, Salad Counter, Fusion Counter (Live Counter); Nadaswaram / Music, Thamboolam / Return Gift Bags (Operations).
 
-### Version 3.1.2
+### Version 3.2.0
+
+- **Error reporting:** uncaught errors from the hosted app now reach the Vercel logs, with optional Discord, Slack or Google Chat alerts. No business records are sent.
+- **Uptime checks:** the live app is checked every 30 minutes; failures email the repository owner.
+- **Release tags:** every release merged to `main` is tagged automatically, and pull requests fail if release numbers disagree.
+### Version 3.2.1
 
 Call and WhatsApp buttons for clients (event page; WhatsApp becomes a payment reminder while money is pending) and for vendors and other people. When you owe a vendor, "Share dues on WhatsApp" fills in their account and unpaid items. Nothing is sent until you press send in WhatsApp.
+
+Also: **Contacts** buttons next to the client mobile and vendor phone fields fill the name and number from the phone contact list (Android; only the chosen contact is shared).

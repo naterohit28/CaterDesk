@@ -1,0 +1,38 @@
+# Tags every release that reaches main as vX.Y.Z, so Vercel and git always have a known version to roll back to.
+# On pull requests it only checks that every file carries the same release number.
+name: Release tag
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check release numbers match
+        id: version
+        run: echo "version=$(node tests/check-version.cjs)" >> "$GITHUB_OUTPUT"
+
+      - name: Tag the release
+        if: github.event_name == 'push'
+        env:
+          TAG: v${{ steps.version.outputs.version }}
+        run: |
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "$TAG already exists; nothing to tag."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "CaterDesk $TAG" "$GITHUB_SHA"
+          git push origin "$TAG"
+          echo "Tagged $GITHUB_SHA as $TAG." >> "$GITHUB_STEP_SUMMARY"

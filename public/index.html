@@ -253,7 +253,10 @@
       <div class="field" id="ev-out-charge-field"><label for="ev-out-charge">Their charge ₹ – त्यांचे बिल</label><input type="number" id="ev-out-charge" placeholder="0" min="1" inputmode="decimal" enterkeyhint="next"></div>
     </div>
     <div class="meta" id="ev-out-hint" hidden style="margin:-6px 0 var(--s3)"></div>
-    <div class="field"><label for="ev-mobile">Client mobile – मोबाईल</label><input type="tel" id="ev-mobile" placeholder="9XXXXXXXXX" enterkeyhint="next"></div>
+    <!-- "Contacts" opens the phone's contact picker (Android Chrome); only the chosen contact is shared -->
+    <div class="field"><label for="ev-mobile">Client mobile – मोबाईल</label>
+      <div style="display:flex;gap:var(--s2)"><input type="tel" id="ev-mobile" placeholder="9XXXXXXXXX" enterkeyhint="next" style="flex:1;min-width:0">
+        <button type="button" class="btn-sm" data-contact="ev" hidden>Contacts – संपर्क</button></div></div>
     <!-- New events only, optional: the booking advance is saved as the event's first payment received -->
     <div class="f2" id="ev-adv-field">
       <div class="field"><label for="ev-adv">Advance received ₹ – अॅडव्हान्स</label><input type="number" id="ev-adv" placeholder="optional" min="1" inputmode="decimal" enterkeyhint="next"></div>
@@ -359,7 +362,9 @@
       <div class="field"><label for="ven-cat">Category – प्रकार <span class="req">*</span></label><select id="ven-cat"></select></div>
       <div class="field"><label for="ven-specialty">Specialty – विशेषता</label><select id="ven-specialty"></select></div>
     </div>
-    <div class="field"><label for="ven-phone">Phone – मोबाईल</label><input type="tel" id="ven-phone" placeholder="9XXXXXXXXX"></div>
+    <div class="field"><label for="ven-phone">Phone – मोबाईल</label>
+      <div style="display:flex;gap:var(--s2)"><input type="tel" id="ven-phone" placeholder="9XXXXXXXXX" style="flex:1;min-width:0">
+        <button type="button" class="btn-sm" data-contact="ven" hidden>Contacts – संपर्क</button></div></div>
     <div class="field"><label for="ven-notes">Notes – नोंदी</label><input type="text" id="ven-notes" placeholder="Any notes" enterkeyhint="done"></div>
     <div class="s-foot"><button type="button" class="btn btn-primary" id="btn-save-ven">Save vendor – जतन करा</button></div>
   </div>
@@ -419,6 +424,9 @@
     <button type="button" class="lb-btn del" id="lb-delete"><i data-ic="trash" data-size="18"></i>Delete – हटवा</button>
   </div>
 </div>
+
+<!-- ── ERROR REPORTING ── -->
+<script src="error-reporter.js"></script>
 
 <!-- ── SERVICE WORKER ── -->
 <script src="register-sw.js" defer></script>
