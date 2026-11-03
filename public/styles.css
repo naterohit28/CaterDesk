@@ -130,6 +130,7 @@ html[data-lang="mr"] .t-mr { font-size: 1em; color: inherit; margin-top: 0; }
   color: var(--text-2); transition: background var(--press), transform var(--press) var(--ease-out);
 }
 .icon-btn[hidden] { display: none; }
+#hdr-refresh.spin svg { animation: spin .8s linear infinite; }
 .icon-btn:active { background: var(--surface-2); transform: scale(.94); }
 .icon-btn.danger { color: var(--neg); }
 @media (hover: hover) and (pointer: fine) { .icon-btn:hover { background: var(--surface-2); } }

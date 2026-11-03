@@ -218,5 +218,35 @@ await test('event menu becomes counter orders sent on WhatsApp, tracked to deliv
  await p.locator('[data-action="order-new"][data-id^="Dosa"]').click();await p.waitForSelector('#ord-modal.active');await p.locator('#btn-send-ord').click();await p.waitForTimeout(300);
  assert.match(await p.locator('#toast').innerText(),/no phone number/);assert.equal((await p.evaluate(()=>window.__opened)).length,1);
 });
+await test('v3.3.1: new caterer on the go, outsourced menu, expenses by event, refresh',async()=>{
+ await seed({...empty(),events:[{...ev,id:'own',name:'Own Wedding',date:'2026-12-01'},{...ev,id:'out',name:'Small Birthday',date:'2026-12-05',outsourced:true,outVenId:'kaka',guests:80}],
+  vendors:[{id:'kaka',name:'Kaka Caterers',cat:'Operations',phone:'9876543210'}],
+  expenses:[{id:'x1',evId:'own',cat:'Raw Material',head:'Grocery – किराणा',amt:1111,date:'2026-12-01',pay:'paid'},{id:'x2',evId:'out',cat:'Operations',head:'Outsourced Event – आउटसोर्स कार्यक्रम',amt:40000,date:'2026-12-05',pay:'credit',venId:'kaka'}]});
+ await p.evaluate(()=>{window.__opened=[];window.open=u=>{window.__opened.push(u);return null}});
+ // 1. "+ New vendor" from an outsourced event's Done by
+ await p.locator('#n-events').click();await p.locator('#fab').click();await p.waitForSelector('#ev-modal.active');await p.locator('#ev-handling [data-h="out"]').click();
+ await p.locator('#ev-out-ven').selectOption('__new');await p.waitForSelector('#ven-modal.active');assert.equal(await p.locator('#ven-cat').inputValue(),'Operations');
+ await p.locator('#ven-name').fill('Annapurna Caterers');await p.locator('#btn-save-ven').click();await p.waitForTimeout(300);
+ assert(await p.locator('#ev-modal.active').count(),'back on the event form');const newId=await p.locator('#ev-out-ven').inputValue();
+ assert.equal((await db(async d=>d.getAll('vendors'))).find(v=>v.id===newId).name,'Annapurna Caterers');
+ await p.locator('#ev-modal [data-action="close-modal"]').click();await p.waitForTimeout(150);
+ // 3. outsourced event: the whole menu is one order to the caterer
+ await p.locator('#ev-list [data-action="evdetail"]',{hasText:'Small Birthday'}).click();await p.locator('[data-action="menu-edit"]').click();await p.waitForSelector('#menu-modal.active');
+ await p.locator('#menu-text').fill('Pani Puri\nMasala Dosa\nDal Makhani');await p.locator('#btn-save-menu').click();await p.waitForSelector('#menu-orders');
+ const card=await p.locator('#menu-orders').innerText();assert.match(card,/Whole event · Kaka Caterers[\s\S]*Pani Puri, Masala Dosa, Dal Makhani/);assert.equal(await p.locator('[data-action="dish-assign"]').count(),0);assert.equal(await p.locator('[data-action="order-new"]').count(),1);
+ await p.locator('[data-action="order-new"]').click();await p.waitForSelector('#ord-modal.active');assert.equal(await p.locator('#ord-ven').inputValue(),'kaka');assert.equal(await p.locator('#ord-plates').inputValue(),'80');
+ await p.locator('#btn-send-ord').click();await p.waitForTimeout(300);
+ assert.match(decodeURIComponent((await p.evaluate(()=>window.__opened))[0]),/Full event catering for 80 guests[\s\S]*Menu: Pani Puri, Masala Dosa, Dal Makhani/);
+ await p.locator('[data-action="order-status"]').click();await p.locator('#ask-actions button',{hasText:'Delivered'}).click();await p.waitForTimeout(300);
+ assert.match(await p.locator('#toast').innerText(),/already recorded/);assert.equal(await p.locator('#exp-modal.active').count(),0,'charge not counted twice');
+ // 4. expenses of one event, and Add goes to that event
+ await p.locator('#n-expenses').click();await p.locator('#exp-ev-filter').selectOption('own');
+ const rows=await p.locator('#exp-list [data-action="edit-exp"]').count();assert.equal(rows,1);assert.equal(await p.locator('#exp-tot').innerText(),'₹1,111');
+ await p.locator('#fab').click();await p.waitForSelector('#exp-modal.active');assert.equal(await p.locator('#exp-ev').inputValue(),'own');
+ await p.locator('#exp-modal [data-action="close-modal"]').click();await p.waitForTimeout(150);await p.locator('#exp-ev-filter').selectOption('');
+ // 2. refresh picks up an entry made elsewhere
+ await db(async d=>d.putOne('expenses',{id:'x3',evId:'own',cat:'Labour',head:'Cook – स्वयंपाकी',amt:2222,date:'2026-12-01',pay:'paid'}));
+ await p.locator('#hdr-refresh').click();await p.waitForTimeout(1500);assert.match(await p.locator('#exp-list').innerText(),/₹2,222/);
+});
 results.push({name:'unexpected page errors',pass:errors.length===0,errors});fs.writeFileSync('test-artifacts/repair-test-results.json',JSON.stringify(results,null,2));await browser.close();console.log(JSON.stringify(results,null,2));if(results.some(r=>!r.pass))process.exitCode=1;
 })().catch(e=>{console.error(e);process.exitCode=1});
