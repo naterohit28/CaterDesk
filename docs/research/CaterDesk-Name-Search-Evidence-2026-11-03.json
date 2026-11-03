@@ -1,0 +1,54 @@
+{
+  "checkedDate": "2026-11-03",
+  "method": "Apple public Search API, entity=software, limit=50; returned titles checked for exact CaterDesk/Cater Desk match. Search ranking is not a full catalogue or trademark clearance.",
+  "checks": [
+    {
+      "country": "in",
+      "query": "caterdesk",
+      "endpoint": "https://itunes.apple.com/search?term=caterdesk&country=in&entity=software&limit=50",
+      "resultCount": 0,
+      "exactTitleMatches": [],
+      "error": null
+    },
+    {
+      "country": "in",
+      "query": "cater desk",
+      "endpoint": "https://itunes.apple.com/search?term=cater+desk&country=in&entity=software&limit=50",
+      "resultCount": 3,
+      "exactTitleMatches": [],
+      "error": null
+    },
+    {
+      "country": "us",
+      "query": "caterdesk",
+      "endpoint": "https://itunes.apple.com/search?term=caterdesk&country=us&entity=software&limit=50",
+      "resultCount": 36,
+      "exactTitleMatches": [],
+      "error": null
+    },
+    {
+      "country": "us",
+      "query": "cater desk",
+      "endpoint": "https://itunes.apple.com/search?term=cater+desk&country=us&entity=software&limit=50",
+      "resultCount": 40,
+      "exactTitleMatches": [],
+      "error": null
+    },
+    {
+      "country": "gb",
+      "query": "caterdesk",
+      "endpoint": "https://itunes.apple.com/search?term=caterdesk&country=gb&entity=software&limit=50",
+      "resultCount": 41,
+      "exactTitleMatches": [],
+      "error": null
+    },
+    {
+      "country": "gb",
+      "query": "cater desk",
+      "endpoint": "https://itunes.apple.com/search?term=cater+desk&country=gb&entity=software&limit=50",
+      "resultCount": 42,
+      "exactTitleMatches": [],
+      "error": null
+    }
+  ]
+}

@@ -12,6 +12,8 @@ An offline-first app for recording event expenses, client collections, vendor pu
 
 [Open the live app](https://expense-calculator-kohl.vercel.app/) · [Download releases](https://github.com/naterohit28/Expense-Calculator/releases) · [Reliability notes](docs/RELIABILITY.md) · [Report a bug](https://github.com/naterohit28/Expense-Calculator/issues)
 
+[Competitor and naming research for Claude](docs/research/README.md) — dated findings, source links and evaluation notes; not a trademark clearance.
+
 ## Contents
 
 - [Choose how to use the app](#choose-how-to-use-the-app)
