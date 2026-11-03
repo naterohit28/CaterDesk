@@ -8,7 +8,7 @@ The icon uses a bold serving cloche above two ledger lines, with deep teal (`#12
 
 An offline-first app for recording event expenses, client collections, vendor purchases and payments, with bill photographs and event profitability views.
 
-**Current release: v3.0.1** · Android package: `com.flavorfusion.expenses`
+**Current release: v3.1.0** · Android package: `com.flavorfusion.expenses`
 
 [Open the live app](https://expense-calculator-kohl.vercel.app/) · [Download releases](https://github.com/naterohit28/Expense-Calculator/releases) · [Reliability notes](docs/RELIABILITY.md) · [Report a bug](https://github.com/naterohit28/Expense-Calculator/issues)
 
@@ -122,7 +122,7 @@ For safe testing, import a **copy** into the desktop test app or a separate brow
 2. Export a backup from the existing app.
 3. Transfer the APK to the phone and install it **over the existing app**. Android may ask you to allow installation from the application used to open the file.
 4. Close the APK and any browser tabs open to the same site, then reopen it.
-5. Check the web build shown in **Settings**; the current expected value is **v3.0.1**.
+5. Check the web build shown in **Settings**; the current expected value is **v3.1.0**.
 
 Do not uninstall the old app or clear Chrome/site data just to force an update. If Android refuses an update because of a signing conflict, stop and check the package/signing identity first.
 
@@ -143,7 +143,7 @@ No Node.js, Python or administrator installation is required to use the prepared
 
 - Fixed local address: `http://127.0.0.1:19891/`
 - Dedicated profile: `%LOCALAPPDATA%\FlavorFusionDesktopTest\EdgeProfile`
-- Included web build: v3.0.1
+- Included web build: v3.1.0
 
 Desktop test records are separate from the phone and normal browser profiles. Import a backup copy if you want to test existing records. The desktop package does not automatically update from the website; download a new package for a newer packaged build. Replacing app assets does not require deleting the profile.
 
@@ -346,3 +346,11 @@ Expense receipt icons now use the Indian rupee symbol. The vendor picker groups 
 ### Version 3.0.1
 
 When the app starts and finds a newer release, it switches to it straight away (within the first 20 seconds, only with no form, photo or save open, and at most once per release). Otherwise it waits for Settings › Reload saved app or the next start, as before. The Android APK is unchanged (v3.0.0, versionCode 9); it loads the hosted web app.
+
+### Version 3.1.0
+
+- **Picks up where you left off:** the installed app reopens the screen you last used (within 12 hours), and an expense being typed when the app closed is offered back ("Continue").
+- **Vendor first:** choosing a vendor fills their usual item and how you usually pay them (now or credit, and mode). Anything picked by hand is kept.
+- **Cost vs usual:** each event shows its cost per plate by category against the usual for its menu (or type), quietly as +/- percentages. Reports list "Where costs ran higher".
+- **Menu profit ranking:** Reports rank menus by profit per plate with margin.
+- **Next 30 days:** Home shows money to collect, to pay and the net for the coming 30 days.

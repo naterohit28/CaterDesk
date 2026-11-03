@@ -15,7 +15,7 @@ import {
   uid, today, daysSince, fmtDate, fmtCurrency, esc,
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, daysUntil, addDays,
-  sliceByPeriod, eventsMissingCosts,
+  sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -23,7 +23,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '3.0.1';
+const APP_BUILD = '3.1.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -254,12 +254,41 @@ async function seedIfEmpty() {
   await loadAll();
 }
 
+/* Reopen the screen used last (within 12 hours) above Home, so Back still returns Home,
+   and offer to continue an expense that was being typed when the app was closed. */
+function resumeWhereLeft(last) {
+  // Only in the installed app; in a browser tab a reload is just a refresh of Home
+  const installed = window.matchMedia?.('(display-mode: standalone)').matches;
+  if (installed && last && last.tab !== 'home' && Date.now() - (last.at || 0) < 12 * 3600e3) {
+    if (last.tab === 'evdetail' && D.events.some(e => e.id === last.ref)) showEvDetail(last.ref);
+    else if (last.tab === 'vendetail' && D.vendors.some(v => v.id === last.ref)) showVenDetail(last.ref);
+    else if (TOP_TABS.includes(last.tab)) go(last.tab);
+  }
+  const snap = readPref('ffv2_expdraft', null);
+  if (snap && (snap.amt || snap.notes) && Date.now() - (snap.at || 0) < 24 * 3600e3) {
+    showToast(`Unsaved expense${snap.amt ? ' ' + fmtCurrency(snap.amt) : ''} – न जतन केलेला खर्च`, 'success',
+      { label: 'Continue – पुढे', run: () => openExpModal({ resume: snap }) });
+    setTimeout(hideToast, 15000);
+  }
+}
+
+// While a new expense is being typed, keep a copy so closing the app doesn't lose it
+function saveExpSnapshot() {
+  if (!q('exp-modal').classList.contains('active') || qv('exp-id')) return;
+  if (!qv('exp-amt') && !qv('exp-notes')) { try { localStorage.removeItem('ffv2_expdraft'); } catch {} return; }
+  writePref('ffv2_expdraft', { amt: qv('exp-amt'), pay: q('exp-pay').dataset.value, cat: qv('exp-cat'), head: qv('exp-head'),
+    evId: qv('exp-ev'), venId: qv('exp-vendor').startsWith('__new') ? '' : qv('exp-vendor'), mode: qv('exp-mode'),
+    date: qv('exp-date'), dueDate: qv('exp-due'), notes: qv('exp-notes'), at: Date.now() });
+}
+
 function launchApp() {
   if (launched) return;   // setting a PIN later must not re-bind every listener
   launched = true;
   bindAllEvents();
   history.replaceState({ tab: 'home', ref: null, depth: 0 }, '');
+  const last = readPref('ffv2_last', null);
   go('home', { fromHistory: true });
+  resumeWhereLeft(last);
   syncOverlayAccessibility();
 }
 
@@ -568,6 +597,7 @@ function go(id, { ref = null, fromHistory = false } = {}) {
 
   CT = id;
   curRef = ref;
+  writePref('ffv2_last', { tab: id, ref, at: Date.now() });
   setHeader();
   renderPage(id);
   if (changed) window.scrollTo(0, 0);
@@ -658,6 +688,8 @@ function rHome() {
     </div>
   `;
 
+  q('kpi').insertAdjacentHTML('beforeend', cashCard());
+
   // Nudges: events with no costs recorded, and an overdue backup
   const missing = eventsMissingCosts(D.events, D.expenses);
   const backupDays = lastExport ? daysSince(lastExport.slice(0, 10)) : null;
@@ -715,6 +747,24 @@ function rHome() {
       </div>
     </div>`).join('')}</div>`
     : `<div class="card">${emptyState({ ic: 'check', tone: 'pos', compact: true, text: 'All payments collected – सर्व वसुली झाली' })}</div>`;
+}
+
+// Money in and out over the next 30 days: client balances for events up to 30 days ahead
+// (and overdue ones), against credit due within 30 days or with no pay-by date
+function cashCard() {
+  const limit = addDays(today(), 30);
+  const collect = D.events.filter(e => e.date <= limit)
+    .reduce((s, e) => s + Math.max(0, e.billing - calcEventReceived(e.id, D.cPays)), 0);
+  const pay = pendingCredit().filter(u => !u.x.dueDate || u.x.dueDate <= limit).reduce((s, u) => s + u.left, 0);
+  if (!collect && !pay) return '';
+  const net = collect - pay;
+  return `<div class="card pad" id="cash-30">
+    <div class="label">${tr('Next 30 days', 'पुढील ३० दिवस')}</div>
+    <div class="metrics" style="margin:var(--s2) 0 0;padding:0;border:0">
+      <div class="metric"><div class="label">To collect – येणे</div><div class="amt-md pos">${fmtCurrency(collect)}</div></div>
+      <div class="metric"><div class="label">To pay – देणे</div><div class="amt-md due">${fmtCurrency(pay)}</div></div>
+      <div class="metric"><div class="label">Net – शिल्लक</div><div class="amt-md ${net >= 0 ? 'pos' : 'neg'}">${net >= 0 ? '+' : ''}${fmtCurrency(net)}</div></div>
+    </div></div>`;
 }
 
 // All unpaid credit, most urgent first: by pay-by date (overdue first), then undated, oldest purchase first
@@ -963,6 +1013,8 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
     ${menu ? `<details class="card pad"><summary class="label" style="cursor:pointer">${tr(`${menu.name} menu · ${menu.items.length} items`, `${menu.name} मेनू · ${menu.items.length}`)}</summary>
       <ul class="notes-text" data-nl style="margin:var(--s2) 0 0;padding-left:1.2em">${menu.items.map(i => `<li>${esc(i)}</li>`).join('')}</ul></details>` : ''}
 
+    ${costVsUsualCard(ev)}
+
     ${checklistCard(ev)}
 
     <div class="sec"><span class="sec-title">Expenses – खर्च</span>
@@ -997,6 +1049,22 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
 
   q('tab-evdetail').dataset.evid = id;
   go('evdetail', { ref: id, fromHistory });
+}
+
+// Quiet comparison, per category, of this event's cost per plate with the usual for its menu/type
+function costVsUsualCard(ev) {
+  const cmp = costVsUsual(ev, D.events, costByCategory(D.events, D.expenses));
+  if (!cmp) return '';
+  const basis = cmp.basis === 'menu' ? (menuById(ev.menu)?.name || 'menu') : (ev.type || '').split(' – ')[0];
+  return `
+    <div class="sec"><span class="sec-title">Cost vs usual – नेहमीच्या तुलनेत</span><span class="meta">${tr(`per plate · ${basis}, ${cmp.n} event${cmp.n > 1 ? 's' : ''}`, `प्रति ताट · ${cmp.n} कार्यक्रम`)}</span></div>
+    <div class="card list" id="cost-vs-usual">${cmp.rows.map(r => `
+      <div class="row" style="min-height:48px">
+        <div class="row-ic">${catIcon(r.cat)}</div>
+        <div class="row-body"><div class="title-sm trunc">${esc(r.cat)}</div>
+          <div class="meta">${tr(`${fmtCurrency(r.mine)} · usual ${fmtCurrency(r.usual)}`, `${fmtCurrency(r.mine)} · नेहमी ${fmtCurrency(r.usual)}`)}</div></div>
+        <div class="meta" style="font-variant-numeric:tabular-nums">${r.pct === null ? tr('new', 'नवीन') : r.pct === 0 ? '±0%' : (r.pct > 0 ? '↑ +' : '↓ ') + r.pct + '%'}</div>
+      </div>`).join('')}</div>`;
 }
 
 // Usual costs (from the last similar event) not yet recorded here, each one tap from the form
@@ -1238,6 +1306,48 @@ function showVenDetail(id, { fromHistory = false } = {}) {
 /* ── REPORTS ─────────────────────────────────────── */
 // Cost and profit per plate: by event type (what to quote next time), then per event.
 // Only events with a guest count and recorded costs count.
+// Menus by profit per plate (bill − cost), with margin; the most rewarding package first
+function menuRanking(rows) {
+  const by = new Map();
+  for (const r of rows) {
+    const m = menuById(r.ev.menu); if (!m) continue;
+    const g = by.get(m.name) || { n: 0, guests: 0, cost: 0, bill: 0 };
+    g.n++; g.guests += r.guests; g.cost += r.expTotal; g.bill += r.ev.billing;
+    by.set(m.name, g);
+  }
+  return [...by].map(([name, g]) => ({ name, ...g, profit: Math.round((g.bill - g.cost) / g.guests), margin: Math.round((g.bill - g.cost) / g.bill * 100) }))
+    .sort((a, b) => b.profit - a.profit).map((g, i) => `
+    <div class="row" style="min-height:52px">
+      <div class="row-body"><div class="title-sm">${i + 1}. ${esc(g.name)}</div>
+        <div class="meta">${tr(`${g.n} event${g.n > 1 ? 's' : ''} · bill ${fmtCurrency(Math.round(g.bill / g.guests))} · cost ${fmtCurrency(Math.round(g.cost / g.guests))} per plate`,
+          `${g.n} कार्यक्रम · बिल ${fmtCurrency(Math.round(g.bill / g.guests))} · खर्च ${fmtCurrency(Math.round(g.cost / g.guests))} प्रति ताट`)}</div></div>
+      <div class="row-end"><div class="amt-sm ${g.profit >= 0 ? 'pos' : 'neg'}">${fmtCurrency(g.profit)}</div><div class="meta">${tr(`profit/plate · ${g.margin}%`, `नफा/ताट · ${g.margin}%`)}</div></div>
+    </div>`).join('');
+}
+
+// Categories that cost more than usual in this period, summed over events (shown quietly)
+function costsHigherReport(P) {
+  const costs = costByCategory(D.events, D.expenses);
+  const over = new Map();
+  for (const ev of P.events) {
+    const cmp = costVsUsual(ev, D.events, costs); if (!cmp) continue;
+    for (const r of cmp.rows) if (r.diff > 0 && r.usual) {
+      const o = over.get(r.cat) || { amt: 0, events: 0 };
+      o.amt += r.diff * cmp.guests; o.events++; over.set(r.cat, o);
+    }
+  }
+  const list = [...over].sort((a, b) => b[1].amt - a[1].amt).slice(0, 5);
+  if (!list.length) return '';
+  return `<div class="card pad" style="padding-bottom:var(--s2)" id="costs-higher">
+    <div class="chart-title">${icon('chart', 18)}Where costs ran higher – जास्त खर्च कुठे</div>
+    <div class="meta">${tr('Compared with your usual cost per plate for the same menu or event type.', 'त्याच मेनू/प्रकाराच्या नेहमीच्या प्रति ताट खर्चाशी तुलना.')}</div>
+    ${list.map(([cat, o]) => `<div class="row" style="min-height:48px">
+      <div class="row-ic">${catIcon(cat)}</div>
+      <div class="row-body"><div class="title-sm trunc">${esc(cat)}</div><div class="meta">${tr(`in ${o.events} event${o.events > 1 ? 's' : ''}`, `${o.events} कार्यक्रमांत`)}</div></div>
+      <div class="row-end"><div class="amt-sm">${fmtCurrency(Math.round(o.amt))}</div><div class="meta">${tr('more than usual', 'नेहमीपेक्षा जास्त')}</div></div>
+    </div>`).join('')}</div>`;
+}
+
 function perPlateReport(P, missing) {
   const rows = P.events
     .map(ev => ({ ev, ...calcEventPL(ev, P.cPays, P.expenses) }))
@@ -1260,7 +1370,7 @@ function perPlateReport(P, missing) {
       <div class="row-end"><div class="amt-sm">${fmtCurrency(Math.round(g.cost / g.guests))}</div><div class="meta">${tr('cost/plate', 'खर्च/ताट')}</div></div>
     </div>`).join('');
   };
-  const menuRows = group(ev => menuById(ev.menu)?.name);
+  const menuRows = menuRanking(rows);
   const typeRows = group(ev => (ev.type || 'Other').split(' – ')[0]);
   const eventRows = rows.sort((a, b) => b.profitPerPlate - a.profitPerPlate).map(r => `
     <div class="row" role="button" tabindex="0" data-action="evdetail" data-id="${esc(r.ev.id)}" style="min-height:52px">
@@ -1268,7 +1378,7 @@ function perPlateReport(P, missing) {
       <div class="row-end"><div class="amt-sm ${r.profitPerPlate >= 0 ? 'pos' : 'neg'}">${fmtCurrency(r.profitPerPlate)}</div><div class="meta">${tr('profit/plate', 'नफा/ताट')}</div></div>
     </div>`).join('');
   return `<div class="card pad" style="padding-bottom:var(--s2)">
-    ${menuRows ? `<div class="chart-title">${icon('utensils', 18)}Per plate by menu – मेनूनुसार प्रति ताट</div>${menuRows}
+    ${menuRows ? `<div class="chart-title">${icon('utensils', 18)}Menu profit ranking – मेनू नफा क्रम</div>${menuRows}
     <div class="chart-title" style="margin-top:var(--s4)">` : '<div class="chart-title">'}${icon('utensils', 18)}Per plate by type – प्रकारानुसार प्रति ताट</div>${typeRows}
     <div class="chart-title" style="margin-top:var(--s4)">${icon('calendar', 18)}Per plate by event – कार्यक्रमनिहाय</div>${eventRows}
   </div>`;
@@ -1332,6 +1442,7 @@ function rSummary() {
       <div>${tr(`${missing.size} event${missing.size > 1 ? 's have' : ' has'} no expenses, so profit here is overstated.`, `${missing.size} कार्यक्रमांचा खर्च नोंदवलेला नाही, त्यामुळे नफा जास्त दिसतो.`)}</div></div></div>` : ''}
     <div class="sec"></div>
     ${perPlateReport(P, missing)}
+    ${costsHigherReport(P)}
     <div class="card pad"><div class="chart-title">${icon('calendar', 18)}Profit by event – कार्यक्रमनिहाय नफा</div>${plRows}</div>
     <div class="card pad"><div class="chart-title">${icon('receipt', 18)}Spending by category – खर्चाचे प्रकार</div>${catBars}</div>
     <div class="card pad"><div class="chart-title">${icon('wallet', 18)}Collections by mode – पद्धतीनुसार वसुली</div>${modeRows}</div>
@@ -1673,8 +1784,9 @@ function openExpModal(arg) {
     return;
   }
   // { prefill } comes from the cost checklist: a new entry with item and vendor filled in
-  const pre  = arg && typeof arg === 'object' && arg.prefill ? arg.prefill : null;
+  const pre  = arg && typeof arg === 'object' && (arg.prefill || arg.resume) || null;
   const ex   = arg && typeof arg === 'object' && !pre ? arg : null;
+  expTouched = { item: !!(ex || pre?.head), pay: !!(ex || arg?.resume) };
   const evId = ex?.evId || pre?.evId || (typeof arg === 'string' && arg) || defaultEventId();
   const last = readPref('ffv2_lastexp', {});
 
@@ -1682,14 +1794,16 @@ function openExpModal(arg) {
   q('exp-amt').value   = ex?.amt || '';
   populateSelect('exp-ev', eventOptions(), evId);
   setExpCat(ex?.cat || pre?.cat || last.cat || Object.keys(EXPENSE_HEADS)[0], ex?.head || pre?.head || last.head || '');
-  populateSelect('exp-mode', PAY_MODES, ex?.mode || last.mode || '');
+  populateSelect('exp-mode', PAY_MODES, ex?.mode || pre?.mode || last.mode || '');
   populateVendorSelect(ex?.venId || pre?.venId || '');
-  q('exp-amt').placeholder = pre?.amt ? `Last time ${fmtCurrency(pre.amt)}` : '0';
-  setExpPay(ex ? (isOnCredit(ex) ? 'credit' : 'paid') : 'paid');
-  q('exp-date').value  = ex?.date || today();
-  setExpDue(ex?.dueDate || '');
+  q('exp-amt').placeholder = arg?.prefill && pre.amt ? `Last time ${fmtCurrency(pre.amt)}` : '0';
+  setExpPay(ex ? (isOnCredit(ex) ? 'credit' : 'paid') : pre?.pay || 'paid');
+  if (pre?.venId) populateVendorSelect(pre.venId);
+  q('exp-date').value  = ex?.date || pre?.date || today();
+  setExpDue(ex?.dueDate || pre?.dueDate || '');
+  if (arg?.resume) { q('exp-amt').value = pre.amt || ''; }
   updateExpEvHint();
-  q('exp-notes').value = ex?.notes || '';
+  q('exp-notes').value = ex?.notes || pre?.notes || '';
   q('exp-mtitle').textContent = ex?.draft ? 'Fill in bill – बिल भरा'
                               : ex ? 'Edit expense – संपादित करा' : 'Record expense – खर्च नोंदवा';
   q('btn-del-exp').hidden       = !ex;
@@ -1699,6 +1813,33 @@ function openExpModal(arg) {
   openSheet('exp-modal', endExpSession);
   // Keyboard opens straight onto the amount (focus must happen inside the tap)
   if (!ex || ex.draft) q('exp-amt').focus({ preventScroll: true });
+}
+
+// What the person has chosen by hand in this sheet; vendor habits never override those
+let expTouched = { item: false, pay: false };
+
+/* Picking a vendor first fills what you usually record with them: their most common item,
+   and whether you usually pay them now (and how) or take credit. New entries only. */
+function applyVendorHabits(venId) {
+  if (qv('exp-id')) return;
+  const mine = D.expenses.filter(x => x.venId === venId);
+  if (!mine.length) return;
+  const top = key => {
+    const n = new Map();
+    for (const x of mine) { const k = key(x); if (k) n.set(k, (n.get(k) || 0) + 1); }
+    return [...n].sort((a, b) => b[1] - a[1])[0]?.[0];
+  };
+  if (!expTouched.item) {
+    const item = top(x => x.cat && x.head ? x.cat + '\u0000' + x.head : '');
+    if (item) { const [cat, head] = item.split('\u0000'); setExpCat(cat, head); }
+  }
+  if (!expTouched.pay) {
+    setExpPay(top(x => isOnCredit(x) ? 'credit' : 'paid') || 'paid');
+    const mode = top(x => !isOnCredit(x) ? x.mode : '');
+    if (mode) q('exp-mode').value = mode;
+  }
+  q('exp-vendor').value = venId; q('exp-vendor').dataset.prev = venId;
+  renderVendorQuick();
 }
 
 /* Bill photos inside the expense sheet */
@@ -1721,6 +1862,7 @@ function startExpSession(ex) {
 // Sheet closed: drop bills taken for an entry that was never saved
 function endExpSession() {
   if (!expWork.saved) expWork.added.forEach(id => deletePhoto(id));
+  try { localStorage.removeItem('ffv2_expdraft'); } catch {}   // closed on purpose: nothing to resume
   expWork = { id: '', bills: [], added: [], removed: [], saved: true };
 }
 
@@ -1818,6 +1960,7 @@ async function saveExpense({ next = false } = {}) {
   const i = D.expenses.findIndex(x => x.id === record.id);
   if (i >= 0) D.expenses[i] = record; else D.expenses.push(record);
   expWork.saved = true;
+  try { localStorage.removeItem('ffv2_expdraft'); } catch {}   // saved: nothing left to resume
   writePref('ffv2_lastexp', { cat: record.cat, head: record.head, mode: record.mode || readPref('ffv2_lastexp', {}).mode });
 
   refreshCurrent();
@@ -2353,18 +2496,19 @@ function bindAllEvents() {
 
   // Expense sheet controls
   q('exp-cats').addEventListener('click', e => {
-    const b = e.target.closest('[data-cat]'); if (b) setExpCat(b.dataset.cat);
+    const b = e.target.closest('[data-cat]'); if (b) { expTouched.item = true; setExpCat(b.dataset.cat); }
   });
   q('exp-pay').addEventListener('click', e => {
-    const b = e.target.closest('[data-pay]'); if (b) setExpPay(b.dataset.pay);
+    const b = e.target.closest('[data-pay]'); if (b) { expTouched.pay = true; setExpPay(b.dataset.pay); }
   });
+  ['input', 'change', 'click'].forEach(t => q('exp-modal').addEventListener(t, () => setTimeout(saveExpSnapshot, 0)));
   q('exp-due-chips').addEventListener('click', e => {
     const b = e.target.closest('[data-due]'); if (!b) return;
     setExpDue(b.dataset.due === '' ? '' : addDays(today(), Number(b.dataset.due)));
   });
   q('exp-due').addEventListener('change', e => setExpDue(e.target.value));
   q('exp-ev').addEventListener('change', updateExpEvHint);
-  q('exp-head').addEventListener('change', () => populateVendorSelect(qv('exp-vendor')));
+  q('exp-head').addEventListener('change', () => { expTouched.item = true; populateVendorSelect(qv('exp-vendor')); });
   // Tapping a usual-vendor button picks that vendor (tap again to clear)
   q('exp-ven-quick').addEventListener('click', e => {
     const b = e.target.closest('[data-ven]'); if (!b) return;
@@ -2375,7 +2519,7 @@ function bindAllEvents() {
   });
   q('exp-vendor').addEventListener('change', e => {
     const v = e.target.value;
-    if (!v.startsWith('__new')) { e.target.dataset.prev = v; renderVendorQuick(); return; }
+    if (!v.startsWith('__new')) { e.target.dataset.prev = v; if (v) applyVendorHabits(v); renderVendorQuick(); return; }
     e.target.value = e.target.dataset.prev || '';
     pickVendorForExpense = true;
     openVenModal(null, v === '__newperson' ? 'person' : 'vendor');
