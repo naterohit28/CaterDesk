@@ -60,12 +60,15 @@
 </div>
 
 <!-- ── HEADER ── -->
+<!-- Pull down at the top of a page to reload records and check for an app update -->
+<div id="ptr" aria-hidden="true" style="position:fixed;top:0;left:50%;transform:translate(-50%,-60px);z-index:60;padding:6px 14px;border-radius:999px;background:var(--surface,#fff);color:var(--text);box-shadow:0 2px 10px rgba(0,0,0,.18);font-size:13px;font-weight:600;transition:transform .15s;pointer-events:none"></div>
 <header class="hdr" id="hdr">
   <button type="button" class="icon-btn hdr-back" id="hdr-back" aria-label="Back" hidden><i data-ic="back" data-size="24"></i></button>
   <div class="hdr-title">
     <span class="trunc" id="hdr-text" data-nl>CaterDesk</span>
   </div>
   <div class="hdr-actions">
+    <button type="button" class="icon-btn" id="hdr-refresh" aria-label="Refresh"><i data-ic="refresh" data-size="20"></i></button>
     <button type="button" class="icon-btn" id="hdr-edit" aria-label="Edit" hidden><i data-ic="pencil"></i></button>
     <button type="button" class="icon-btn danger" id="hdr-delete" aria-label="Delete" hidden><i data-ic="trash"></i></button>
     <button type="button" class="icon-btn" id="drawer-toggle" aria-label="Settings" aria-controls="drawer" aria-expanded="false"><i data-ic="menu" data-size="22"></i></button>
@@ -172,6 +175,7 @@
   <div id="tab-expenses" class="tab">
     <div class="toolbar">
       <label class="search"><i data-ic="search" data-size="18"></i><input type="search" id="exp-q" placeholder="Search expenses, events, vendors…" enterkeyhint="search" autocomplete="off"></label>
+      <div class="field" style="margin:var(--s2) 0 0"><select id="exp-ev-filter" aria-label="Filter by event"></select></div>
       <div class="chips-row" id="exp-filters" role="group" aria-label="Filter by category"></div>
     </div>
     <div class="metric-tiles">

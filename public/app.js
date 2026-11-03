@@ -23,7 +23,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '3.3.0';
+const APP_BUILD = '3.3.1';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -45,6 +45,7 @@ let overlayTrigger = null;
 document.addEventListener('click', e => { overlayTrigger = e.target.closest('button, [role="button"], a[href]'); }, true);
 let lastExport = null;      // ISO time of the last backup export
 let pickVendorForExpense = null;  // set while "+ New vendor" is opened from the expense sheet
+let pickVendorForEvent = false;   // ... or from an outsourced event's "Done by"
 let billTarget = 'sheet';         // where the next bill photo goes: the open expense sheet, or a new draft ('snap')
 let lbOnDelete = null;            // what the lightbox Delete button does for the photo on show
 
@@ -54,7 +55,7 @@ let lbOnDelete = null;            // what the lightbox Delete button does for th
 let expWork = { id: '', bills: [], added: [], removed: [], saved: false };
 
 // List filters (kept while the app is open)
-const F = { evQ: '', ev: 'all', expQ: '', exp: 'all', venQ: '' };
+const F = { evQ: '', ev: 'all', expQ: '', exp: 'all', expEv: '', venQ: '' };
 let period = 'all';
 
 /* ── SMALL HELPERS ───────────────────────────────── */
@@ -225,6 +226,41 @@ async function autoUpdateOnStart() {
     return;
   }
   location.reload();
+}
+
+/* Reload every record from storage (entries made in another window or tab) and check for an
+   app update; a newer release is switched to when nothing is open. */
+let refreshing = false;
+async function refreshNow() {
+  if (refreshing) return;
+  refreshing = true;
+  q('hdr-refresh').classList.add('spin');
+  try {
+    if (!overlays.length && !activeSaves.size) { await loadAll(); refreshCurrent(); }
+    let release = null;
+    try { release = await window.caterDeskUpdate?.(); } catch {}
+    if (release && release !== APP_BUILD && !overlays.length && !activeSaves.size) { location.reload(); return; }
+    showToast(release && release !== APP_BUILD ? `v${release} ready – close your entry to update` : `Up to date · v${APP_BUILD} – अद्ययावत`);
+  } finally { refreshing = false; q('hdr-refresh').classList.remove('spin'); }
+}
+
+function initPullToRefresh() {
+  const ind = q('ptr');
+  let start = null, pull = 0;
+  const show = (y, text) => { ind.style.transform = `translate(-50%, ${y}px)`; if (text) ind.textContent = text; };
+  window.addEventListener('touchstart', e => {
+    start = window.scrollY <= 0 && !overlays.length && e.touches.length === 1 ? e.touches[0].clientY : null; pull = 0;
+  }, { passive: true });
+  window.addEventListener('touchmove', e => {
+    if (start === null) return;
+    pull = e.touches[0].clientY - start;
+    if (pull > 10) show(Math.min(pull, 110) * .6 - 40, pull > 80 ? '↻ Release to refresh – सोडा' : '↓ Pull to refresh – ओढा');
+  }, { passive: true });
+  window.addEventListener('touchend', () => {
+    if (start !== null && pull > 80) { show(16, '↻ Refreshing… – रिफ्रेश'); refreshNow().finally(() => setTimeout(() => show(-60), 600)); }
+    else show(-60);
+    start = null; pull = 0;
+  });
 }
 
 async function loadAll() {
@@ -560,7 +596,7 @@ const FAB = {
   home:      { en: 'Add expense', mr: 'खर्च जोडा',      run: () => openExpModal() },
   events:    { en: 'New event',   mr: 'नवीन कार्यक्रम', run: () => openEvModal() },
   evdetail:  { en: 'Add expense', mr: 'खर्च जोडा',      run: () => openExpModal(curRef) },
-  expenses:  { en: 'Add expense', mr: 'खर्च जोडा',      run: () => openExpModal() },
+  expenses:  { en: 'Add expense', mr: 'खर्च जोडा',      run: () => openExpModal(F.expEv || undefined) },
   vendors:   { en: 'Add vendor',  mr: 'विक्रेता जोडा',  run: () => openVenModal() },
   vendetail: { en: 'Pay vendor',  mr: 'देयक द्या',      run: () => openVPayModal(curRef) }
 };
@@ -782,8 +818,8 @@ function payeeCount(items) {
 }
 
 // Expenses tab, top: everything still owed to vendors and lenders, each with a one-tap Pay
-function toPayCard() {
-  const items = pendingCredit();
+function toPayCard(evId = '') {
+  const items = pendingCredit().filter(u => !evId || u.x.evId === evId);
   if (!items.length) return '';
   const total = items.reduce((s, u) => s + u.left, 0);
   return `
@@ -1080,7 +1116,9 @@ const ORDER_STATUS = {
 const short = head => String(head || '').split(' – ')[0];
 
 // The event's dishes grouped by the counter that supplies them ('' = your own kitchen)
+const OUT_HEAD = 'Outsourced Event – आउटसोर्स कार्यक्रम';
 function dishGroups(ev) {
+  if (ev.outsourced) return new Map((ev.dishes || []).length ? [[OUT_HEAD, ev.dishes.map(d => d.name)]] : []);
   const groups = new Map();
   for (const d of ev.dishes || []) {
     if (!groups.has(d.head || '')) groups.set(d.head || '', []);
@@ -1104,11 +1142,11 @@ function menuOrdersCard(ev) {
   const orders = ev.orders || [];
   const counters = [...groups].filter(([head]) => head).map(([head, names]) => {
     const o = [...orders].reverse().find(x => x.head === head && x.status !== 'cancelled');
-    const ven = D.vendors.find(v => v.id === (o?.venId || counterVendor(head)));
+    const ven = D.vendors.find(v => v.id === (o?.venId || (ev.outsourced ? ev.outVenId : counterVendor(head))));
     const st = o && ORDER_STATUS[o.status];
     return `<div class="row" style="min-height:56px">
       <div class="row-ic">${icon('utensils', 18)}</div>
-      <div class="row-body"><div class="title-sm trunc">${esc(short(head))}${ven ? ` · <span data-nl>${esc(ven.name)}</span>` : ''}</div>
+      <div class="row-body"><div class="title-sm trunc">${ev.outsourced ? tr('Whole event', 'संपूर्ण कार्यक्रम') : esc(short(head))}${ven ? ` · <span data-nl>${esc(ven.name)}</span>` : ''}</div>
         <div class="meta trunc" data-nl>${esc(names.join(', '))}</div></div>
       ${o ? `<button type="button" class="chip ${st.tone}" data-action="order-status" data-id="${esc(o.id)}">${tr(st.en, st.mr)}${o.plates ? ' · ' + o.plates : ''}</button>`
           : `<button type="button" class="btn-sm" data-action="order-new" data-id="${esc(head)}">${icon('message', 16)}${tr('Order', 'ऑर्डर')}</button>`}
@@ -1122,11 +1160,11 @@ function menuOrdersCard(ev) {
       ${counters || `<div class="list-empty">${tr('No counter items found. Tap a dish below to say which counter supplies it.', 'काउंटरचे पदार्थ सापडले नाहीत. खालील पदार्थावर टॅप करा.')}</div>`}
       ${kitchen.length ? `<div class="row" style="min-height:48px"><div class="row-ic">${icon('basket', 18)}</div>
         <div class="row-body"><div class="title-sm">${tr('Our kitchen', 'आपले किचन')}</div><div class="meta" data-nl>${esc(kitchen.join(', '))}</div></div></div>` : ''}
-      <div style="padding:var(--s3) var(--s4)">
+      ${ev.outsourced ? `<div class="meta" style="padding:var(--s3) var(--s4)">${tr('Outsourced event: the full menu goes to the caterer doing the event.', 'आउटसोर्स कार्यक्रम: संपूर्ण मेनू त्या केटररला जातो.')}</div>` : `<div style="padding:var(--s3) var(--s4)">
         <div class="meta" style="margin-bottom:var(--s2)">${tr('Tap a dish to change where it comes from', 'पदार्थ कुठून येतो ते बदलण्यासाठी टॅप करा')}</div>
         <div class="chips-row" style="margin:0;padding:0;flex-wrap:wrap">${dishes.map((d, i) =>
           `<button type="button" class="f-chip" data-action="dish-assign" data-id="${i}" data-nl style="max-width:100%;overflow:hidden;text-overflow:ellipsis">${esc(d.name)}${d.head ? ` · ${esc(short(d.head))}` : ''}</button>`).join('')}</div>
-      </div>
+      </div>`}
     </div>`;
 }
 
@@ -1154,7 +1192,7 @@ async function saveMenu() {
   const dishes = parseMenu(qv('menu-text')).map(name => before.get(name.toLowerCase()) || { name, head: dishCounter(name, learned) });
   await patchEvent(ev.id, { dishes });
   closeModals();
-  const n = new Set(dishes.filter(d => d.head).map(d => d.head)).size;
+  const n = ev.outsourced ? 1 : new Set(dishes.filter(d => d.head).map(d => d.head)).size;
   showToast(n ? `Menu saved · ${n} counter order${n > 1 ? 's' : ''} to send – ${n} ऑर्डर` : 'Menu saved – मेनू जतन झाला');
   refreshCurrent();
 }
@@ -1179,11 +1217,12 @@ function openOrderModal({ head, orderId }) {
   head = o?.head || head;
   q('ord-id').value = o?.id || '';
   q('ord-head').value = head;
-  q('ord-mtitle').textContent = `${short(head)} order – ऑर्डर`;
+  q('ord-mtitle').textContent = ev.outsourced ? 'Menu to caterer – केटररला मेनू' : `${short(head)} order – ऑर्डर`;
   q('ord-items').textContent = (dishGroups(ev).get(head) || []).join(', ');
   const [usual, inCat, others] = rankVendors('Live Counter', head);
   const opt = v => ({ v: v.id, l: v.name + (v.phone ? '' : ' (no phone)') });
-  populateSelect('ord-ven', [{ v: '', l: 'Choose vendor – विक्रेता निवडा' }, ...[...usual, ...inCat, ...others].map(opt)], o?.venId || counterVendor(head));
+  populateSelect('ord-ven', [{ v: '', l: 'Choose vendor – विक्रेता निवडा' }, ...[...usual, ...inCat, ...others].map(opt)],
+    o?.venId || (ev.outsourced ? ev.outVenId : counterVendor(head)));
   q('ord-plates').value = o?.plates || ev.guests || '';
   q('ord-date').value = o?.date || ev.date;
   q('ord-time').value = o?.time || '';
@@ -1197,7 +1236,8 @@ function orderMessage(ev, o, ven) {
   const items = (dishGroups(ev).get(o.head) || []).join(', ');
   return `Namaste ${ven.name}! Order for ${ev.name}:\n`
     + `Date: ${fmtDate(o.date)}${o.time ? ', ' + o.time : ''}\nVenue: ${ev.venue || '-'}\n`
-    + `${short(o.head)} for ${o.plates || '-'} plates\n` + (items ? `Items: ${items}\n` : '')
+    + (ev.outsourced ? `Full event catering for ${o.plates || '-'} guests\n` + (items ? `Menu: ${items}\n` : '')
+                     : `${short(o.head)} for ${o.plates || '-'} plates\n` + (items ? `Items: ${items}\n` : ''))
     + (o.notes ? `Note: ${o.notes}\n` : '') + `\nPlease confirm. Thank you!`;
 }
 
@@ -1235,8 +1275,11 @@ async function orderAction(orderId) {
   if (next === 'edit') { openOrderModal({ orderId }); return; }
   await patchEvent(ev.id, { orders: ev.orders.map(x => x.id === orderId ? { ...x, status: next } : x) });
   refreshCurrent();
+  if (next !== 'delivered') return;
+  // Outsourced: their charge was recorded when the event was booked; don't count it twice
+  if (ev.outsourced && D.expenses.some(x => x.evId === ev.id && x.venId === o.venId)) { showToast('Done. Their charge is already recorded for this event.'); return; }
   // Delivered: the bill goes in as an expense for this counter and vendor
-  if (next === 'delivered') openExpModal({ prefill: { evId: ev.id, cat: 'Live Counter', head: o.head, venId: o.venId } });
+  openExpModal({ prefill: { evId: ev.id, cat: ev.outsourced ? 'Operations' : 'Live Counter', head: o.head, venId: o.venId } });
 }
 
 async function cancelOrderFromSheet() {
@@ -1371,7 +1414,11 @@ function rExp() {
     ...cats.map(c => `<button type="button" class="f-chip" data-action="exp-filter" data-id="${esc(c)}" aria-pressed="${F.exp === c}">${catIcon(c, 15)}${esc(c)}</button>`)
   ].join('') : '';
 
+  if (F.expEv && !D.events.some(e => e.id === F.expEv)) F.expEv = '';
+  populateSelect('exp-ev-filter', [{ v: '', l: 'All events – सर्व कार्यक्रम' }, ...eventOptions()], F.expEv);
+  q('exp-ev-filter').parentElement.hidden = !D.events.length;
   const list = D.expenses
+    .filter(x => !F.expEv || x.evId === F.expEv)
     .filter(x => F.exp === 'all' || (F.exp === 'credit' ? isOnCredit(x) : x.cat === F.exp))
     .filter(x => {
       if (!F.expQ) return true;
@@ -1405,7 +1452,7 @@ function rExp() {
   });
 
   // Pending first: what's still owed, then bills waiting to be filled in, then the history
-  const top = (F.exp === 'all' && !F.expQ ? toPayCard() : '') + draftsCard();
+  const top = (F.exp === 'all' && !F.expQ ? toPayCard(F.expEv) : '') + (F.expEv ? '' : draftsCard());
   q('exp-list').innerHTML = top + [...groups].map(([k, xs]) => {
     const d = new Date(k + '-01');
     const month = !isNaN(d)
@@ -1756,8 +1803,7 @@ function openEvModal(id) {
   updateMenuHint();
   // Advance only when booking; later payments go through the event's "Payments received"
   q('ev-adv-field').hidden = !!ev;
-  populateSelect('ev-out-ven', [{ v: '', l: 'Choose vendor – विक्रेता निवडा' },
-    ...D.vendors.filter(v => !isPerson(v)).sort((a, b) => String(a.name).localeCompare(String(b.name))).map(v => ({ v: v.id, l: v.name }))], ev?.outVenId || '');
+  fillOutVendors(ev?.outVenId || '');
   q('ev-out-charge').value = '';
   q('ev-out-charge-field').hidden = !!ev;   // their bill is an expense once saved; edit it there
   setEvHandling(ev?.outsourced ? 'out' : 'own');
@@ -1790,6 +1836,14 @@ function updateMenuHint() {
   hint.textContent = `${menu.name} @ ${fmtCurrency(rate)}/plate` + (guests ? ` × ${guests} = ${fmtCurrency(rate * guests)}` : ' · add guests to fill the bill')
     + (past ? ` · usually costs ${fmtCurrency(past.perPlate)}/plate (${past.n} event${past.n > 1 ? 's' : ''})` : ' · cost per plate shows after the first event on this menu');
   hint.hidden = false;
+}
+
+// "Done by" choices for an outsourced event, with "+ New vendor" to add one without leaving the form
+function fillOutVendors(selected) {
+  populateSelect('ev-out-ven', [{ v: '', l: 'Choose vendor – विक्रेता निवडा' },
+    ...D.vendors.filter(v => !isPerson(v)).sort((a, b) => String(a.name).localeCompare(String(b.name))).map(v => ({ v: v.id, l: v.name })),
+    { v: '__new', l: '+ New vendor – नवीन विक्रेता' }], selected);
+  q('ev-out-ven').dataset.prev = q('ev-out-ven').value;
 }
 
 function setEvHandling(h) {
@@ -2281,12 +2335,12 @@ function openVenModal(id, kind = 'vendor') {
   q('ven-name').value  = vn?.name  || '';
   q('ven-phone').value = vn?.phone || '';
   q('ven-notes').value = vn?.notes || '';
-  populateSelect('ven-cat', Object.keys(EXPENSE_HEADS), vn?.cat || (pickVendorForExpense ? qv('exp-cat') : ''));
-  loadVenSpecialty(vn?.specialty || (pickVendorForExpense ? qv('exp-head') : ''));
+  populateSelect('ven-cat', Object.keys(EXPENSE_HEADS), vn?.cat || (pickVendorForExpense ? qv('exp-cat') : pickVendorForEvent ? 'Operations' : ''));
+  loadVenSpecialty(vn?.specialty || (pickVendorForExpense ? qv('exp-head') : pickVendorForEvent ? 'Outsourced Event – आउटसोर्स कार्यक्रम' : ''));
   setVenKind(vn ? (isPerson(vn) ? 'person' : 'vendor') : kind);
   q('ven-mtitle').textContent = vn ? 'Edit – संपादित करा' : kind === 'person' ? 'New person – नवीन व्यक्ती' : 'New vendor – नवीन विक्रेता';
   clearFieldErrors();
-  openSheet('ven-modal', () => { pickVendorForExpense = null; });
+  openSheet('ven-modal', () => { pickVendorForExpense = null; pickVendorForEvent = false; });
   if (!vn) q('ven-name').focus({ preventScroll: true });
 }
 
@@ -2309,9 +2363,10 @@ async function saveVendor() {
   else    D.vendors.push(record);
 
   // Opened from the expense sheet's "+ New vendor": go back to it with this vendor picked
-  const backToExpense = pickVendorForExpense;
+  const backToExpense = pickVendorForExpense, backToEvent = pickVendorForEvent;
   await closeModals();
   if (backToExpense) populateVendorSelect(record.id);
+  if (backToEvent) { fillOutVendors(record.id); updateOutHint(); }
   showToast(person ? 'Saved – जतन झाले' : 'Vendor saved – विक्रेता जतन झाला');
   refreshCurrent();
 }
@@ -2804,6 +2859,17 @@ function bindAllEvents() {
     b.addEventListener('click', () => b.dataset.contact === 'ev' ? pickContact('ev-name', 'ev-mobile') : pickContact('ven-name', 'ven-phone'));
   });
   q('ev-handling').addEventListener('click', e => { const b = e.target.closest('[data-h]'); if (b) setEvHandling(b.dataset.h); });
+  q('ev-out-ven').addEventListener('change', e => {
+    if (e.target.value !== '__new') { e.target.dataset.prev = e.target.value; return; }
+    e.target.value = e.target.dataset.prev || '';
+    pickVendorForEvent = true;
+    openVenModal();
+  });
+  // 4. expenses of one event
+  q('exp-ev-filter').addEventListener('change', e => { expensePage = 1; F.expEv = e.target.value; rExp(); });
+  // 2. refresh: header button, and pull down at the top of a page
+  q('hdr-refresh').addEventListener('click', () => refreshNow());
+  initPullToRefresh();
   ['ev-billing', 'ev-out-charge'].forEach(id => q(id).addEventListener('input', updateOutHint));
   q('ev-guests').addEventListener('input', updateMenuHint);
   q('ven-kind').addEventListener('click', e => { const b = e.target.closest('[data-kind]'); if (b) setVenKind(b.dataset.kind); });
