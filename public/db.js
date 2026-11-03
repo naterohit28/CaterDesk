@@ -419,7 +419,7 @@ export async function prepareImport(payload) {
       if (name === 'events') { amount(row.billing, 'billing'); if (row.budget !== undefined) amount(row.budget, 'budget'); }
       if (['expenses', 'cPays', 'vPays'].includes(name)) amount(row.amt ?? (row.draft ? 0 : undefined), name);
       if (['events', 'expenses', 'cPays', 'vPays'].includes(name) && !row.draft && !validDate(row.date)) throw new Error('Invalid date in ' + name);
-      for (const field of ['photoIds', 'billIds', 'photos']) if (row[field] !== undefined && !Array.isArray(row[field])) throw new Error('Invalid ' + field);
+      for (const field of ['photoIds', 'billIds', 'photos', 'dishes', 'orders']) if (row[field] !== undefined && !Array.isArray(row[field])) throw new Error('Invalid ' + field);
       for (const field of ['photoIds', 'billIds']) if (row[field]?.some(id => typeof id !== 'string' || !id)) throw new Error('Invalid attachment ID');
       if (name === 'photos' && (typeof row.data !== 'string' || !/^data:image\/(jpeg|png|webp|gif);base64,/.test(row.data))) throw new Error('Invalid photo data');
       if (row.pay && !['paid', 'credit'].includes(row.pay)) throw new Error('Invalid payment state');
@@ -487,7 +487,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '3.2.1';
+export const APP_VERSION = '3.3.0';
 export async function checkAndMigrate() {
   await openDB();
   const storedVer = await getMeta('app_version');

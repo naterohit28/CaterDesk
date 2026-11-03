@@ -187,5 +187,36 @@ await test('contacts button fills name and number from the phone contact list',a
  await q.locator('#ven-modal [data-action="close-modal"]').click();await q.close();
  assert(await p.locator('[data-contact="ev"]').evaluate(b=>b.hidden),'hidden where the browser has no contact picker');
 });
+await test('event menu becomes counter orders sent on WhatsApp, tracked to delivery',async()=>{
+ const t=new Date();const tmr=new Date(t);tmr.setDate(t.getDate()+1);const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+ await seed({...empty(),events:[{...ev,date:iso(tmr),guests:300,venue:'Lawn'}],vendors:[{id:'rajiv',name:'Rajiv Chaat',cat:'Live Counter',specialty:'Chaat – चाट',phone:'9876543210'},{id:'mur',name:'Murugan',cat:'Live Counter',specialty:'Dosa – डोसा'}]});
+ await p.evaluate(()=>{window.__opened=[];window.open=u=>{window.__opened.push(u);return null}});
+ await p.locator('#n-events').click();await p.locator('#ev-list [data-action="evdetail"]').first().click();await p.waitForSelector('[data-action="menu-edit"]');
+ await p.locator('[data-action="menu-edit"]').click();await p.waitForSelector('#menu-modal.active');
+ await p.locator('#menu-text').fill('1. Pani Puri\n2. Sev Puri, Masala Dosa\n• Dal Makhani\nStarters:\nGulab Jamun\npani puri');await p.locator('#btn-save-menu').click();await p.waitForSelector('#menu-orders');
+ const card=await p.locator('#menu-orders').innerText();assert.match(card,/Chaat · Rajiv Chaat[\s\S]*Pani Puri, Sev Puri/);assert.match(card,/Dosa · Murugan[\s\S]*Masala Dosa/);assert.match(card,/Our kitchen[\s\S]*Dal Makhani, Gulab Jamun/);
+ assert.equal((await db(async d=>d.getOne('events','e'))).dishes.length,5,'duplicates and headings dropped');
+ // Teach it a dish: Gulab Jamun comes from the dessert counter, and it is remembered
+ await p.locator('[data-action="dish-assign"]',{hasText:'Gulab Jamun'}).click();await p.locator('#ask-actions button',{hasText:'Dessert Counter'}).click();await p.waitForTimeout(250);
+ assert.match(await p.locator('#menu-orders').innerText(),/Dessert Counter[\s\S]*Gulab Jamun/);
+ const learned=await p.evaluate(async()=>{const u=await import('./utils.js');return u.dishCounter('gulab jamun',u.learnedDishes(window.D.events))});assert.equal(learned,'Dessert Counter');
+ // Order the chaat counter: vendor and plates filled, WhatsApp message written
+ await p.locator('[data-action="order-new"][data-id^="Chaat"]').click();await p.waitForSelector('#ord-modal.active');
+ assert.equal(await p.locator('#ord-ven').inputValue(),'rajiv');assert.equal(await p.locator('#ord-plates').inputValue(),'300');
+ await p.locator('#ord-time').fill('19:00');await p.locator('#btn-send-ord').click();await p.waitForTimeout(300);
+ const url=decodeURIComponent((await p.evaluate(()=>window.__opened))[0]);assert.match(url,/^https:\/\/wa\.me\/919876543210\?text=Namaste Rajiv Chaat! Order for Wedding:[\s\S]*19:00[\s\S]*Venue: Lawn[\s\S]*Chaat for 300 plates[\s\S]*Items: Pani Puri, Sev Puri/);
+ assert.match(await p.locator('#menu-orders').innerText(),/Sent\s*· 300/);assert.match(await p.locator('#menu-orders').innerText(),/Dessert Counter\n/,'no guessed vendor for an unknown counter');
+ // Home shows tomorrow's delivery
+ await p.locator('#n-home').click();assert.match(await p.locator('#deliveries').innerText(),/Tomorrow 19:00 · Rajiv Chaat[\s\S]*Chaat · 300 plates/);
+ // Delivered opens the expense form for that counter and vendor
+ await p.locator('#deliveries [data-action="evdetail"]').click();await p.waitForSelector('#menu-orders');
+ await p.locator('[data-action="order-status"]').first().click();await p.locator('#ask-actions button',{hasText:'Delivered'}).click();await p.waitForSelector('#exp-modal.active');
+ assert.match(await p.locator('#exp-head').inputValue(),/^Chaat/);assert.equal(await p.locator('#exp-vendor').inputValue(),'rajiv');
+ await p.locator('#exp-amt').fill('27000');await p.locator('#btn-save-exp').click();await p.waitForTimeout(300);
+ assert.equal((await db(async d=>d.getOne('events','e'))).orders[0].status,'delivered');
+ // Murugan has no phone: the order is saved and the app says why WhatsApp did not open
+ await p.locator('[data-action="order-new"][data-id^="Dosa"]').click();await p.waitForSelector('#ord-modal.active');await p.locator('#btn-send-ord').click();await p.waitForTimeout(300);
+ assert.match(await p.locator('#toast').innerText(),/no phone number/);assert.equal((await p.evaluate(()=>window.__opened)).length,1);
+});
 results.push({name:'unexpected page errors',pass:errors.length===0,errors});fs.writeFileSync('test-artifacts/repair-test-results.json',JSON.stringify(results,null,2));await browser.close();console.log(JSON.stringify(results,null,2));if(results.some(r=>!r.pass))process.exitCode=1;
 })().catch(e=>{console.error(e);process.exitCode=1});

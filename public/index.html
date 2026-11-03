@@ -370,6 +370,39 @@
   </div>
 </div>
 
+<!-- EVENT MENU: paste the dish list agreed with the client -->
+<div class="modal-ov" id="menu-modal">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="menu-mtitle">
+    <div class="s-handle"></div>
+    <div class="s-head"><div class="s-title" id="menu-mtitle">Event menu – कार्यक्रम मेनू</div><button type="button" class="icon-btn" data-action="close-modal" aria-label="Close"><i data-ic="x"></i></button></div>
+    <div class="field"><label for="menu-text">Dishes – पदार्थ</label>
+      <textarea id="menu-text" rows="9" placeholder="Pani puri&#10;Paneer tikka&#10;Dal makhani&#10;Jeera rice&#10;Gulab jamun"></textarea>
+      <div class="meta" style="margin-top:6px">Paste the menu from WhatsApp, or from a photo: open it in Google Lens → Copy text → paste here. One dish per line or separated by commas. – WhatsApp किंवा Google Lens मधून मेनू पेस्ट करा.</div></div>
+    <div class="s-foot"><button type="button" class="btn btn-primary" id="btn-save-menu">Save menu – जतन करा</button></div>
+  </div>
+</div>
+
+<!-- VENDOR ORDER for one counter of an event, sent on WhatsApp -->
+<div class="modal-ov" id="ord-modal">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="ord-mtitle">
+    <div class="s-handle"></div>
+    <div class="s-head"><div class="s-title" id="ord-mtitle">Order – ऑर्डर</div><button type="button" class="icon-btn" data-action="close-modal" aria-label="Close"><i data-ic="x"></i></button></div>
+    <input type="hidden" id="ord-head"><input type="hidden" id="ord-id">
+    <div class="meta" id="ord-items" data-nl style="margin-bottom:var(--s3)"></div>
+    <div class="field"><label for="ord-ven">Vendor – विक्रेता <span class="req">*</span></label><select id="ord-ven"></select></div>
+    <div class="f2">
+      <div class="field"><label for="ord-plates">Plates – ताट</label><input type="number" id="ord-plates" min="1" inputmode="numeric"></div>
+      <div class="field"><label for="ord-time">Time – वेळ</label><input type="time" id="ord-time"></div>
+    </div>
+    <div class="field"><label for="ord-date">Date – दिनांक</label><input type="date" id="ord-date"></div>
+    <div class="field"><label for="ord-notes">Notes – नोंदी</label><input type="text" id="ord-notes" placeholder="e.g. Jain option, 2 staff, setup by 6 pm"></div>
+    <div class="s-foot"><div class="btn-row">
+      <button type="button" class="btn btn-ghost danger" id="btn-cancel-ord" hidden>Cancel order – रद्द</button>
+      <button type="button" class="btn btn-wa" id="btn-send-ord">Send on WhatsApp – पाठवा</button>
+    </div></div>
+  </div>
+</div>
+
 <!-- VENDOR PAYMENT -->
 <div class="modal-ov" id="vpay-modal">
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="vpay-mtitle">
