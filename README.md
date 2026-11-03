@@ -1,161 +1,174 @@
-# CaterDesk — Catering & Event Expense Tracker
+# CaterDesk — Catering & Event Accounts
 
 *Every event. Every expense. Clear profit.*
 
-CaterDesk was previously named Flavor Fusion. This branding update preserves the Android package, signing certificate, IndexedDB database and desktop profile so existing records remain in place. Back up records before installing any update.
+An offline-first app for catering events, expenses, vendor credit, client collections, menus and vendor orders. Business records stay in the device's browser storage; the hosted app also sends limited error diagnostics to its server.
 
-The icon uses a bold serving cloche above two ledger lines, with deep teal (`#123F40`), warm ivory (`#F8F4EA`) and a copper accent (`#BD805B`). Its artwork contains no lettering. The editable master is `public/icons/caterdesk.svg`.
+**Current source and hosted web build: v3.3.1.** Documentation checked on **3 November 2026**.
 
-An offline-first app for recording event expenses, client collections, vendor purchases and payments, with bill photographs and event profitability views.
+[Open the app](https://expense-calculator-kohl.vercel.app/) · [Download published packages](https://github.com/naterohit28/Expense-Calculator/releases) · [Historical reliability report](docs/RELIABILITY.md) · [Competitor/name research and Claude evaluation notes](docs/research/README.md) · [Report an issue](https://github.com/naterohit28/Expense-Calculator/issues)
 
-**Current release: v3.3.1** · Android package: `com.flavorfusion.expenses`
-
-[Open the live app](https://expense-calculator-kohl.vercel.app/) · [Download releases](https://github.com/naterohit28/Expense-Calculator/releases) · [Reliability notes](docs/RELIABILITY.md) · [Report a bug](https://github.com/naterohit28/Expense-Calculator/issues)
-
-[Competitor and naming research for Claude](docs/research/README.md) — dated findings, source links and evaluation notes; not a trademark clearance.
+CaterDesk was previously called Flavor Fusion. The existing Android package (`com.flavorfusion.expenses`), signing identity, database and desktop profile are retained for continuity. The cloche-and-ledger icon uses teal, ivory and copper; its editable master is [`public/icons/caterdesk.svg`](public/icons/caterdesk.svg). Naming research found existing CaterDesk use in this industry; the app has not been renamed again.
 
 ## Contents
 
-- [Choose how to use the app](#choose-how-to-use-the-app)
-- [Features](#features)
-- [Where your records are stored](#where-your-records-are-stored)
-- [Back up and restore](#back-up-and-restore)
+- [Versions and available packages](#versions-and-available-packages)
+- [Current features](#current-features)
+- [Storage, privacy and backups](#storage-privacy-and-backups)
 - [Android installation and updates](#android-installation-and-updates)
-- [Windows desktop test app](#windows-desktop-test-app)
-- [Run the web source locally](#run-the-web-source-locally)
-- [Run the tests](#run-the-tests)
-- [Build the desktop app](#build-the-desktop-app)
-- [Android build configuration](#android-build-configuration)
-- [Repository structure](#repository-structure)
-- [Organized local workspace](#organized-local-workspace)
-- [Deployment and release checklist](#deployment-and-release-checklist)
+- [Windows desktop testing](#windows-desktop-testing)
+- [Run locally](#run-locally)
+- [Tests and validation](#tests-and-validation)
+- [Build packages](#build-packages)
+- [Deployment, diagnostics and maintenance](#deployment-diagnostics-and-maintenance)
+- [Repository and local workspace](#repository-and-local-workspace)
 - [Troubleshooting](#troubleshooting)
-- [Security and current limits](#security-and-current-limits)
+- [Release history](#release-history)
 
-## Choose how to use the app
+## Versions and available packages
 
-| Option | Best for | Requirements |
+The **APK wrapper version, hosted web version and bundled desktop version are independent**. Installing an APK does not establish which cached web release is currently open. Check the app's Settings panel for the running web build.
+
+| Component | Verified state on 3 November 2026 | Meaning |
 | --- | --- | --- |
-| [Hosted web app](https://expense-calculator-kohl.vercel.app/) | Everyday browser use; install to the home screen where supported | A modern browser; internet for the first load |
-| Android APK | An Android launcher experience for the hosted app | Android 7.0 / API 24 or newer and a suitable browser provider |
-| Windows desktop test ZIP | Trying the packaged app on a computer with separate test records | Windows, Microsoft Edge and .NET Framework 4.x |
-| Local web source | Development and browser testing | A local HTTP server; Node.js and Edge for the automated suite |
+| Source and hosted web app | **3.3.1** | Current UI, data/export version, service worker and error reporter |
+| Service-worker release cache | `flavor-fusion-v2-cache-v25` | Installed web assets; this number is not the database schema version |
+| Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** | APK package inspected locally; launches the hosted app, which can run 3.3.1 |
+| Android requirements for that local wrapper | min API **24**, target API **36** | Android 7.0+ and a compatible browser provider |
+| Latest GitHub Release with downloadable binaries | **2.4.7** | APK and desktop ZIP; later source tags do not imply newer binaries were uploaded |
+| Desktop package currently in the owner's `Apps/Desktop` folder | **2.4.7** | A static older bundle, not the current source build |
+| Desktop launcher source/instructions | **3.3.1** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
+| IndexedDB schema | **4** | Kept separate from application version changes |
 
-The Android app is a **Trusted Web Activity** wrapper around the hosted site. The Windows desktop package serves an included copy of the web app locally. Neither provides automatic phone-to-desktop record synchronization.
+Do not relabel an older package as 3.3.1. Use the [release assets](https://github.com/naterohit28/Expense-Calculator/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
 
-## Features
+## Current features
 
-- Create and edit events with their date, venue, menu package, billed amount, guest count, expected cost, optional advance and notes; mark events outsourced to another caterer.
-- Record expenses by event, category, expense head, vendor, payment state and date.
-- Distinguish purchases paid immediately from purchases taken on vendor credit.
-- Track client collections, vendor payments and outstanding balances.
-- Attach compressed event photographs and bill/receipt images.
-- Capture bill photographs as drafts and complete their expense details later.
-- Search and filter events, expenses and vendors.
-- Review recorded event costs, profit/margin, collections and per-plate figures.
-- Switch between English, Marathi and bilingual display, and light/dark themes.
-- Use cached app screens offline after the app has loaded and its service worker has installed.
-- Export business records and attachments as a JSON backup; restore or merge compatible backups.
-- Use an optional four-digit privacy PIN.
+### Events and collections
 
-### Reliability safeguards
+- Create/edit events with date, time, venue, guest count, billed amount, expected cost, menu package and notes. Events are listed newest first.
+- Record an optional booking advance as the event's first client payment; track subsequent collections and the remaining balance.
+- Menu-package rates and guest slabs can suggest billing. Historical costs for that menu can suggest expected cost. Values remain editable; these are estimates based on recorded data.
+- Mark whole events outsourced to another caterer. Their charge is recorded as vendor credit and the event shows commission; outsourced work is excluded from usual per-plate comparisons and missing-cost suggestions.
+- Add a new outsourced caterer from **Done by → + New vendor**, then return to the event form with that caterer selected.
 
-- Save success is reported after the IndexedDB transaction commits.
-- Repeated Save taps are guarded, and stale edits are rejected rather than silently overwriting newer records.
-- A blocked transaction times out and aborts before another save can be attempted.
-- Import validates records and relationships; replacement writes are atomic.
-- Conflicting merges keep current records and report the conflict.
-- Events/vendors with linked accounting history cannot be silently deleted with their history left inconsistent.
-- Expense lists display 100 rows per page while totals cover all matching expenses.
-- Interrupted bill attachments are recovered as drafts at the next launch.
-- Modal/history cleanup and background/PIN recovery preserve open form values in the tested scenarios.
+### Expenses, vendors and other people
 
-See [reliability notes](docs/RELIABILITY.md) for the detailed release changes and validation scope.
+- Record event-linked spending by category, item/subcategory, vendor, date, notes, payment mode and paid/credit status. Expense receipt icons use **₹**.
+- **To pay** lists unpaid credit first, prioritizing overdue items and due dates, with a Pay action. Home summarizes money owed.
+- Filter expenses by event; new expenses entered from that context use the selected event.
+- Vendor suggestions use saved specialty and past purchases. Usual-vendor buttons offer quick choices; all vendors remain available and none is silently selected solely because it ranks first.
+- Choosing a vendor on a new expense can suggest its usual item and payment habits. Fields already chosen manually and existing expense records are preserved.
+- Track suppliers separately from **other people**, such as lenders or people who paid a bill on your behalf, and record repayments.
+- Save event photographs and bill images; snap bills as drafts and complete their details later. Expense lists paginate at 100 rows while totals cover the matching records.
 
-## Where your records are stored
+### Menus and vendor orders
 
-The app uses browser **IndexedDB**, named `FlavorFusionDB`, with schema version **4**. Its stores are:
+- Paste the dishes agreed with a client. The app cleans numbering, bullets and duplicate lines, then groups recognized dishes into live counters or the in-house kitchen.
+- Tap a dish to change its counter; the app remembers the choice. Matching is rule-based, not an AI/OCR service.
+- Prepare vendor orders with items, plates, event date/time and venue. WhatsApp opens a prepared message; the user must send it.
+- Track Sent, Confirmed, Delivered and Cancelled states. These are app-maintained states, not delivery/read acknowledgements from WhatsApp.
+- Marking a normal counter order Delivered opens a prefilled expense form; saving the bill is still required.
+- Outsourced menus become one whole-event order. The delivery path avoids adding another charge when that caterer's expense is already recorded.
+- Home lists outstanding deliveries due today or tomorrow.
+
+To extract text from a menu photograph, use an external tool such as Google Lens, then paste its text. The app itself does not perform image-to-text recognition.
+
+### Reports and convenience
+
+- Event costs, recorded profit/margin, per-plate figures, menu profit ranking and category costs versus usual costs.
+- A cost checklist uses a similar past event to flag usual items not yet recorded; it does not invent expense amounts. Home flags recent events with missing costs.
+- Home's next-30-days view summarizes projected collections, payments and net cash from entered records; it is not a bank balance.
+- Call/WhatsApp links for clients, vendors and other people; prepared client-payment reminders and vendor-dues messages. Nothing is sent automatically.
+- Contact selection on supported browsers can fill a chosen name and number. Availability depends on the browser/device; manual entry remains available.
+- English, Marathi and bilingual display; light/dark themes; an optional four-digit privacy PIN.
+- In installed standalone mode, reopen a last-used screen from within 12 hours. An eligible unsaved new-expense snapshot from within 24 hours can be offered with **Continue**. This is not a committed entry or a full backup.
+- Header refresh and pull-down refresh at the top of a page reload local records and check for a newer web release.
+
+Reports reflect what was entered. Missing spending, incorrect guest counts or incomplete payments affect the figures; recorded event profit is not a complete statutory/company accounting statement.
+
+## Storage, privacy and backups
+
+### Where records live
+
+Browser IndexedDB **`FlavorFusionDB`**, schema **4**, contains:
 
 | Store | Contents |
 | --- | --- |
-| `events` | Event records |
-| `expenses` | Expenses and unfinished bill drafts |
-| `vendors` | Vendor details |
+| `events` | Event details, dishes and order state |
+| `expenses` | Paid/credit expenses and bill drafts |
+| `vendors` | Suppliers and other payees |
 | `cPays` | Client payments |
-| `vPays` | Vendor payments |
+| `vPays` | Vendor/payee payments |
 | `photos` | Event and bill images |
-| `meta` | Application metadata, privacy-PIN hash and backup timestamps |
+| `meta` | App metadata, PIN hash and backup timestamps |
 
-Preferences such as theme, language and filters may use localStorage. The business-data export includes the six business stores; it does not export the PIN/settings metadata store.
+Preferences, resume snapshots and remembered choices also use localStorage. JSON export contains the six business stores, not the `meta` store or all browser preferences. Do not rely on restoring a backup to reproduce every UI setting or remembered choice.
 
-**Hosting the app on GitHub or Vercel does not back up these records.** There is no account-based cloud database or automatic multi-device sync in this release.
+**There is no account-based business-data cloud sync or automatic off-device backup.** GitHub/Vercel hosting does not back up event records. Phone, desktop and ordinary browser profiles can have separate data. Changing domain, scheme, port, browser provider or profile can show another database. Preserve an export before moving to a custom domain or another device.
 
-Storage belongs to a browser origin/profile. Changing the host, HTTP/HTTPS scheme, port or browser profile can show a different database. Standard browser-backed Android operation can share the provider's site storage. Clearing site/browser data, losing the device or changing profiles can remove or hide access to records.
+The app requests persistent storage where supported, but storage can still be lost through clearing data, device loss or profile changes. The PIN hides the UI; it does **not encrypt** the database or exported files. Export is blocked while the app is locked.
 
-The app requests persistent storage when supported, but that request is not a substitute for an off-device backup.
+### Back up
 
-## Back up and restore
+1. Unlock the app and choose **Settings → Share / save backup**.
+2. Save/share the JSON outside the device, retaining more than one dated copy.
+3. Before updates, migration or imports, confirm that the file is actually saved and keep the previous backup.
 
-### Create a backup
+Backups contain business records and images. Protect them as private documents. Sending a file to a share sheet does not prove a chosen destination retained it.
 
-1. Unlock the app if a PIN is set.
-2. Open **Settings → Share / save backup**.
-3. Save or share the JSON file to a location outside the device.
-4. Keep more than one dated backup, especially before an update or import.
+### Restore
 
-Backups contain business records and images. Treat them as private documents. A completed download/share action does not prove that a particular cloud destination will retain the file indefinitely.
+1. Export current records first. For testing, import a copy into a separate profile.
+2. Choose **Settings → Import backup** and select the JSON.
+3. **Merge** retains current records and rejects conflicts for the same ID. **Replace** validates first, then replaces business records atomically; a failed replacement preserves the old database.
+4. Reconcile totals, client/vendor balances, drafts and images after restoration.
 
-### Restore a backup
+Compatible `ffv2` and legacy `ffv5` payloads are supported subject to validation. Invalid IDs, duplicate IDs, amounts, dates or missing references can cause rejection. Never delete your only backup to work around a validation error.
 
-1. Keep a copy of the current database by exporting it first.
-2. Choose **Settings → Import backup** and select the JSON file.
-3. Choose the intended import mode:
-   - **Merge:** retains current data; identical records can merge, while conflicting records with the same ID are rejected.
-   - **Replace:** replaces business records only after validation, in one transaction. A failed replacement keeps the previous database.
-4. Review event totals, payments, drafts and attachments after restoration.
+### Hosted error diagnostics
 
-Compatible `ffv2` and legacy `ffv5` payloads are supported subject to validation. Invalid IDs, duplicate IDs, malformed values, missing references or incompatible records can cause rejection. Do not “repair” a backup by deleting its only copy or stripping validation blindly.
+[`public/error-reporter.js`](public/error-reporter.js) reports uncaught errors to [`api/client-error.js`](api/client-error.js). It sends error kind/message, clipped stack and source, line/column, page path, release, timestamp and browser user-agent. It does not explicitly attach the business stores or bill images. **Error text is not comprehensively redacted**, so do not assume arbitrary exception messages can never contain sensitive text.
 
-For safe testing, import a **copy** into the desktop test app or a separate browser profile first. An export cannot reveal records that were never successfully entered, so reconcile important totals against receipts and payment records.
+The reporter skips `file:`, localhost and loopback hosts. It limits itself to ten distinct reports per page session. Offline reports are queued in memory and flushed when connectivity returns while the page remains alive; delivery is best-effort, not a durable error archive.
+
+The endpoint logs to Vercel, processes the forwarded IP for best-effort rate limits, and can forward error summaries to a configured webhook. This is diagnostics, not a business-data sync service or authenticated user API. See [deployment and alerts](#deployment-diagnostics-and-maintenance).
 
 ## Android installation and updates
 
-1. Download the APK from the [release page](https://github.com/naterohit28/Expense-Calculator/releases).
-2. Export a backup from the existing app.
-3. Transfer the APK to the phone and install it **over the existing app**. Android may ask you to allow installation from the application used to open the file.
-4. Close the APK and any browser tabs open to the same site, then reopen it.
-5. Check the web build shown in **Settings**; the current expected value is **v3.3.1**.
+The APK is a **Trusted Web Activity** wrapper around the hosted site. It does not embed every new web version in a new APK.
 
-Do not uninstall the old app or clear Chrome/site data just to force an update. If Android refuses an update because of a signing conflict, stop and check the package/signing identity first.
+1. Keep a business-data backup.
+2. Obtain the intended APK from its actual release assets or the owner's prepared local package. Install over the existing app with the same package/signing identity.
+3. Open online to download updates. Check the **web build in Settings**, not just Android App info.
+4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **3.3.1**.
 
-The v3.0.0 APK has versionCode **9** and uses the same signer as the supplied earlier APKs. Its v2/v3 signatures and ZIP alignment were verified during preparation. The public certificate association is in [`.well-known/assetlinks.json`](public/.well-known/assetlinks.json).
+A newer web release may reload automatically during the first 20 seconds of startup when no active form/save/overlay prevents it, at most once per release per session. Otherwise it waits for a later start or explicit reload. Refresh can also switch versions when no form/save is open. Service-worker cache mappings preserve matching assets for older open pages until navigation.
 
-The **APK version and cached web build are separate**. Installing a new wrapper does not itself guarantee that an already-open browser client has activated the newest service worker. From v2.4.6, an update activates while older clients remain open, with each open page pinned to its complete release. Reload after saving to switch to the new build.
+Do not uninstall or clear browser/site storage to force an update. If Android rejects an APK, check package, versionCode and signing certificate before proceeding. The public certificate association is [`public/.well-known/assetlinks.json`](public/.well-known/assetlinks.json).
 
-## Windows desktop test app
+The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **3.3.1**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
 
-1. Download `CaterDesk-Desktop-v3.0.0.zip` from [Releases](https://github.com/naterohit28/Expense-Calculator/releases).
-2. Extract the **entire ZIP** into a folder.
-3. Keep the `app` directory beside `CaterDesk-Desktop.exe`.
-4. Run `CaterDesk-Desktop.exe`.
+## Windows desktop testing
 
-The launcher opens Microsoft Edge in an app window. A system-tray icon offers **Open CaterDesk**, storage information and **Exit test server**.
+Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v3.3.1 package.
 
-No Node.js, Python or administrator installation is required to use the prepared desktop package. The launcher is an unsigned local Windows test executable, not a Microsoft Store installer.
+1. Extract the entire ZIP; keep `app/` beside `CaterDesk-Desktop.exe`.
+2. Run the EXE. Microsoft Edge opens an app window; a tray icon provides **Open CaterDesk**, storage information and **Exit test server**.
+3. Before starting another version, exit the existing tray server. The current launcher checks for an older running server instead of silently opening it.
 
-- Fixed local address: `http://127.0.0.1:19891/`
-- Dedicated profile: `%LOCALAPPDATA%\FlavorFusionDesktopTest\EdgeProfile`
-- Included web build: v3.3.1
+Requirements: Windows, Microsoft Edge and .NET Framework 4.x. Prepared packages do not require Node/Python or administrator installation. The launcher is unsigned and intended for local testing.
 
-Desktop test records are separate from the phone and normal browser profiles. Import a backup copy if you want to test existing records. The desktop package does not automatically update from the website; download a new package for a newer packaged build. Replacing app assets does not require deleting the profile.
+- Fixed origin: `http://127.0.0.1:19891/`.
+- Dedicated data profile: `%LOCALAPPDATA%\FlavorFusionDesktopTest\EdgeProfile`.
+- Phone/desktop records do not sync. Import a **copy** of a backup to compare records.
+- The website cannot update the files bundled beside this EXE. Replace the app package to upgrade; preserve the profile and fixed origin. Refresh checks the local bundle only.
 
-The fixed port is deliberate: selecting a different port would create a different storage origin. If port 19891 is occupied, close the other desktop test instance instead of silently changing the port.
+See [`desktop/README.txt`](desktop/README.txt) for packaging caveats and recovery guidance.
 
-See [`desktop/README.txt`](desktop/README.txt).
+## Run locally
 
-## Run the web source locally
-
-The production app is plain HTML, CSS and JavaScript modules. It does not need a frontend bundling step or API credentials.
+The browser app is plain HTML, CSS and JavaScript modules, with no frontend bundler or business-data backend credentials required.
 
 ```sh
 git clone https://github.com/naterohit28/Expense-Calculator.git
@@ -163,243 +176,153 @@ cd Expense-Calculator
 python -m http.server 8790 --bind 127.0.0.1 --directory public
 ```
 
-Open **http://127.0.0.1:8790/** in the browser. If your Python installation uses `python3`, use that command instead. Another static HTTP server is also suitable.
+Open **http://127.0.0.1:8790/**. Use `python3` if required by your installation. Keep the same origin/profile to use the same records. Do not open `index.html` using `file://`.
 
-Use localhost/loopback HTTP for local development and HTTPS for deployment. Do not open `index.html` directly through `file://`; JavaScript module loading, service workers and browser storage do not behave like the hosted app there.
+This static server does not run the Vercel error-report endpoint; reporting is skipped on loopback. Local operation and desktop use therefore differ from hosted diagnostics.
 
-Use a consistent origin and port when you want to retain the same local records. The desktop test server uses its own fixed port/profile and is a separate environment.
+## Tests and validation
 
-## Run the tests
-
-Install a supported Node.js release with npm and install Microsoft Edge, then run from the repository root:
+Install Node.js/npm and Microsoft Edge, then run in the repository root:
 
 ```sh
 npm ci
+node tests/check-version.cjs
 npm test
 ```
 
-The test dependency is locked in `package-lock.json`. The suite uses Playwright with the installed **Microsoft Edge** channel; a Chromium-only Playwright download does not replace that requirement in the current runner.
+Playwright uses the installed **Microsoft Edge** channel. The runner starts an isolated random-port loopback server and fresh browser contexts with synthetic records; it does not use the phone or dedicated desktop database.
 
-The runner starts a temporary server on a random loopback port and uses fresh headless browser profiles with synthetic records. It does not point at the hosted site, the dedicated desktop profile or the phone database. Test scripts reject an external test URL.
-
-| Suite | Coverage |
+| Suite | Current purpose |
 | --- | --- |
-| `tests/regression.cjs` | Backup round trip/rollback, aborted writes, validation, merge conflicts, repeated taps, stale edits, save failures, PIN/focus behavior, 10,000 expenses, pagination and offline use |
-| `tests/attachment-regression.cjs` | Real image upload/edit, delete/Undo, event images, interrupted-bill recovery, backup restoration and parent validation |
-| `tests/idle-recovery.cjs` | Queued-write cancellation, foregrounding during saving, missed history events, delayed bill loading, closed connections, simulated long background/PIN interval and repeated entry/tab cycles |
-| `tests/security-smoke.cjs` | Configured CSP applied to local responses, event saving, theme and language smoke checks |
+| [`tests/check-version.cjs`](tests/check-version.cjs) | Compare package, UI, database/export, service-worker, reporter and desktop-README release numbers; separate from `npm test` |
+| [`tests/regression.cjs`](tests/regression.cjs) | Data validation/rollback, stale and repeated saves, PIN/focus, pagination/offline behavior, vendor suggestions, advances/lenders, menus, outsourcing, resume/habits, contact/WhatsApp links, orders and v3.3.1 refresh/event filters |
+| [`tests/attachment-regression.cjs`](tests/attachment-regression.cjs) | Image editing, deletion/Undo, orphan recovery and backup/restore |
+| [`tests/idle-recovery.cjs`](tests/idle-recovery.cjs) | Transaction cancellation, history fallback, delayed images, reconnection and simulated background/PIN recovery |
+| [`tests/security-smoke.cjs`](tests/security-smoke.cjs) | Configured hosting CSP and basic save/theme/language flows |
+| [`tests/release-update.cjs`](tests/release-update.cjs) | Upgrade from actual v2.4.4 files with old tabs/forms open, record preservation and offline reopening |
 
-Results and screenshots appear under ignored `test-artifacts/`. The v2.4.4 validation run passed **35 checks**. The new upgrade regression adds **8 checks**, including a v2.4.4 upgrade with open forms and database preservation. It uses Git history from commit `bdb6a5a`, so run it from a normal Git clone rather than a source ZIP. A separate real **181-second idle soak** against the compiled desktop server also passed; that soak is not part of `npm test`.
+Use a normal Git clone with history: the upgrade test reads commit `bdb6a5a`. A source ZIP or shallow clone missing that commit is insufficient. Evidence/screenshots go into ignored `test-artifacts/`.
 
-Mobile-sized browser tests and simulated time are not a certification of physical Android sleep, process killing, camera capture, native sharing or storage eviction. Test those on a phone with a retained backup.
+Suite coverage is not a claim that a fresh run passed. Historical v2.4.x counts and the separate 181-second desktop soak are documented in [the historical reliability report](docs/RELIABILITY.md); they do not certify v3.3.1. Browser simulations do not replace testing physical Android sleep/process death, camera capture, contact selection, sharing and storage eviction.
 
-## Build the desktop app
+## Build packages
 
-On Windows, from the repository root:
+### Windows desktop
+
+From Windows PowerShell in the repository root:
 
 ```powershell
 .\desktop\build.ps1 -OutputDirectory C:\Temp\CaterDesk-Desktop
+# Required with the current helper: index.html and sw.js reference this asset,
+# but build.ps1 does not yet include it in its copy list.
+Copy-Item -LiteralPath .\public\error-reporter.js -Destination C:\Temp\CaterDesk-Desktop\app\error-reporter.js
 ```
 
-Choose a dedicated output directory. The script compiles the launcher using the Windows .NET Framework C# compiler and copies only the required web assets and instructions into the package.
+**Current packaging limitation:** omitting `error-reporter.js` causes a missing-script response and can prevent the service worker from completing its precache. Include the file even though the reporter itself skips local hosts. This README documents the workaround; the helper has not been changed as part of this documentation update.
 
-The output contains `CaterDesk-Desktop.exe`, `README.txt` and `app/`. Distribute the whole directory as a ZIP. Do not include browser profile data or phone backups.
+The helper uses the Windows .NET Framework compiler and the CaterDesk icon. Distribute the whole output directory (`CaterDesk-Desktop.exe`, `README.txt`, `app/`), preferably as a ZIP. Do not include Edge profiles, customer backups or credentials. Inspect the bundled app build before naming/publishing the ZIP.
 
-The launcher binds to loopback, serves allowed static app types, rejects non-local Host headers and traversal/dot-file paths, and supplies browser security headers. It does not expose a business-data API or upload records to a server.
+The launcher binds to loopback, validates the Host and requested path, restricts static file types and supplies security headers. It has no business-data upload API and does not host `api/client-error.js`.
 
-## Android build configuration
+### Android
 
-The published APK is generated with Bubblewrap and signed with the owner's existing Android signing key. The working Android project and encrypted local signing credentials are retained outside this Git checkout in the organized local workspace.
-
-For the owner's prepared workspace:
+The generated Bubblewrap project and original signing material live outside this Git checkout. In the owner's prepared workspace:
 
 ```powershell
 cd ..\Android
 .\build-apk.cmd
 ```
 
-That local helper generates/compiles the Android project, signs through the Android SDK tooling and verifies the result. It requires the configured JDK, Android SDK, Node.js/Bubblewrap and access to the correct signing key. Local passwords are loaded from Windows-user-encrypted storage or requested interactively; they must not be pasted into source files.
+The local helper generates/compiles the project, signs through Android SDK tooling and verifies the APK. It needs Node.js/Bubblewrap, JDK, Android SDK and the original signing identity. Passwords are loaded from Windows-user-encrypted local credentials or prompted interactively. Never commit credentials or print them in build instructions.
 
-A fresh Git clone does **not** contain the private signing key, credential file or the locally generated Android project. It can run/test the web source and build the desktop package. Creating a new Android wrapper requires a separately configured Bubblewrap project; updating the existing installed package requires the original signing identity.
+A fresh clone does not include this generated project, keystore or credentials. To create another wrapper, configure Bubblewrap separately; an in-place update of the existing installed package requires the original signer and an increasing Android versionCode. Web-only releases do not require a newly numbered APK. Protect recovery copies of signing material; user-encrypted files are not portable to another Windows account by simple copying.
 
-Keep signing-key and password recovery backups protected. Windows-user-encrypted credentials cannot simply be copied to a different Windows account and expected to decrypt there.
+## Deployment, diagnostics and maintenance
 
-## Repository structure
+Vercel deploys the repository with `public/` as its output directory and the root `vercel.json` for security/cache headers. The separate `api/client-error.js` is a Vercel function; a plain static host needs an equivalent endpoint or a deliberate reporting change. Documentation, tests, private build material and business backups do not belong in `public/`.
+
+### Release process
+
+1. Work on a branch, keep a phone backup and run checks appropriate to the change. Use `npm test` for application changes and `git diff --check` for all changes.
+2. For a web release, update package/lockfile, UI, export/database app version, service-worker release, reporter and desktop version strings together; use a new release cache. Do not bump the IndexedDB schema merely for a UI version.
+3. Run `node tests/check-version.cjs`; it does not validate every C# string, Android wrapper version or distributable binary, so inspect those separately.
+4. Review persistence/import compatibility and external-service behavior, then merge and verify deployment and the running web build.
+5. Build packages only when needed. Verify Android package/versionCode/signer/alignment and desktop file completeness. Upload intended binaries and checksums to GitHub Releases separately from tags.
+6. Update version tables and instructions to match what actually exists. Never replace a historical research snapshot with unverified current claims.
+
+The **Release tag** workflow checks version consistency on PRs and creates `vX.Y.Z` on pushes to `main` if that tag does not exist. It neither creates APK/desktop assets nor runs the full browser suite. Documentation-only commits with an unchanged app version do not create a new app release or move an existing tag.
+
+For website rollback, restore an appropriate prior Vercel deployment, then revert/fix the bad source change so a subsequent deployment does not reintroduce it. Cached clients may still require an update check and safe reload. Check data compatibility before rolling back persistence changes. Use `git switch --detach vX.Y.Z` to inspect a source release.
+
+### Error logs and optional alerts
+
+- In Vercel Logs, look for **`[client-error]`**. Reports are diagnostics, not a ledger of saved transactions.
+- `ALERT_WEBHOOK_URL`, when configured in the deployment environment, forwards error summaries to an incoming webhook. The payload includes `content` and `text` fields for Discord/Slack/Google Chat-style endpoints. No webhook is configured by this documentation update.
+- The handler caps request bodies at 8 KiB, applies best-effort per-IP limits and suppresses repeated alert messages for an hour within an instance. Its in-memory state resets across instance restarts and is not a durable/global rate limiter. A matching Origin check is not user authentication.
+- The **Uptime** workflow is scheduled for every 30 minutes and checks the page title, app script and error endpoint's expected GET response (405). It does not test saves or Android health. Actual runs and notifications depend on workflow state and GitHub notification settings; inspect Actions rather than assuming every failure generated an email.
+
+Keep error/log retention and webhook recipients appropriate for any sensitive text that could reach an exception. The application has no bank integration, payment gateway, WhatsApp bot, in-app OCR or third-party AI inference feature in its current source. WhatsApp/call links, supported browser APIs, hosted diagnostics and web fonts still involve network/platform services.
+
+## Repository and local workspace
 
 ```text
 Expense-Calculator/
-├── README.md                 Usage, setup, backups and maintenance
-├── package.json              Development/test commands
-├── package-lock.json         Locked test dependencies
-├── vercel.json               Deploy public/ and apply security/cache headers
-├── api/client-error.js       Vercel function that logs error reports and sends alerts
-├── .github/workflows/        Release tagging and uptime checks
-├── public/                   Only the files served to app users
-│   ├── index.html            Screens and forms
-│   ├── app.js                UI, navigation, entry forms and reports
-│   ├── db.js                 IndexedDB, transactions, attachments and backups
-│   ├── utils.js              Validation, calculations and constants
-│   ├── i18n.js               Language display
-│   ├── icons.js              UI icon definitions
-│   ├── styles.css            Responsive UI
-│   ├── manifest.json         Web app installation metadata
-│   ├── sw.js                 Offline release cache
-│   ├── register-sw.js        Service-worker registration/update check
-│   ├── error-reporter.js     Sends uncaught errors to api/client-error
-│   ├── icons/                App icons
-│   └── .well-known/assetlinks.json Android certificate association
-├── desktop/                  Windows launcher source, build script and instructions
-├── tests/                    Isolated browser regression suites
+├── README.md
+├── package.json / package-lock.json
+├── vercel.json
+├── api/client-error.js
+├── .github/workflows/           Version tags and uptime checks
+├── public/                     Browser assets, icons and Android asset links
+├── desktop/                    C# launcher, build helper and package README
+├── tests/                      Browser suites and version check
 └── docs/
-    └── RELIABILITY.md         Reliability changes and validation scope
+    ├── RELIABILITY.md           Historical v2.4.4 report
+    └── research/               Dated findings, evidence and evaluation README
 ```
 
-`node_modules/` and `test-artifacts/` are local generated directories and are not committed.
+The owner's local workspace uses `Apps/` for binaries, `Project/Web/` for this checkout, `Project/Android/` for generated/private Android material and `Backups/` for retained data/older copies. A separate `digivenue-platform/` project is unrelated. This arrangement is an owner-specific convenience, not a fresh-clone requirement or a guarantee that local binaries match current source.
 
-## Organized local workspace
-
-The owner's Downloads workspace is organized separately from the Git repository:
-
-```text
-Expense-Calculator-main/
-├── START-HERE.txt
-├── Apps/
-│   ├── CaterDesk-v3.0.0.apk
-│   └── Desktop/               Extracted Windows test app
-├── Project/
-│   ├── Web/                  This Git checkout
-│   └── Android/              Local Android build/signing project
-├── Backups/
-│   ├── Business-Data/        Original starting-data JSON
-│   ├── Old-App-Copies/       Older copies with their Git history preserved
-│   ├── Older-APKs/
-│   ├── Android-Build-Outputs/
-│   ├── Legacy-Pages/
-│   └── Test-Results-v2.4.4/
-└── digivenue-platform/        Separate project; left untouched
-```
-
-**Commit from `Project/Web`, not from the outer workspace.** `Apps`, `Backups`, the private Android signing files and the unrelated project are not part of this repository. Public APK/desktop downloads belong in GitHub Releases rather than being mixed into the web source.
-
-The source paths in the local launch configuration and Android signing manifest were updated after tidying. Git history, the current commit, original business JSON, signing key, encrypted credentials and current APK were preserved and checked.
-
-## Deployment and release checklist
-
-The current hosted site deploys from this repository's main branch on Vercel. Vercel's output directory is explicitly set to `public/`. Keep the Vercel project root at the repository root so `vercel.json` is read. Development files, tests and documentation are outside the public output. The outer local folder organization does not change the deployed app URLs.
-
-1. Keep a phone backup before testing a new release.
-2. Make the change on a branch and run the appropriate checks, including `npm test` for application changes and `git diff --check`.
-3. For an application release, update the UI/export/package version together and use a new service-worker cache name. Do not change database schema version merely for a UI release.
-4. Review migration compatibility, attachments and restore behavior if persistence changes.
-5. Build and verify the Android APK with an increasing versionCode and the intended signer; confirm the site's certificate association.
-6. Build the desktop package from the same source. Exclude credentials, browser profiles, backups and test data.
-7. Merge the reviewed change, confirm deployment status and verify the live build/files.
-8. Publish versioned APK/desktop assets and checksums through GitHub Releases.
-9. Close old same-site clients and reopen; confirm the new web build in Settings without clearing data.
-
-`node tests/check-version.cjs` confirms that `package.json`, `app.js`, `db.js`, `sw.js`, `error-reporter.js` and the desktop README carry the same release number. The **Release tag** workflow runs it on every pull request.
-
-### Releases and rollback
-
-When a release reaches `main`, the **Release tag** workflow tags that commit as `vX.Y.Z` (from `package.json`) unless the tag already exists. Every live release therefore has a tag to return to.
-
-To roll back the website, open the Vercel project, go to **Deployments**, pick the last good deployment and choose **Instant Rollback**. The Android app loads the hosted site, so it follows. Then revert the bad change on `main` (or fix forward) so the next deploy does not bring the problem back. To inspect what any release contained, run `git checkout vX.Y.Z`.
-
-### Error reporting and alerts
-
-`public/error-reporter.js` sends uncaught errors from the hosted app to `api/client-error.js`, a Vercel function. Each report holds only the error text, stack, page path, release and browser; event, expense, vendor and client records are never sent. Reports are skipped on `localhost`, `127.0.0.1` and `file://`, so local tests and the desktop app send nothing. A phone sends at most 10 distinct errors per session, and errors raised while offline are sent when it reconnects.
-
-- **Read errors:** Vercel project → **Logs**, filter for `[client-error]`.
-- **Get alerts:** create an incoming webhook in Discord, Slack or Google Chat and add it in Vercel → **Settings** → **Environment Variables** as `ALERT_WEBHOOK_URL`, then redeploy. Each new error message is posted once per hour at most.
-- **Uptime:** the **Uptime** workflow checks the live page, `app.js` and the error endpoint every 30 minutes. GitHub emails the repository owner when a run fails. GitHub pauses scheduled workflows after 60 days without repository activity; re-enable it from the **Actions** tab if that happens.
+Commit from this Git checkout, not the outer Downloads folder. Generated `node_modules/`, `test-artifacts/`, executables, APKs, archives, signing files and secrets are excluded from source control. Treat all business exports—including renamed/custom backup files—as private, regardless of whether their name matches an ignore pattern.
 
 ## Troubleshooting
 
-| Symptom | What to check |
+| Symptom | Action |
 | --- | --- |
-| Save waits or reports busy storage | Let the operation finish/cancel. Close other app windows that may hold a transaction, then retry the retained form. Do not repeatedly clear browser data. |
-| App looks frozen after returning | Check for a visible PIN/confirmation screen; finish it. If needed, retain a backup and reopen the app. Report the build, screen, action, idle duration and exact error text. |
-| Settings shows an older build | Open online to download the update, save your entry, then reopen once more. In v2.4.6+, use Check for app updates and Reload saved app. Do not clear storage. |
-| Records appear missing in another browser/desktop | Check the original origin and browser profile. Environments do not synchronize automatically. Import a backup copy into the intended test environment. |
-| A backup is rejected | Keep the file, read the error and verify its format, IDs, dates, amounts and references. Do not delete current records to bypass validation. |
-| “Changed in another window” | Close the stale form, refresh the records and enter the change again. |
-| An event/vendor cannot be deleted | It has linked accounting entries. Resolve those individually; deletion guards preserve balances/history. |
-| Forgotten PIN | The privacy-help screen cannot remove the PIN without verification. Keep original storage intact; a previous export can be restored in a separate profile. |
-| Desktop EXE cannot find app files | Extract the whole ZIP and keep `app/` beside the EXE. |
-| Desktop cannot bind port 19891 | Close the existing desktop test server through its tray menu; do not change ports casually. |
-| APK update is refused | Verify package name, increasing versionCode and matching signing certificate. Avoid uninstalling before checking backups. |
+| Android App info and Settings show different versions | Wrapper and web versions differ by design. Settings identifies the running UI; use the version table above |
+| Settings shows an older web build | Open online, save/close entries, check updates and reload; or use header refresh when idle. Do not clear data |
+| Records look missing in another environment | Check original domain, scheme, port, browser provider and profile. Import a backup copy only into the intended environment |
+| Save waits or reports busy storage | Let the transaction finish/cancel, then retry the retained form. Avoid repeated Save taps or storage clearing |
+| App seems frozen after returning | Look for PIN/confirmation overlays; report build, action, duration and error text. Retain storage and backups |
+| Expense/vendor choice looks unexpected | Check category, item and history-based suggestions. Manual choices win; edit the entry if it is wrong |
+| Delivered order has no recorded expense | A normal delivery opens a form; save the actual bill. Whole-event outsourced charges may already be recorded |
+| An order says Sent but WhatsApp was cancelled | Status is locally maintained, not a WhatsApp delivery acknowledgement; review/update it |
+| Contacts button is unavailable | Browser API support varies. Enter details manually; only an explicitly selected contact is requested where supported |
+| Backup is rejected or stale edit is blocked | Keep the original file/records, read the validation error or reopen the current record; do not bypass checks blindly |
+| Event/vendor cannot be deleted | Linked accounting history must be resolved individually; deletion guards preserve balances |
+| Forgotten PIN | Keep storage intact. Privacy-help is not a PIN bypass; restore an existing export into a separate profile if needed |
+| Desktop still shows an older build | Exit the old tray server and use a complete newly built package. Website updates do not replace desktop bundle files |
+| Desktop missing-script/offline-install error | Check `app/error-reporter.js` exists; use the documented build workaround |
+| Desktop cannot bind port 19891 | Exit the conflicting test server normally; changing the port changes the storage origin |
+| APK update is refused | Check signer, package and increasing versionCode; do not uninstall before protecting records |
+| No hosted error logs/alerts | Confirm the Vercel function/deployment and optional environment variable; local reporting is intentionally skipped |
 
-When reporting a bug, include the app build, Android/browser or Windows/Edge version, reproduction steps and error text. Use synthetic/redacted examples; do not publish customer backups or private bills in a public issue.
+Include the web build, wrapper/browser or desktop package version, steps and error text in bug reports. Use synthetic/redacted examples; never attach customer backups or private bills to public issues.
 
-## Security and current limits
+## Release history
 
-- The optional PIN is a **privacy screen, not business-data encryption**. Export is blocked while locked, but a person with sufficient same-origin/local access is outside that protection model.
-- There is no cloud account recovery, automatic cloud backup, tenant isolation or multi-user server authorization in this local-data release.
-- Data retention depends on the device/browser profile; keep independent backups.
-- Reports reflect records entered into the app. Missing costs, incorrect allocations or incomplete payments affect the figures. Event-level recorded profit is not automatically a complete company accounting statement.
-- The desktop launcher is intended for local testing and uses an independent profile.
-- No third-party AI, WhatsApp automation, bank reconciliation or payment-gateway integration is enabled in this version.
-- Hosting headers improve defense in depth; they are not a security certification or a substitute for careful handling of exported records and signing material.
+This is a short source-feature history, not a list of available binary downloads.
 
-Private signing keys, passwords, encrypted credential files, environment secrets, business backups and generated executables are excluded from source control. Public release assets contain only the intended distributable binaries/package and verification material.
-
-### Update troubleshooting (v2.4.7)
-
-The Android APK wraps the hosted web app; its package version can differ from the web build shown in Settings. Updates now activate while other tabs remain open. Existing open entries keep their original release until navigation, while a reload loads the latest installed release without clearing IndexedDB. Settings offers **Check for app updates**, followed by an explicit **Reload saved app** action, blocked while a form or save is active.
-
-If a previous desktop server is already running, the launcher now reports the conflict instead of silently opening the old build. Exit its tray server and launch the current executable. The data profile and local port remain unchanged.
-
-### Expense entry improvements (v2.4.7)
-
-Expense receipt icons now use the Indian rupee symbol. The vendor picker groups exact category/subcategory matches first, same-category suppliers next, then other vendors. Suggestions refresh with category and subcategory changes, preserving any explicit selection and existing expense vendor. No vendor is assigned automatically.
-
-### Version 3.0.0
-
-- **Pending first:** the Expenses tab opens with "To pay" (unpaid credit, overdue first, then by pay-by date, undated last), each with a one-tap Pay. Home's "Pay vendors" totals everything owed.
-- **Usual vendors:** after choosing an item, one-tap buttons suggest the vendors who usually supply it (listed speciality or past entries). Nothing is chosen automatically. Most-recorded items appear first.
-- **Other people:** credit can be owed to someone who is not a supplier (a lender, or someone who paid a bill for you). They are listed separately under Vendors and repaid like a vendor.
-- **Booking advance:** the new-event form takes an optional advance, saved with the event as its first payment received.
-- **Events newest first**, and **Staff Tips / Vendor Staff Tips** items under Labour.
-- **Menus:** 6 buffet and 7 banana-leaf packages from the rate card. Menu + guests fill the bill from the guest slab and the expected cost from that menu's past cost per plate; both stay editable. Reports show cost per plate by menu.
-- **Cost checklist:** each event lists usual costs from the latest similar event that are not recorded yet, one tap from a pre-filled form (the amount is never guessed). Home flags recent events with missing usual costs.
-- **Outsourced events:** another caterer does the whole event; their charge is saved as a credit expense to them and the event shows your commission. Outsourced events stay out of cost-per-plate figures and missing-cost warnings.
-
-### Version 3.0.1
-
-When the app starts and finds a newer release, it switches to it straight away (within the first 20 seconds, only with no form, photo or save open, and at most once per release). Otherwise it waits for Settings › Reload saved app or the next start, as before. The Android APK is unchanged (v3.0.0, versionCode 9); it loads the hosted web app.
-
-### Version 3.1.0
-
-- **Picks up where you left off:** the installed app reopens the screen you last used (within 12 hours), and an expense being typed when the app closed is offered back ("Continue").
-- **Vendor first:** choosing a vendor fills their usual item and how you usually pay them (now or credit, and mode). Anything picked by hand is kept.
-- **Cost vs usual:** each event shows its cost per plate by category against the usual for its menu (or type), quietly as +/- percentages. Reports list "Where costs ran higher".
-- **Menu profit ranking:** Reports rank menus by profit per plate with margin.
-- **Next 30 days:** Home shows money to collect, to pay and the net for the coming 30 days.
-
-### Version 3.1.1
-
-Expense items added from the menu cards (no duplicates): Banana Leaves, Coconut, Papad / Fryums, Farsan / Namkeen (Raw Material); Soup Station, Barbeque / Tandoor, Kulfi / Ice Gola, Fruit Counter, Salad Counter, Fusion Counter (Live Counter); Nadaswaram / Music, Thamboolam / Return Gift Bags (Operations).
-
-### Version 3.2.0
-
-- **Error reporting:** uncaught errors from the hosted app now reach the Vercel logs, with optional Discord, Slack or Google Chat alerts. No business records are sent.
-- **Uptime checks:** the live app is checked every 30 minutes; failures email the repository owner.
-- **Release tags:** every release merged to `main` is tagged automatically, and pull requests fail if release numbers disagree.
-### Version 3.2.1
-
-Call and WhatsApp buttons for clients (event page; WhatsApp becomes a payment reminder while money is pending) and for vendors and other people. When you owe a vendor, "Share dues on WhatsApp" fills in their account and unpaid items. Nothing is sent until you press send in WhatsApp.
-
-Also: **Contacts** buttons next to the client mobile and vendor phone fields fill the name and number from the phone contact list (Android; only the chosen contact is shared).
-
-### Version 3.3.0
-
-- **Event menu:** paste the dishes agreed with the client (from WhatsApp, or from a photo via Google Lens → Copy text). Numbering, bullets, headings and duplicates are cleaned up.
-- **Dishes → counters:** each dish is matched to the live counter that supplies it (chaat, dosa, Chinese, pizza, soup, tandoor, ice cream, kulfi, paan, desserts…); the rest are "Our kitchen". Tap a dish to change it — the app remembers your choice for future menus.
-- **Vendor orders:** one order per counter with the usual vendor, plates (guests), date, time, venue and items, sent on WhatsApp in one tap. Status Sent → Confirmed → Delivered; Delivered opens the expense form for that counter and vendor. Home shows deliveries due today and tomorrow.
-
-### Version 3.3.1
-
-- Outsourced events: "Done by" offers **+ New vendor**, returning to the event form with the new caterer picked.
-- **Refresh:** a refresh button in the header, and pull down at the top of any page, reload records and check for an app update.
-- **Outsourced events and menus:** the whole menu becomes one order to the caterer doing the event ("Full event catering for N guests"); no per-counter orders, and Delivered does not add their charge a second time.
-- **Expenses by event:** an event picker on the Expenses tab shows one event's expenses, its unpaid credit, and adds new ones to that event.
+| Version | Main changes |
+| --- | --- |
+| 3.3.1 | Add outsourced caterer inline; header/pull refresh; whole-event outsourced menu orders without repeat charges; event-filtered expenses |
+| 3.3.0 | Paste/clean dishes, remember counter mapping, prepare vendor WhatsApp orders and track delivery |
+| 3.2.1 | Client/vendor calls and WhatsApp messages, dues summaries and supported contact picking |
+| 3.2.0 | Hosted error reporting, optional alerts, scheduled uptime and version/tag automation |
+| 3.1.1 | Additional expense heads from menu cards |
+| 3.1.0 | Last-screen resume, unfinished expense continuation, vendor habits, usual-cost comparison, menu profit ranking and 30-day cash view |
+| 3.0.1 | Guarded early-start automatic web updates |
+| 3.0.0 | Pending-first credit, usual vendors, other payees, booking advance, menus, cost checklist and outsourced-event commission |
+| 2.4.7 | ₹ receipt icon and category/subcategory vendor priority |
+| 2.4.6 | Stale-release update fix, safe reload controls and old desktop server detection |
+| 2.4.5 | CaterDesk branding |
+| 2.4.4 | Idle/save and attachment recovery; desktop test package; see historical reliability report |
