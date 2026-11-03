@@ -9,12 +9,15 @@ export const EXPENSE_HEADS = {
     'Grocery – किराणा','Other Grocery – इतर किराणा','Vegetable – भाजी','Fruits',
     'Juice – ज्यूस','Water – पाणी','Ice + Milk – बर्फ + दूध','Bread – ब्रेड',
     'Pickle – लोणचे','Sweet – मिठाई','Dry Fruits','Spices / Masala',
-    'Oil / Ghee','Paneer / Dairy'
+    'Oil / Ghee','Paneer / Dairy',
+    'Banana Leaves – केळीची पाने','Coconut – नारळ','Papad / Fryums – पापड','Farsan / Namkeen – फरसाण'
   ],
   'Live Counter': [
     'Chaat – चाट','Starter – स्टार्टर','Dosa – डोसा','Chinese – चायनीज',
     'Ice Cream – आईस्क्रीम','Paan Mukhwas – पान मुखवास','Counter Setup – काउंटर',
-    'Pav Bhaji Counter','Pizza / Italian Counter','Dessert Counter','Beverage Counter'
+    'Pav Bhaji Counter','Pizza / Italian Counter','Dessert Counter','Beverage Counter',
+    'Soup Station – सूप','Barbeque / Tandoor – तंदूर','Kulfi / Ice Gola – कुल्फी','Fruit Counter – फळ काउंटर',
+    'Salad Counter – सॅलड','Fusion Counter – फ्यूजन'
   ],
   'Labour': [
     'Rojiya Labour – रोजीया मजूर','Boys – बॉईज','Ghati – घाटी','Cook – स्वयंपाकी',
@@ -26,7 +29,8 @@ export const EXPENSE_HEADS = {
     'Transport – वाहतूक','Fuel / Diesel','Gas / Cylinder – सिलिंडर',
     'Rented Material – भाड्याचे साहित्य','Disposable – डिस्पोजेबल',
     'Packaging Material','New Utensils – नवीन भांडी','Equipment Repair',
-    'Generator / Power','Ice Blocks','Water Tanker','Outsourced Event – आउटसोर्स कार्यक्रम'
+    'Generator / Power','Ice Blocks','Water Tanker','Outsourced Event – आउटसोर्स कार्यक्रम',
+    'Nadaswaram / Music – सनई','Thamboolam / Return Gift Bags – तांबूलम'
   ],
   'Admin': [
     'Royalty – रॉयल्टी','Office Expense','Phone / Internet',
