@@ -4,7 +4,7 @@
 
 An offline-first app for catering events, expenses, vendor credit, client collections, menus and vendor orders. Business records stay in the device's browser storage; the hosted app also sends limited error diagnostics to its server.
 
-**Current source and hosted web build: v3.3.1.** Documentation checked on **3 November 2026**.
+**Current source and hosted web build: v3.4.0.** Documentation checked on **5 November 2026**.
 
 [Open the app](https://expense-calculator-kohl.vercel.app/) · [Download published packages](https://github.com/naterohit28/Expense-Calculator/releases) · [Historical reliability report](docs/RELIABILITY.md) · [Competitor/name research and Claude evaluation notes](docs/research/README.md) · [Report an issue](https://github.com/naterohit28/Expense-Calculator/issues)
 
@@ -31,16 +31,16 @@ The **APK wrapper version, hosted web version and bundled desktop version are in
 
 | Component | Verified state on 3 November 2026 | Meaning |
 | --- | --- | --- |
-| Source and hosted web app | **3.3.1** | Current UI, data/export version, service worker and error reporter |
+| Source and hosted web app | **3.4.0** | Current UI, data/export version, service worker and error reporter |
 | Service-worker release cache | `flavor-fusion-v2-cache-v25` | Installed web assets; this number is not the database schema version |
-| Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** | APK package inspected locally; launches the hosted app, which can run 3.3.1 |
+| Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** | APK package inspected locally; launches the hosted app, which can run 3.4.0 |
 | Android requirements for that local wrapper | min API **24**, target API **36** | Android 7.0+ and a compatible browser provider |
 | Latest GitHub Release with downloadable binaries | **2.4.7** | APK and desktop ZIP; later source tags do not imply newer binaries were uploaded |
 | Desktop package currently in the owner's `Apps/Desktop` folder | **2.4.7** | A static older bundle, not the current source build |
-| Desktop launcher source/instructions | **3.3.1** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
+| Desktop launcher source/instructions | **3.4.0** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
 | IndexedDB schema | **4** | Kept separate from application version changes |
 
-Do not relabel an older package as 3.3.1. Use the [release assets](https://github.com/naterohit28/Expense-Calculator/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
+Do not relabel an older package as 3.4.0. Use the [release assets](https://github.com/naterohit28/Expense-Calculator/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
 
 ## Current features
 
@@ -49,6 +49,7 @@ Do not relabel an older package as 3.3.1. Use the [release assets](https://githu
 - Create/edit events with date, time, venue, guest count, billed amount, expected cost, menu package and notes. Events are listed newest first.
 - Record an optional booking advance as the event's first client payment; track subsequent collections and the remaining balance.
 - Menu-package rates and guest slabs can suggest billing. Historical costs for that menu can suggest expected cost. Values remain editable; these are estimates based on recorded data.
+- A **quote helper** under the bill shows what that menu (or event type) usually costs you per plate from your own events, the margin at the bill entered, the lowest per-plate price for a 30% margin, and the average you actually billed on that menu against the card rate.
 - Mark whole events outsourced to another caterer. Their charge is recorded as vendor credit and the event shows commission; outsourced work is excluded from usual per-plate comparisons and missing-cost suggestions.
 - Add a new outsourced caterer from **Done by → + New vendor**, then return to the event form with that caterer selected.
 
@@ -60,6 +61,7 @@ Do not relabel an older package as 3.3.1. Use the [release assets](https://githu
 - Vendor suggestions use saved specialty and past purchases. Usual-vendor buttons offer quick choices; all vendors remain available and none is silently selected solely because it ranks first.
 - Choosing a vendor on a new expense can suggest its usual item and payment habits. Fields already chosen manually and existing expense records are preserved.
 - Track suppliers separately from **other people**, such as lenders or people who paid a bill on your behalf, and record repayments.
+- **Labour sheet** per event: worker type × count × shift (morning, evening, night, full day) × rate. Rates are remembered per type and shift, the last sheet can be copied, and saving keeps one Labour expense per worker type in step (paid now, or credit to a labour contractor).
 - Save event photographs and bill images; snap bills as drafts and complete their details later. Expense lists paginate at 100 rows while totals cover the matching records.
 
 ### Menus and vendor orders
@@ -77,13 +79,15 @@ To extract text from a menu photograph, use an external tool such as Google Lens
 ### Reports and convenience
 
 - Event costs, recorded profit/margin, per-plate figures, menu profit ranking and category costs versus usual costs.
+- **Vendor price creep**: per vendor and item, cost per plate at the latest event against that vendor's earlier events (rises of 8% or more), on the vendor page and in Reports, with an optional prepared WhatsApp message to discuss the rate.
 - A cost checklist uses a similar past event to flag usual items not yet recorded; it does not invent expense amounts. Home flags recent events with missing costs.
 - Home's next-30-days view summarizes projected collections, payments and net cash from entered records; it is not a bank balance.
-- Call/WhatsApp links for clients, vendors and other people; prepared client-payment reminders and vendor-dues messages. Nothing is sent automatically.
+- Call/WhatsApp links for clients, vendors and other people; prepared client-payment reminders, client payment receipts and vendor-dues messages. Nothing is sent automatically.
 - Contact selection on supported browsers can fill a chosen name and number. Availability depends on the browser/device; manual entry remains available.
 - English, Marathi and bilingual display; light/dark themes; an optional four-digit privacy PIN.
 - In installed standalone mode, reopen a last-used screen from within 12 hours. An eligible unsaved new-expense snapshot from within 24 hours can be offered with **Continue**. This is not a committed entry or a full backup.
-- Header refresh and pull-down refresh at the top of a page reload local records and check for a newer web release.
+- Header refresh and pull-down refresh at the top of a page reload local records and check for a newer web release, quietly unless an update is waiting.
+- Frosted-glass look in the same teal/cream palette (solid where the browser lacks blur or reduced transparency is requested); **New event** is the full-width main action on Home.
 
 Reports reflect what was entered. Missing spending, incorrect guest counts or incomplete payments affect the figures; recorded event profit is not a complete statutory/company accounting statement.
 
@@ -141,17 +145,17 @@ The APK is a **Trusted Web Activity** wrapper around the hosted site. It does no
 1. Keep a business-data backup.
 2. Obtain the intended APK from its actual release assets or the owner's prepared local package. Install over the existing app with the same package/signing identity.
 3. Open online to download updates. Check the **web build in Settings**, not just Android App info.
-4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **3.3.1**.
+4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **3.4.0**.
 
 A newer web release may reload automatically during the first 20 seconds of startup when no active form/save/overlay prevents it, at most once per release per session. Otherwise it waits for a later start or explicit reload. Refresh can also switch versions when no form/save is open. Service-worker cache mappings preserve matching assets for older open pages until navigation.
 
 Do not uninstall or clear browser/site storage to force an update. If Android rejects an APK, check package, versionCode and signing certificate before proceeding. The public certificate association is [`public/.well-known/assetlinks.json`](public/.well-known/assetlinks.json).
 
-The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **3.3.1**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
+The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **3.4.0**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
 
 ## Windows desktop testing
 
-Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v3.3.1 package.
+Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v3.4.0 package.
 
 1. Extract the entire ZIP; keep `app/` beside `CaterDesk-Desktop.exe`.
 2. Run the EXE. Microsoft Edge opens an app window; a tray icon provides **Open CaterDesk**, storage information and **Exit test server**.
@@ -195,7 +199,7 @@ Playwright uses the installed **Microsoft Edge** channel. The runner starts an i
 | Suite | Current purpose |
 | --- | --- |
 | [`tests/check-version.cjs`](tests/check-version.cjs) | Compare package, UI, database/export, service-worker, reporter and desktop-README release numbers; separate from `npm test` |
-| [`tests/regression.cjs`](tests/regression.cjs) | Data validation/rollback, stale and repeated saves, PIN/focus, pagination/offline behavior, vendor suggestions, advances/lenders, menus, outsourcing, resume/habits, contact/WhatsApp links, orders and v3.3.1 refresh/event filters |
+| [`tests/regression.cjs`](tests/regression.cjs) | Data validation/rollback, stale and repeated saves, PIN/focus, pagination/offline behavior, vendor suggestions, advances/lenders, menus, outsourcing, resume/habits, contact/WhatsApp links, orders, v3.3.1 refresh/event filters and v3.4 quote helper, receipts, price creep and labour sheets |
 | [`tests/attachment-regression.cjs`](tests/attachment-regression.cjs) | Image editing, deletion/Undo, orphan recovery and backup/restore |
 | [`tests/idle-recovery.cjs`](tests/idle-recovery.cjs) | Transaction cancellation, history fallback, delayed images, reconnection and simulated background/PIN recovery |
 | [`tests/security-smoke.cjs`](tests/security-smoke.cjs) | Configured hosting CSP and basic save/theme/language flows |
@@ -203,7 +207,7 @@ Playwright uses the installed **Microsoft Edge** channel. The runner starts an i
 
 Use a normal Git clone with history: the upgrade test reads commit `bdb6a5a`. A source ZIP or shallow clone missing that commit is insufficient. Evidence/screenshots go into ignored `test-artifacts/`.
 
-Suite coverage is not a claim that a fresh run passed. Historical v2.4.x counts and the separate 181-second desktop soak are documented in [the historical reliability report](docs/RELIABILITY.md); they do not certify v3.3.1. Browser simulations do not replace testing physical Android sleep/process death, camera capture, contact selection, sharing and storage eviction.
+Suite coverage is not a claim that a fresh run passed. Historical v2.4.x counts and the separate 181-second desktop soak are documented in [the historical reliability report](docs/RELIABILITY.md); they do not certify v3.4.0. Browser simulations do not replace testing physical Android sleep/process death, camera capture, contact selection, sharing and storage eviction.
 
 ## Build packages
 
@@ -314,6 +318,7 @@ This is a short source-feature history, not a list of available binary downloads
 
 | Version | Main changes |
 | --- | --- |
+| 3.4.0 | Glass design and full-width New event; quiet refresh; quote helper with actually-billed rates; client payment receipts; vendor price creep; labour sheet with shifts and remembered rates |
 | 3.3.1 | Add outsourced caterer inline; header/pull refresh; whole-event outsourced menu orders without repeat charges; event-filtered expenses |
 | 3.3.0 | Paste/clean dishes, remember counter mapping, prepare vendor WhatsApp orders and track delivery |
 | 3.2.1 | Client/vendor calls and WhatsApp messages, dues summaries and supported contact picking |

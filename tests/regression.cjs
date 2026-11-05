@@ -248,5 +248,42 @@ await test('v3.3.1: new caterer on the go, outsourced menu, expenses by event, r
  await db(async d=>d.putOne('expenses',{id:'x3',evId:'own',cat:'Labour',head:'Cook – स्वयंपाकी',amt:2222,date:'2026-12-01',pay:'paid'}));
  await p.locator('#hdr-refresh').click();await p.waitForTimeout(1500);assert.match(await p.locator('#exp-list').innerText(),/₹2,222/);
 });
+await test('v3.4: quote helper, receipt, price creep, labour sheet, quiet refresh, big New event',async()=>{
+ const H=await p.evaluate(async()=>(await import('./utils.js')).EXPENSE_HEADS);const dosa=H['Live Counter'].find(h=>h.startsWith('Dosa')),cook=H.Labour.find(h=>h.startsWith('Cook')),boys=H.Labour.find(h=>h.startsWith('Boys'));
+ await seed({...empty(),vendors:[{id:'mur',name:'Murugan',cat:'Live Counter',phone:'9123456780'}],
+  events:[{...ev,id:'g1',name:'Golden One',menu:'golden',guests:100,billing:85000,date:'2026-08-01'},{...ev,id:'g2',name:'Golden Two',menu:'golden',guests:200,billing:170000,date:'2026-09-01',mobile:'9876543210'}],
+  expenses:[{id:'a',evId:'g1',cat:'Live Counter',head:dosa,amt:5000,date:'2026-08-01',pay:'paid',venId:'mur'},{id:'b',evId:'g1',cat:'Raw Material',head:'Grocery – किराणा',amt:45000,date:'2026-08-01',pay:'paid'},
+            {id:'c',evId:'g2',cat:'Live Counter',head:dosa,amt:12000,date:'2026-09-01',pay:'paid',venId:'mur'},{id:'d',evId:'g2',cat:'Raw Material',head:'Grocery – किराणा',amt:88000,date:'2026-09-01',pay:'paid'}],
+  cPays:[{id:'cp1',evId:'g2',amt:50000,date:'2026-08-20',mode:'UPI'}]});
+ // Big New event: full width above the other three
+ const [ne,ae]=await p.locator('.qa-grid > .qa').evaluateAll(b=>b.slice(0,2).map(x=>x.getBoundingClientRect().width));assert(ne>ae*2.5,'New event spans the row');
+ // Quiet refresh: no "Up to date" message
+ await p.locator('#hdr-refresh').click();await p.waitForTimeout(1500);assert(!/Up to date/.test(await p.locator('#toast').innerText()));
+ // Quote helper: Golden costs (50000+100000)/300 = 500/plate
+ await p.locator('#n-events').click();await p.locator('#fab').click();await p.waitForSelector('#ev-modal.active');
+ await p.locator('#ev-menu').selectOption('golden');await p.locator('#ev-guests').fill('250');
+ const quote=await p.locator('#ev-quote').innerText();assert.match(quote,/Golden usually costs you ₹500\/plate \(2 events\)/);assert.match(quote,/margin is about 44%/);assert.match(quote,/quote at least ₹715\/plate/);assert.match(quote,/Card ₹900 · you actually billed ₹850\/plate on average \(2 events\)/);
+ await p.locator('#ev-modal [data-action="close-modal"]').click();await p.waitForTimeout(150);
+ // Receipt: WhatsApp link on the payment, with the account so far
+ await p.locator('#ev-list [data-action="evdetail"]',{hasText:'Golden Two'}).click();await p.waitForSelector('#tab-evdetail .detail-name');
+ const rec=decodeURIComponent(await p.locator('a[aria-label="Send receipt on WhatsApp"]').getAttribute('href'));assert.match(rec,/^https:\/\/wa\.me\/919876543210\?text=Namaste! Payment receipt for Golden Two[\s\S]*Received: ₹50,000[\s\S]*Paid so far: ₹50,000\nBalance: ₹1,20,000/);
+ // Labour sheet: rates remembered, saved as Labour expenses, edits update them in place
+ await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');
+ const r0=p.locator('#lab-rows [data-lab="0"]');await r0.locator('[data-k="role"]').selectOption(cook);await r0.locator('[data-k="count"]').fill('3');await r0.locator('[data-k="rate"]').fill('1200');
+ await p.locator('#btn-lab-add').click();const r1=p.locator('#lab-rows [data-lab="1"]');await r1.locator('[data-k="role"]').selectOption(boys);await r1.locator('[data-k="count"]').fill('10');await r1.locator('[data-k="shift"]').selectOption('e');await r1.locator('[data-k="rate"]').fill('500');
+ assert.equal(await p.locator('#lab-total').innerText(),'₹8,600');await p.locator('#btn-save-lab').click();await p.waitForTimeout(400);
+ let lab=(await db(async d=>d.getAll('expenses'))).filter(x=>x.evId==='g2'&&x.cat==='Labour');assert.equal(lab.length,2);assert.equal(lab.find(x=>x.head===cook).amt,3600);
+ assert.match(await p.locator('#labour-card').innerText(),/Total · 13 workers[\s\S]*₹8,600/);
+ await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');await p.locator('#lab-rows [data-lab="1"] [data-lab-del]').click();await p.locator('#lab-rows [data-lab="0"] [data-k="count"]').fill('4');await p.locator('#btn-save-lab').click();await p.waitForTimeout(400);
+ lab=(await db(async d=>d.getAll('expenses'))).filter(x=>x.evId==='g2'&&x.cat==='Labour');assert.equal(lab.length,1,'removed worker type removed');assert.equal(lab[0].amt,4800,'updated in place');
+ // Rate remembered on another event
+ await p.locator('#n-events').click();await p.locator('#ev-list [data-action="evdetail"]',{hasText:'Golden One'}).click();await p.waitForSelector('[data-action="lab-edit"]');await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');
+ await p.locator('#lab-rows [data-lab="0"] [data-k="role"]').selectOption(boys);await p.locator('#lab-rows [data-lab="0"] [data-k="role"]').selectOption(cook);
+ assert(!(await p.locator('#btn-lab-copy').isHidden()),'copy from last event offered');await p.locator('#lab-modal [data-action="close-modal"]').click();await p.waitForTimeout(150);
+ // Price creep: Murugan dosa 50/plate → 60/plate = +20%
+ await p.locator('#n-vendors').click();await p.locator('#ven-list [data-action="vendetail"]',{hasText:'Murugan'}).click();await p.waitForSelector('#price-check');
+ assert.match(await p.locator('#price-check').innerText(),/Dosa[\s\S]*₹60\/plate now · ₹50 before \(1 event\)[\s\S]*\+20%/);
+ await p.locator('#n-summary').click();await p.locator('#tab-summary [data-period-seg] [data-id="all"]').click();assert.match(await p.locator('#price-creep').innerText(),/Murugan · Dosa[\s\S]*\+20%/);
+});
 results.push({name:'unexpected page errors',pass:errors.length===0,errors});fs.writeFileSync('test-artifacts/repair-test-results.json',JSON.stringify(results,null,2));await browser.close();console.log(JSON.stringify(results,null,2));if(results.some(r=>!r.pass))process.exitCode=1;
 })().catch(e=>{console.error(e);process.exitCode=1});

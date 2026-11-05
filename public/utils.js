@@ -302,6 +302,34 @@ export function costVsUsual(ev, events, costs) {
   return { basis, n: peers.length, guests, rows };
 }
 
+/* Vendor price creep: for each vendor and item, cost per plate at their latest event against
+   their average per plate at earlier events. Per plate, so a bigger event is not a price rise.
+   Needs guest counts; outsourced events are left out. Flags rises of 8% or more. */
+export function priceCreep(expenses, events, minPct = 8) {
+  const evs = new Map(events.filter(e => Number(e.guests) > 0 && !e.outsourced).map(e => [e.id, e]));
+  const sums = new Map();   // venId|head → Map evId → amount
+  for (const x of expenses) {
+    if (!x.venId || !x.head || !evs.has(x.evId)) continue;
+    const k = x.venId + '|' + x.head;
+    if (!sums.has(k)) sums.set(k, new Map());
+    const m = sums.get(k); m.set(x.evId, (m.get(x.evId) || 0) + (Number(x.amt) || 0));
+  }
+  const out = [];
+  for (const [k, byEv] of sums) {
+    const rows = [...byEv].map(([evId, amt]) => ({ ev: evs.get(evId), pp: amt / Number(evs.get(evId).guests) }))
+      .sort((a, b) => a.ev.date.localeCompare(b.ev.date));
+    if (rows.length < 2) continue;
+    const latest = rows.at(-1), before = rows.slice(0, -1);
+    const avg = before.reduce((s, r) => s + r.pp, 0) / before.length;
+    const pct = Math.round((latest.pp - avg) / avg * 100);
+    if (pct >= minPct) {
+      const [venId, head] = k.split('|');
+      out.push({ venId, head, latest: Math.round(latest.pp), avg: Math.round(avg), pct, n: before.length, ev: latest.ev });
+    }
+  }
+  return out.sort((a, b) => b.pct - a.pct);
+}
+
 /* What a menu has actually cost per plate: past events on that menu with a guest count and
    recorded costs (events with no costs would drag the average to zero). */
 export function menuCostPerPlate(menuId, events, expenses, excludeId = '') {

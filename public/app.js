@@ -15,7 +15,7 @@ import {
   uid, today, daysSince, fmtDate, fmtCurrency, esc,
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, daysUntil, addDays,
-  sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, parseMenu, dishCounter, learnedDishes,
+  sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, parseMenu, dishCounter, learnedDishes,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -23,7 +23,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '3.3.1';
+const APP_BUILD = '3.4.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -240,7 +240,8 @@ async function refreshNow() {
     let release = null;
     try { release = await window.caterDeskUpdate?.(); } catch {}
     if (release && release !== APP_BUILD && !overlays.length && !activeSaves.size) { location.reload(); return; }
-    showToast(release && release !== APP_BUILD ? `v${release} ready – close your entry to update` : `Up to date · v${APP_BUILD} – अद्ययावत`);
+    // Quiet when nothing changed; speak only when an update is waiting on an open entry
+    if (release && release !== APP_BUILD) showToast(`v${release} ready – close your entry to update`);
   } finally { refreshing = false; q('hdr-refresh').classList.remove('spin'); }
 }
 
@@ -988,6 +989,24 @@ function costingBlock(pl, noCosts) {
   return plate + budget + ask;
 }
 
+// Vendor page: items whose cost per plate has risen against this vendor's own past events
+function priceCheckCard(vn) {
+  const rises = priceCreep(D.expenses, D.events).filter(r => r.venId === vn.id);
+  if (!rises.length) return '';
+  const phone = phoneDigits(vn.phone);
+  return `<div class="sec"><span class="sec-title">Price check – दर तपासणी</span></div>
+    <div class="card list" id="price-check">${rises.map(r => {
+      const item = short(r.head);
+      const msg = `Namaste ${vn.name}! For ${item}, my recent bill (${r.ev.name}) came to ${fmtCurrency(r.latest)} per plate, against about ${fmtCurrency(r.avg)} per plate before. Can we keep the earlier rate? Thank you!`;
+      return `<div class="row" style="min-height:52px">
+        <div class="row-body"><div class="title-sm trunc">${esc(item)}</div>
+          <div class="meta">${tr(`${fmtCurrency(r.latest)}/plate now · ${fmtCurrency(r.avg)} before (${r.n} event${r.n > 1 ? 's' : ''})`, `आता ${fmtCurrency(r.latest)}/ताट · आधी ${fmtCurrency(r.avg)}`)}</div></div>
+        <div class="meta" style="font-variant-numeric:tabular-nums">↑ +${r.pct}%</div>
+        ${phone ? `<a class="del-btn" data-action="ext" href="https://wa.me/${esc(phone)}?text=${esc(encodeURIComponent(msg))}" target="_blank" rel="noopener" aria-label="Discuss rate on WhatsApp">${icon('message', 16)}</a>` : ''}
+      </div>`;
+    }).join('')}</div>`;
+}
+
 /* Vendor's account as a WhatsApp message: totals, then each unpaid credit purchase.
    Opens WhatsApp with the text filled in; nothing is sent until you press send. */
 function vendorDuesLink(vn, bal) {
@@ -1001,6 +1020,29 @@ function vendorDuesLink(vn, bal) {
     + (items.length ? `\nPending:\n${items.join('\n')}\n` : '')
     + `\nPlease check and confirm. Thank you!`;
   return `https://wa.me/${phoneDigits(vn.phone)}?text=${encodeURIComponent(msg)}`;
+}
+
+/* Payment receipt for the client on WhatsApp: this payment, then the event's account so far.
+   Opens WhatsApp with the text filled in; nothing is sent until you press send. */
+function receiptLink(ev, p) {
+  const received = calcEventReceived(ev.id, D.cPays), left = Math.max(0, ev.billing - received);
+  const mode = String(p.mode || 'Cash').split(' – ')[0];
+  const msg = `Namaste! Payment receipt for ${ev.name} (${fmtDate(ev.date)})
+`
+    + `Received: ${fmtCurrency(p.amt)} on ${fmtDate(p.date)} by ${mode}${p.notes ? ' · ' + p.notes : ''}
+
+`
+    + `Total bill: ${fmtCurrency(ev.billing)}
+Paid so far: ${fmtCurrency(received)}
+`
+    + (left ? `Balance: ${fmtCurrency(left)}` : `Fully paid – thank you!`) + `
+
+Thank you!
+
+`
+    + `नमस्कार! ${ev.name} साठी ${fmtCurrency(p.amt)} मिळाले. एकूण मिळाले ${fmtCurrency(received)}`
+    + (left ? `, बाकी ${fmtCurrency(left)}.` : `, पूर्ण देयक झाले.`) + ` धन्यवाद!`;
+  return `https://wa.me/${phoneDigits(ev.mobile)}?text=${encodeURIComponent(msg)}`;
 }
 
 function reminderLink(ev, pending) {
@@ -1068,6 +1110,8 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
 
     ${menuOrdersCard(ev)}
 
+    ${labourCard(ev)}
+
     ${costVsUsualCard(ev)}
 
     ${checklistCard(ev)}
@@ -1089,6 +1133,7 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
           <div class="amt-sm pos">${fmtCurrency(p.amt)}</div>
           <div class="meta trunc">${fmtDate(p.date)} · ${esc(p.mode || 'Cash')}${p.notes ? ` · <span data-nl>${esc(p.notes)}</span>` : ''}</div>
         </div>
+        ${phone ? `<a class="del-btn" data-action="ext" href="${esc(receiptLink(ev, p))}" target="_blank" rel="noopener" aria-label="Send receipt on WhatsApp" style="color:var(--pos)">${icon('message', 16)}</a>` : ''}
         <button type="button" class="del-btn" data-action="delete" data-type="cPays" data-id="${esc(p.id)}" aria-label="Delete payment">${icon('trash', 16)}</button>
       </div>`).join(''), 'No payments yet – देयक नाही')}
     </div>
@@ -1104,6 +1149,120 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
 
   q('tab-evdetail').dataset.evid = id;
   go('evdetail', { ref: id, fromHistory });
+}
+
+/* ── LABOUR SHEET ────────────────────────────────── */
+// Worker types are the Labour items (tips are recorded as expenses, not on the sheet)
+const LAB_ROLES = () => EXPENSE_HEADS.Labour.filter(h => !/tips/i.test(h));
+const SHIFTS = { m: 'Morning – सकाळ', e: 'Evening – संध्याकाळ', n: 'Night – रात्र', f: 'Full day – पूर्ण दिवस' };
+let labRows = [];
+
+// The rate you used last time for this worker type and shift, from earlier sheets
+function lastLabourRate(role, shift) {
+  for (const e of [...D.events].sort((a, b) => b.date.localeCompare(a.date)))
+    for (const r of e.labour?.rows || []) if (r.role === role && r.shift === shift && r.rate) return r.rate;
+  return '';
+}
+
+function labourCard(ev) {
+  if (ev.outsourced) return '';
+  const rows = ev.labour?.rows || [];
+  const total = rows.reduce((s, r) => s + r.count * r.rate, 0);
+  return `
+    <div class="sec"><span class="sec-title">Labour – मजूर</span>
+      <button type="button" class="btn-sm" data-action="lab-edit">${icon(rows.length ? 'pencil' : 'plus', 16)}${rows.length ? tr('Edit', 'बदला') : tr('Labour sheet', 'मजूर यादी')}</button></div>
+    ${rows.length ? `<div class="card list" id="labour-card">${rows.map(r => `
+      <div class="row" style="min-height:48px">
+        <div class="row-ic">${icon('users', 18)}</div>
+        <div class="row-body"><div class="title-sm trunc">${esc(short(r.role))} × ${r.count}</div>
+          <div class="meta">${tr(SHIFTS[r.shift].split(' – ')[0], SHIFTS[r.shift].split(' – ')[1])} · ${fmtCurrency(r.rate)} ${tr('each', 'प्रत्येकी')}</div></div>
+        <div class="amt-sm">${fmtCurrency(r.count * r.rate)}</div>
+      </div>`).join('')}
+      <div class="row" style="min-height:44px"><div class="row-body title-sm">${tr(`Total · ${rows.reduce((s, r) => s + r.count, 0)} workers`, `एकूण · ${rows.reduce((s, r) => s + r.count, 0)} मजूर`)}</div><div class="amt-sm">${fmtCurrency(total)}</div></div>
+    </div>` : `<div class="card pad"><div class="meta">${tr('Add workers by type and shift — the app remembers your rates and saves the total as Labour expenses.', 'प्रकार व शिफ्टनुसार मजूर जोडा — दर लक्षात राहतात व एकूण खर्च म्हणून नोंदवला जातो.')}</div></div>`}`;
+}
+
+function renderLabRows() {
+  const roles = LAB_ROLES();
+  q('lab-rows').innerHTML = labRows.map((r, i) => `
+    <div class="card pad" style="margin-bottom:var(--s3)" data-lab="${i}">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);margin-bottom:var(--s2)">
+        <div class="field" style="margin:0"><label>Worker – मजूर</label><select data-k="role" aria-label="Worker type">${roles.map(h => `<option value="${esc(h)}"${h === r.role ? ' selected' : ''}>${esc(h)}</option>`).join('')}</select></div>
+        <div class="field" style="margin:0"><label>Shift – शिफ्ट</label><select data-k="shift">${Object.entries(SHIFTS).map(([k, l]) => `<option value="${k}"${k === r.shift ? ' selected' : ''}>${esc(l.split(' – ')[0])}</option>`).join('')}</select></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:var(--s2);align-items:end">
+        <div class="field" style="margin:0"><label>Count – संख्या</label><input type="number" data-k="count" min="1" inputmode="numeric" value="${r.count || ''}"></div>
+        <div class="field" style="margin:0"><label>Rate ₹ – दर</label><input type="number" data-k="rate" min="1" inputmode="decimal" value="${r.rate || ''}"></div>
+        <button type="button" class="del-btn" data-lab-del="${i}" aria-label="Remove">${icon('trash', 16)}</button>
+      </div>
+      <div class="meta" style="margin-top:6px" data-lab-line="${i}">${r.count && r.rate ? `${r.count} × ${fmtCurrency(r.rate)} = ${fmtCurrency(r.count * r.rate)}` : ''}</div>
+    </div>`).join('') || `<div class="meta" style="margin-bottom:var(--s3)">${tr('No workers yet.', 'अजून मजूर नाहीत.')}</div>`;
+  updateLabTotal();
+}
+
+function updateLabTotal() {
+  q('lab-total').textContent = fmtCurrency(labRows.reduce((s, r) => s + (r.count || 0) * (r.rate || 0), 0));
+}
+
+function setLabPay(pay) {
+  q('lab-pay').dataset.value = pay;
+  q('lab-pay').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.pay === pay)));
+  q('lab-mode-field').hidden = pay === 'credit';
+  q('lab-ven-field').hidden = pay !== 'credit';
+}
+
+function openLabModal() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const sheet = ev.labour || {};
+  labRows = (sheet.rows || []).map(r => ({ ...r }));
+  if (!labRows.length) { const role = LAB_ROLES()[0]; labRows = [{ id: uid('LB'), role, count: '', shift: 'f', rate: lastLabourRate(role, 'f') }]; }
+  const prev = D.events.filter(e => e.id !== ev.id && e.labour?.rows?.length).sort((a, b) => b.date.localeCompare(a.date))[0];
+  q('btn-lab-copy').hidden = !prev;
+  q('btn-lab-copy').dataset.from = prev?.id || '';
+  populateSelect('lab-mode', PAY_MODES, sheet.mode || '');
+  populateSelect('lab-ven', [{ v: '', l: 'Choose contractor – ठेकेदार निवडा' },
+    ...D.vendors.filter(v => !isPerson(v)).sort((a, b) => String(a.name).localeCompare(String(b.name))).map(v => ({ v: v.id, l: v.name }))], sheet.venId || '');
+  setLabPay(sheet.pay || 'paid');
+  renderLabRows();
+  clearFieldErrors();
+  openSheet('lab-modal');
+}
+
+/* Save the sheet, and keep one Labour expense per worker type in step with it:
+   changed types are updated, new ones added, removed ones deleted — all in one save. */
+async function saveLabour() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const rows = labRows.filter(r => Number(r.count) > 0 && Number(r.rate) > 0)
+    .map(r => ({ id: r.id, role: r.role, count: Math.round(Number(r.count)), shift: r.shift, rate: Number(r.rate) }));
+  const pay = q('lab-pay').dataset.value || 'paid';
+  const venId = pay === 'credit' ? qv('lab-ven') : '';
+  if (pay === 'credit' && !venId) { showFieldErrors({ 'lab-ven': 'Choose the contractor you owe – ठेकेदार निवडा' }); return; }
+  const oldIds = ev.labour?.expIds || {};
+  const byRole = new Map();
+  for (const r of rows) {
+    if (!byRole.has(r.role)) byRole.set(r.role, []);
+    byRole.get(r.role).push(r);
+  }
+  const changes = [], expIds = {}, saved = [];
+  for (const [role, rs] of byRole) {
+    const old = D.expenses.find(x => x.id === oldIds[role]);
+    const record = { ...(old || {}), id: old?.id || uid('EX'), evId: ev.id, cat: 'Labour', head: role,
+      amt: rs.reduce((s, r) => s + r.count * r.rate, 0), date: old?.date || ev.date, pay, mode: pay === 'paid' ? qv('lab-mode') : '',
+      venId, dueDate: old?.dueDate || '', billIds: old?.billIds || [],
+      notes: 'Labour sheet: ' + rs.map(r => `${r.count} × ${SHIFTS[r.shift].split(' – ')[0]} @ ${fmtCurrency(r.rate)}`).join(', ') };
+    delete record._rev;
+    changes.push({ store: 'expenses', record, expected: old || null });
+    expIds[role] = record.id; saved.push(record);
+  }
+  const removed = Object.entries(oldIds).filter(([role, id]) => !byRole.has(role) && D.expenses.some(x => x.id === id)).map(([, id]) => id);
+  for (const id of removed) changes.push({ store: 'expenses', id, expected: D.expenses.find(x => x.id === id) });
+  const evRecord = { ...ev, labour: { rows, pay, mode: pay === 'paid' ? qv('lab-mode') : '', venId, expIds } };
+  await commitChanges([{ store: 'events', record: evRecord, expected: ev }, ...changes], { check: true, extraStores: ['vendors'] });
+  D.events = D.events.map(e => e.id === ev.id ? evRecord : e);
+  D.expenses = D.expenses.filter(x => !removed.includes(x.id) && !saved.some(r => r.id === x.id)).concat(saved);
+  closeModals();
+  showToast(rows.length ? `Labour ${fmtCurrency(saved.reduce((s, r) => s + r.amt, 0))} saved – मजूर खर्च जतन` : 'Labour sheet cleared – मजूर यादी काढली');
+  refreshCurrent();
 }
 
 /* ── EVENT MENU & VENDOR ORDERS ──────────────────── */
@@ -1542,6 +1701,8 @@ function showVenDetail(id, { fromHistory = false } = {}) {
       : `<button type="button" class="btn-sm" style="margin-top:var(--s3)" data-action="open-ven-edit" data-id="${esc(vn.id)}">${icon('phone', 16)}${tr('Add phone for Call / WhatsApp', 'कॉल / WhatsApp साठी नंबर जोडा')}</button>`}
     </div>
 
+    ${priceCheckCard(vn)}
+
     <div class="sec"><span class="sec-title">${isPerson(vn) ? 'Paid for you – तुमच्यासाठी भरलेले खर्च' : 'Supplied – पुरवलेले खर्च'}</span>
       <button type="button" class="btn-sm" data-action="open-link" data-id="${esc(vn.id)}">${icon('link', 16)}Link – जोडा</button></div>
     <div class="card list">
@@ -1589,6 +1750,23 @@ function menuRanking(rows) {
           `${g.n} कार्यक्रम · बिल ${fmtCurrency(Math.round(g.bill / g.guests))} · खर्च ${fmtCurrency(Math.round(g.cost / g.guests))} प्रति ताट`)}</div></div>
       <div class="row-end"><div class="amt-sm ${g.profit >= 0 ? 'pos' : 'neg'}">${fmtCurrency(g.profit)}</div><div class="meta">${tr(`profit/plate · ${g.margin}%`, `नफा/ताट · ${g.margin}%`)}</div></div>
     </div>`).join('');
+}
+
+// Reports: vendors whose cost per plate has gone up (all time), largest rise first
+function priceCreepReport() {
+  const list = priceCreep(D.expenses, D.events).slice(0, 6);
+  if (!list.length) return '';
+  return `<div class="card pad" style="padding-bottom:var(--s2)" id="price-creep">
+    <div class="chart-title">${icon('store', 18)}Vendor price creep – दरवाढ</div>
+    <div class="meta">${tr('Cost per plate at the latest event against the same vendor’s earlier events.', 'त्याच विक्रेत्याच्या आधीच्या कार्यक्रमांशी प्रति ताट तुलना.')}</div>
+    ${list.map(r => {
+      const ven = D.vendors.find(v => v.id === r.venId);
+      return `<div class="row" role="button" tabindex="0" data-action="vendetail" data-id="${esc(r.venId)}" style="min-height:48px">
+        <div class="row-body"><div class="title-sm trunc"><span data-nl>${esc(ven?.name || '')}</span> · ${esc(short(r.head))}</div>
+          <div class="meta">${fmtCurrency(r.latest)}/plate · ${tr('before', 'आधी')} ${fmtCurrency(r.avg)}</div></div>
+        <div class="meta" style="font-variant-numeric:tabular-nums">↑ +${r.pct}%</div>
+      </div>`;
+    }).join('')}</div>`;
 }
 
 // Categories that cost more than usual in this period, summed over events (shown quietly)
@@ -1709,6 +1887,7 @@ function rSummary() {
     <div class="sec"></div>
     ${perPlateReport(P, missing)}
     ${costsHigherReport(P)}
+    ${priceCreepReport()}
     <div class="card pad"><div class="chart-title">${icon('calendar', 18)}Profit by event – कार्यक्रमनिहाय नफा</div>${plRows}</div>
     <div class="card pad"><div class="chart-title">${icon('receipt', 18)}Spending by category – खर्चाचे प्रकार</div>${catBars}</div>
     <div class="card pad"><div class="chart-title">${icon('wallet', 18)}Collections by mode – पद्धतीनुसार वसुली</div>${modeRows}</div>
@@ -1818,11 +1997,46 @@ function openEvModal(id) {
 // but never overwrites a figure typed by hand
 let evAuto = { bill: '', budget: '' };
 
+/* Quote helper, from your own events (never the card alone):
+   what this menu (or event type) usually costs per plate, the margin at the bill typed,
+   the lowest per-plate price for a 30% margin, and what you have actually billed on this menu. */
+const TARGET_MARGIN = 30;
+function updateQuote() {
+  const box = q('ev-quote');
+  const id = qv('ev-id'), menu = menuById(qv('ev-menu')), type = qv('ev-type');
+  const guests = Number(qv('ev-guests')) || 0, bill = Number(qv('ev-billing')) || 0;
+  if (q('ev-handling').dataset.value === 'out') { box.hidden = true; return; }
+  const spent = new Map();
+  for (const x of D.expenses) spent.set(x.evId, (spent.get(x.evId) || 0) + x.amt);
+  const peers = D.events.filter(e => e.id !== id && !e.outsourced && Number(e.guests) > 0);
+  const avg = (list, val) => {
+    const g = list.reduce((s, e) => s + Number(e.guests), 0);
+    return g ? { n: list.length, perPlate: Math.round(list.reduce((s, e) => s + val(e), 0) / g) } : null;
+  };
+  const costed = peers.filter(e => spent.get(e.id));
+  const byMenu = menu ? costed.filter(e => e.menu === menu.id) : [];
+  const basis = byMenu.length ? menu.name : (type || '').split(' – ')[0];
+  const cost = avg(byMenu.length ? byMenu : costed.filter(e => e.type === type), e => spent.get(e.id));
+  const billed = menu ? avg(peers.filter(e => e.menu === menu.id), e => e.billing) : null;
+  const lines = [];
+  if (cost) {
+    lines.push(`${esc(basis)} usually costs you <b>${fmtCurrency(cost.perPlate)}/plate</b> (${cost.n} event${cost.n > 1 ? 's' : ''})`);
+    if (bill && guests) {
+      const pp = Math.round(bill / guests), m = Math.round((pp - cost.perPlate) / pp * 100);
+      lines.push(`At ${fmtCurrency(pp)}/plate your margin is about <b class="${m < TARGET_MARGIN ? 'due' : 'pos'}">${m}%</b>`);
+    }
+    lines.push(`For a ${TARGET_MARGIN}% margin, quote at least <b>${fmtCurrency(Math.ceil(cost.perPlate / (1 - TARGET_MARGIN / 100)))}/plate</b>`);
+  }
+  if (billed) lines.push(`Card ${fmtCurrency(menuRate(menu, guests))} · you actually billed <b>${fmtCurrency(billed.perPlate)}/plate</b> on average (${billed.n} event${billed.n > 1 ? 's' : ''})`);
+  box.innerHTML = lines.map(l => `<div>${l}</div>`).join('');
+  box.hidden = !lines.length;
+}
+
 function updateMenuHint() {
   const menu = menuById(qv('ev-menu'));
   const guests = Number(qv('ev-guests')) || 0;
   const hint = q('ev-menu-hint');
-  if (!menu) { hint.hidden = true; return; }
+  if (!menu) { hint.hidden = true; updateQuote(); return; }
   const rate = menuRate(menu, guests);
   const past = menuCostPerPlate(menu.id, D.events, D.expenses, qv('ev-id'));
   const fill = (id, key, value) => {
@@ -1836,6 +2050,7 @@ function updateMenuHint() {
   hint.textContent = `${menu.name} @ ${fmtCurrency(rate)}/plate` + (guests ? ` × ${guests} = ${fmtCurrency(rate * guests)}` : ' · add guests to fill the bill')
     + (past ? ` · usually costs ${fmtCurrency(past.perPlate)}/plate (${past.n} event${past.n > 1 ? 's' : ''})` : ' · cost per plate shows after the first event on this menu');
   hint.hidden = false;
+  updateQuote();
 }
 
 // "Done by" choices for an outsourced event, with "+ New vendor" to add one without leaving the form
@@ -1851,6 +2066,7 @@ function setEvHandling(h) {
   q('ev-handling').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.h === h)));
   q('ev-out-field').hidden = h !== 'out';
   updateOutHint();
+  updateQuote();
 }
 
 // Outsourced: what you keep = bill − their charge (or, once saved, − the event's costs)
@@ -2313,7 +2529,10 @@ async function saveCPay() {
   else    D.cPays.push(record);
 
   closeModals();
-  showToast('Payment saved – देयक जोडले');
+  const ev = D.events.find(e => e.id === evId);
+  showToast('Payment saved – देयक जोडले', 'success',
+    phoneDigits(ev?.mobile) ? { label: 'Send receipt – पावती', run: () => window.open(receiptLink(ev, record), '_blank', 'noopener') } : null);
+  if (phoneDigits(ev?.mobile)) setTimeout(hideToast, 8000);
   refreshCurrent();
 }
 
@@ -2712,6 +2931,7 @@ function bindAllEvents() {
       case 'open-exp':     openExpModal(id); break;
       case 'open-vpay':    openVPayModal(id); break;
       case 'menu-edit':    openMenuModal(); break;
+      case 'lab-edit':     openLabModal(); break;
       case 'dish-assign':  assignDish(Number(id)); break;
       case 'order-new':    openOrderModal({ head: id }); break;
       case 'order-status': orderAction(id); break;
@@ -2830,6 +3050,32 @@ function bindAllEvents() {
   // Sheet buttons
   q('btn-save-event').addEventListener('click', () => runSave('event', saveEvent));
   q('btn-save-menu').addEventListener('click', () => runSave('menu', saveMenu));
+  q('btn-save-lab').addEventListener('click', () => runSave('labour', saveLabour));
+  q('btn-lab-add').addEventListener('click', () => {
+    const role = LAB_ROLES().find(h => !labRows.some(r => r.role === h)) || LAB_ROLES()[0];
+    labRows.push({ id: uid('LB'), role, count: '', shift: 'f', rate: lastLabourRate(role, 'f') });
+    renderLabRows();
+  });
+  q('btn-lab-copy').addEventListener('click', e => {
+    const from = D.events.find(x => x.id === e.currentTarget.dataset.from);
+    labRows = (from?.labour?.rows || []).map(r => ({ ...r, id: uid('LB') }));
+    if (from?.labour) { setLabPay(from.labour.pay || 'paid'); q('lab-mode').value = from.labour.mode || q('lab-mode').value; q('lab-ven').value = from.labour.venId || ''; }
+    renderLabRows();
+  });
+  q('lab-pay').addEventListener('click', e => { const b = e.target.closest('[data-pay]'); if (b) setLabPay(b.dataset.pay); });
+  // Row edits: picking a type or shift fills the rate you used last time (if the rate is empty)
+  q('lab-rows').addEventListener('input', e => {
+    const box = e.target.closest('[data-lab]'), k = e.target.dataset.k; if (!box || !k) return;
+    const r = labRows[Number(box.dataset.lab)];
+    r[k] = k === 'role' || k === 'shift' ? e.target.value : e.target.value === '' ? '' : Number(e.target.value);
+    if ((k === 'role' || k === 'shift') && !r.rate) { r.rate = lastLabourRate(r.role, r.shift); box.querySelector('[data-k="rate"]').value = r.rate || ''; }
+    q(`lab-rows`).querySelector(`[data-lab-line="${box.dataset.lab}"]`).textContent = r.count && r.rate ? `${r.count} × ${fmtCurrency(r.rate)} = ${fmtCurrency(r.count * r.rate)}` : '';
+    updateLabTotal();
+  });
+  q('lab-rows').addEventListener('click', e => {
+    const b = e.target.closest('[data-lab-del]'); if (!b) return;
+    labRows.splice(Number(b.dataset.labDel), 1); renderLabRows();
+  });
   q('btn-send-ord').addEventListener('click', () => runSave('order', sendOrder));
   q('btn-cancel-ord').addEventListener('click', () => runSave('order', cancelOrderFromSheet));
   q('btn-save-exp').addEventListener('click', () => runSave('expense', () => saveExpense()));
@@ -2854,6 +3100,8 @@ function bindAllEvents() {
   // Dependent select
   q('ven-cat').addEventListener('change', () => loadVenSpecialty());
   q('ev-menu').addEventListener('change', updateMenuHint);
+  q('ev-billing').addEventListener('input', updateQuote);
+  q('ev-type').addEventListener('change', updateQuote);
   document.querySelectorAll('[data-contact]').forEach(b => {
     b.hidden = !canPickContact;
     b.addEventListener('click', () => b.dataset.contact === 'ev' ? pickContact('ev-name', 'ev-mobile') : pickContact('ven-name', 'ven-phone'));

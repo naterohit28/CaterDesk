@@ -244,6 +244,8 @@
       <div class="field"><label for="ev-billing">Total bill ₹ – एकूण बिल <span class="req">*</span></label><input type="number" id="ev-billing" placeholder="0" min="1" inputmode="decimal" enterkeyhint="next"></div>
       <div class="field"><label for="ev-budget">Expected cost ₹ – अंदाजे खर्च</label><input type="number" id="ev-budget" placeholder="optional" min="1" inputmode="decimal" enterkeyhint="next"></div>
     </div>
+    <!-- Quote helper: your real cost per plate and margin, from your own past events -->
+    <div class="card pad" id="ev-quote" data-nl hidden style="margin:-4px 0 var(--s4);font-size:var(--fs-sm);line-height:1.6"></div>
     <!-- Outsourced: another caterer does the whole event and you keep the difference (your commission).
          Their charge is saved as one credit expense to them, so it shows in "To pay". -->
     <div class="field">
@@ -403,6 +405,31 @@
     <div class="s-foot"><div class="btn-row">
       <button type="button" class="btn btn-ghost danger" id="btn-cancel-ord" hidden>Cancel order – रद्द</button>
       <button type="button" class="btn btn-wa" id="btn-send-ord">Send on WhatsApp – पाठवा</button>
+    </div></div>
+  </div>
+</div>
+
+<!-- LABOUR SHEET for one event: worker type × count × shift × rate; saved as Labour expenses -->
+<div class="modal-ov" id="lab-modal">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="lab-mtitle">
+    <div class="s-handle"></div>
+    <div class="s-head"><div class="s-title" id="lab-mtitle">Labour sheet – मजूर</div><button type="button" class="icon-btn" data-action="close-modal" aria-label="Close"><i data-ic="x"></i></button></div>
+    <div id="lab-rows"></div>
+    <div class="btn-row" style="margin:var(--s2) 0 var(--s4)">
+      <button type="button" class="btn btn-secondary" id="btn-lab-add">+ Worker type – जोडा</button>
+      <button type="button" class="btn btn-ghost" id="btn-lab-copy" hidden>Copy last event – मागील</button>
+    </div>
+    <div class="field">
+      <div class="seg" role="group" aria-label="Payment" id="lab-pay">
+        <button type="button" data-pay="paid" aria-pressed="true">Paid now – दिले</button>
+        <button type="button" data-pay="credit" aria-pressed="false">Contractor credit – उधार</button>
+      </div>
+    </div>
+    <div class="field" id="lab-mode-field"><label for="lab-mode">Paid by – पद्धत</label><select id="lab-mode"></select></div>
+    <div class="field" id="lab-ven-field" hidden><label for="lab-ven">Labour contractor – ठेकेदार</label><select id="lab-ven"></select></div>
+    <div class="s-foot"><div class="btn-row">
+      <div class="amt-md" id="lab-total" style="align-self:center;flex:1">₹0</div>
+      <button type="button" class="btn btn-primary" id="btn-save-lab">Save sheet – जतन</button>
     </div></div>
   </div>
 </div>

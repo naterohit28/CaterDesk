@@ -424,6 +424,7 @@ export async function prepareImport(payload) {
       if (name === 'photos' && (typeof row.data !== 'string' || !/^data:image\/(jpeg|png|webp|gif);base64,/.test(row.data))) throw new Error('Invalid photo data');
       if (row.pay && !['paid', 'credit'].includes(row.pay)) throw new Error('Invalid payment state');
       if (row.outsourced !== undefined && typeof row.outsourced !== 'boolean') throw new Error('Invalid outsourced flag');
+      if (row.labour !== undefined && (typeof row.labour !== 'object' || !Array.isArray(row.labour?.rows))) throw new Error('Invalid labour sheet');
       if (row.kind && !['vendor', 'person'].includes(row.kind)) throw new Error('Invalid vendor kind');
     }
   }
@@ -487,7 +488,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '3.3.1';
+export const APP_VERSION = '3.4.0';
 export async function checkAndMigrate() {
   await openDB();
   const storedVer = await getMeta('app_version');
