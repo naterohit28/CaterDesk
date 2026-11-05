@@ -121,7 +121,7 @@ await test('outsourced event saves vendor charge as credit and shows commission'
  await p.locator('#n-events').click();await p.locator('#ev-list [data-action="quick"][data-id="event"]').click();await p.waitForSelector('#ev-modal.active');
  for(const [id,v] of [['ev-name','Small Birthday'],['ev-date','2026-01-05'],['ev-venue','Flat'],['ev-billing','50000']])await p.locator('#'+id).fill(v);
  await p.locator('#ev-handling [data-h="out"]').click();await p.locator('#btn-save-event').click();await p.waitForTimeout(200);assert.match(await p.locator('#ev-modal').innerText(),/Choose who does the event/);
- await p.locator('#ev-out-ven').selectOption('kaka');await p.locator('#ev-out-charge').fill('44000');assert.match(await p.locator('#ev-out-hint').innerText(),/commission ₹6,000 \(12%\)/);
+ await p.locator('#ev-out-ven').selectOption('kaka');await p.locator('#ev-out-charge').fill('44000');assert.match(await p.locator('#ev-out-hint').innerText(),/commission ₹6,000 · 12% · target 10–20%/);
  await p.locator('#btn-save-event').click();await p.waitForTimeout(300);
  const e=(await db(async d=>d.getAll('events'))).find(x=>x.name==='Small Birthday');assert.equal(e.outsourced,true);assert.equal(e.outVenId,'kaka');
  const xs=(await db(async d=>d.getAll('expenses'))).filter(x=>x.evId===e.id);assert.equal(xs.length,1);assert.equal(xs[0].amt,44000);assert.equal(xs[0].pay,'credit');assert.equal(xs[0].venId,'kaka');
@@ -272,12 +272,12 @@ await test('v3.4: quote helper, receipt, price creep, labour sheet, quiet refres
  assert(recs.some(r=>/Received: ₹50,000[\s\S]*Paid so far: ₹50,000\n/.test(r)),'older receipt ignores the later payment');assert(recs.some(r=>/Received: ₹30,000[\s\S]*Paid so far: ₹80,000\n/.test(r)));
  // Labour sheet: rates remembered, saved as Labour expenses, edits update them in place
  await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');
- const r0=p.locator('#lab-rows [data-lab="0"]');await r0.locator('[data-k="role"]').selectOption(cook);await r0.locator('[data-k="count"]').fill('3');await r0.locator('[data-k="rate"]').fill('1200');
- await p.locator('#btn-lab-add').click();const r1=p.locator('#lab-rows [data-lab="1"]');await r1.locator('[data-k="role"]').selectOption(boys);await r1.locator('[data-k="count"]').fill('10');await r1.locator('[data-k="shift"]').selectOption('e');await r1.locator('[data-k="rate"]').fill('500');
+ const r0=p.locator('#lab-rows [data-lab="0"]');await r0.locator('[data-k="role"]').selectOption(cook);await r0.locator('[data-k="c-f"]').fill('3');await r0.locator('[data-k="rate"]').fill('1200');
+ await p.locator('#btn-lab-add').click();const r1=p.locator('#lab-rows [data-lab="1"]');await r1.locator('[data-k="role"]').selectOption(boys);await r1.locator('[data-k="c-e"]').fill('10');await r1.locator('[data-k="rate"]').fill('500');
  assert.equal(await p.locator('#lab-total').innerText(),'₹8,600');await p.locator('#btn-save-lab').click();await p.waitForTimeout(400);
  let lab=(await db(async d=>d.getAll('expenses'))).filter(x=>x.evId==='g2'&&x.cat==='Labour');assert.equal(lab.length,2);assert.equal(lab.find(x=>x.head===cook).amt,3600);
- assert.match(await p.locator('#labour-card').innerText(),/Total · 13 workers[\s\S]*₹8,600/);
- await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');await p.locator('#lab-rows [data-lab="1"] [data-lab-del]').click();await p.locator('#lab-rows [data-lab="0"] [data-k="count"]').fill('4');await p.locator('#btn-save-lab').click();await p.waitForTimeout(400);
+ assert.match(await p.locator('#labour-card').innerText(),/Total · 13 shifts[\s\S]*₹8,600/);
+ await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');await p.locator('#lab-rows [data-lab="1"] [data-lab-del]').click();await p.locator('#lab-rows [data-lab="0"] [data-k="c-f"]').fill('4');await p.locator('#btn-save-lab').click();await p.waitForTimeout(400);
  lab=(await db(async d=>d.getAll('expenses'))).filter(x=>x.evId==='g2'&&x.cat==='Labour');assert.equal(lab.length,1,'removed worker type removed');assert.equal(lab[0].amt,4800,'updated in place');
  // Rate remembered on another event
  await p.locator('#n-events').click();await p.locator('#ev-list [data-action="evdetail"]',{hasText:'Golden One'}).click();await p.waitForSelector('[data-action="lab-edit"]');await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');
@@ -292,11 +292,11 @@ await test('labour sheet matches real contractor bills (shifts, fare, mukadam fe
  const H=await p.evaluate(async()=>(await import('./utils.js')).EXPENSE_HEADS);const boys=H.Labour.find(h=>h.startsWith('Boys')),roj=H.Labour.find(h=>h.startsWith('Rojiya'));
  await seed({...empty(),vendors:[{id:'muk',name:'Mukadam',cat:'Labour'}],events:[{...ev,id:'lw',name:'Lake Lawn',guests:300,date:'2026-10-24'},{...ev,id:'k2',name:'Second',guests:200,date:'2026-10-30'}]});
  await p.locator('#n-events').click();await p.locator('#ev-list [data-action="evdetail"]',{hasText:'Lake Lawn'}).click();await p.waitForSelector('[data-action="lab-edit"]');await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');
- assert.deepEqual(await p.locator('#lab-rows [data-lab="0"] [data-k="shift"] option').allInnerTexts(),['Morning','Evening','Night','Full day','Loading','Late']);
+ assert.deepEqual(await p.locator('#lab-rows [data-lab="0"] [data-k^="c-"]').evaluateAll(i=>i.map(x=>x.previousElementSibling.textContent)),['Morning','Evening','Night','Full day','Loading','Late'],'one headcount box per shift, as on the bills');
  // Bill: 5 × 650 + 11 × 650, fare 11 × 24, mukadamgiri 500, ice cream cutting 200 = 11,364
  const row=i=>p.locator(`#lab-rows [data-lab="${i}"]`);
- await row(0).locator('[data-k="role"]').selectOption(boys);await row(0).locator('[data-k="count"]').fill('5');await row(0).locator('[data-k="rate"]').fill('650');
- await p.locator('#btn-lab-add').click();await row(1).locator('[data-k="role"]').selectOption(roj);await row(1).locator('[data-k="count"]').fill('11');await row(1).locator('[data-k="rate"]').fill('650');
+ await row(0).locator('[data-k="role"]').selectOption(boys);await row(0).locator('[data-k="c-f"]').fill('5');await row(0).locator('[data-k="rate"]').fill('650');
+ await p.locator('#btn-lab-add').click();await row(1).locator('[data-k="role"]').selectOption(roj);await row(1).locator('[data-k="c-f"]').fill('11');await row(1).locator('[data-k="rate"]').fill('650');
  await p.locator('#btn-lab-extra').click();assert.equal(await row(2).locator('[data-k="extra"]').inputValue(),'travel');await row(2).locator('[data-k="count"]').fill('11');await row(2).locator('[data-k="rate"]').fill('24');
  await p.locator('#btn-lab-extra').click();assert.equal(await row(3).locator('[data-k="extra"]').inputValue(),'fee');await row(3).locator('[data-k="rate"]').fill('500');
  await p.locator('#btn-lab-extra').click();assert.equal(await row(4).locator('[data-k="extra"]').inputValue(),'other');await row(4).locator('[data-k="label"]').fill('Ice cream cutting');await row(4).locator('[data-k="rate"]').fill('200');
@@ -307,18 +307,18 @@ await test('labour sheet matches real contractor bills (shifts, fare, mukadam fe
  assert.equal(xs.reduce((s,x)=>s+x.amt,0),11364);assert.equal(by('Boys').amt,3250);assert.equal(by('Rojiya').amt,7150);
  assert.equal(by('Transport').amt,264);assert.equal(by('Transport').cat,'Operations','fare counts as transport');assert.equal(by('Contractor Fee').amt,500);assert.equal(by('Other Labour Work').amt,200);assert.match(by('Other Labour Work').notes,/Ice cream cutting/);
  assert(xs.every(x=>x.pay==='credit'&&x.venId==='muk'),'all owed to the mukadam');
- assert.match(await p.locator('#labour-card').innerText(),/Ice cream cutting[\s\S]*Total · 16 workers[\s\S]*₹11,364/);
+ assert.match(await p.locator('#labour-card').innerText(),/Ice cream cutting[\s\S]*Total · 16 shifts[\s\S]*₹11,364/);
  // Second bill: 13 boys evening × 700 + vehicle 1,000 = 10,100; copy the last sheet then adjust
  await p.locator('#n-events').click();await p.locator('#ev-list [data-action="evdetail"]',{hasText:'Second'}).click();await p.waitForSelector('[data-action="lab-edit"]');await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');
- await row(0).locator('[data-k="role"]').selectOption(boys);assert.equal(await row(0).locator('[data-k="rate"]').inputValue(),'650','Boys full-day rate remembered from the last bill');
- await row(0).locator('[data-k="shift"]').selectOption('e');await row(0).locator('[data-k="count"]').fill('13');await row(0).locator('[data-k="rate"]').fill('700');
+ await row(0).locator('[data-k="role"]').selectOption(boys);assert.equal(await row(0).locator('[data-k="rate"]').inputValue(),'650','Boys rate remembered from the last bill');
+ await row(0).locator('[data-k="c-e"]').fill('13');await row(0).locator('[data-k="rate"]').fill('700');
  await p.locator('#btn-lab-extra').click();assert.equal(await row(1).locator('[data-k="rate"]').inputValue(),'24','last fare rate remembered');await row(1).locator('[data-k="count"]').fill('1');await row(1).locator('[data-k="rate"]').fill('1000');
  assert.equal(await p.locator('#lab-total').innerText(),'₹10,100');await p.locator('#btn-save-lab').click();await p.waitForTimeout(400);
  // The mukadam's page shows what you owe across both events (to check against his running bill)
  await p.locator('#n-vendors').click();await p.locator('#ven-list [data-action="vendetail"]',{hasText:'Mukadam'}).click();await p.waitForSelector('#tab-vendetail .detail-name');
  const owed=(await db(async d=>d.getAll('expenses'))).filter(x=>x.venId==='muk').reduce((s,x)=>s+x.amt,0);assert.equal(owed,11364,'second sheet paid now by default, so only the first is owed');
 });
-await test('meals (any mix of breakfast, lunch, high tea, dinner), extra shifts and bill total',async()=>{
+await test('meals (any mix of breakfast, lunch, high tea, dinner), headcount per shift and bill total',async()=>{
  const H=await p.evaluate(async()=>(await import('./utils.js')).EXPENSE_HEADS);const boys=H.Labour.find(h=>h.startsWith('Boys'));
  await seed({...empty(),events:[{...ev,guests:300}]});
  // Meal: lunch ticks breakfast by default; dinner leaves high tea off; tapping again clears
@@ -333,24 +333,32 @@ await test('meals (any mix of breakfast, lunch, high tea, dinner), extra shifts 
  await p.locator('#ev-meals [data-meal="breakfast"]').click();await p.locator('#ev-meals [data-meal="lunch"]').click();await p.locator('#btn-save-event').click();await p.waitForTimeout(300);
  assert.deepEqual((await db(async d=>d.getAll('events'))).find(e=>e.name==='Dinner Party').meals,['hightea','dinner'],'unticking works');
  await p.locator('#n-events').click();
- // Labour: 13 boys × 2 shifts × 700, travel 1,000; contractor's bill says 19,500 → 100 more on the biggest line
+ // Labour: headcount per shift (Night 4, Morning 9, Evening 5) × 600, travel 1,000; bill 11,900 → +100 shown as a bill adjustment
  await p.locator('#ev-list [data-action="evdetail"][data-id="e"]').click();await p.waitForSelector('[data-action="lab-edit"]');
  assert(await p.locator('#hdr-refresh').isHidden(),'detail pages keep the top bar uncluttered');await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');
  const row=i=>p.locator(`#lab-rows [data-lab="${i}"]`);
- await row(0).locator('[data-k="role"]').selectOption(boys);await row(0).locator('[data-k="count"]').fill('13');await row(0).locator('[data-k="shifts"]').fill('1.5');await row(0).locator('[data-k="rate"]').fill('333.33');
- assert.match(await row(0).locator('[data-lab-line="0"]').innerText(),/₹6,499\.94/,'money rounded to the paisa');await row(0).locator('[data-k="shifts"]').fill('2');await row(0).locator('[data-k="rate"]').fill('700');
- assert.match(await row(0).locator('[data-lab-line="0"]').innerText(),/13 × 2 shifts × ₹700 = ₹18,200/);
+ await row(0).locator('[data-k="role"]').selectOption(boys);await row(0).locator('[data-k="c-m"]').fill('13');await row(0).locator('[data-k="c-e"]').fill('6.5');await row(0).locator('[data-k="rate"]').fill('333.33');
+ assert.match(await row(0).locator('[data-lab-line="0"]').innerText(),/₹6,499\.94/,'money rounded to the paisa');
+ await row(0).locator('[data-k="c-n"]').fill('4');await row(0).locator('[data-k="c-m"]').fill('9');await row(0).locator('[data-k="c-e"]').fill('5');await row(0).locator('[data-k="rate"]').fill('600');
+ assert.match(await row(0).locator('[data-lab-line="0"]').innerText(),/18 shifts × ₹600 = ₹10,800/,'not every worker does every shift');
  await p.locator('#btn-lab-extra').click();assert.equal(await row(1).locator('[data-k="extra"] option:checked').innerText(),'Travel');await row(1).locator('[data-k="rate"]').fill('1000');
- assert.equal(await p.locator('#lab-total').innerText(),'₹19,200');
- await p.locator('#lab-bill').fill('19300');assert.match(await p.locator('#lab-bill-hint').innerText(),/difference \+₹100/);assert.equal(await p.locator('#lab-total').innerText(),'₹19,300');
+ assert.equal(await p.locator('#lab-total').innerText(),'₹11,800');
+ await p.locator('#lab-bill').fill('11900');assert.match(await p.locator('#lab-bill-hint').innerText(),/bill adjustment \+₹100/);assert.equal(await p.locator('#lab-total').innerText(),'₹11,900');
  await p.locator('#btn-save-lab').click();await p.waitForTimeout(400);
- const xs=(await db(async d=>d.getAll('expenses'))).filter(x=>x.evId==='e');assert.equal(xs.reduce((s,x)=>s+x.amt,0),19300,'final amount matches the bill');
- assert.equal(xs.find(x=>x.head===boys).amt,18300);assert.match(xs.find(x=>x.head===boys).notes,/× 2 shifts[\s\S]*adjusted \+₹100 to match bill ₹19,300/);
- assert.match(await p.locator('#labour-card').innerText(),/2 shifts[\s\S]*as billed[\s\S]*₹19,300/);
+ const xs=(await db(async d=>d.getAll('expenses'))).filter(x=>x.evId==='e');assert.equal(xs.reduce((s,x)=>s+x.amt,0),11900,'final amount matches the bill');
+ assert.equal(xs.find(x=>x.head===boys).amt,10900);assert.match(xs.find(x=>x.head===boys).notes,/Morning 9 · Evening 5 · Night 4 @ ₹600[\s\S]*bill adjustment \+₹100 \(bill ₹11,900\)/);
+ const card=await p.locator('#labour-card').innerText();assert.match(card,/Morning 9 · Evening 5 · Night 4[\s\S]*₹10,800[\s\S]*₹1,000[\s\S]*Bill adjustment[\s\S]*\+₹100[\s\S]*Total · 18 shifts[\s\S]*₹11,900/,'lines and adjustment add up to the total shown');
  // Reopen: bill total kept; clearing it goes back to the lines
- await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');assert.equal(await p.locator('#lab-bill').inputValue(),'19300');
+ await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');assert.equal(await p.locator('#lab-bill').inputValue(),'11900');
  await p.locator('#lab-bill').fill('');await p.locator('#btn-save-lab').click();await p.waitForTimeout(400);
- assert.equal((await db(async d=>d.getAll('expenses'))).filter(x=>x.evId==='e').reduce((s,x)=>s+x.amt,0),19200);
+ assert.equal((await db(async d=>d.getAll('expenses'))).filter(x=>x.evId==='e').reduce((s,x)=>s+x.amt,0),11800);
+});
+await test('labour sheets saved before per-shift headcounts still open and add up',async()=>{
+ await seed({...empty(),events:[{...ev,labour:{rows:[{id:'l1',role:'Boys – बॉईज',count:10,shift:'n',shifts:3,rate:600}],pay:'paid',mode:'',venId:'',expIds:{}}}]});
+ await p.locator('#n-events').click();await p.locator('#ev-list [data-action="evdetail"]').first().click();await p.waitForSelector('#labour-card');
+ assert.match(await p.locator('#labour-card').innerText(),/Night 30[\s\S]*₹18,000[\s\S]*Total · 30 shifts[\s\S]*₹18,000/);
+ await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');assert.equal(await p.locator('#lab-rows [data-lab="0"] [data-k="c-n"]').inputValue(),'30');
+ await p.locator('#lab-modal [data-action="close-modal"]').click();await p.waitForTimeout(150);
 });
 results.push({name:'unexpected page errors',pass:errors.length===0,errors});fs.writeFileSync('test-artifacts/repair-test-results.json',JSON.stringify(results,null,2));await browser.close();console.log(JSON.stringify(results,null,2));if(results.some(r=>!r.pass))process.exitCode=1;
 })().catch(e=>{console.error(e);process.exitCode=1});
