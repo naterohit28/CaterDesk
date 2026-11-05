@@ -232,6 +232,17 @@
       <div class="field"><label for="ev-date">Date – दिनांक <span class="req">*</span></label><input type="date" id="ev-date"></div>
       <div class="field"><label for="ev-type">Type – प्रकार</label><select id="ev-type"></select></div>
     </div>
+    <!-- Meal: lunch events at banquets include breakfast; dinners sometimes add high tea. Optional. -->
+    <div class="field">
+      <label>Meal – जेवण</label>
+      <div class="seg" role="group" aria-label="Meal" id="ev-meal">
+        <button type="button" data-meal="lunch" aria-pressed="false">Lunch – दुपार</button>
+        <button type="button" data-meal="dinner" aria-pressed="false">Dinner – रात्र</button>
+      </div>
+      <label class="check-row" id="ev-addon-row" hidden style="border:0;padding:var(--s2) 0 0">
+        <input type="checkbox" id="ev-addon"><span id="ev-addon-lbl"></span>
+      </label>
+    </div>
     <div class="field"><label for="ev-venue">Venue – ठिकाण <span class="req">*</span></label><input type="text" id="ev-venue" placeholder="Hall / location" autocapitalize="words" enterkeyhint="next"></div>
     <!-- Menu + guests fill the bill from the rate card and the expected cost from what that menu
          has cost before. Both stay editable. -->
@@ -428,6 +439,9 @@
     </div>
     <div class="field" id="lab-mode-field"><label for="lab-mode">Paid by – पद्धत</label><select id="lab-mode"></select></div>
     <div class="field" id="lab-ven-field" hidden><label for="lab-ven">Labour contractor – ठेकेदार</label><select id="lab-ven"></select></div>
+    <!-- Optional: the contractor's final figure. Any small difference is put on the biggest line, so the total matches the bill. -->
+    <div class="field"><label for="lab-bill">Bill total ₹ (if different) – बिलाची एकूण रक्कम</label><input type="number" id="lab-bill" min="1" inputmode="decimal" placeholder="optional">
+      <div class="meta" id="lab-bill-hint" style="margin-top:6px"></div></div>
     <div class="s-foot"><div class="btn-row">
       <div class="amt-md" id="lab-total" style="align-self:center;flex:1">₹0</div>
       <button type="button" class="btn btn-primary" id="btn-save-lab">Save sheet – जतन</button>

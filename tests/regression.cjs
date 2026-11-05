@@ -315,5 +315,32 @@ await test('labour sheet matches real contractor bills (shifts, fare, mukadam fe
  await p.locator('#n-vendors').click();await p.locator('#ven-list [data-action="vendetail"]',{hasText:'Mukadam'}).click();await p.waitForSelector('#tab-vendetail .detail-name');
  const owed=(await db(async d=>d.getAll('expenses'))).filter(x=>x.venId==='muk').reduce((s,x)=>s+x.amt,0);assert.equal(owed,11364,'second sheet paid now by default, so only the first is owed');
 });
+await test('meal (lunch + breakfast, dinner + high tea), extra shifts and bill total',async()=>{
+ const H=await p.evaluate(async()=>(await import('./utils.js')).EXPENSE_HEADS);const boys=H.Labour.find(h=>h.startsWith('Boys'));
+ await seed({...empty(),events:[{...ev,guests:300}]});
+ // Meal: lunch ticks breakfast by default; dinner leaves high tea off; tapping again clears
+ await p.locator('#n-events').click();await p.locator('#fab').click();await p.waitForSelector('#ev-modal.active');
+ assert(await p.locator('#ev-addon-row').isHidden());await p.locator('#ev-meal [data-meal="lunch"]').click();assert.match(await p.locator('#ev-addon-lbl').innerText(),/Breakfast/);assert(await p.locator('#ev-addon').isChecked());
+ await p.locator('#ev-meal [data-meal="dinner"]').click();assert.match(await p.locator('#ev-addon-lbl').innerText(),/High tea/);assert(!(await p.locator('#ev-addon').isChecked()));
+ await p.locator('#ev-addon').check();for(const [id,v] of [['ev-name','Dinner Party'],['ev-date','2026-12-12'],['ev-venue','Hall'],['ev-billing','90000']])await p.locator('#'+id).fill(v);await p.locator('#btn-save-event').click();await p.waitForTimeout(300);
+ const dp=(await db(async d=>d.getAll('events'))).find(e=>e.name==='Dinner Party');assert.equal(dp.meal,'dinner');assert.equal(dp.mealAddon,true);
+ assert.match(await p.locator('#ev-list').innerText(),/Dinner \+ High tea/);
+ // Labour: 13 boys × 2 shifts × 700, travel 1,000; contractor's bill says 19,500 → 100 more on the biggest line
+ await p.locator('#ev-list [data-action="evdetail"][data-id="e"]').click();await p.waitForSelector('[data-action="lab-edit"]');await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');
+ const row=i=>p.locator(`#lab-rows [data-lab="${i}"]`);
+ await row(0).locator('[data-k="role"]').selectOption(boys);await row(0).locator('[data-k="count"]').fill('13');await row(0).locator('[data-k="shifts"]').fill('2');await row(0).locator('[data-k="rate"]').fill('700');
+ assert.match(await row(0).locator('[data-lab-line="0"]').innerText(),/13 × 2 shifts × ₹700 = ₹18,200/);
+ await p.locator('#btn-lab-extra').click();assert.equal(await row(1).locator('[data-k="extra"] option:checked').innerText(),'Travel');await row(1).locator('[data-k="rate"]').fill('1000');
+ assert.equal(await p.locator('#lab-total').innerText(),'₹19,200');
+ await p.locator('#lab-bill').fill('19300');assert.match(await p.locator('#lab-bill-hint').innerText(),/difference \+₹100/);assert.equal(await p.locator('#lab-total').innerText(),'₹19,300');
+ await p.locator('#btn-save-lab').click();await p.waitForTimeout(400);
+ const xs=(await db(async d=>d.getAll('expenses'))).filter(x=>x.evId==='e');assert.equal(xs.reduce((s,x)=>s+x.amt,0),19300,'final amount matches the bill');
+ assert.equal(xs.find(x=>x.head===boys).amt,18300);assert.match(xs.find(x=>x.head===boys).notes,/× 2 shifts[\s\S]*adjusted \+₹100 to match bill ₹19,300/);
+ assert.match(await p.locator('#labour-card').innerText(),/2 shifts[\s\S]*as billed[\s\S]*₹19,300/);
+ // Reopen: bill total kept; clearing it goes back to the lines
+ await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');assert.equal(await p.locator('#lab-bill').inputValue(),'19300');
+ await p.locator('#lab-bill').fill('');await p.locator('#btn-save-lab').click();await p.waitForTimeout(400);
+ assert.equal((await db(async d=>d.getAll('expenses'))).filter(x=>x.evId==='e').reduce((s,x)=>s+x.amt,0),19200);
+});
 results.push({name:'unexpected page errors',pass:errors.length===0,errors});fs.writeFileSync('test-artifacts/repair-test-results.json',JSON.stringify(results,null,2));await browser.close();console.log(JSON.stringify(results,null,2));if(results.some(r=>!r.pass))process.exitCode=1;
 })().catch(e=>{console.error(e);process.exitCode=1});
