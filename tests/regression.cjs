@@ -285,5 +285,35 @@ await test('v3.4: quote helper, receipt, price creep, labour sheet, quiet refres
  assert.match(await p.locator('#price-check').innerText(),/Dosa[\s\S]*₹60\/plate now · ₹50 before \(1 event\)[\s\S]*\+20%/);
  await p.locator('#n-summary').click();await p.locator('#tab-summary [data-period-seg] [data-id="all"]').click();assert.match(await p.locator('#price-creep').innerText(),/Murugan · Dosa[\s\S]*\+20%/);
 });
+await test('labour sheet matches real contractor bills (shifts, fare, mukadam fee, other work)',async()=>{
+ const H=await p.evaluate(async()=>(await import('./utils.js')).EXPENSE_HEADS);const boys=H.Labour.find(h=>h.startsWith('Boys')),roj=H.Labour.find(h=>h.startsWith('Rojiya'));
+ await seed({...empty(),vendors:[{id:'muk',name:'Mukadam',cat:'Labour'}],events:[{...ev,id:'lw',name:'Lohar Wadi',guests:300,date:'2026-10-24'},{...ev,id:'k2',name:'Second',guests:200,date:'2026-10-30'}]});
+ await p.locator('#n-events').click();await p.locator('#ev-list [data-action="evdetail"]',{hasText:'Lohar Wadi'}).click();await p.waitForSelector('[data-action="lab-edit"]');await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');
+ assert.deepEqual(await p.locator('#lab-rows [data-lab="0"] [data-k="shift"] option').allInnerTexts(),['Morning','Evening','Night','Full day','Loading','Late']);
+ // Bill: 5 × 650 + 11 × 650, fare 11 × 24, mukadamgiri 500, ice cream cutting 200 = 11,364
+ const row=i=>p.locator(`#lab-rows [data-lab="${i}"]`);
+ await row(0).locator('[data-k="role"]').selectOption(boys);await row(0).locator('[data-k="count"]').fill('5');await row(0).locator('[data-k="rate"]').fill('650');
+ await p.locator('#btn-lab-add').click();await row(1).locator('[data-k="role"]').selectOption(roj);await row(1).locator('[data-k="count"]').fill('11');await row(1).locator('[data-k="rate"]').fill('650');
+ await p.locator('#btn-lab-extra').click();assert.equal(await row(2).locator('[data-k="extra"]').inputValue(),'travel');await row(2).locator('[data-k="count"]').fill('11');await row(2).locator('[data-k="rate"]').fill('24');
+ await p.locator('#btn-lab-extra').click();assert.equal(await row(3).locator('[data-k="extra"]').inputValue(),'fee');await row(3).locator('[data-k="rate"]').fill('500');
+ await p.locator('#btn-lab-extra').click();assert.equal(await row(4).locator('[data-k="extra"]').inputValue(),'other');await row(4).locator('[data-k="label"]').fill('Ice cream cutting');await row(4).locator('[data-k="rate"]').fill('200');
+ assert.equal(await p.locator('#lab-total').innerText(),'₹11,364','same total as the bill');
+ await p.locator('#lab-pay [data-pay="credit"]').click();await p.locator('#lab-ven').selectOption('muk');await p.locator('#btn-save-lab').click();await p.waitForTimeout(400);
+ const xs=(await db(async d=>d.getAll('expenses'))).filter(x=>x.evId==='lw');
+ const by=h=>xs.find(x=>x.head.startsWith(h));
+ assert.equal(xs.reduce((s,x)=>s+x.amt,0),11364);assert.equal(by('Boys').amt,3250);assert.equal(by('Rojiya').amt,7150);
+ assert.equal(by('Transport').amt,264);assert.equal(by('Transport').cat,'Operations','fare counts as transport');assert.equal(by('Contractor Fee').amt,500);assert.equal(by('Other Labour Work').amt,200);assert.match(by('Other Labour Work').notes,/Ice cream cutting/);
+ assert(xs.every(x=>x.pay==='credit'&&x.venId==='muk'),'all owed to the mukadam');
+ assert.match(await p.locator('#labour-card').innerText(),/Ice cream cutting[\s\S]*Total · 16 workers[\s\S]*₹11,364/);
+ // Second bill: 13 boys evening × 700 + vehicle 1,000 = 10,100; copy the last sheet then adjust
+ await p.locator('#n-events').click();await p.locator('#ev-list [data-action="evdetail"]',{hasText:'Second'}).click();await p.waitForSelector('[data-action="lab-edit"]');await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');
+ await row(0).locator('[data-k="role"]').selectOption(boys);assert.equal(await row(0).locator('[data-k="rate"]').inputValue(),'650','Boys full-day rate remembered from the last bill');
+ await row(0).locator('[data-k="shift"]').selectOption('e');await row(0).locator('[data-k="count"]').fill('13');await row(0).locator('[data-k="rate"]').fill('700');
+ await p.locator('#btn-lab-extra').click();assert.equal(await row(1).locator('[data-k="rate"]').inputValue(),'24','last fare rate remembered');await row(1).locator('[data-k="count"]').fill('1');await row(1).locator('[data-k="rate"]').fill('1000');
+ assert.equal(await p.locator('#lab-total').innerText(),'₹10,100');await p.locator('#btn-save-lab').click();await p.waitForTimeout(400);
+ // The mukadam's page shows what you owe across both events (to check against his running bill)
+ await p.locator('#n-vendors').click();await p.locator('#ven-list [data-action="vendetail"]',{hasText:'Mukadam'}).click();await p.waitForSelector('#tab-vendetail .detail-name');
+ const owed=(await db(async d=>d.getAll('expenses'))).filter(x=>x.venId==='muk').reduce((s,x)=>s+x.amt,0);assert.equal(owed,11364,'second sheet paid now by default, so only the first is owed');
+});
 results.push({name:'unexpected page errors',pass:errors.length===0,errors});fs.writeFileSync('test-artifacts/repair-test-results.json',JSON.stringify(results,null,2));await browser.close();console.log(JSON.stringify(results,null,2));if(results.some(r=>!r.pass))process.exitCode=1;
 })().catch(e=>{console.error(e);process.exitCode=1});

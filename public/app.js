@@ -23,7 +23,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '3.4.0';
+const APP_BUILD = '4.0.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1152,17 +1152,30 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
 }
 
 /* ── LABOUR SHEET ────────────────────────────────── */
-// Worker types are the Labour items (tips are recorded as expenses, not on the sheet)
-const LAB_ROLES = () => EXPENSE_HEADS.Labour.filter(h => !/tips/i.test(h));
-const SHIFTS = { m: 'Morning – सकाळ', e: 'Evening – संध्याकाळ', n: 'Night – रात्र', f: 'Full day – पूर्ण दिवस' };
+// Worker types are the Labour items (tips and the contractor's extras are not worker types)
+const LAB_ROLES = () => EXPENSE_HEADS.Labour.filter(h => !/tips|contractor fee|other labour work/i.test(h));
+// Shift columns as on contractors' bills (सकाळी, सायंकाळी, नाईट, लोडिंग, लेट)
+const SHIFTS = { m: 'Morning – सकाळ', e: 'Evening – संध्याकाळ', n: 'Night – रात्र', f: 'Full day – पूर्ण दिवस',
+                 l: 'Loading – लोडिंग', t: 'Late – लेट' };
+/* Extra lines a contractor adds below the head count, each saved under the item it really is:
+   vehicle fare to the venue (गाडी भाडे), the mukadam's own fee (मुकादमगिरी), and small jobs
+   such as ice-cream cutting (with your own note). count × rate, e.g. 11 people × ₹24 fare. */
+const EXTRAS = {
+  travel: { name: 'Fare – गाडी भाडे', cat: 'Operations', head: 'Transport – वाहतूक' },
+  fee:    { name: 'Mukadam fee – मुकादमगिरी', cat: 'Labour', head: 'Contractor Fee – मुकादमगिरी' },
+  other:  { name: 'Other work – इतर काम', cat: 'Labour', head: 'Other Labour Work – इतर काम' }
+};
 let labRows = [];
+const isExtra = r => r.kind === 'x';
 
-// The rate you used last time for this worker type and shift, from earlier sheets
-function lastLabourRate(role, shift) {
+// The rate you used last time for this worker type and shift (or this extra), from earlier sheets
+function lastLabourRate(role, shift, extra) {
   for (const e of [...D.events].sort((a, b) => b.date.localeCompare(a.date)))
-    for (const r of e.labour?.rows || []) if (r.role === role && r.shift === shift && r.rate) return r.rate;
+    for (const r of e.labour?.rows || [])
+      if (r.rate && (extra ? isExtra(r) && r.extra === extra : !isExtra(r) && r.role === role && r.shift === shift)) return r.rate;
   return '';
 }
+const labName = r => isExtra(r) ? (r.label || short(EXTRAS[r.extra].name)) : short(r.role);
 
 function labourCard(ev) {
   if (ev.outsourced) return '';
@@ -1173,18 +1186,30 @@ function labourCard(ev) {
       <button type="button" class="btn-sm" data-action="lab-edit">${icon(rows.length ? 'pencil' : 'plus', 16)}${rows.length ? tr('Edit', 'बदला') : tr('Labour sheet', 'मजूर यादी')}</button></div>
     ${rows.length ? `<div class="card list" id="labour-card">${rows.map(r => `
       <div class="row" style="min-height:48px">
-        <div class="row-ic">${icon('users', 18)}</div>
-        <div class="row-body"><div class="title-sm trunc">${esc(short(r.role))} × ${r.count}</div>
-          <div class="meta">${tr(SHIFTS[r.shift].split(' – ')[0], SHIFTS[r.shift].split(' – ')[1])} · ${fmtCurrency(r.rate)} ${tr('each', 'प्रत्येकी')}</div></div>
+        <div class="row-ic">${icon(isExtra(r) ? (r.extra === 'travel' ? 'truck' : 'clipboard') : 'users', 18)}</div>
+        <div class="row-body"><div class="title-sm trunc" data-nl>${esc(labName(r))}${isExtra(r) && r.count === 1 ? '' : ` × ${r.count}`}</div>
+          <div class="meta">${isExtra(r) ? tr(short(EXTRAS[r.extra].name), EXTRAS[r.extra].name.split(' – ')[1]) : tr(SHIFTS[r.shift].split(' – ')[0], SHIFTS[r.shift].split(' – ')[1])} · ${fmtCurrency(r.rate)}${r.count === 1 ? '' : ' ' + tr('each', 'प्रत्येकी')}</div></div>
         <div class="amt-sm">${fmtCurrency(r.count * r.rate)}</div>
       </div>`).join('')}
-      <div class="row" style="min-height:44px"><div class="row-body title-sm">${tr(`Total · ${rows.reduce((s, r) => s + r.count, 0)} workers`, `एकूण · ${rows.reduce((s, r) => s + r.count, 0)} मजूर`)}</div><div class="amt-sm">${fmtCurrency(total)}</div></div>
+      <div class="row" style="min-height:44px"><div class="row-body title-sm">${tr(`Total · ${rows.filter(r => !isExtra(r)).reduce((s, r) => s + r.count, 0)} workers`, `एकूण · ${rows.filter(r => !isExtra(r)).reduce((s, r) => s + r.count, 0)} मजूर`)}</div><div class="amt-sm">${fmtCurrency(total)}</div></div>
     </div>` : `<div class="card pad"><div class="meta">${tr('Add workers by type and shift — the app remembers your rates and saves the total as Labour expenses.', 'प्रकार व शिफ्टनुसार मजूर जोडा — दर लक्षात राहतात व एकूण खर्च म्हणून नोंदवला जातो.')}</div></div>`}`;
 }
 
 function renderLabRows() {
   const roles = LAB_ROLES();
-  q('lab-rows').innerHTML = labRows.map((r, i) => `
+  q('lab-rows').innerHTML = labRows.map((r, i) => isExtra(r) ? `
+    <div class="card pad" style="margin-bottom:var(--s3)" data-lab="${i}">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);margin-bottom:var(--s2)">
+        <div class="field" style="margin:0"><label>Extra – जादा</label><select data-k="extra">${Object.entries(EXTRAS).map(([k, x]) => `<option value="${k}"${k === r.extra ? ' selected' : ''}>${esc(short(x.name))}</option>`).join('')}</select></div>
+        <div class="field" style="margin:0"><label>Note – नोंद</label><input type="text" data-k="label" placeholder="${r.extra === 'other' ? 'e.g. Ice cream cutting' : 'optional'}" value="${esc(r.label || '')}"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:var(--s2);align-items:end">
+        <div class="field" style="margin:0"><label>Count – संख्या</label><input type="number" data-k="count" min="1" inputmode="numeric" value="${r.count || ''}"></div>
+        <div class="field" style="margin:0"><label>Rate ₹ – दर</label><input type="number" data-k="rate" min="1" inputmode="decimal" value="${r.rate || ''}"></div>
+        <button type="button" class="del-btn" data-lab-del="${i}" aria-label="Remove">${icon('trash', 16)}</button>
+      </div>
+      <div class="meta" style="margin-top:6px" data-lab-line="${i}">${r.count && r.rate ? `${r.count} × ${fmtCurrency(r.rate)} = ${fmtCurrency(r.count * r.rate)}` : ''}</div>
+    </div>` : `
     <div class="card pad" style="margin-bottom:var(--s3)" data-lab="${i}">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);margin-bottom:var(--s2)">
         <div class="field" style="margin:0"><label>Worker – मजूर</label><select data-k="role" aria-label="Worker type">${roles.map(h => `<option value="${esc(h)}"${h === r.role ? ' selected' : ''}>${esc(h)}</option>`).join('')}</select></div>
@@ -1233,23 +1258,30 @@ function openLabModal() {
 async function saveLabour() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const rows = labRows.filter(r => Number(r.count) > 0 && Number(r.rate) > 0)
-    .map(r => ({ id: r.id, role: r.role, count: Math.round(Number(r.count)), shift: r.shift, rate: Number(r.rate) }));
+    .map(r => isExtra(r)
+      ? { id: r.id, kind: 'x', extra: r.extra, label: String(r.label || '').trim(), count: Math.round(Number(r.count)), rate: Number(r.rate) }
+      : { id: r.id, role: r.role, count: Math.round(Number(r.count)), shift: r.shift, rate: Number(r.rate) });
   const pay = q('lab-pay').dataset.value || 'paid';
   const venId = pay === 'credit' ? qv('lab-ven') : '';
   if (pay === 'credit' && !venId) { showFieldErrors({ 'lab-ven': 'Choose the contractor you owe – ठेकेदार निवडा' }); return; }
   const oldIds = ev.labour?.expIds || {};
-  const byRole = new Map();
+  const byRole = new Map();   // "cat|head" → lines saved as that expense
   for (const r of rows) {
-    if (!byRole.has(r.role)) byRole.set(r.role, []);
-    byRole.get(r.role).push(r);
+    const key = isExtra(r) ? `${EXTRAS[r.extra].cat}|${EXTRAS[r.extra].head}` : `Labour|${r.role}`;
+    if (!byRole.has(key)) byRole.set(key, []);
+    byRole.get(key).push(r);
   }
   const changes = [], expIds = {}, saved = [];
-  for (const [role, rs] of byRole) {
-    const old = D.expenses.find(x => x.id === oldIds[role]);
-    const record = { ...(old || {}), id: old?.id || uid('EX'), evId: ev.id, cat: 'Labour', head: role,
+  for (const [key, rs] of byRole) {
+    const [cat, head] = key.split('|');
+    const old = D.expenses.find(x => x.id === oldIds[key]);
+    const role = key;
+    const record = { ...(old || {}), id: old?.id || uid('EX'), evId: ev.id, cat, head,
       amt: rs.reduce((s, r) => s + r.count * r.rate, 0), date: old?.date || ev.date, pay, mode: pay === 'paid' ? qv('lab-mode') : '',
       venId, dueDate: old?.dueDate || '', billIds: old?.billIds || [],
-      notes: 'Labour sheet: ' + rs.map(r => `${r.count} × ${SHIFTS[r.shift].split(' – ')[0]} @ ${fmtCurrency(r.rate)}`).join(', ') };
+      notes: 'Labour sheet: ' + rs.map(r => isExtra(r)
+        ? `${labName(r)} ${r.count > 1 ? r.count + ' × ' : ''}${fmtCurrency(r.rate)}`
+        : `${r.count} × ${SHIFTS[r.shift].split(' – ')[0]} @ ${fmtCurrency(r.rate)}`).join(', ') };
     delete record._rev;
     changes.push({ store: 'expenses', record, expected: old || null });
     expIds[role] = record.id; saved.push(record);
@@ -3056,6 +3088,11 @@ function bindAllEvents() {
     labRows.push({ id: uid('LB'), role, count: '', shift: 'f', rate: lastLabourRate(role, 'f') });
     renderLabRows();
   });
+  q('btn-lab-extra').addEventListener('click', () => {
+    const extra = ['travel', 'fee', 'other'].find(x => !labRows.some(r => isExtra(r) && r.extra === x)) || 'other';
+    labRows.push({ id: uid('LB'), kind: 'x', extra, label: '', count: 1, rate: lastLabourRate('', '', extra) });
+    renderLabRows();
+  });
   q('btn-lab-copy').addEventListener('click', e => {
     const from = D.events.find(x => x.id === e.currentTarget.dataset.from);
     labRows = (from?.labour?.rows || []).map(r => ({ ...r, id: uid('LB') }));
@@ -3067,8 +3104,11 @@ function bindAllEvents() {
   q('lab-rows').addEventListener('input', e => {
     const box = e.target.closest('[data-lab]'), k = e.target.dataset.k; if (!box || !k) return;
     const r = labRows[Number(box.dataset.lab)];
-    r[k] = k === 'role' || k === 'shift' ? e.target.value : e.target.value === '' ? '' : Number(e.target.value);
-    if ((k === 'role' || k === 'shift') && !r.rate) { r.rate = lastLabourRate(r.role, r.shift); box.querySelector('[data-k="rate"]').value = r.rate || ''; }
+    r[k] = ['role', 'shift', 'extra', 'label'].includes(k) ? e.target.value : e.target.value === '' ? '' : Number(e.target.value);
+    if (['role', 'shift', 'extra'].includes(k) && !r.rate) {
+      r.rate = isExtra(r) ? lastLabourRate('', '', r.extra) : lastLabourRate(r.role, r.shift);
+      box.querySelector('[data-k="rate"]').value = r.rate || '';
+    }
     q(`lab-rows`).querySelector(`[data-lab-line="${box.dataset.lab}"]`).textContent = r.count && r.rate ? `${r.count} × ${fmtCurrency(r.rate)} = ${fmtCurrency(r.count * r.rate)}` : '';
     updateLabTotal();
   });

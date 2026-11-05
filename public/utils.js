@@ -23,7 +23,8 @@ export const EXPENSE_HEADS = {
     'Rojiya Labour – रोजीया मजूर','Boys – बॉईज','Ghati – घाटी','Cook – स्वयंपाकी',
     'Helper Staff','Roti Labour – रोटी मजूर','Cleaner / Washing',
     'PRO – पी.आर.О.','Supervisor','Loading / Unloading Labour',
-    'Staff Tips – स्टाफ टीप','Vendor Staff Tips – विक्रेता स्टाफ टीप'
+    'Staff Tips – स्टाफ टीप','Vendor Staff Tips – विक्रेता स्टाफ टीप',
+    'Contractor Fee – मुकादमगिरी','Other Labour Work – इतर काम'
   ],
   'Operations': [
     'Transport – वाहतूक','Fuel / Diesel','Gas / Cylinder – सिलिंडर',
