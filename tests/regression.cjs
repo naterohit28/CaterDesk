@@ -290,8 +290,8 @@ await test('v3.4: quote helper, receipt, price creep, labour sheet, quiet refres
 });
 await test('labour sheet matches real contractor bills (shifts, fare, mukadam fee, other work)',async()=>{
  const H=await p.evaluate(async()=>(await import('./utils.js')).EXPENSE_HEADS);const boys=H.Labour.find(h=>h.startsWith('Boys')),roj=H.Labour.find(h=>h.startsWith('Rojiya'));
- await seed({...empty(),vendors:[{id:'muk',name:'Mukadam',cat:'Labour'}],events:[{...ev,id:'lw',name:'Lohar Wadi',guests:300,date:'2026-10-24'},{...ev,id:'k2',name:'Second',guests:200,date:'2026-10-30'}]});
- await p.locator('#n-events').click();await p.locator('#ev-list [data-action="evdetail"]',{hasText:'Lohar Wadi'}).click();await p.waitForSelector('[data-action="lab-edit"]');await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');
+ await seed({...empty(),vendors:[{id:'muk',name:'Mukadam',cat:'Labour'}],events:[{...ev,id:'lw',name:'Lake Lawn',guests:300,date:'2026-10-24'},{...ev,id:'k2',name:'Second',guests:200,date:'2026-10-30'}]});
+ await p.locator('#n-events').click();await p.locator('#ev-list [data-action="evdetail"]',{hasText:'Lake Lawn'}).click();await p.waitForSelector('[data-action="lab-edit"]');await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');
  assert.deepEqual(await p.locator('#lab-rows [data-lab="0"] [data-k="shift"] option').allInnerTexts(),['Morning','Evening','Night','Full day','Loading','Late']);
  // Bill: 5 × 650 + 11 × 650, fare 11 × 24, mukadamgiri 500, ice cream cutting 200 = 11,364
  const row=i=>p.locator(`#lab-rows [data-lab="${i}"]`);

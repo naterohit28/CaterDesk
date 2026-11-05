@@ -204,6 +204,7 @@ Playwright uses the installed **Microsoft Edge** channel. The runner starts an i
 | [`tests/idle-recovery.cjs`](tests/idle-recovery.cjs) | Transaction cancellation, history fallback, delayed images, reconnection and simulated background/PIN recovery |
 | [`tests/security-smoke.cjs`](tests/security-smoke.cjs) | Configured hosting CSP and basic save/theme/language flows |
 | [`tests/release-update.cjs`](tests/release-update.cjs) | Upgrade from actual v2.4.4 files with old tabs/forms open, record preservation and offline reopening |
+| [`tests/ui-audit.cjs`](tests/ui-audit.cjs) | Touch-phone audit in light and dark at 360px: aligned card edges and equal margins, equal-size buttons/segments/tiles, centred labels, aligned list icons and amounts; every tab, quick action, event/vendor action and dropdown option; sheets close by ✕, Back and outside tap; background stays still under sheets; pull-to-refresh; layout shift; console errors |
 
 Use a normal Git clone with history: the upgrade test reads commit `bdb6a5a`. A source ZIP or shallow clone missing that commit is insufficient. Evidence/screenshots go into ignored `test-artifacts/`.
 

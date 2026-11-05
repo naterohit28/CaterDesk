@@ -534,8 +534,10 @@ document.addEventListener('visibilitychange', () => {
 });
 function openOverlay(hide, after) {
   const previous = overlayTrigger || document.activeElement;
+  document.documentElement.classList.add('modal-open');   // page behind stays still while a sheet is up
   overlays.push({ hide: () => {
     hide(); syncOverlayAccessibility();
+    if (!overlays.length) document.documentElement.classList.remove('modal-open');
     const target = previous?.isConnected && previous.getClientRects().length && !previous.closest('[inert]') ? previous : q('fab');
     if (target?.getClientRects().length && !target.closest('[inert]')) target.focus({ preventScroll: true });
   }, after });
@@ -2225,7 +2227,10 @@ async function saveEvent() {
   if (vendorBill) D.expenses.push(vendorBill);
 
   closeModals();
-  showToast(advance ? `Event saved with ${fmtCurrency(advance.amt)} advance – अॅडव्हान्ससह जतन` : 'Event saved – कार्यक्रम जतन झाला');
+  const msg = advance ? `Event saved with ${fmtCurrency(advance.amt)} advance – अॅडव्हान्ससह जतन` : 'Event saved – कार्यक्रम जतन झाला';
+  // A new event saved from another page: one tap to open it
+  showToast(msg, 'success', !id && CT !== 'evdetail' ? { label: 'Open – उघडा', run: () => showEvDetail(record.id) } : null);
+  if (!id && CT !== 'evdetail') setTimeout(hideToast, 6000);
   refreshCurrent();
 }
 
@@ -2651,7 +2656,10 @@ async function saveVendor() {
   await closeModals();
   if (backToExpense) populateVendorSelect(record.id);
   if (backToEvent) { fillOutVendors(record.id); updateOutHint(); }
-  showToast(person ? 'Saved – जतन झाले' : 'Vendor saved – विक्रेता जतन झाला');
+  const openIt = !id && !backToExpense && !backToEvent && CT !== 'vendetail';
+  showToast(person ? 'Saved – जतन झाले' : 'Vendor saved – विक्रेता जतन झाला', 'success',
+    openIt ? { label: 'Open – उघडा', run: () => showVenDetail(record.id) } : null);
+  if (openIt) setTimeout(hideToast, 6000);
   refreshCurrent();
 }
 
@@ -2984,9 +2992,10 @@ function bindAllEvents() {
     switch (action) {
       case 'go':           go(id); break;
       case 'quick':
-        if (id === 'event')   { go('events');   openEvModal(); }
-        if (id === 'expense') openExpModal();   // record it right here, no page change
-        if (id === 'vendor')  { go('vendors');  openVenModal(); }
+        // All three open right here: cancelling leaves you where you were; saving offers "Open"
+        if (id === 'event')   openEvModal();
+        if (id === 'expense') openExpModal();
+        if (id === 'vendor')  openVenModal();
         break;
       case 'close-modal':
       case 'close-lightbox': closeOverlay(); break;

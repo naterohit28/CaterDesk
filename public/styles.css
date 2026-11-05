@@ -377,6 +377,7 @@ a.fact .ic { color: inherit; }
 .empty .btn { width: auto; display: inline-flex; padding: 0 var(--s5); }
 
 /* ── SHEETS (modals) ── */
+html.modal-open, html.modal-open body { overflow: hidden; }
 .modal-ov { display: none; position: fixed; inset: 0; background: var(--scrim); z-index: 200; align-items: flex-end; justify-content: center; }
 .modal-ov.active { display: flex; animation: fadeIn .15s; }
 .sheet {
