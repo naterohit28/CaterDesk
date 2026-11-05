@@ -232,6 +232,16 @@
       <div class="field"><label for="ev-date">Date – दिनांक <span class="req">*</span></label><input type="date" id="ev-date"></div>
       <div class="field"><label for="ev-type">Type – प्रकार</label><select id="ev-type"></select></div>
     </div>
+    <!-- Meals served — any mix. Lunch at a banquet comes with breakfast, so ticking Lunch ticks Breakfast too (untick if not). -->
+    <div class="field">
+      <label>Meals – जेवण</label>
+      <div class="chips-row" role="group" aria-label="Meals" id="ev-meals" style="margin:0;padding:0;flex-wrap:wrap">
+        <button type="button" class="f-chip" data-meal="breakfast" aria-pressed="false">Breakfast – नाश्ता</button>
+        <button type="button" class="f-chip" data-meal="lunch" aria-pressed="false">Lunch – दुपारचे जेवण</button>
+        <button type="button" class="f-chip" data-meal="hightea" aria-pressed="false">High tea – हाय टी</button>
+        <button type="button" class="f-chip" data-meal="dinner" aria-pressed="false">Dinner – रात्रीचे जेवण</button>
+      </div>
+    </div>
     <div class="field"><label for="ev-venue">Venue – ठिकाण <span class="req">*</span></label><input type="text" id="ev-venue" placeholder="Hall / location" autocapitalize="words" enterkeyhint="next"></div>
     <!-- Menu + guests fill the bill from the rate card and the expected cost from what that menu
          has cost before. Both stay editable. -->
@@ -244,6 +254,8 @@
       <div class="field"><label for="ev-billing">Total bill ₹ – एकूण बिल <span class="req">*</span></label><input type="number" id="ev-billing" placeholder="0" min="1" inputmode="decimal" enterkeyhint="next"></div>
       <div class="field"><label for="ev-budget">Expected cost ₹ – अंदाजे खर्च</label><input type="number" id="ev-budget" placeholder="optional" min="1" inputmode="decimal" enterkeyhint="next"></div>
     </div>
+    <!-- Quote helper: your real cost per plate and margin, from your own past events -->
+    <div class="card pad" id="ev-quote" data-nl hidden style="margin:-4px 0 var(--s4);font-size:var(--fs-sm);line-height:1.6"></div>
     <!-- Outsourced: another caterer does the whole event and you keep the difference (your commission).
          Their charge is saved as one credit expense to them, so it shows in "To pay". -->
     <div class="field">
@@ -403,6 +415,35 @@
     <div class="s-foot"><div class="btn-row">
       <button type="button" class="btn btn-ghost danger" id="btn-cancel-ord" hidden>Cancel order – रद्द</button>
       <button type="button" class="btn btn-wa" id="btn-send-ord">Send on WhatsApp – पाठवा</button>
+    </div></div>
+  </div>
+</div>
+
+<!-- LABOUR SHEET for one event: worker type × count × shift × rate; saved as Labour expenses -->
+<div class="modal-ov" id="lab-modal">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="lab-mtitle">
+    <div class="s-handle"></div>
+    <div class="s-head"><div class="s-title" id="lab-mtitle">Labour sheet – मजूर</div><button type="button" class="icon-btn" data-action="close-modal" aria-label="Close"><i data-ic="x"></i></button></div>
+    <div id="lab-rows"></div>
+    <div class="btn-row" style="margin:var(--s2) 0 var(--s4)">
+      <button type="button" class="btn btn-secondary" id="btn-lab-add">+ Workers – मजूर</button>
+      <button type="button" class="btn btn-secondary" id="btn-lab-extra">+ Fare / fee – गाडी भाडे</button>
+    </div>
+    <button type="button" class="btn btn-ghost" id="btn-lab-copy" hidden style="width:100%;margin:-8px 0 var(--s4)">Copy last event's sheet – मागील यादी</button>
+    <div class="field">
+      <div class="seg" role="group" aria-label="Payment" id="lab-pay">
+        <button type="button" data-pay="paid" aria-pressed="true">Paid now – दिले</button>
+        <button type="button" data-pay="credit" aria-pressed="false">Contractor credit – उधार</button>
+      </div>
+    </div>
+    <div class="field" id="lab-mode-field"><label for="lab-mode">Paid by – पद्धत</label><select id="lab-mode"></select></div>
+    <div class="field" id="lab-ven-field" hidden><label for="lab-ven">Labour contractor – ठेकेदार</label><select id="lab-ven"></select></div>
+    <!-- Optional: the contractor's final figure. Any small difference is put on the biggest line, so the total matches the bill. -->
+    <div class="field"><label for="lab-bill">Bill total ₹ (if different) – बिलाची एकूण रक्कम</label><input type="number" id="lab-bill" min="1" inputmode="decimal" placeholder="optional">
+      <div class="meta" id="lab-bill-hint" style="margin-top:6px"></div></div>
+    <div class="s-foot"><div class="btn-row">
+      <div class="amt-md" id="lab-total" style="align-self:center;flex:1">₹0</div>
+      <button type="button" class="btn btn-primary" id="btn-save-lab">Save sheet – जतन</button>
     </div></div>
   </div>
 </div>
