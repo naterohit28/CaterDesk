@@ -315,16 +315,21 @@ await test('labour sheet matches real contractor bills (shifts, fare, mukadam fe
  await p.locator('#n-vendors').click();await p.locator('#ven-list [data-action="vendetail"]',{hasText:'Mukadam'}).click();await p.waitForSelector('#tab-vendetail .detail-name');
  const owed=(await db(async d=>d.getAll('expenses'))).filter(x=>x.venId==='muk').reduce((s,x)=>s+x.amt,0);assert.equal(owed,11364,'second sheet paid now by default, so only the first is owed');
 });
-await test('meal (lunch + breakfast, dinner + high tea), extra shifts and bill total',async()=>{
+await test('meals (any mix of breakfast, lunch, high tea, dinner), extra shifts and bill total',async()=>{
  const H=await p.evaluate(async()=>(await import('./utils.js')).EXPENSE_HEADS);const boys=H.Labour.find(h=>h.startsWith('Boys'));
  await seed({...empty(),events:[{...ev,guests:300}]});
  // Meal: lunch ticks breakfast by default; dinner leaves high tea off; tapping again clears
  await p.locator('#n-events').click();await p.locator('#fab').click();await p.waitForSelector('#ev-modal.active');
- assert(await p.locator('#ev-addon-row').isHidden());await p.locator('#ev-meal [data-meal="lunch"]').click();assert.match(await p.locator('#ev-addon-lbl').innerText(),/Breakfast/);assert(await p.locator('#ev-addon').isChecked());
- await p.locator('#ev-meal [data-meal="dinner"]').click();assert.match(await p.locator('#ev-addon-lbl').innerText(),/High tea/);assert(!(await p.locator('#ev-addon').isChecked()));
- await p.locator('#ev-addon').check();for(const [id,v] of [['ev-name','Dinner Party'],['ev-date','2026-12-12'],['ev-venue','Hall'],['ev-billing','90000']])await p.locator('#'+id).fill(v);await p.locator('#btn-save-event').click();await p.waitForTimeout(300);
- const dp=(await db(async d=>d.getAll('events'))).find(e=>e.name==='Dinner Party');assert.equal(dp.meal,'dinner');assert.equal(dp.mealAddon,true);
- assert.match(await p.locator('#ev-list').innerText(),/Dinner \+ High tea/);
+ const pressed=m=>p.locator(`#ev-meals [data-meal="${m}"]`).getAttribute('aria-pressed');
+ await p.locator('#ev-meals [data-meal="lunch"]').click();assert.equal(await pressed('breakfast'),'true','lunch brings breakfast');
+ await p.locator('#ev-meals [data-meal="hightea"]').click();await p.locator('#ev-meals [data-meal="dinner"]').click();assert.equal(await pressed('hightea'),'true');
+ for(const [id,v] of [['ev-name','Dinner Party'],['ev-date','2026-12-12'],['ev-venue','Hall'],['ev-billing','90000']])await p.locator('#'+id).fill(v);await p.locator('#btn-save-event').click();await p.waitForTimeout(300);
+ const dp=(await db(async d=>d.getAll('events'))).find(e=>e.name==='Dinner Party');assert.deepEqual(dp.meals,['breakfast','lunch','hightea','dinner'],'all four, in day order');
+ assert.match(await p.locator('#ev-list').innerText(),/Breakfast \+ Lunch \+ High tea \+ Dinner/);
+ await p.locator('#ev-list [data-action="evdetail"]',{hasText:'Dinner Party'}).click();await p.locator('#hdr-edit').click();await p.waitForSelector('#ev-modal.active');
+ await p.locator('#ev-meals [data-meal="breakfast"]').click();await p.locator('#ev-meals [data-meal="lunch"]').click();await p.locator('#btn-save-event').click();await p.waitForTimeout(300);
+ assert.deepEqual((await db(async d=>d.getAll('events'))).find(e=>e.name==='Dinner Party').meals,['hightea','dinner'],'unticking works');
+ await p.locator('#n-events').click();
  // Labour: 13 boys × 2 shifts × 700, travel 1,000; contractor's bill says 19,500 → 100 more on the biggest line
  await p.locator('#ev-list [data-action="evdetail"][data-id="e"]').click();await p.waitForSelector('[data-action="lab-edit"]');await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');
  const row=i=>p.locator(`#lab-rows [data-lab="${i}"]`);

@@ -232,16 +232,15 @@
       <div class="field"><label for="ev-date">Date – दिनांक <span class="req">*</span></label><input type="date" id="ev-date"></div>
       <div class="field"><label for="ev-type">Type – प्रकार</label><select id="ev-type"></select></div>
     </div>
-    <!-- Meal: lunch events at banquets include breakfast; dinners sometimes add high tea. Optional. -->
+    <!-- Meals served — any mix. Lunch at a banquet comes with breakfast, so ticking Lunch ticks Breakfast too (untick if not). -->
     <div class="field">
-      <label>Meal – जेवण</label>
-      <div class="seg" role="group" aria-label="Meal" id="ev-meal">
-        <button type="button" data-meal="lunch" aria-pressed="false">Lunch – दुपार</button>
-        <button type="button" data-meal="dinner" aria-pressed="false">Dinner – रात्र</button>
+      <label>Meals – जेवण</label>
+      <div class="chips-row" role="group" aria-label="Meals" id="ev-meals" style="margin:0;padding:0;flex-wrap:wrap">
+        <button type="button" class="f-chip" data-meal="breakfast" aria-pressed="false">Breakfast – नाश्ता</button>
+        <button type="button" class="f-chip" data-meal="lunch" aria-pressed="false">Lunch – दुपारचे जेवण</button>
+        <button type="button" class="f-chip" data-meal="hightea" aria-pressed="false">High tea – हाय टी</button>
+        <button type="button" class="f-chip" data-meal="dinner" aria-pressed="false">Dinner – रात्रीचे जेवण</button>
       </div>
-      <label class="check-row" id="ev-addon-row" hidden style="border:0;padding:var(--s2) 0 0">
-        <input type="checkbox" id="ev-addon"><span id="ev-addon-lbl"></span>
-      </label>
     </div>
     <div class="field"><label for="ev-venue">Venue – ठिकाण <span class="req">*</span></label><input type="text" id="ev-venue" placeholder="Hall / location" autocapitalize="words" enterkeyhint="next"></div>
     <!-- Menu + guests fill the bill from the rate card and the expected cost from what that menu

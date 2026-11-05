@@ -46,7 +46,7 @@ Do not relabel an older package as 4.0.0. Use the [release assets](https://githu
 
 ### Events and collections
 
-- Create/edit events with date, time, meal (lunch with breakfast, or dinner with optional high tea), venue, guest count, billed amount, expected cost, menu package and notes. Events are listed newest first.
+- Create/edit events with date, time, meals (any mix of breakfast, lunch, high tea and dinner; choosing lunch also ticks breakfast), venue, guest count, billed amount, expected cost, menu package and notes. Events are listed newest first.
 - Record an optional booking advance as the event's first client payment; track subsequent collections and the remaining balance.
 - Menu-package rates and guest slabs can suggest billing. Historical costs for that menu can suggest expected cost. Values remain editable; these are estimates based on recorded data.
 - A **quote helper** under the bill shows what that menu (or event type) usually costs you per plate from your own events, the margin at the bill entered, the lowest per-plate price for a 30% margin, and the average you actually billed on that menu against the card rate.
@@ -318,7 +318,7 @@ This is a short source-feature history, not a list of available binary downloads
 
 | Version | Main changes |
 | --- | --- |
-| 4.0.0 | Glass design and full-width New event; quiet refresh; quote helper with actually-billed rates; client payment receipts; vendor price creep; lunch/dinner meal with breakfast/high tea; labour sheet with shifts per person, remembered rates, contractor extras (travel, mukadam fee, other work) and bill total |
+| 4.0.0 | Glass design and full-width New event; quiet refresh; quote helper with actually-billed rates; client payment receipts; vendor price creep; meals (breakfast, lunch, high tea, dinner in any mix); labour sheet with shifts per person, remembered rates, contractor extras (travel, mukadam fee, other work) and bill total |
 | 3.3.1 | Add outsourced caterer inline; header/pull refresh; whole-event outsourced menu orders without repeat charges; event-filtered expenses |
 | 3.3.0 | Paste/clean dishes, remember counter mapping, prepare vendor WhatsApp orders and track delivery |
 | 3.2.1 | Client/vendor calls and WhatsApp messages, dues summaries and supported contact picking |

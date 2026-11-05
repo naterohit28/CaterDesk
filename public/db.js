@@ -410,7 +410,7 @@ export async function prepareImport(payload) {
         throw new Error('Missing or duplicate ID in ' + name);
       seen.add(row.id);
       if (row._rev !== undefined && (!Number.isSafeInteger(row._rev) || row._rev < 0)) throw new Error('Invalid record revision');
-      for (const field of ['venue', 'mobile', 'type', 'notes', 'cat', 'head', 'mode', 'phone', 'specialty', 'dueDate', 'evId', 'venId', 'eventId', 'expenseId', 'createdAt', 'kind', 'menu', 'outVenId', 'meal']) {
+      for (const field of ['venue', 'mobile', 'type', 'notes', 'cat', 'head', 'mode', 'phone', 'specialty', 'dueDate', 'evId', 'venId', 'eventId', 'expenseId', 'createdAt', 'kind', 'menu', 'outVenId']) {
         if (row[field] === null) row[field] = '';
         if (row[field] !== undefined && typeof row[field] !== 'string') throw new Error('Invalid text field: ' + field);
       }
@@ -424,7 +424,7 @@ export async function prepareImport(payload) {
       if (name === 'photos' && (typeof row.data !== 'string' || !/^data:image\/(jpeg|png|webp|gif);base64,/.test(row.data))) throw new Error('Invalid photo data');
       if (row.pay && !['paid', 'credit'].includes(row.pay)) throw new Error('Invalid payment state');
       if (row.outsourced !== undefined && typeof row.outsourced !== 'boolean') throw new Error('Invalid outsourced flag');
-      if (row.meal && !['lunch', 'dinner'].includes(row.meal)) throw new Error('Invalid meal');
+      if (row.meals !== undefined && (!Array.isArray(row.meals) || row.meals.some(m => !['breakfast', 'lunch', 'hightea', 'dinner'].includes(m)))) throw new Error('Invalid meals');
       if (row.labour !== undefined && (typeof row.labour !== 'object' || !Array.isArray(row.labour?.rows))) throw new Error('Invalid labour sheet');
       if (row.kind && !['vendor', 'person'].includes(row.kind)) throw new Error('Invalid vendor kind');
     }

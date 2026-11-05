@@ -903,7 +903,7 @@ function eventCard(ev) {
     <div class="item-top">
       <div style="min-width:0">
         <div class="title-sm trunc" data-nl>${esc(ev.name)}</div>
-        <div class="meta trunc">${fmtDate(ev.date)} · <span data-nl>${esc(ev.venue)}</span>${ev.meal ? ' · ' + esc(mealLabel(ev)) : ''} · ${esc(ev.type)}</div>
+        <div class="meta trunc">${fmtDate(ev.date)} · <span data-nl>${esc(ev.venue)}</span>${ev.meals?.length ? ' · ' + esc(mealLabel(ev)) : ''} · ${esc(ev.type)}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
         ${chip}
@@ -1071,7 +1071,7 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
         <span class="fact">${icon('calendar', 16)}${fmtDate(ev.date)}</span>
         <span class="fact" data-nl>${icon('pin', 16)}${esc(ev.venue)}</span>
         <span class="chip">${esc(ev.type)}</span>
-        ${ev.meal ? `<span class="chip">${esc(mealLabel(ev))}</span>` : ''}
+        ${ev.meals?.length ? `<span class="chip">${esc(mealLabel(ev))}</span>` : ''}
         ${menu ? `<span class="chip info">${esc(menu.name)}</span>` : ''}
         ${ev.outsourced ? `<span class="chip info">${tr('Outsourced', 'आउटसोर्स')}${outVen ? ` · <span data-nl>${esc(outVen.name)}</span>` : ''}</span>` : ''}
         ${phone ? `<a class="fact" href="tel:+${esc(phone)}">${icon('phone', 16)}${esc(ev.mobile)}</a>` : ''}
@@ -1153,18 +1153,12 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
 }
 
 /* ── MEAL ────────────────────────────────────────── */
-// Lunch comes with breakfast (default on, as at banquets); dinner may add high tea (default off)
-const MEAL_ADDON = { lunch: 'Breakfast – नाश्ता', dinner: 'High tea – हाय टी' };
-function mealLabel(ev) {
-  if (!ev.meal) return '';
-  const base = ev.meal === 'lunch' ? 'Lunch' : 'Dinner';
-  return ev.mealAddon ? `${base} + ${short(MEAL_ADDON[ev.meal])}` : base;
-}
-function setEvMeal(meal, addon) {
-  q('ev-meal').dataset.value = meal || '';
-  q('ev-meal').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.meal === meal)));
-  q('ev-addon-row').hidden = !meal;
-  if (meal) { q('ev-addon-lbl').textContent = 'With ' + MEAL_ADDON[meal]; q('ev-addon').checked = addon ?? meal === 'lunch'; }
+// Any mix of meals, always shown in the order of the day
+const MEALS = { breakfast: 'Breakfast', lunch: 'Lunch', hightea: 'High tea', dinner: 'Dinner' };
+const mealLabel = ev => Object.keys(MEALS).filter(m => (ev.meals || []).includes(m)).map(m => MEALS[m]).join(' + ');
+const evMeals = () => [...q('ev-meals').querySelectorAll('[aria-pressed="true"]')].map(b => b.dataset.meal);
+function setEvMeals(meals) {
+  q('ev-meals').querySelectorAll('[data-meal]').forEach(b => b.setAttribute('aria-pressed', String(meals.includes(b.dataset.meal))));
 }
 
 /* ── LABOUR SHEET ────────────────────────────────── */
@@ -1459,7 +1453,7 @@ function openOrderModal({ head, orderId }) {
 function orderMessage(ev, o, ven) {
   const items = (dishGroups(ev).get(o.head) || []).join(', ');
   return `Namaste ${ven.name}! Order for ${ev.name}:\n`
-    + `Date: ${fmtDate(o.date)}${o.time ? ', ' + o.time : ''}${ev.meal ? ' (' + mealLabel(ev) + ')' : ''}\nVenue: ${ev.venue || '-'}\n`
+    + `Date: ${fmtDate(o.date)}${o.time ? ', ' + o.time : ''}${ev.meals?.length ? ' (' + mealLabel(ev) + ')' : ''}\nVenue: ${ev.venue || '-'}\n`
     + (ev.outsourced ? `Full event catering for ${o.plates || '-'} guests\n` + (items ? `Menu: ${items}\n` : '')
                      : `${short(o.head)} for ${o.plates || '-'} plates\n` + (items ? `Items: ${items}\n` : ''))
     + (o.notes ? `Note: ${o.notes}\n` : '') + `\nPlease confirm. Thank you!`;
@@ -2039,7 +2033,7 @@ function openEvModal(id) {
   q('ev-budget').value  = ev?.budget  || '';
   q('ev-notes').value   = ev?.notes   || '';
   populateSelect('ev-type', EVENT_TYPES, ev?.type || '');
-  setEvMeal(ev?.meal || '', ev ? !!ev.mealAddon : undefined);
+  setEvMeals(ev?.meals || []);
   const menuOpts = leaf => MENUS.filter(m => !!m.leaf === leaf).map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('');
   q('ev-menu').innerHTML = '<option value="">No package – पॅकेज नाही</option>'
     + `<optgroup label="Buffet – बुफे">${menuOpts(false)}</optgroup><optgroup label="Banana leaf – केळीचे पान">${menuOpts(true)}</optgroup>`;
@@ -2199,7 +2193,7 @@ async function saveEvent() {
     name:     data.name,
     date:     data.date,
     type:     qv('ev-type'),
-    ...(q('ev-meal').dataset.value ? { meal: q('ev-meal').dataset.value, mealAddon: q('ev-addon').checked } : {}),
+    ...(evMeals().length ? { meals: Object.keys(MEALS).filter(m => evMeals().includes(m)) } : {}),
     venue:    data.venue,
     billing:  data.billing,
     mobile:   data.mobile,
@@ -3182,10 +3176,12 @@ function bindAllEvents() {
     b.hidden = !canPickContact;
     b.addEventListener('click', () => b.dataset.contact === 'ev' ? pickContact('ev-name', 'ev-mobile') : pickContact('ven-name', 'ven-phone'));
   });
-  // Tap the chosen meal again to clear it
-  q('ev-meal').addEventListener('click', e => {
+  // Meals toggle on and off; turning Lunch on also turns Breakfast on (banquet lunches include it)
+  q('ev-meals').addEventListener('click', e => {
     const b = e.target.closest('[data-meal]'); if (!b) return;
-    setEvMeal(q('ev-meal').dataset.value === b.dataset.meal ? '' : b.dataset.meal);
+    const on = b.getAttribute('aria-pressed') !== 'true';
+    b.setAttribute('aria-pressed', String(on));
+    if (on && b.dataset.meal === 'lunch') q('ev-meals').querySelector('[data-meal="breakfast"]').setAttribute('aria-pressed', 'true');
   });
   q('ev-handling').addEventListener('click', e => { const b = e.target.closest('[data-h]'); if (b) setEvHandling(b.dataset.h); });
   q('ev-out-ven').addEventListener('change', e => {
