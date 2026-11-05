@@ -1169,12 +1169,14 @@ function setEvMeals(meals) {
 /* ── LABOUR SHEET ────────────────────────────────── */
 // Worker types are the Labour items (tips and the contractor's extras are not worker types)
 const LAB_ROLES = () => EXPENSE_HEADS.Labour.filter(h => !/tips|contractor fee|other labour work/i.test(h));
-// Shift columns as on contractors' bills (सकाळी, सायंकाळी, नाईट, लोडिंग, लेट)
+/* Shift columns as on contractors' bills (लोडिंग, नाईट, सकाळी, सायंकाळी, लेट). Not every worker
+   does every shift, so each worker type has its own headcount per shift, like the bill:
+   Rojiya — Night 4, Morning 9, Evening 5 → 18 shifts × ₹600. */
 const SHIFTS = { m: 'Morning – सकाळ', e: 'Evening – संध्याकाळ', n: 'Night – रात्र', f: 'Full day – पूर्ण दिवस',
                  l: 'Loading – लोडिंग', t: 'Late – लेट' };
 /* Extra lines a contractor adds below the head count, each saved under the item it really is:
-   vehicle fare to the venue (गाडी भाडे), the mukadam's own fee (मुकादमगिरी), and small jobs
-   such as ice-cream cutting (with your own note). count × rate, e.g. 11 people × ₹24 fare. */
+   travel/fare (गाडी भाडे), the mukadam's own fee (मुकादमगिरी), and small jobs such as
+   ice-cream cutting (with your own note). count × rate, e.g. 11 people × ₹24 fare. */
 const EXTRAS = {
   travel: { name: 'Travel – गाडी भाडे / प्रवास भत्ता', cat: 'Operations', head: 'Transport – वाहतूक' },
   fee:    { name: 'Mukadam fee – मुकादमगिरी', cat: 'Labour', head: 'Contractor Fee – मुकादमगिरी' },
@@ -1182,65 +1184,86 @@ const EXTRAS = {
 };
 let labRows = [];
 const isExtra = r => r.kind === 'x';
+const money = n => Math.round(n * 100) / 100;   // stored amounts keep at most two decimals
 
-// The rate you used last time for this worker type and shift (or this extra), from earlier sheets
-function lastLabourRate(role, shift, extra) {
+// Sheets saved before shift counts (one shift × count × shifts each) open as shift counts
+function labRow(r) {
+  if (isExtra(r) || r.counts) return { ...r, counts: r.counts && { ...r.counts } };
+  const { count, shift, shifts, ...rest } = r;
+  return { ...rest, counts: { [shift || 'f']: money((Number(count) || 0) * (Number(shifts) || 1)) } };
+}
+const heads = r => Object.values(r.counts || {}).reduce((s, n) => s + (Number(n) || 0), 0);
+const lineAmt = r => money(isExtra(r) ? Math.round(Number(r.count) || 0) * (Number(r.rate) || 0) : heads(r) * (Number(r.rate) || 0));
+const shiftList = r => Object.keys(SHIFTS).filter(k => Number(r.counts?.[k]) > 0).map(k => `${SHIFTS[k].split(' – ')[0]} ${r.counts[k]}`).join(' · ');
+const lineText = r => isExtra(r)
+  ? `${r.count} × ${fmtCurrency(r.rate)} = ${fmtCurrency(lineAmt(r))}`
+  : `${heads(r)} shift${heads(r) === 1 ? '' : 's'} × ${fmtCurrency(r.rate)} = ${fmtCurrency(lineAmt(r))}`;
+
+// The rate you used last time for this worker type (or this extra), from earlier sheets
+function lastLabourRate(role, extra) {
   for (const e of [...D.events].sort((a, b) => b.date.localeCompare(a.date)))
     for (const r of e.labour?.rows || [])
-      if (r.rate && (extra ? isExtra(r) && r.extra === extra : !isExtra(r) && r.role === role && r.shift === shift)) return r.rate;
+      if (r.rate && (extra ? isExtra(r) && r.extra === extra : !isExtra(r) && r.role === role)) return r.rate;
   return '';
 }
 const labName = r => isExtra(r) ? (r.label || short(EXTRAS[r.extra].name)) : short(r.role);
-// A worker line can cover more than one shift each (staff who come early and stay after the event)
-const money = n => Math.round(n * 100) / 100;   // stored amounts keep at most two decimals
-const lineAmt = r => money(Math.round(Number(r.count) || 0) * (isExtra(r) ? 1 : Number(r.shifts) || 1) * (Number(r.rate) || 0));
-const lineText = r => `${r.count}${!isExtra(r) && Number(r.shifts) > 1 ? ` × ${r.shifts} shifts` : ''} × ${fmtCurrency(r.rate)} = ${fmtCurrency(lineAmt(r))}`;
 
 function labourCard(ev) {
   if (ev.outsourced) return '';
-  const rows = ev.labour?.rows || [];
-  const total = ev.labour?.billTotal || rows.reduce((s, r) => s + lineAmt(r), 0);
+  const rows = (ev.labour?.rows || []).map(labRow);
+  const lines = money(rows.reduce((s, r) => s + lineAmt(r), 0));
+  const bill = ev.labour?.billTotal || 0, adj = bill ? money(bill - lines) : 0;
+  const shifts = rows.filter(r => !isExtra(r)).reduce((s, r) => s + heads(r), 0);
   return `
     <div class="sec"><span class="sec-title">Labour – मजूर</span>
       <button type="button" class="btn-sm" data-action="lab-edit">${icon(rows.length ? 'pencil' : 'plus', 16)}${rows.length ? tr('Edit', 'बदला') : tr('Labour sheet', 'मजूर यादी')}</button></div>
     ${rows.length ? `<div class="card list" id="labour-card">${rows.map(r => `
-      <div class="row" style="min-height:48px">
+      <div class="row" style="min-height:52px">
         <div class="row-ic">${icon(isExtra(r) ? (r.extra === 'travel' ? 'truck' : 'clipboard') : 'users', 18)}</div>
-        <div class="row-body"><div class="title-sm trunc" data-nl>${esc(labName(r))}${isExtra(r) && r.count === 1 ? '' : ` × ${r.count}`}</div>
-          <div class="meta">${isExtra(r) ? tr(short(EXTRAS[r.extra].name), EXTRAS[r.extra].name.split(' – ')[1]) : tr(SHIFTS[r.shift].split(' – ')[0], SHIFTS[r.shift].split(' – ')[1])}${!isExtra(r) && r.shifts > 1 ? ` · ${r.shifts} ${tr('shifts', 'शिफ्ट')}` : ''} · ${fmtCurrency(r.rate)}${r.count === 1 ? '' : ' ' + tr('each', 'प्रत्येकी')}</div></div>
+        <div class="row-body"><div class="title-sm trunc" data-nl>${esc(labName(r))}</div>
+          <div class="meta">${isExtra(r)
+            ? `${r.count > 1 ? `${r.count} × ` : ''}${fmtCurrency(r.rate)}`
+            : `${esc(shiftList(r))} · ${fmtCurrency(r.rate)} ${tr('each', 'प्रत्येकी')}`}</div></div>
         <div class="amt-sm">${fmtCurrency(lineAmt(r))}</div>
       </div>`).join('')}
-      <div class="row" style="min-height:44px"><div class="row-body title-sm">${tr(`Total · ${rows.filter(r => !isExtra(r)).reduce((s, r) => s + r.count, 0)} workers`, `एकूण · ${rows.filter(r => !isExtra(r)).reduce((s, r) => s + r.count, 0)} मजूर`)}${ev.labour?.billTotal ? ` <span class="meta">${tr('as billed', 'बिलानुसार')}</span>` : ''}</div><div class="amt-md">${fmtCurrency(total)}</div></div>
-    </div>` : `<div class="card pad"><div class="meta">${tr('Add workers by type and shift — the app remembers your rates and saves the total as Labour expenses.', 'प्रकार व शिफ्टनुसार मजूर जोडा — दर लक्षात राहतात व एकूण खर्च म्हणून नोंदवला जातो.')}</div></div>`}`;
+      ${adj ? `<div class="row" style="min-height:44px">
+        <div class="row-ic">${icon('pencil', 18)}</div>
+        <div class="row-body"><div class="title-sm">${tr('Bill adjustment', 'बिल फरक')}</div><div class="meta">${tr(`Contractor's bill ${fmtCurrency(bill)}`, `ठेकेदाराचे बिल ${fmtCurrency(bill)}`)}</div></div>
+        <div class="amt-sm">${adj > 0 ? '+' : '−'}${fmtCurrency(Math.abs(adj))}</div>
+      </div>` : ''}
+      <div class="row" style="min-height:48px"><div class="row-body title-sm">${tr(`Total · ${shifts} shift${shifts === 1 ? '' : 's'}`, `एकूण · ${shifts} शिफ्ट`)}</div><div class="amt-md">${fmtCurrency(bill || lines)}</div></div>
+    </div>` : `<div class="card pad"><div class="meta">${tr('Add workers by type with how many came for each shift — the app remembers your rates and saves the total as Labour expenses.', 'प्रकारानुसार प्रत्येक शिफ्टचे मजूर जोडा — दर लक्षात राहतात व एकूण खर्च म्हणून नोंदवला जातो.')}</div></div>`}`;
 }
 
 function renderLabRows() {
   const roles = LAB_ROLES();
+  const del = i => `<button type="button" class="del-btn" data-lab-del="${i}" aria-label="Remove">${icon('trash', 16)}</button>`;
   q('lab-rows').innerHTML = labRows.map((r, i) => isExtra(r) ? `
     <div class="card pad" style="margin-bottom:var(--s3)" data-lab="${i}">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);margin-bottom:var(--s2)">
         <div class="field" style="margin:0"><label>Extra – जादा</label><select data-k="extra">${Object.entries(EXTRAS).map(([k, x]) => `<option value="${k}"${k === r.extra ? ' selected' : ''}>${esc(short(x.name))}</option>`).join('')}</select></div>
         <div class="field" style="margin:0"><label>Note – नोंद</label><input type="text" data-k="label" placeholder="${r.extra === 'other' ? 'e.g. Ice cream cutting' : 'optional'}" value="${esc(r.label || '')}"></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:var(--s2);align-items:end">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s2)">
         <div class="field" style="margin:0"><label>Count – संख्या</label><input type="number" data-k="count" min="1" step="1" inputmode="numeric" value="${r.count || ''}"></div>
         <div class="field" style="margin:0"><label>Rate ₹ – दर</label><input type="number" data-k="rate" min="1" inputmode="decimal" value="${r.rate || ''}"></div>
-        <button type="button" class="del-btn" data-lab-del="${i}" aria-label="Remove">${icon('trash', 16)}</button>
       </div>
-      <div class="meta" style="margin-top:6px" data-lab-line="${i}">${r.count && r.rate ? lineText(r) : ''}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--s2);margin-top:var(--s2)">
+        <div class="meta" data-lab-line="${i}">${r.count && r.rate ? lineText(r) : ''}</div>${del(i)}
+      </div>
     </div>` : `
     <div class="card pad" style="margin-bottom:var(--s3)" data-lab="${i}">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);margin-bottom:var(--s2)">
         <div class="field" style="margin:0"><label>Worker – मजूर</label><select data-k="role" aria-label="Worker type">${roles.map(h => `<option value="${esc(h)}"${h === r.role ? ' selected' : ''}>${esc(h)}</option>`).join('')}</select></div>
-        <div class="field" style="margin:0"><label>Shift – शिफ्ट</label><select data-k="shift">${Object.entries(SHIFTS).map(([k, l]) => `<option value="${k}"${k === r.shift ? ' selected' : ''}>${esc(l.split(' – ')[0])}</option>`).join('')}</select></div>
+        <div class="field" style="margin:0"><label>Rate ₹ per shift – दर</label><input type="number" data-k="rate" min="1" inputmode="decimal" value="${r.rate || ''}"></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr .8fr 1.2fr auto;gap:var(--s2);align-items:end">
-        <div class="field" style="margin:0"><label>Count – संख्या</label><input type="number" data-k="count" min="1" step="1" inputmode="numeric" value="${r.count || ''}"></div>
-        <div class="field" style="margin:0"><label>Shifts – शिफ्ट</label><input type="number" data-k="shifts" min="0.5" step="0.5" inputmode="decimal" value="${r.shifts || 1}"></div>
-        <div class="field" style="margin:0"><label>Rate ₹ – दर</label><input type="number" data-k="rate" min="1" inputmode="decimal" value="${r.rate || ''}"></div>
-        <button type="button" class="del-btn" data-lab-del="${i}" aria-label="Remove">${icon('trash', 16)}</button>
+      <div class="label" style="margin-bottom:6px">${tr('How many in each shift', 'प्रत्येक शिफ्टमध्ये किती')}</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s2)">${Object.entries(SHIFTS).map(([k, l]) => `
+        <div class="field" style="margin:0"><label>${esc(l.split(' – ')[0])}</label><input type="number" data-k="c-${k}" min="0" step="0.5" inputmode="decimal" placeholder="0" value="${r.counts?.[k] || ''}"></div>`).join('')}
       </div>
-      <div class="meta" style="margin-top:6px" data-lab-line="${i}">${r.count && r.rate ? lineText(r) : ''}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--s2);margin-top:var(--s2)">
+        <div class="meta" data-lab-line="${i}">${heads(r) && r.rate ? lineText(r) : ''}</div>${del(i)}
+      </div>
     </div>`).join('') || `<div class="meta" style="margin-bottom:var(--s3)">${tr('No workers yet.', 'अजून मजूर नाहीत.')}</div>`;
   updateLabTotal();
 }
@@ -1249,7 +1272,7 @@ function updateLabTotal() {
   const lines = money(labRows.reduce((s, r) => s + lineAmt(r), 0)), bill = Number(qv('lab-bill')) || 0;
   q('lab-total').textContent = fmtCurrency(bill || lines);
   q('lab-bill-hint').textContent = bill && bill !== lines
-    ? `Lines ${fmtCurrency(lines)} · difference ${bill > lines ? '+' : '−'}${fmtCurrency(Math.abs(bill - lines))} goes on the biggest line`
+    ? `Lines ${fmtCurrency(lines)} · bill adjustment ${bill > lines ? '+' : '−'}${fmtCurrency(Math.abs(bill - lines))}`
     : '';
 }
 
@@ -1260,11 +1283,13 @@ function setLabPay(pay) {
   q('lab-ven-field').hidden = pay !== 'credit';
 }
 
+function newWorkerRow(role) { return { id: uid('LB'), role, rate: lastLabourRate(role), counts: {} }; }
+
 function openLabModal() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const sheet = ev.labour || {};
-  labRows = (sheet.rows || []).map(r => ({ ...r }));
-  if (!labRows.length) { const role = LAB_ROLES()[0]; labRows = [{ id: uid('LB'), role, count: '', shift: 'f', rate: lastLabourRate(role, 'f') }]; }
+  labRows = (sheet.rows || []).map(labRow);
+  if (!labRows.length) labRows = [newWorkerRow(LAB_ROLES()[0])];
   const prev = D.events.filter(e => e.id !== ev.id && e.labour?.rows?.length).sort((a, b) => b.date.localeCompare(a.date))[0];
   q('btn-lab-copy').hidden = !prev;
   q('btn-lab-copy').dataset.from = prev?.id || '';
@@ -1278,48 +1303,48 @@ function openLabModal() {
   openSheet('lab-modal');
 }
 
-/* Save the sheet, and keep one Labour expense per worker type in step with it:
-   changed types are updated, new ones added, removed ones deleted — all in one save. */
+/* Save the sheet, and keep one expense per worker type (and per extra) in step with it:
+   changed ones are updated, new ones added, removed ones deleted — all in one save.
+   With a bill total, the difference goes on the biggest line so the total matches the bill. */
 async function saveLabour() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
-  const rows = labRows.filter(r => Number(r.count) > 0 && Number(r.rate) > 0)
-    .map(r => isExtra(r)
-      ? { id: r.id, kind: 'x', extra: r.extra, label: String(r.label || '').trim(), count: Math.round(Number(r.count)), rate: Number(r.rate) }
-      : { id: r.id, role: r.role, count: Math.round(Number(r.count)), shift: r.shift, shifts: Number(r.shifts) > 0 ? Number(r.shifts) : 1, rate: Number(r.rate) });
+  const clean = c => Object.fromEntries(Object.entries(c || {}).map(([k, n]) => [k, money(Number(n) || 0)]).filter(([, n]) => n > 0));
+  const rows = labRows.map(r => isExtra(r)
+      ? { id: r.id, kind: 'x', extra: r.extra, label: String(r.label || '').trim(), count: Math.round(Number(r.count) || 0), rate: Number(r.rate) || 0 }
+      : { id: r.id, role: r.role, rate: Number(r.rate) || 0, counts: clean(r.counts) })
+    .filter(r => r.rate > 0 && (isExtra(r) ? r.count > 0 : heads(r) > 0));
   const pay = q('lab-pay').dataset.value || 'paid';
   const venId = pay === 'credit' ? qv('lab-ven') : '';
   if (pay === 'credit' && !venId) { showFieldErrors({ 'lab-ven': 'Choose the contractor you owe – ठेकेदार निवडा' }); return; }
   const oldIds = ev.labour?.expIds || {};
-  const byRole = new Map();   // "cat|head" → lines saved as that expense
+  const byKey = new Map();   // "cat|head" → lines saved as that expense
   for (const r of rows) {
     const key = isExtra(r) ? `${EXTRAS[r.extra].cat}|${EXTRAS[r.extra].head}` : `Labour|${r.role}`;
-    if (!byRole.has(key)) byRole.set(key, []);
-    byRole.get(key).push(r);
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key).push(r);
   }
   const changes = [], expIds = {}, saved = [];
-  for (const [key, rs] of byRole) {
+  for (const [key, rs] of byKey) {
     const [cat, head] = key.split('|');
     const old = D.expenses.find(x => x.id === oldIds[key]);
-    const role = key;
     const record = { ...(old || {}), id: old?.id || uid('EX'), evId: ev.id, cat, head,
       amt: money(rs.reduce((s, r) => s + lineAmt(r), 0)), date: old?.date || ev.date, pay, mode: pay === 'paid' ? qv('lab-mode') : '',
       venId, dueDate: pay === 'credit' ? old?.dueDate || '' : '', billIds: old?.billIds || [],
       notes: 'Labour sheet: ' + rs.map(r => isExtra(r)
         ? `${labName(r)} ${r.count > 1 ? r.count + ' × ' : ''}${fmtCurrency(r.rate)}`
-        : `${r.count} × ${SHIFTS[r.shift].split(' – ')[0]}${r.shifts > 1 ? ` × ${r.shifts} shifts` : ''} @ ${fmtCurrency(r.rate)}`).join(', ') };
+        : `${shiftList(r)} @ ${fmtCurrency(r.rate)}`).join(', ') };
     delete record._rev;
     changes.push({ store: 'expenses', record, expected: old || null });
-    expIds[role] = record.id; saved.push(record);
+    expIds[key] = record.id; saved.push(record);
   }
-  // The contractor's final figure wins: put any difference on the biggest line
   const billTotal = money(Number(qv('lab-bill')) || 0), lines = money(saved.reduce((s, r) => s + r.amt, 0));
   if (billTotal && saved.length && billTotal !== lines) {
     const big = saved.reduce((a, b) => b.amt > a.amt ? b : a);
     if (big.amt + billTotal - lines <= 0) { showFieldErrors({ 'lab-bill': 'Bill total is far below the lines – check the counts' }); return; }
     big.amt = money(big.amt + billTotal - lines);
-    big.notes += ` · adjusted ${billTotal > lines ? '+' : '−'}${fmtCurrency(Math.abs(billTotal - lines))} to match bill ${fmtCurrency(billTotal)}`;
+    big.notes += ` · bill adjustment ${billTotal > lines ? '+' : '−'}${fmtCurrency(Math.abs(billTotal - lines))} (bill ${fmtCurrency(billTotal)})`;
   }
-  const removed = Object.entries(oldIds).filter(([role, id]) => !byRole.has(role) && D.expenses.some(x => x.id === id)).map(([, id]) => id);
+  const removed = Object.entries(oldIds).filter(([key, id]) => !byKey.has(key) && D.expenses.some(x => x.id === id)).map(([, id]) => id);
   for (const id of removed) changes.push({ store: 'expenses', id, expected: D.expenses.find(x => x.id === id) });
   const evRecord = { ...ev, labour: { rows, pay, mode: pay === 'paid' ? qv('lab-mode') : '', venId, expIds, ...(billTotal && rows.length ? { billTotal } : {}) } };
   await commitChanges([{ store: 'events', record: evRecord, expected: ev }, ...changes], { check: true, extraStores: ['vendors'] });
@@ -2066,7 +2091,8 @@ let evAuto = { bill: '', budget: '' };
 /* Quote helper, from your own events (never the card alone):
    what this menu (or event type) usually costs per plate, the margin at the bill typed,
    the lowest per-plate price for a 30% margin, and what you have actually billed on this menu. */
-const TARGET_MARGIN = 30;
+const TARGET_MARGIN = 30;               // own events: minimum margin
+const COMMISSION_MARGIN = [10, 20];     // outsourced (commission) work: usual range
 function updateQuote() {
   const box = q('ev-quote');
   const id = qv('ev-id'), menu = menuById(qv('ev-menu')), type = qv('ev-type');
@@ -2089,7 +2115,7 @@ function updateQuote() {
     lines.push(`${esc(basis)} usually costs you <b>${fmtCurrency(cost.perPlate)}/plate</b> (${cost.n} event${cost.n > 1 ? 's' : ''})`);
     if (bill && guests) {
       const pp = Math.round(bill / guests), m = Math.round((pp - cost.perPlate) / pp * 100);
-      lines.push(`At ${fmtCurrency(pp)}/plate your margin is about <b class="${m < TARGET_MARGIN ? 'due' : 'pos'}">${m}%</b>`);
+      lines.push(`At ${fmtCurrency(pp)}/plate your margin is about <b class="${m < TARGET_MARGIN ? 'due' : 'pos'}">${m}%</b> · minimum ${TARGET_MARGIN}%`);
     }
     lines.push(`For a ${TARGET_MARGIN}% margin, quote at least <b>${fmtCurrency(Math.ceil(cost.perPlate / (1 - TARGET_MARGIN / 100)))}/plate</b>`);
   }
@@ -2142,8 +2168,9 @@ function updateOutHint() {
   const bill = Number(qv('ev-billing')) || 0;
   const id = qv('ev-id');
   const cost = id ? D.expenses.filter(x => x.evId === id).reduce((s, x) => s + x.amt, 0) : Number(qv('ev-out-charge')) || 0;
-  hint.textContent = bill && cost
-    ? `Your commission ${fmtCurrency(bill - cost)} (${Math.round((bill - cost) / bill * 100)}%)`
+  const pct = bill && cost ? Math.round((bill - cost) / bill * 100) : null;
+  hint.innerHTML = pct !== null
+    ? `Your commission ${fmtCurrency(bill - cost)} · <b class="${pct < COMMISSION_MARGIN[0] ? 'due' : 'pos'}">${pct}%</b> · target ${COMMISSION_MARGIN[0]}–${COMMISSION_MARGIN[1]}%`
     : 'Bill = what the client pays. Their charge is saved as credit to the vendor. If the client pays them directly, enter your commission as the bill and leave their charge blank.';
   hint.hidden = false;
 }
@@ -3126,18 +3153,17 @@ function bindAllEvents() {
   q('btn-save-menu').addEventListener('click', () => runSave('menu', saveMenu));
   q('btn-save-lab').addEventListener('click', () => runSave('labour', saveLabour));
   q('btn-lab-add').addEventListener('click', () => {
-    const role = LAB_ROLES().find(h => !labRows.some(r => r.role === h)) || LAB_ROLES()[0];
-    labRows.push({ id: uid('LB'), role, count: '', shift: 'f', rate: lastLabourRate(role, 'f') });
+    labRows.push(newWorkerRow(LAB_ROLES().find(h => !labRows.some(r => r.role === h)) || LAB_ROLES()[0]));
     renderLabRows();
   });
   q('btn-lab-extra').addEventListener('click', () => {
     const extra = ['travel', 'fee', 'other'].find(x => !labRows.some(r => isExtra(r) && r.extra === x)) || 'other';
-    labRows.push({ id: uid('LB'), kind: 'x', extra, label: '', count: 1, rate: lastLabourRate('', '', extra) });
+    labRows.push({ id: uid('LB'), kind: 'x', extra, label: '', count: 1, rate: lastLabourRate('', extra) });
     renderLabRows();
   });
   q('btn-lab-copy').addEventListener('click', e => {
     const from = D.events.find(x => x.id === e.currentTarget.dataset.from);
-    labRows = (from?.labour?.rows || []).map(r => ({ ...r, id: uid('LB') }));
+    labRows = (from?.labour?.rows || []).map(r => ({ ...labRow(r), id: uid('LB') }));
     if (from?.labour) { setLabPay(from.labour.pay || 'paid'); q('lab-mode').value = from.labour.mode || q('lab-mode').value; q('lab-ven').value = from.labour.venId || ''; }
     renderLabRows();
   });
@@ -3147,12 +3173,15 @@ function bindAllEvents() {
   q('lab-rows').addEventListener('input', e => {
     const box = e.target.closest('[data-lab]'), k = e.target.dataset.k; if (!box || !k) return;
     const r = labRows[Number(box.dataset.lab)];
-    r[k] = ['role', 'shift', 'extra', 'label'].includes(k) ? e.target.value : e.target.value === '' ? '' : Number(e.target.value);
-    if (['role', 'shift', 'extra'].includes(k) && !r.rate) {
-      r.rate = isExtra(r) ? lastLabourRate('', '', r.extra) : lastLabourRate(r.role, r.shift);
+    const num = e.target.value === '' ? '' : Number(e.target.value);
+    if (k.startsWith('c-')) r.counts = { ...r.counts, [k.slice(2)]: num };   // headcount for one shift
+    else r[k] = ['role', 'extra', 'label'].includes(k) ? e.target.value : num;
+    if (['role', 'extra'].includes(k) && !r.rate) {
+      r.rate = isExtra(r) ? lastLabourRate('', r.extra) : lastLabourRate(r.role);
       box.querySelector('[data-k="rate"]').value = r.rate || '';
     }
-    q(`lab-rows`).querySelector(`[data-lab-line="${box.dataset.lab}"]`).textContent = r.count && r.rate ? lineText(r) : '';
+    const filled = isExtra(r) ? r.count && r.rate : heads(r) && r.rate;
+    q('lab-rows').querySelector(`[data-lab-line="${box.dataset.lab}"]`).textContent = filled ? lineText(r) : '';
     updateLabTotal();
   });
   q('lab-rows').addEventListener('click', e => {
