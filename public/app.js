@@ -652,6 +652,7 @@ function setHeader() {
   q('hdr-back').hidden = !detail;
   q('hdr-edit').hidden = !detail;
   q('hdr-delete').hidden = !detail;
+  q('hdr-refresh').hidden = detail;   // detail pages already carry back/edit/delete; refresh lives on the main tabs
 }
 
 function goBack(fallback) {
@@ -1025,7 +1026,9 @@ function vendorDuesLink(vn, bal) {
 /* Payment receipt for the client on WhatsApp: this payment, then the event's account so far.
    Opens WhatsApp with the text filled in; nothing is sent until you press send. */
 function receiptLink(ev, p) {
-  const received = calcEventReceived(ev.id, D.cPays), left = Math.max(0, ev.billing - received);
+  // "Paid so far" as of this payment, so a receipt for an older payment ignores later ones
+  const upTo = D.cPays.filter(x => x.evId === ev.id && (x.date < p.date || (x.date === p.date && x.id <= p.id)) || x.id === p.id);
+  const received = upTo.reduce((s, x) => s + (Number(x.amt) || 0), 0), left = Math.max(0, ev.billing - received);
   const mode = String(p.mode || 'Cash').split(' – ')[0];
   const msg = `Namaste! Payment receipt for ${ev.name} (${fmtDate(ev.date)})
 `
@@ -1187,7 +1190,8 @@ function lastLabourRate(role, shift, extra) {
 }
 const labName = r => isExtra(r) ? (r.label || short(EXTRAS[r.extra].name)) : short(r.role);
 // A worker line can cover more than one shift each (staff who come early and stay after the event)
-const lineAmt = r => (Number(r.count) || 0) * (isExtra(r) ? 1 : Number(r.shifts) || 1) * (Number(r.rate) || 0);
+const money = n => Math.round(n * 100) / 100;   // stored amounts keep at most two decimals
+const lineAmt = r => money(Math.round(Number(r.count) || 0) * (isExtra(r) ? 1 : Number(r.shifts) || 1) * (Number(r.rate) || 0));
 const lineText = r => `${r.count}${!isExtra(r) && Number(r.shifts) > 1 ? ` × ${r.shifts} shifts` : ''} × ${fmtCurrency(r.rate)} = ${fmtCurrency(lineAmt(r))}`;
 
 function labourCard(ev) {
@@ -1217,7 +1221,7 @@ function renderLabRows() {
         <div class="field" style="margin:0"><label>Note – नोंद</label><input type="text" data-k="label" placeholder="${r.extra === 'other' ? 'e.g. Ice cream cutting' : 'optional'}" value="${esc(r.label || '')}"></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:var(--s2);align-items:end">
-        <div class="field" style="margin:0"><label>Count – संख्या</label><input type="number" data-k="count" min="1" inputmode="numeric" value="${r.count || ''}"></div>
+        <div class="field" style="margin:0"><label>Count – संख्या</label><input type="number" data-k="count" min="1" step="1" inputmode="numeric" value="${r.count || ''}"></div>
         <div class="field" style="margin:0"><label>Rate ₹ – दर</label><input type="number" data-k="rate" min="1" inputmode="decimal" value="${r.rate || ''}"></div>
         <button type="button" class="del-btn" data-lab-del="${i}" aria-label="Remove">${icon('trash', 16)}</button>
       </div>
@@ -1229,7 +1233,7 @@ function renderLabRows() {
         <div class="field" style="margin:0"><label>Shift – शिफ्ट</label><select data-k="shift">${Object.entries(SHIFTS).map(([k, l]) => `<option value="${k}"${k === r.shift ? ' selected' : ''}>${esc(l.split(' – ')[0])}</option>`).join('')}</select></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr .8fr 1.2fr auto;gap:var(--s2);align-items:end">
-        <div class="field" style="margin:0"><label>Count – संख्या</label><input type="number" data-k="count" min="1" inputmode="numeric" value="${r.count || ''}"></div>
+        <div class="field" style="margin:0"><label>Count – संख्या</label><input type="number" data-k="count" min="1" step="1" inputmode="numeric" value="${r.count || ''}"></div>
         <div class="field" style="margin:0"><label>Shifts – शिफ्ट</label><input type="number" data-k="shifts" min="0.5" step="0.5" inputmode="decimal" value="${r.shifts || 1}"></div>
         <div class="field" style="margin:0"><label>Rate ₹ – दर</label><input type="number" data-k="rate" min="1" inputmode="decimal" value="${r.rate || ''}"></div>
         <button type="button" class="del-btn" data-lab-del="${i}" aria-label="Remove">${icon('trash', 16)}</button>
@@ -1240,7 +1244,7 @@ function renderLabRows() {
 }
 
 function updateLabTotal() {
-  const lines = labRows.reduce((s, r) => s + lineAmt(r), 0), bill = Number(qv('lab-bill')) || 0;
+  const lines = money(labRows.reduce((s, r) => s + lineAmt(r), 0)), bill = Number(qv('lab-bill')) || 0;
   q('lab-total').textContent = fmtCurrency(bill || lines);
   q('lab-bill-hint').textContent = bill && bill !== lines
     ? `Lines ${fmtCurrency(lines)} · difference ${bill > lines ? '+' : '−'}${fmtCurrency(Math.abs(bill - lines))} goes on the biggest line`
@@ -1296,8 +1300,8 @@ async function saveLabour() {
     const old = D.expenses.find(x => x.id === oldIds[key]);
     const role = key;
     const record = { ...(old || {}), id: old?.id || uid('EX'), evId: ev.id, cat, head,
-      amt: rs.reduce((s, r) => s + lineAmt(r), 0), date: old?.date || ev.date, pay, mode: pay === 'paid' ? qv('lab-mode') : '',
-      venId, dueDate: old?.dueDate || '', billIds: old?.billIds || [],
+      amt: money(rs.reduce((s, r) => s + lineAmt(r), 0)), date: old?.date || ev.date, pay, mode: pay === 'paid' ? qv('lab-mode') : '',
+      venId, dueDate: pay === 'credit' ? old?.dueDate || '' : '', billIds: old?.billIds || [],
       notes: 'Labour sheet: ' + rs.map(r => isExtra(r)
         ? `${labName(r)} ${r.count > 1 ? r.count + ' × ' : ''}${fmtCurrency(r.rate)}`
         : `${r.count} × ${SHIFTS[r.shift].split(' – ')[0]}${r.shifts > 1 ? ` × ${r.shifts} shifts` : ''} @ ${fmtCurrency(r.rate)}`).join(', ') };
@@ -1306,11 +1310,11 @@ async function saveLabour() {
     expIds[role] = record.id; saved.push(record);
   }
   // The contractor's final figure wins: put any difference on the biggest line
-  const billTotal = Number(qv('lab-bill')) || 0, lines = saved.reduce((s, r) => s + r.amt, 0);
+  const billTotal = money(Number(qv('lab-bill')) || 0), lines = money(saved.reduce((s, r) => s + r.amt, 0));
   if (billTotal && saved.length && billTotal !== lines) {
     const big = saved.reduce((a, b) => b.amt > a.amt ? b : a);
     if (big.amt + billTotal - lines <= 0) { showFieldErrors({ 'lab-bill': 'Bill total is far below the lines – check the counts' }); return; }
-    big.amt += billTotal - lines;
+    big.amt = money(big.amt + billTotal - lines);
     big.notes += ` · adjusted ${billTotal > lines ? '+' : '−'}${fmtCurrency(Math.abs(billTotal - lines))} to match bill ${fmtCurrency(billTotal)}`;
   }
   const removed = Object.entries(oldIds).filter(([role, id]) => !byRole.has(role) && D.expenses.some(x => x.id === id)).map(([, id]) => id);

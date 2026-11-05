@@ -49,8 +49,8 @@ html.dark {
   --brand: #A4D6CB; --brand-press: #8DC5B9; --brand-text: #A4D6CB; --brand-soft: #204848; --on-brand: #123F40; --accent: #D99D76;
   --pos: #34D399; --pos-soft: rgba(52,211,153,.13);
   --due: #FBBF24; --due-soft: rgba(251,191,36,.13);
-  --neg: #F87171; --neg-soft: rgba(248,113,113,.13);
-  --info: #60A5FA; --info-soft: rgba(96,165,250,.13);
+  --neg: #FB8B8B; --neg-soft: rgba(248,113,113,.13);
+  --info: #7CB5FB; --info-soft: rgba(96,165,250,.13);
   --shadow-1: 0 1px 2px rgba(0,0,0,.3);
   --shadow-2: 0 10px 32px rgba(0,0,0,.5);
   color-scheme: dark;
@@ -217,8 +217,8 @@ html.dark .btn-danger { background: #DC2626; }
 .del-btn:active { background: var(--neg-soft); color: var(--neg); }
 
 .btn-ghost.danger { color: var(--neg); }
-.btn-wa { background: #128C4B; color: #fff; }
-.btn-wa:active { background: #0E6E3B; }
+.btn-wa { background: #0E7A3F; color: #fff; }   /* WhatsApp green, deep enough for white text (5:1) */
+.btn-wa:active { background: #0B6233; }
 
 /* ── TOOLBAR: search + filter chips ── */
 .toolbar { margin: var(--s2) 0 var(--s3); }
@@ -238,7 +238,7 @@ html.dark .btn-danger { background: #DC2626; }
 }
 .f-chip::before { content: ''; position: absolute; inset: -4px 0; }
 .f-chip[aria-pressed="true"] { background: var(--text); border-color: var(--text); color: var(--bg); }
-.f-chip .n { opacity: .7; font-weight: 500; }
+.f-chip .n { font-weight: 500; }
 
 /* Category picker in the expense sheet: one tap instead of a dropdown */
 .cat-chips { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s2); }
@@ -525,11 +525,11 @@ html.light #toast-action { color: #FDBA74; background: rgba(253,186,116,.14); }
    blurred header, bottom bar and sheets. Blur only on those few fixed layers (not on every
    card) so scrolling stays smooth on mid-range phones; without blur support they stay solid. */
 html.light {
-  --glass: rgba(255,252,245,.66); --glass-strong: rgba(250,247,239,.80); --glass-line: rgba(18,63,64,.10);
+  --glass: rgba(255,252,245,.66); --glass-strong: rgba(250,247,239,.80); --glass-line: rgba(18,63,64,.10); --glass-sheet: rgba(250,247,239,.95);
   --glass-hi: rgba(255,255,255,.7); --glow-1: rgba(120,190,175,.38); --glow-2: rgba(217,157,118,.20);
 }
 html.dark {
-  --glass: rgba(24,58,59,.58); --glass-strong: rgba(13,36,37,.74); --glass-line: rgba(164,214,203,.14);
+  --glass: rgba(24,58,59,.58); --glass-strong: rgba(13,36,37,.74); --glass-line: rgba(164,214,203,.14); --glass-sheet: rgba(16,42,43,.93);
   --glass-hi: rgba(255,255,255,.06); --glow-1: rgba(80,170,155,.22); --glow-2: rgba(217,157,118,.10);
 }
 body::before {
@@ -547,6 +547,7 @@ body::before {
     background: var(--glass-strong);
     -webkit-backdrop-filter: blur(18px) saturate(150%); backdrop-filter: blur(18px) saturate(150%);
   }
+  .sheet { background: var(--glass-sheet); }
   .bot-nav { border-top-color: var(--glass-line); }
   .hdr.scrolled { border-bottom-color: var(--glass-line); }
 }

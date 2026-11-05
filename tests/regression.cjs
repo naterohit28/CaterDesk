@@ -267,6 +267,9 @@ await test('v3.4: quote helper, receipt, price creep, labour sheet, quiet refres
  // Receipt: WhatsApp link on the payment, with the account so far
  await p.locator('#ev-list [data-action="evdetail"]',{hasText:'Golden Two'}).click();await p.waitForSelector('#tab-evdetail .detail-name');
  const rec=decodeURIComponent(await p.locator('a[aria-label="Send receipt on WhatsApp"]').getAttribute('href'));assert.match(rec,/^https:\/\/wa\.me\/919876543210\?text=Namaste! Payment receipt for Golden Two[\s\S]*Received: ₹50,000[\s\S]*Paid so far: ₹50,000\nBalance: ₹1,20,000/);
+ await db(async d=>d.putOne('cPays',{id:'cp2',evId:'g2',amt:30000,date:'2026-08-25',mode:'Cash'}));await p.reload();await p.waitForSelector('#kpi .card');await p.locator('#n-events').click();await p.locator('#ev-list [data-action="evdetail"]',{hasText:'Golden Two'}).click();await p.waitForSelector('#tab-evdetail .detail-name');
+ const recs=await p.locator('a[aria-label="Send receipt on WhatsApp"]').evaluateAll(a=>a.map(x=>decodeURIComponent(x.getAttribute('href'))));
+ assert(recs.some(r=>/Received: ₹50,000[\s\S]*Paid so far: ₹50,000\n/.test(r)),'older receipt ignores the later payment');assert(recs.some(r=>/Received: ₹30,000[\s\S]*Paid so far: ₹80,000\n/.test(r)));
  // Labour sheet: rates remembered, saved as Labour expenses, edits update them in place
  await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');
  const r0=p.locator('#lab-rows [data-lab="0"]');await r0.locator('[data-k="role"]').selectOption(cook);await r0.locator('[data-k="count"]').fill('3');await r0.locator('[data-k="rate"]').fill('1200');
@@ -331,9 +334,11 @@ await test('meals (any mix of breakfast, lunch, high tea, dinner), extra shifts 
  assert.deepEqual((await db(async d=>d.getAll('events'))).find(e=>e.name==='Dinner Party').meals,['hightea','dinner'],'unticking works');
  await p.locator('#n-events').click();
  // Labour: 13 boys × 2 shifts × 700, travel 1,000; contractor's bill says 19,500 → 100 more on the biggest line
- await p.locator('#ev-list [data-action="evdetail"][data-id="e"]').click();await p.waitForSelector('[data-action="lab-edit"]');await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');
+ await p.locator('#ev-list [data-action="evdetail"][data-id="e"]').click();await p.waitForSelector('[data-action="lab-edit"]');
+ assert(await p.locator('#hdr-refresh').isHidden(),'detail pages keep the top bar uncluttered');await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');
  const row=i=>p.locator(`#lab-rows [data-lab="${i}"]`);
- await row(0).locator('[data-k="role"]').selectOption(boys);await row(0).locator('[data-k="count"]').fill('13');await row(0).locator('[data-k="shifts"]').fill('2');await row(0).locator('[data-k="rate"]').fill('700');
+ await row(0).locator('[data-k="role"]').selectOption(boys);await row(0).locator('[data-k="count"]').fill('13');await row(0).locator('[data-k="shifts"]').fill('1.5');await row(0).locator('[data-k="rate"]').fill('333.33');
+ assert.match(await row(0).locator('[data-lab-line="0"]').innerText(),/₹6,499\.94/,'money rounded to the paisa');await row(0).locator('[data-k="shifts"]').fill('2');await row(0).locator('[data-k="rate"]').fill('700');
  assert.match(await row(0).locator('[data-lab-line="0"]').innerText(),/13 × 2 shifts × ₹700 = ₹18,200/);
  await p.locator('#btn-lab-extra').click();assert.equal(await row(1).locator('[data-k="extra"] option:checked').innerText(),'Travel');await row(1).locator('[data-k="rate"]').fill('1000');
  assert.equal(await p.locator('#lab-total').innerText(),'₹19,200');
