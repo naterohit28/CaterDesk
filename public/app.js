@@ -90,8 +90,11 @@ function rowsOrEmpty(rows, text) {
    form controls on top of that record, so anything else on it (menu, orders, labour sheet,
    photos, fields added by newer versions) is kept; `drop` removes fields the form turned off.
    The same snapshot is the save's expected version, so a record changed elsewhere since the
-   form opened is refused instead of overwritten. */
+   form opened is refused instead of overwritten. It is an independent copy: the in-memory
+   record can be updated in place later (a save stamps its new revision on it), and a shared
+   reference would follow those changes and let a stale form through. */
 const formBase = { ev: null, exp: null, cpay: null, ven: null, vpay: null };
+const snapshot = rec => rec ? structuredClone(rec) : null;
 function editedRecord(base, fields, drop = []) {
   const record = { ...(base || {}), ...fields };
   for (const k of drop) delete record[k];
@@ -2067,7 +2070,7 @@ function eventOptions() {
 /* ── EVENT SHEET ─────────────────────────────────── */
 function openEvModal(id) {
   const ev = id ? D.events.find(e => e.id === id) : null;
-  formBase.ev = ev;
+  formBase.ev = snapshot(ev);
   q('ev-id').value      = ev?.id      || '';
   q('ev-name').value    = ev?.name    || '';
   q('ev-date').value    = ev?.date    || '';
@@ -2411,7 +2414,7 @@ function openExpModal(arg) {
   // { prefill } comes from the cost checklist: a new entry with item and vendor filled in
   const pre  = arg && typeof arg === 'object' && (arg.prefill || arg.resume) || null;
   const ex   = arg && typeof arg === 'object' && !pre ? arg : null;
-  formBase.exp = ex;   // an expense or bill draft being edited; null for a new entry
+  formBase.exp = snapshot(ex);   // an expense or bill draft being edited; null for a new entry
   expTouched = { item: !!(ex || pre?.head), pay: !!(ex || arg?.resume) };
   const evId = ex?.evId || pre?.evId || (typeof arg === 'string' && arg) || defaultEventId();
   const last = readPref('ffv2_lastexp', {});
@@ -2618,7 +2621,7 @@ async function saveExpense({ next = false } = {}) {
 /* ── CLIENT PAYMENT SHEET ────────────────────────── */
 function openCPayModal(evId, payId) {
   const p = payId ? D.cPays.find(x => x.id === payId) : null;
-  formBase.cpay = p;
+  formBase.cpay = snapshot(p);
   q('cpay-evid').value  = p?.evId || evId;
   q('cpay-id').value    = p?.id || '';
   q('cpay-amt').value   = p?.amt || '';
@@ -2668,7 +2671,7 @@ function setVenKind(kind) {
 
 function openVenModal(id, kind = 'vendor') {
   const vn = id ? D.vendors.find(v => v.id === id) : null;
-  formBase.ven = vn;
+  formBase.ven = snapshot(vn);
   q('ven-id').value    = vn?.id    || '';
   q('ven-name').value  = vn?.name  || '';
   q('ven-phone').value = vn?.phone || '';
@@ -2716,7 +2719,7 @@ async function saveVendor() {
 /* ── VENDOR PAYMENT SHEET ────────────────────────── */
 function openVPayModal(venId, payId) {
   const p  = payId ? D.vPays.find(x => x.id === payId) : null;
-  formBase.vpay = p;
+  formBase.vpay = snapshot(p);
   const vid = p?.venId || venId;
   const bal = calcVendorBalance(vid, D.expenses, D.vPays).balance;
   q('vpay-venid').value = vid;

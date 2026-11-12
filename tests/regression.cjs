@@ -431,5 +431,36 @@ await test('v4.0.2: expense, payment and vendor edits keep unknown fields; repea
  await p.locator('#exp-amt').fill('321');await p.locator('#btn-save-exp').click();await p.waitForTimeout(400);
  const dr=await db(async d=>d.getOne('expenses','dr'));assert.equal(dr.draft,undefined,'draft flag cleared');assert.equal(dr.amt,321);
 });
+await test('v4.0.2: opening snapshots are independent copies, not live references',async()=>{
+ await seed({...empty(),vendors:[{id:'v',name:'Vendor A',cat:'Raw Material'}],events:[{...ev,guests:100,dishes:[{name:'Thali',head:''}]}],
+  expenses:[{id:'x',evId:'e',cat:'Raw Material',head:'Grocery – किराणा',amt:500,date:'2026-10-25',pay:'paid'}],cPays:[{id:'c',evId:'e',amt:100,date:'2026-10-25'}],vPays:[{id:'vp',venId:'v',amt:50,date:'2026-10-25'}]});
+ // While a form is open, the stored record changes and the in-memory object is updated in place to match it,
+ // revision included. A reference snapshot would follow the change and let the
+ // stale form overwrite it; an independent copy still holds the opening values, so the save is refused.
+ const mutateBoth=(store,list,id,change)=>p.evaluate(async a=>{const d=await import('./db.js');const cur=await d.getOne(a.store,a.id);await d.putOne(a.store,{...cur,...a.change});
+   // bring the in-memory object up to the stored version in place, revision included (as an in-place update would)
+   Object.assign(window.D[a.list].find(r=>r.id===a.id),await d.getOne(a.store,a.id));},{store,list,id,change});
+ const check=async(store,id,field,expected)=>{const r=await db(async(d,a)=>d.getOne(a.store,a.id),{store,id});assert.equal(r[field],expected,`${store}.${field} not overwritten by the stale form`);
+   assert.match(await p.locator('#toast').innerText(),/changed in another/);await p.locator('.modal-ov.active [data-action="close-modal"]').first().click().catch(()=>{});await p.waitForTimeout(200);};
+ await p.locator('#n-events').click();await p.locator('#ev-list [data-action="evdetail"]').first().click();await p.locator('#hdr-edit').click();await p.waitForSelector('#ev-modal.active');
+ await mutateBoth('events','events','e',{notes:'changed elsewhere'});await p.locator('#ev-guests').fill('777');await p.locator('#btn-save-event').click();await p.waitForTimeout(400);
+ await check('events','e','notes','changed elsewhere');assert.equal((await db(async d=>d.getOne('events','e'))).guests,100);
+ await p.locator('[data-action="edit-cpay"]').click();await p.waitForSelector('#cpay-modal.active');
+ await mutateBoth('cPays','cPays','c',{notes:'changed elsewhere'});await p.locator('#cpay-amt').fill('777');await p.locator('#btn-save-cpay').click();await p.waitForTimeout(400);
+ await check('cPays','c','notes','changed elsewhere');
+ await p.locator('#n-expenses').click();await p.locator('#exp-list [data-action="edit-exp"]').first().click();await p.waitForSelector('#exp-modal.active');
+ await mutateBoth('expenses','expenses','x',{notes:'changed elsewhere'});await p.locator('#exp-amt').fill('777');await p.locator('#btn-save-exp').click();await p.waitForTimeout(400);
+ await check('expenses','x','notes','changed elsewhere');
+ await p.locator('#n-vendors').click();await p.locator('#ven-list [data-action="vendetail"]').first().click();await p.locator('[data-action="edit-vpay"]').click();await p.waitForSelector('#vpay-modal.active');
+ await mutateBoth('vPays','vPays','vp',{notes:'changed elsewhere'});await p.locator('#vpay-amt').fill('777');await p.locator('#btn-save-vpay').click();await p.waitForTimeout(400);
+ await check('vPays','vp','notes','changed elsewhere');
+ await p.locator('#hdr-edit').click();await p.waitForSelector('#ven-modal.active');
+ await mutateBoth('vendors','vendors','v',{notes:'changed elsewhere'});await p.locator('#ven-name').fill('Vendor B');await p.locator('#btn-save-ven').click();await p.waitForTimeout(400);
+ await check('vendors','v','notes','changed elsewhere');assert.equal((await db(async d=>d.getOne('vendors','v'))).name,'Vendor A');
+ // An unchanged record still saves normally from a cloned snapshot
+ await p.reload();await p.waitForSelector('#kpi .card');await p.locator('#n-events').click();await p.locator('#ev-list [data-action="evdetail"]').first().click();await p.locator('#hdr-edit').click();await p.waitForSelector('#ev-modal.active');
+ await p.locator('#ev-guests').fill('130');await p.locator('#btn-save-event').click();await p.waitForTimeout(400);
+ const e=await db(async d=>d.getOne('events','e'));assert.equal(e.guests,130);assert.deepEqual(e.dishes,[{name:'Thali',head:''}]);assert.equal(e.notes,'changed elsewhere');
+});
 results.push({name:'unexpected page errors',pass:errors.length===0,errors});fs.writeFileSync('test-artifacts/repair-test-results.json',JSON.stringify(results,null,2));await browser.close();console.log(JSON.stringify(results,null,2));if(results.some(r=>!r.pass))process.exitCode=1;
 })().catch(e=>{console.error(e);process.exitCode=1});
