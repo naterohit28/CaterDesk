@@ -4,7 +4,7 @@
 
 An offline-first app for catering events, expenses, vendor credit, client collections, menus and vendor orders. Business records stay in the device's browser storage; the hosted app also sends limited error diagnostics to its server.
 
-**Current source and hosted web build: v4.0.2.** Documentation checked on **12 November 2026**.
+**Current source and hosted web build: v4.0.3.** Documentation checked on **13 November 2026**.
 
 [Open the app](https://expense-calculator-kohl.vercel.app/) · [Download published packages](https://github.com/naterohit28/Expense-Calculator/releases) · [Historical reliability report](docs/RELIABILITY.md) · [Competitor/name research and Claude evaluation notes](docs/research/README.md) · [Report an issue](https://github.com/naterohit28/Expense-Calculator/issues)
 
@@ -31,16 +31,16 @@ The **APK wrapper version, hosted web version and bundled desktop version are in
 
 | Component | Verified state on 3 November 2026 | Meaning |
 | --- | --- | --- |
-| Source and hosted web app | **4.0.2** | Current UI, data/export version, service worker and error reporter |
+| Source and hosted web app | **4.0.3** | Current UI, data/export version, service worker and error reporter |
 | Service-worker release cache | `flavor-fusion-v2-cache-v25` | Installed web assets; this number is not the database schema version |
-| Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** | APK package inspected locally; launches the hosted app, which can run 4.0.2 |
+| Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** | APK package inspected locally; launches the hosted app, which can run 4.0.3 |
 | Android requirements for that local wrapper | min API **24**, target API **36** | Android 7.0+ and a compatible browser provider |
 | Latest GitHub Release with downloadable binaries | **2.4.7** | APK and desktop ZIP; later source tags do not imply newer binaries were uploaded |
 | Desktop package currently in the owner's `Apps/Desktop` folder | **2.4.7** | A static older bundle, not the current source build |
-| Desktop launcher source/instructions | **4.0.2** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
+| Desktop launcher source/instructions | **4.0.3** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
 | IndexedDB schema | **4** | Kept separate from application version changes |
 
-Do not relabel an older package as 4.0.2. Use the [release assets](https://github.com/naterohit28/Expense-Calculator/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
+Do not relabel an older package as 4.0.3. Use the [release assets](https://github.com/naterohit28/Expense-Calculator/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
 
 ## Current features
 
@@ -132,11 +132,11 @@ Compatible `ffv2` and legacy `ffv5` payloads are supported subject to validation
 
 ### Hosted error diagnostics
 
-[`public/error-reporter.js`](public/error-reporter.js) reports uncaught errors to [`api/client-error.js`](api/client-error.js). It sends error kind/message, clipped stack and source, line/column, page path, release, timestamp and browser user-agent. It does not explicitly attach the business stores or bill images. **Error text is not comprehensively redacted**, so do not assume arbitrary exception messages can never contain sensitive text.
+[`public/error-reporter.js`](public/error-reporter.js) reports uncaught errors to [`api/client-error.js`](api/client-error.js) with **strict redaction**. A report holds only fixed technical fields: kind (error, unhandled rejection or handled), error type (e.g. `TypeError`), the app script it came from (one of the app's own file names, otherwise `other`/`external`), line, column, release and a browser family (e.g. `android-webview`). Error messages, stacks, page paths, full browser strings, timestamps and business records are never sent. The endpoint applies the same allow-list itself, so free text from an older or forged client is dropped before anything is logged or forwarded. [`tests/diagnostics-redaction.cjs`](tests/diagnostics-redaction.cjs) checks this with canary names, numbers and notes.
 
 The reporter skips `file:`, localhost and loopback hosts. It limits itself to ten distinct reports per page session. Offline reports are queued in memory and flushed when connectivity returns while the page remains alive; delivery is best-effort, not a durable error archive.
 
-The endpoint logs to Vercel, processes the forwarded IP for best-effort rate limits, and can forward error summaries to a configured webhook. This is diagnostics, not a business-data sync service or authenticated user API. See [deployment and alerts](#deployment-diagnostics-and-maintenance).
+The endpoint logs to Vercel, processes the forwarded IP for best-effort rate limits, and can forward the same redacted fields to a configured webhook. This is diagnostics, not a business-data sync service or authenticated user API. See [deployment and alerts](#deployment-diagnostics-and-maintenance).
 
 ## Android installation and updates
 
@@ -145,17 +145,17 @@ The APK is a **Trusted Web Activity** wrapper around the hosted site. It does no
 1. Keep a business-data backup.
 2. Obtain the intended APK from its actual release assets or the owner's prepared local package. Install over the existing app with the same package/signing identity.
 3. Open online to download updates. Check the **web build in Settings**, not just Android App info.
-4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **4.0.2**.
+4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **4.0.3**.
 
 A newer web release may reload automatically during the first 20 seconds of startup when no active form/save/overlay prevents it, at most once per release per session. Otherwise it waits for a later start or explicit reload. Refresh can also switch versions when no form/save is open. Service-worker cache mappings preserve matching assets for older open pages until navigation.
 
 Do not uninstall or clear browser/site storage to force an update. If Android rejects an APK, check package, versionCode and signing certificate before proceeding. The public certificate association is [`public/.well-known/assetlinks.json`](public/.well-known/assetlinks.json).
 
-The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **4.0.2**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
+The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **4.0.3**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
 
 ## Windows desktop testing
 
-Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v4.0.2 package.
+Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v4.0.3 package.
 
 1. Extract the entire ZIP; keep `app/` beside `CaterDesk-Desktop.exe`.
 2. Run the EXE. Microsoft Edge opens an app window; a tray icon provides **Open CaterDesk**, storage information and **Exit test server**.
@@ -320,6 +320,7 @@ This is a short source-feature history, not a list of available binary downloads
 
 | Version | Main changes |
 | --- | --- |
+| 4.0.3 | **Security hygiene (v5 P1-D):** error reports are strictly redacted to error type, app file, line, column, release and browser family; no error text, stack, page path, full browser string or business data is sent, logged or forwarded (older clients' reports are reduced the same way on the server). Long free text (event type, vendor speciality) no longer widens the page and hides header buttons. Unused demo-seeding code removed. New tests: XSS canaries on 18 screens and forms, and diagnostics redaction. |
 | 4.0.2 | **Hotfix:** editing an event no longer drops its menu, vendor orders, labour sheet or any other stored field (versions 3.3.0–4.0.1 did, which could also duplicate labour-sheet expenses on re-entry). All edit forms save onto the record they opened with and refuse to overwrite a record changed elsewhere. Read-only `tools/audit-labour.cjs` reports orphaned or duplicated labour-sheet expenses in a backup without changing it |
 | 4.0.1 | Labour sheet: headcount per shift for each worker type, as on contractors' bills (not every worker does every shift); bill adjustment shown as its own line so the total adds up; margin targets — own events at least 30%, commission work 10–20% |
 | 4.0.0 | Glass design and full-width New event; quiet refresh; quote helper with actually-billed rates; client payment receipts; vendor price creep; meals (breakfast, lunch, high tea, dinner in any mix); labour sheet with shifts per person, remembered rates, contractor extras (travel, mukadam fee, other work) and bill total |

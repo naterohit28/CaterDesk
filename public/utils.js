@@ -660,8 +660,3 @@ export function isLegacyPinHash(stored) {
   return !!stored && !stored.startsWith('sha256$');
 }
 
-/* ── SEED DATA ───────────────────────────────────── */
-// The app starts empty. Business records never ship in the code: it is published
-// online. The original starting records are kept outside the app folder as an
-// importable backup (flavor-fusion-starting-data.json).
-export const SEED_DATA = { events: [], cPays: [], expenses: [], vendors: [], vPays: [] };
