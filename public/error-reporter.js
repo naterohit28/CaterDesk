@@ -1,6 +1,7 @@
 // Sends a redacted note of uncaught errors to /api/client-error so failures on users' phones reach the Vercel logs.
-// Only fixed technical fields are sent: error type, app file name, line, column, release and a browser family.
-// Never sent: error messages, stacks, page paths, full browser strings, times or any business record (D-2).
+// Off until the user turns it on in Settings (ffv2_diagnostics). Only fixed technical fields are sent: a known
+// error type, app file name, line, column, release and a browser family. Never sent: error messages, stacks,
+// page paths, full browser strings, times or any business record (D-2).
 (function () {
   const RELEASE = '4.0.3';
   const ENDPOINT = '/api/client-error';
@@ -9,6 +10,11 @@
   const local = location.protocol === 'file:' || /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
 
   const KINDS = ['error', 'unhandledrejection', 'handled'];
+  // Standard JavaScript and browser error types; any other name (which could be text) is sent as "Other".
+  const CODES = ['Error', 'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'URIError', 'EvalError', 'AggregateError',
+    'DOMException', 'AbortError', 'TimeoutError', 'QuotaExceededError', 'InvalidStateError', 'NotFoundError', 'NotAllowedError',
+    'NotReadableError', 'NotSupportedError', 'SecurityError', 'NetworkError', 'DataError', 'DataCloneError', 'ConstraintError',
+    'TransactionInactiveError', 'ReadOnlyError', 'VersionError', 'UnknownError', 'EncodingError', 'OperationError'];
   const FILES = ['app.js', 'db.js', 'utils.js', 'i18n.js', 'icons.js', 'sw.js', 'register-sw.js', 'error-reporter.js'];
   const int = n => Number.isInteger(n) && n >= 0 && n < 1e7 ? n : null;
 
@@ -43,7 +49,7 @@
     const name = error && typeof error === 'object' ? error.name : null;
     return {
       kind: KINDS.includes(kind) ? kind : 'error',
-      code: typeof name === 'string' && /^[A-Za-z]{1,40}$/.test(name) ? name : (error instanceof Error ? 'Error' : 'NonError'),
+      code: CODES.includes(name) ? name : (error instanceof Error || (error && typeof error === 'object' && 'stack' in error) ? 'Other' : 'NonError'),
       file: scriptFile(extra && extra.source) || frame.file || 'other',
       line: int(extra && extra.line) ?? int(frame.line),
       column: int(extra && extra.column) ?? int(frame.column),
@@ -70,11 +76,17 @@
   }
 
   function flush() {
+    if (!allowed()) { queue.length = 0; return; }
     while (queue.length && navigator.onLine !== false) send(queue.shift());
   }
 
+  // Consent is read each time, so turning it off in Settings stops reports at once
+  function allowed() {
+    try { return JSON.parse(localStorage.getItem('ffv2_diagnostics')) === true; } catch { return false; }
+  }
+
   function report(kind, error, extra) {
-    if (sent >= MAX_PER_SESSION) return;
+    if (sent >= MAX_PER_SESSION || !allowed()) return;
     const entry = build(kind, error, extra);
     const key = [entry.kind, entry.code, entry.file, entry.line, entry.column].join('|');
     if (seen.has(key)) return;

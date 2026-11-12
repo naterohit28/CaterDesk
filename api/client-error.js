@@ -8,6 +8,11 @@ const RATE_MAX = 20;
 const ALERT_REPEAT_MS = 60 * 60 * 1000;
 
 const KINDS = ['error', 'unhandledrejection', 'handled'];
+// Recognised error types only. Anything else, even a plain word such as a person's name, is stored as "Other".
+const CODES = ['Error', 'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'URIError', 'EvalError', 'AggregateError',
+    'DOMException', 'AbortError', 'TimeoutError', 'QuotaExceededError', 'InvalidStateError', 'NotFoundError', 'NotAllowedError',
+    'NotReadableError', 'NotSupportedError', 'SecurityError', 'NetworkError', 'DataError', 'DataCloneError', 'ConstraintError',
+    'TransactionInactiveError', 'ReadOnlyError', 'VersionError', 'UnknownError', 'EncodingError', 'OperationError'].concat(['NonError', 'Other']);
 // The app's own scripts; any other name is reported as "other" so a file name cannot carry text.
 const FILES = ['app.js', 'db.js', 'utils.js', 'i18n.js', 'icons.js', 'sw.js', 'register-sw.js', 'error-reporter.js'];
 const BROWSERS = ['android-webview', 'chrome-android', 'chrome', 'edge', 'firefox', 'safari', 'other'];
@@ -31,7 +36,7 @@ function fileName(value) {
 function redact(body) {
   return {
     kind: pick(body.kind, KINDS, 'error'),
-    code: typeof body.code === 'string' && /^[A-Za-z]{1,40}$/.test(body.code) ? body.code : 'Error',
+    code: pick(body.code, CODES, 'Other'),
     file: fileName(body.file) || fileName(body.source) || 'other',
     line: int(body.line),
     column: int(body.column),
@@ -69,7 +74,7 @@ async function alert(report, now) {
       body: JSON.stringify({ content: text, text })
     });
   } catch (e) {
-    console.warn('Alert webhook failed:', e && e.name);   // the error text could echo the webhook URL
+    console.warn('Alert webhook failed');   // no error name or text: either could carry the URL or other free text
   }
 }
 

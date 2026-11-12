@@ -381,6 +381,8 @@ function syncSettingsUI() {
   const theme = document.documentElement.classList.contains('light') ? 'light' : 'dark';
   document.querySelectorAll('[data-theme-set]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.themeSet === theme)));
   document.querySelectorAll('[data-lang-set]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.langSet === getLang())));
+  const diag = readPref('ffv2_diagnostics', false) === true ? 'on' : 'off';   // error reports: off until the user turns them on
+  document.querySelectorAll('[data-diag-set]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.diagSet === diag)));
 }
 
 /* ── PIN LOCK ────────────────────────────────────── */
@@ -3257,6 +3259,7 @@ function bindAllEvents() {
   // Settings
   document.querySelectorAll('[data-theme-set]').forEach(b => b.addEventListener('click', () => setTheme(b.dataset.themeSet)));
   document.querySelectorAll('[data-lang-set]').forEach(b => b.addEventListener('click', () => { setLang(b.dataset.langSet); syncSettingsUI(); }));
+  document.querySelectorAll('[data-diag-set]').forEach(b => b.addEventListener('click', () => { writePref('ffv2_diagnostics', b.dataset.diagSet === 'on'); syncSettingsUI(); }));
   // Sharing must start within the tap, so begin the backup first, then close the panel
   q('btn-export').addEventListener('click', () => { exportData(); closeOverlay(); });
   // File picker must open inside the tap itself, so click first, then close the panel
