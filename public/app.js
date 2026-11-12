@@ -23,7 +23,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.0.1';
+const APP_BUILD = '4.0.2';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -84,6 +84,19 @@ function emptyState({ ic, text, action, tone = '', compact = false }) {
 
 function rowsOrEmpty(rows, text) {
   return rows || `<div class="list-empty">${text}</div>`;
+}
+
+/* Edit forms keep the exact record they were opened with. Saving applies only the fields the
+   form controls on top of that record, so anything else on it (menu, orders, labour sheet,
+   photos, fields added by newer versions) is kept; `drop` removes fields the form turned off.
+   The same snapshot is the save's expected version, so a record changed elsewhere since the
+   form opened is refused instead of overwritten. */
+const formBase = { ev: null, exp: null, cpay: null, ven: null, vpay: null };
+function editedRecord(base, fields, drop = []) {
+  const record = { ...(base || {}), ...fields };
+  for (const k of drop) delete record[k];
+  delete record._rev;   // the database assigns the next revision
+  return record;
 }
 
 function readPref(key, fallback) {
@@ -2054,6 +2067,7 @@ function eventOptions() {
 /* ── EVENT SHEET ─────────────────────────────────── */
 function openEvModal(id) {
   const ev = id ? D.events.find(e => e.id === id) : null;
+  formBase.ev = ev;
   q('ev-id').value      = ev?.id      || '';
   q('ev-name').value    = ev?.name    || '';
   q('ev-date').value    = ev?.date    || '';
@@ -2221,12 +2235,14 @@ async function saveEvent() {
   else if (charge !== '' && !errors.billing && charge > Number(data.billing)) errors['out-charge'] = 'Their charge is more than the bill – बिलापेक्षा जास्त';
   if (!valid || errors.adv || errors['out-ven'] || errors['out-charge']) { showFieldErrors(Object.fromEntries(Object.entries(errors).map(([k, v]) => ['ev-' + k, v]))); return; }
 
-  const record = {
+  const base = id ? formBase.ev : null;
+  const meals = Object.keys(MEALS).filter(m => evMeals().includes(m));
+  const record = editedRecord(base, {
     id:       id || uid('EV'),
     name:     data.name,
     date:     data.date,
     type:     qv('ev-type'),
-    ...(evMeals().length ? { meals: Object.keys(MEALS).filter(m => evMeals().includes(m)) } : {}),
+    ...(meals.length ? { meals } : {}),
     venue:    data.venue,
     billing:  data.billing,
     mobile:   data.mobile,
@@ -2235,9 +2251,9 @@ async function saveEvent() {
     menu:     qv('ev-menu'),
     ...(out ? { outsourced: true, outVenId } : {}),
     notes:    qv('ev-notes'),
-    photoIds: id ? (D.events.find(e => e.id === id)?.photoIds || []) : [],
+    photoIds: base?.photoIds || [],
     _v: 2
-  };
+  }, [...(meals.length ? [] : ['meals']), ...(out ? [] : ['outsourced', 'outVenId'])]);
 
   // The advance is saved with the event in one go, as its first payment received
   const advance = adv !== '' ? { id: uid('CP'), evId: record.id, amt: adv, date: today(), mode: qv('ev-adv-mode'), notes: 'Advance – अॅडव्हान्स' } : null;
@@ -2247,7 +2263,7 @@ async function saveEvent() {
   if (advance || vendorBill) await commitChanges([{ store: 'events', record, expected: null },
       ...(advance ? [{ store: 'cPays', record: advance, expected: null }] : []),
       ...(vendorBill ? [{ store: 'expenses', record: vendorBill, expected: null }] : [])], { check: true, extraStores: ['vendors'] });
-  else await putChecked('events', record, id ? D.events.find(r => r.id === id) : null);
+  else await putChecked('events', record, id ? base : null);
   if (id) D.events = D.events.map(e => e.id === id ? record : e);
   else    D.events.push(record);
   if (advance) D.cPays.push(advance);
@@ -2395,6 +2411,7 @@ function openExpModal(arg) {
   // { prefill } comes from the cost checklist: a new entry with item and vendor filled in
   const pre  = arg && typeof arg === 'object' && (arg.prefill || arg.resume) || null;
   const ex   = arg && typeof arg === 'object' && !pre ? arg : null;
+  formBase.exp = ex;   // an expense or bill draft being edited; null for a new entry
   expTouched = { item: !!(ex || pre?.head), pay: !!(ex || arg?.resume) };
   const evId = ex?.evId || pre?.evId || (typeof arg === 'string' && arg) || defaultEventId();
   const last = readPref('ffv2_lastexp', {});
@@ -2548,7 +2565,8 @@ async function saveExpense({ next = false } = {}) {
     return;
   }
 
-  const record = {
+  const base = formBase.exp && formBase.exp.id === expWork.id ? formBase.exp : null;
+  const record = editedRecord(base, {
     id:    expWork.id,
     evId:  data.evId,
     cat:   qv('exp-cat'),
@@ -2561,9 +2579,9 @@ async function saveExpense({ next = false } = {}) {
     dueDate: pay === 'credit' ? qv('exp-due') : '',
     notes: qv('exp-notes'),
     billIds: expWork.bills.map(b => b.id)
-  };
+  }, ['draft']);   // a filled-in bill draft becomes a normal expense
 
-  await commitChanges([{ store: 'expenses', record, expected: D.expenses.find(r => r.id === record.id) || D.drafts.find(r => r.id === record.id) || null }, ...expWork.removed.map(id => ({ store: 'photos', id, unchecked: true }))], { check: true, extraStores: ['events', 'vendors'] });
+  await commitChanges([{ store: 'expenses', record, expected: base }, ...expWork.removed.map(id => ({ store: 'photos', id, unchecked: true }))], { check: true, extraStores: ['events', 'vendors'] });
   // A filled-in draft becomes a real expense
   D.drafts = D.drafts.filter(d => d.id !== record.id);
   const i = D.expenses.findIndex(x => x.id === record.id);
@@ -2582,6 +2600,7 @@ async function saveExpense({ next = false } = {}) {
 
   if (next) {
     // Keep the event, date, category and payment; clear what changes per entry
+    formBase.exp = null;
     q('exp-amt').value = '';
     q('exp-amt').placeholder = '0';
     q('exp-notes').value = '';
@@ -2599,6 +2618,7 @@ async function saveExpense({ next = false } = {}) {
 /* ── CLIENT PAYMENT SHEET ────────────────────────── */
 function openCPayModal(evId, payId) {
   const p = payId ? D.cPays.find(x => x.id === payId) : null;
+  formBase.cpay = p;
   q('cpay-evid').value  = p?.evId || evId;
   q('cpay-id').value    = p?.id || '';
   q('cpay-amt').value   = p?.amt || '';
@@ -2619,9 +2639,10 @@ async function saveCPay() {
   if (!valid) { showFieldErrors({ 'cpay-amt': errors.amt, 'cpay-date': errors.date }); return; }
 
   const id = qv('cpay-id');
-  const record = { id: id || uid('CP'), evId, amt: data.amt, date: data.date, mode: qv('cpay-mode'), notes: qv('cpay-notes') };
+  const base = id ? formBase.cpay : null;
+  const record = editedRecord(base, { id: id || uid('CP'), evId, amt: data.amt, date: data.date, mode: qv('cpay-mode'), notes: qv('cpay-notes') });
 
-  await putChecked('cPays', record, id ? D.cPays.find(r => r.id === id) : null);
+  await putChecked('cPays', record, base);
   if (id) D.cPays = D.cPays.map(p => p.id === id ? record : p);
   else    D.cPays.push(record);
 
@@ -2647,6 +2668,7 @@ function setVenKind(kind) {
 
 function openVenModal(id, kind = 'vendor') {
   const vn = id ? D.vendors.find(v => v.id === id) : null;
+  formBase.ven = vn;
   q('ven-id').value    = vn?.id    || '';
   q('ven-name').value  = vn?.name  || '';
   q('ven-phone').value = vn?.phone || '';
@@ -2671,10 +2693,11 @@ async function saveVendor() {
 
   const id = qv('ven-id');
   const person = q('ven-kind').dataset.value === 'person';
-  const record = { id: id || uid('VN'), name: data.name, cat: person ? '' : qv('ven-cat'), specialty: person ? '' : qv('ven-specialty'),
-                   phone: data.phone, notes: qv('ven-notes'), ...(person ? { kind: 'person' } : {}) };
+  const base = id ? formBase.ven : null;
+  const record = editedRecord(base, { id: id || uid('VN'), name: data.name, cat: person ? '' : qv('ven-cat'), specialty: person ? '' : qv('ven-specialty'),
+                   phone: data.phone, notes: qv('ven-notes'), ...(person ? { kind: 'person' } : {}) }, person ? [] : ['kind']);
 
-  await putChecked('vendors', record, id ? D.vendors.find(r => r.id === id) : null);
+  await putChecked('vendors', record, base);
   if (id) D.vendors = D.vendors.map(v => v.id === id ? record : v);
   else    D.vendors.push(record);
 
@@ -2693,6 +2716,7 @@ async function saveVendor() {
 /* ── VENDOR PAYMENT SHEET ────────────────────────── */
 function openVPayModal(venId, payId) {
   const p  = payId ? D.vPays.find(x => x.id === payId) : null;
+  formBase.vpay = p;
   const vid = p?.venId || venId;
   const bal = calcVendorBalance(vid, D.expenses, D.vPays).balance;
   q('vpay-venid').value = vid;
@@ -2717,10 +2741,10 @@ async function saveVPay() {
   if (!valid) { showFieldErrors({ 'vpay-amt': errors.amt, 'vpay-date': errors.date }); return; }
 
   const id  = qv('vpay-id');
-  const old = id ? D.vPays.find(p => p.id === id) : null;
-  const record = { id: id || uid('VP'), venId, evId: qv('vpay-ev'), cat: old?.cat || '', head: old?.head || '', amt: data.amt, date: data.date, mode: qv('vpay-mode'), notes: qv('vpay-notes') };
+  const base = id ? formBase.vpay : null;
+  const record = editedRecord(base, { id: id || uid('VP'), venId, evId: qv('vpay-ev'), cat: base?.cat || '', head: base?.head || '', amt: data.amt, date: data.date, mode: qv('vpay-mode'), notes: qv('vpay-notes') });
 
-  await putChecked('vPays', record, id ? D.vPays.find(r => r.id === id) : null);
+  await putChecked('vPays', record, base);
   if (id) D.vPays = D.vPays.map(p => p.id === id ? record : p);
   else    D.vPays.push(record);
 

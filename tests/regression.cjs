@@ -360,5 +360,76 @@ await test('labour sheets saved before per-shift headcounts still open and add u
  await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');assert.equal(await p.locator('#lab-rows [data-lab="0"] [data-k="c-n"]').inputValue(),'30');
  await p.locator('#lab-modal [data-action="close-modal"]').click();await p.waitForTimeout(150);
 });
+await test('v4.0.2: editing an event keeps its menu, orders, labour sheet, photos and unknown fields',async()=>{
+ const nested={dishes:[{name:'Pani Puri',head:'Chaat – चाट',manual:true}],orders:[{id:'o1',head:'Chaat – चाट',venId:'v',plates:100,date:'2026-10-01',time:'19:00',notes:'',status:'confirmed',at:'2026-09-30T10:00:00.000Z'}],
+  labour:{rows:[{id:'l1',role:'Boys – बॉईज',rate:600,counts:{e:10}}],pay:'paid',mode:'',venId:'',expIds:{'Labour|Boys – बॉईज':'x1'},billTotal:6000},
+  meals:['lunch'],menu:'golden',photoIds:['ph1'],futureField:{keep:'me'},quoteRef:'Q-7'};
+ await seed({...empty(),vendors:[{id:'v',name:'Synthetic Vendor',cat:'Live Counter'}],photos:[{id:'ph1',eventId:'e',data:'data:image/png;base64,AA=='}],
+  events:[{...ev,guests:100,...nested}],expenses:[{id:'x1',evId:'e',cat:'Labour',head:'Boys – बॉईज',amt:6000,date:'2026-10-25',pay:'paid',notes:'Labour sheet: Evening 10 @ ₹600'}]});
+ await p.locator('#n-events').click();await p.locator('#ev-list [data-action="evdetail"]').first().click();await p.locator('#hdr-edit').click();await p.waitForSelector('#ev-modal.active');
+ await p.locator('#ev-guests').fill('120');await p.locator('#ev-name').fill('Wedding Renamed');await p.locator('#btn-save-event').click();await p.waitForTimeout(400);
+ const e=await db(async d=>d.getOne('events','e'));
+ assert.equal(e.guests,120);assert.equal(e.name,'Wedding Renamed');
+ for(const k of ['dishes','orders','labour','photoIds','futureField','quoteRef','menu','meals'])assert.deepEqual(e[k],nested[k],k+' kept after edit');
+ // The labour sheet still owns its expense: re-saving it updates in place, no duplicate
+ await p.waitForSelector('[data-action="lab-edit"]');await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');
+ await p.locator('#lab-rows [data-lab="0"] [data-k="c-e"]').fill('12');await p.locator('#lab-bill').fill('');await p.locator('#btn-save-lab').click();await p.waitForTimeout(400);
+ const lab=(await db(async d=>d.getAll('expenses'))).filter(x=>x.cat==='Labour');assert.equal(lab.length,1,'no duplicate labour expense');assert.equal(lab[0].id,'x1');assert.equal(lab[0].amt,7200);
+ // Clearing things the form controls still clears them
+ await p.locator('#hdr-edit').click();await p.waitForSelector('#ev-modal.active');await p.locator('#ev-meals [data-meal="lunch"]').click();await p.locator('#btn-save-event').click();await p.waitForTimeout(400);
+ const e2=await db(async d=>d.getOne('events','e'));assert.equal(e2.meals,undefined,'meals unticked are removed');assert.deepEqual(e2.dishes,nested.dishes);assert.deepEqual(e2.futureField,nested.futureField);
+});
+await test('v4.0.2: outsourced on/off is applied without touching other nested data',async()=>{
+ await seed({...empty(),vendors:[{id:'k',name:'Kaka',cat:'Operations'}],events:[{...ev,outsourced:true,outVenId:'k',dishes:[{name:'Thali',head:''}],futureField:1}]});
+ await p.locator('#n-events').click();await p.locator('#ev-list [data-action="evdetail"]').first().click();await p.locator('#hdr-edit').click();await p.waitForSelector('#ev-modal.active');
+ await p.locator('#ev-handling [data-h="own"]').click();await p.locator('#btn-save-event').click();await p.waitForTimeout(400);
+ const e=await db(async d=>d.getOne('events','e'));assert.equal(e.outsourced,undefined);assert.equal(e.outVenId,undefined);assert.deepEqual(e.dishes,[{name:'Thali',head:''}]);assert.equal(e.futureField,1);
+});
+await test('v4.0.2: a form opened before the record changed elsewhere cannot overwrite it',async()=>{
+ await seed({...empty(),vendors:[{id:'v',name:'Vendor A',cat:'Raw Material',phone:'9000000001'}],events:[{...ev,guests:100}],
+  expenses:[{id:'x',evId:'e',cat:'Raw Material',head:'Grocery – किराणा',amt:500,date:'2026-10-25',pay:'paid'}],cPays:[{id:'c',evId:'e',amt:100,date:'2026-10-25'}],vPays:[{id:'vp',venId:'v',amt:50,date:'2026-10-25'}]});
+ // Event: another window adds a labour sheet while this form is open
+ await p.locator('#n-events').click();await p.locator('#ev-list [data-action="evdetail"]').first().click();await p.locator('#hdr-edit').click();await p.waitForSelector('#ev-modal.active');
+ await db(async d=>{const r=await d.getOne('events','e');await d.putOne('events',{...r,labour:{rows:[{id:'l',role:'Cook – स्वयंपाकी',rate:900,counts:{f:2}}],pay:'paid',mode:'',venId:'',expIds:{}}})});
+ await p.locator('#ev-guests').fill('999');await p.locator('#btn-save-event').click();await p.waitForTimeout(400);
+ assert.match(await p.locator('#toast').innerText(),/changed in another/);let e=await db(async d=>d.getOne('events','e'));assert.equal(e.guests,100,'stale form refused');assert.equal(e.labour.rows.length,1,'newer data kept');
+ await p.locator('#ev-modal [data-action="close-modal"]').click();await p.waitForTimeout(200);
+ // Expense, client payment, vendor and vendor payment forms behave the same
+ const stale=async(open,store,id,change,fill,save)=>{await open();await db(async(d,a)=>{const r=await d.getOne(a.store,a.id);await d.putOne(a.store,{...r,...a.change})},{store,id,change});
+  await fill();await p.locator(save).click();await p.waitForTimeout(400);const r=await db(async(d,a)=>d.getOne(a.store,a.id),{store,id});await p.locator('.modal-ov.active [data-action="close-modal"]').first().click().catch(()=>{});await p.waitForTimeout(200);return r;};
+ await p.reload();await p.waitForSelector('#kpi .card');
+ let r=await stale(async()=>{await p.locator('#n-expenses').click();await p.locator('#exp-list [data-action="edit-exp"]').first().click();await p.waitForSelector('#exp-modal.active');},'expenses','x',{notes:'changed elsewhere'},async()=>p.locator('#exp-amt').fill('999'),'#btn-save-exp');
+ assert.equal(r.amt,500);assert.equal(r.notes,'changed elsewhere');
+ r=await stale(async()=>{await p.locator('#n-events').click();await p.locator('#ev-list [data-action="evdetail"]').first().click();await p.locator('[data-action="edit-cpay"]').click();await p.waitForSelector('#cpay-modal.active');},'cPays','c',{notes:'changed elsewhere'},async()=>p.locator('#cpay-amt').fill('999'),'#btn-save-cpay');
+ assert.equal(r.amt,100);assert.equal(r.notes,'changed elsewhere');
+ r=await stale(async()=>{await p.locator('#n-vendors').click();await p.locator('#ven-list [data-action="vendetail"]').first().click();await p.locator('#hdr-edit').click();await p.waitForSelector('#ven-modal.active');},'vendors','v',{notes:'changed elsewhere'},async()=>p.locator('#ven-name').fill('Vendor B'),'#btn-save-ven');
+ assert.equal(r.name,'Vendor A');assert.equal(r.notes,'changed elsewhere');
+ r=await stale(async()=>{await p.locator('#n-vendors').click();await p.locator('#ven-list [data-action="vendetail"]').first().click();await p.locator('[data-action="edit-vpay"]').click();await p.waitForSelector('#vpay-modal.active');},'vPays','vp',{notes:'changed elsewhere'},async()=>p.locator('#vpay-amt').fill('999'),'#btn-save-vpay');
+ assert.equal(r.amt,50);assert.equal(r.notes,'changed elsewhere');
+});
+await test('v4.0.2: expense, payment and vendor edits keep unknown fields; repeated saves make one change',async()=>{
+ await seed({...empty(),vendors:[{id:'v',name:'Vendor A',cat:'Raw Material',futureField:'v'},{id:'pp',name:'Uncle',kind:'person'}],events:[{...ev}],
+  expenses:[{id:'x',evId:'e',cat:'Raw Material',head:'Grocery – किराणा',amt:500,date:'2026-10-25',pay:'paid',futureField:'x'}],cPays:[{id:'c',evId:'e',amt:100,date:'2026-10-25',futureField:'c'}],vPays:[{id:'vp',venId:'v',amt:50,date:'2026-10-25',futureField:'vp'}]});
+ await p.locator('#n-expenses').click();await p.locator('#exp-list [data-action="edit-exp"]').first().click();await p.waitForSelector('#exp-modal.active');
+ await p.locator('#exp-amt').fill('600');await p.locator('#btn-save-exp').evaluate(b=>{b.click();b.click()});await p.waitForTimeout(500);
+ let xs=await db(async d=>d.getAll('expenses'));assert.equal(xs.length,1,'double tap saves once');assert.equal(xs[0].amt,600);assert.equal(xs[0].futureField,'x');
+ await p.locator('#n-events').click();await p.locator('#ev-list [data-action="evdetail"]').first().click();await p.locator('[data-action="edit-cpay"]').click();await p.waitForSelector('#cpay-modal.active');
+ await p.locator('#cpay-amt').fill('150');await p.locator('#btn-save-cpay').click();await p.waitForTimeout(400);
+ const c=await db(async d=>d.getOne('cPays','c'));assert.equal(c.amt,150);assert.equal(c.futureField,'c');
+ await p.locator('#n-vendors').click();await p.locator('#ven-list [data-action="vendetail"]',{hasText:'Vendor A'}).click();await p.locator('[data-action="edit-vpay"]').click();await p.waitForSelector('#vpay-modal.active');
+ await p.locator('#vpay-amt').fill('75');await p.locator('#btn-save-vpay').click();await p.waitForTimeout(400);
+ const vp=await db(async d=>d.getOne('vPays','vp'));assert.equal(vp.amt,75);assert.equal(vp.futureField,'vp');
+ await p.locator('#hdr-edit').click();await p.waitForSelector('#ven-modal.active');await p.locator('#ven-phone').fill('9000000002');await p.locator('#btn-save-ven').click();await p.waitForTimeout(400);
+ const v=await db(async d=>d.getOne('vendors','v'));assert.equal(v.phone,'9000000002');assert.equal(v.futureField,'v');
+ // A person turned into a vendor loses the person marker; nothing else
+ await p.locator('#n-vendors').click();await p.locator('#ven-list [data-action="vendetail"]',{hasText:'Uncle'}).click();await p.locator('#hdr-edit').click();await p.waitForSelector('#ven-modal.active');
+ await p.locator('#ven-kind [data-kind="vendor"]').click();await p.locator('#btn-save-ven').click();await p.waitForTimeout(400);
+ assert.equal((await db(async d=>d.getOne('vendors','pp'))).kind,undefined);
+ // A filled-in bill draft becomes a normal expense (draft flag removed)
+ await db(async d=>d.putOne('expenses',{id:'dr',draft:true,createdAt:'2026-10-25T00:00:00.000Z',evId:'e',date:'2026-10-25',amt:0,cat:'',head:'',pay:'paid',mode:'',venId:'',notes:'',billIds:[]}));
+ await p.reload();await p.waitForSelector('#kpi .card');await p.locator('#nudges [data-action="fill-draft"]').click();await p.waitForSelector('#exp-modal.active');
+ await p.locator('#exp-amt').fill('321');await p.locator('#btn-save-exp').click();await p.waitForTimeout(400);
+ const dr=await db(async d=>d.getOne('expenses','dr'));assert.equal(dr.draft,undefined,'draft flag cleared');assert.equal(dr.amt,321);
+});
 results.push({name:'unexpected page errors',pass:errors.length===0,errors});fs.writeFileSync('test-artifacts/repair-test-results.json',JSON.stringify(results,null,2));await browser.close();console.log(JSON.stringify(results,null,2));if(results.some(r=>!r.pass))process.exitCode=1;
 })().catch(e=>{console.error(e);process.exitCode=1});

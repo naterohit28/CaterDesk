@@ -1,7 +1,7 @@
 // Sends uncaught errors to /api/client-error so failures on users' phones reach the Vercel logs.
 // Only the error text, stack, page path, release and browser are sent; business records never are.
 (function () {
-  const RELEASE = '4.0.1';
+  const RELEASE = '4.0.2';
   const ENDPOINT = '/api/client-error';
   const MAX_PER_SESSION = 10;
   const local = location.protocol === 'file:' || /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
