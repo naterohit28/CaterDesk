@@ -56,7 +56,7 @@ const base = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
     await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500);
     assert.match((await p.evaluate(() => window.__opens))[0] || '', /^https:\/\/wa\.me\/919000000001/, 'WhatsApp opened');
     let o = (await ev('e1')).orders.find(x => x.id === 'oc');
-    assert.equal(o.menuChanged, true, 'warning stays after WhatsApp opened'); assert.equal(o.status, 'confirmed'); assert(o.openedAt);
+    assert.equal(o.menuChanged, true, 'warning stays after WhatsApp opened'); assert.equal(o.status, 'opened', 'the revised message is opened, not sent (4.9.0 versions)'); assert(o.openedAt);
     // Only "I have sent it" clears it
     await openEvent('Sample Reception');
     await p.locator('#menu-orders [data-action="order-status"]').first().click(); await p.waitForSelector('#ask-modal.active');

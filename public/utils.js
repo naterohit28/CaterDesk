@@ -85,6 +85,23 @@ export function mealPlanTotal(plan) {
   return { lines: lines.map(l => ({ ...l, total: fromPaise(l.totalPaise) })), total: fromPaise(totalPaise), totalPaise };
 }
 
+/* Order message versions (G-10, G-26): every different message for an order is kept (`messages`, append-only), each
+   with its own communication status: prepared (no phone), opened (WhatsApp opened: not proof it was sent), sent (you
+   confirmed you sent it), confirmed (the vendor confirmed it). Opening the same text again adds no version. A message
+   is never deleted or rewritten; marking sent/confirmed applies to the latest version only. */
+export function addOrderMessage(messages, text, opened, at) {
+  const list = Array.isArray(messages) ? messages.map(m => ({ ...m })) : [];
+  const last = list.at(-1);
+  if (last && last.text === text) { if (opened) last.openedAt = at; return { messages: list, changed: false }; }
+  list.push({ v: list.length + 1, at, text, status: opened ? 'opened' : 'prepared', ...(opened ? { openedAt: at } : {}) });
+  return { messages: list, changed: !!last };
+}
+export function markOrderMessage(messages, status, at) {
+  const list = Array.isArray(messages) ? messages.map(m => ({ ...m })) : [];
+  if (list.length) Object.assign(list[list.length - 1], { status, [status + 'At']: at });
+  return list;
+}
+
 // Order states: prepared (saved, not opened), opened (WhatsApp opened: not proof it was sent), sent (you
 // confirmed you sent it), confirmed (the vendor confirmed), delivered, cancelled. Older orders are 'sent'.
 export const ACTIVE_ORDER = ['prepared', 'opened', 'sent', 'confirmed'];

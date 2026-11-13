@@ -460,6 +460,7 @@ export async function prepareImport(payload) {
       if (row.meals !== undefined && (!Array.isArray(row.meals) || row.meals.some(m => !['breakfast', 'lunch', 'hightea', 'dinner'].includes(m)))) throw new Error('Invalid meals');
       if (row.labour !== undefined && (typeof row.labour !== 'object' || !Array.isArray(row.labour?.rows))) throw new Error('Invalid labour sheet');
       if (row.kind && !['vendor', 'person'].includes(row.kind)) throw new Error('Invalid vendor kind');
+      if (row.orders?.some(o => o?.messages !== undefined && (!Array.isArray(o.messages) || o.messages.some(m => !m || typeof m.text !== 'string' || !['prepared', 'opened', 'sent', 'confirmed'].includes(m.status))))) throw new Error('Invalid order messages');
       if (row.additional !== undefined && typeof row.additional !== 'boolean') throw new Error('Invalid extra flag');
       if (row.split !== undefined && (!row.split || typeof row.split.id !== 'string' || (amount(row.split.total, 'shared bill'), false))) throw new Error('Invalid shared bill');
       if (row.payPlan !== undefined && (!Array.isArray(row.payPlan) || row.payPlan.some(m => !m || typeof m.id !== 'string' || !['booking', 'date', 'before', 'after'].includes(m.when)
@@ -536,7 +537,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.8.1';
+export const APP_VERSION = '4.9.0';
 export async function checkAndMigrate() {
   await openDB();
   const storedVer = await getMeta('app_version');
