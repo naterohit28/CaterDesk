@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.16.0';
+const APP_BUILD = '4.16.1';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -2695,7 +2695,26 @@ function openSheet(id, after) {
   el.classList.add('active');
   el.querySelector('.sheet').scrollTop = 0;
   openOverlay(() => el.classList.remove('active'), after);
+  requestAnimationFrame(() => fitSelects(el));
 }
+
+/* A dropdown can't wrap its text, so a long chosen name (vendor, event) would be cut off. When it doesn't fit,
+   its text is made a little smaller, never below 13px; only beyond that does it end with "…". */
+let fitCanvas = null;
+function fitSelects(root = document) {
+  fitCanvas ||= document.createElement('canvas').getContext('2d');
+  for (const sel of root.querySelectorAll('.field select')) {
+    sel.style.fontSize = '';
+    const text = sel.selectedOptions[0]?.text || '', cs = getComputedStyle(sel);
+    const room = sel.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    if (!text || room <= 0) continue;
+    let size = parseFloat(cs.fontSize);
+    const width = px => { fitCanvas.font = `${cs.fontWeight} ${px}px ${cs.fontFamily}`; return fitCanvas.measureText(text).width; };
+    while (size > 13 && width(size) > room) size -= 0.5;
+    if (size < parseFloat(cs.fontSize)) sel.style.fontSize = size + 'px';
+  }
+}
+document.addEventListener('change', e => { if (e.target.matches?.('.field select')) fitSelects(e.target.closest('.field')); });
 
 function closeModals() {
   return closeOverlay();
@@ -3281,6 +3300,7 @@ function populateVendorSelect(selected = '') {
   q('exp-vendor').value = D.vendors.some(v => String(v.id) === selStr) ? selStr : '';
   q('exp-vendor').dataset.prev = q('exp-vendor').value;
   renderVendorQuick();
+  fitSelects(q('exp-vendor').closest('.field'));
 }
 
 function openExpModal(arg) {
