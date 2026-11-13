@@ -457,11 +457,11 @@ export async function prepareImport(payload) {
       if (name === 'photos' && (typeof row.data !== 'string' || !/^data:image\/(jpeg|png|webp|gif);base64,/.test(row.data))) throw new Error('Invalid photo data');
       if (row.pay && !['paid', 'credit'].includes(row.pay)) throw new Error('Invalid payment state');
       if (row.outsourced !== undefined && typeof row.outsourced !== 'boolean') throw new Error('Invalid outsourced flag');
-      if (row.meals !== undefined && (!Array.isArray(row.meals) || row.meals.some(m => !['breakfast', 'lunch', 'hightea', 'dinner'].includes(m)))) throw new Error('Invalid meals');
+      if (row.meals !== undefined && (!Array.isArray(row.meals) || row.meals.some(m => !['breakfast', 'lunch', 'hightea', 'dinner', 'latenight'].includes(m)))) throw new Error('Invalid meals');
       if (row.labour !== undefined && (typeof row.labour !== 'object' || !Array.isArray(row.labour?.rows))) throw new Error('Invalid labour sheet');
       if (row.kind && !(name === 'vPays' ? ['credit'] : ['vendor', 'person']).includes(row.kind)) throw new Error(name === 'vPays' ? 'Invalid payment kind' : 'Invalid vendor kind');
       if (row.guestCounts !== undefined && (typeof row.guestCounts !== 'object' || row.guestCounts === null || Array.isArray(row.guestCounts) || Object.entries(row.guestCounts).some(([k, c]) =>
-        !['all', 'breakfast', 'lunch', 'hightea', 'dinner'].includes(k) || !c || !Number.isSafeInteger(c.contracted) || c.contracted < 0 || (amount(c.rate, 'plate rate'), false)
+        !['all', 'breakfast', 'lunch', 'hightea', 'dinner', 'latenight'].includes(k) || !c || !Number.isSafeInteger(c.contracted) || c.contracted < 0 || (amount(c.rate, 'plate rate'), false)
         || !Array.isArray(c.counts) || c.counts.some(x => !x || !Number.isSafeInteger(x.n) || x.n < 0 || typeof x.at !== 'string')
         || !Array.isArray(c.requests) || c.requests.some(r => !r || !Number.isSafeInteger(r.qty) || r.qty <= 0 || !['requested', 'approved'].includes(r.status)
           || (r.status === 'approved' && !(Number.isSafeInteger(r.accepted) && r.accepted >= 0 && r.accepted <= r.qty)) || (amount(r.rate, 'extra plate rate'), false))))) throw new Error('Invalid guest count');
@@ -474,6 +474,16 @@ export async function prepareImport(payload) {
       if (row.billChanges !== undefined && (!Array.isArray(row.billChanges) || row.billChanges.some(b => !b || typeof b.reason !== 'string' || (amount(b.from, 'bill'), amount(b.to, 'bill'), false)
         || (b.kind !== undefined && !['discount', 'waiver', 'writeoff'].includes(b.kind)) || (b.ack !== undefined && !['written', 'verbal', 'none'].includes(b.ack))
         || (b.kind && !(b.to < b.from && b.reason.trim()))))) throw new Error('Invalid bill history');
+      if (row.quotes !== undefined && (!Array.isArray(row.quotes) || row.quotes.length > 100 || row.quotes.some(qt => !qt || !Number.isSafeInteger(qt.v) || qt.v < 1
+        || !['draft', 'sent', 'accepted', 'declined'].includes(qt.status) || !Array.isArray(qt.lines) || qt.lines.length > 50
+        || qt.lines.some(l => !l || (l.menu !== undefined && (typeof l.menu !== 'string' || l.menu.length > 64)) || (l.kind === 'meal' ? !['breakfast', 'lunch', 'hightea', 'dinner', 'latenight'].includes(l.meal) || !Number.isSafeInteger(l.guests) || l.guests < 0 || (amount(l.rate, 'quote rate'), false)
+          : !['item', 'discount'].includes(l.kind) || typeof l.label !== 'string' || l.label.length > 200 || (amount(l.amt, 'quote amount'), false)))
+        || [qt.terms, qt.text, qt.by].some(x => x !== undefined && (typeof x !== 'string' || x.length > 5000))
+        || (qt.evidence !== undefined && !['written', 'verbal'].includes(qt.evidence)))
+        || new Set(row.quotes.map(qt => qt.v)).size !== row.quotes.length)) throw new Error('Invalid quote');
+      if (row.gst !== undefined && (!row.gst || !(Number(row.gst.rate) > 0 && Number(row.gst.rate) <= 100) || (amount(row.gst.taxable, 'GST taxable amount'), amount(row.gst.amount, 'GST'), false)
+        || (row.gst.from !== undefined && typeof row.gst.from !== 'string'))) throw new Error('Invalid GST');
+      if (row.quotes?.some(qt => qt.gst !== undefined && (!qt.gst || !(Number(qt.gst.rate) > 0 && Number(qt.gst.rate) <= 100) || (amount(qt.gst.taxable, 'GST taxable amount'), false)))) throw new Error('Invalid quote');
       if (row.dispute !== undefined && (!row.dispute || typeof row.dispute.reason !== 'string' || !row.dispute.reason.trim() || typeof row.dispute.at !== 'string' || (amount(row.dispute.amt, 'disputed amount'), false))) throw new Error('Invalid dispute');
       if (row.orders?.some(o => o?.messages !== undefined && (!Array.isArray(o.messages) || o.messages.some(m => !m || typeof m.text !== 'string' || !['prepared', 'opened', 'sent', 'confirmed'].includes(m.status))))) throw new Error('Invalid order messages');
       if (row.additional !== undefined && typeof row.additional !== 'boolean') throw new Error('Invalid extra flag');
@@ -488,8 +498,8 @@ export async function prepareImport(payload) {
         || (m.when === 'date' && !validDate(m.date)) || (['before', 'after'].includes(m.when) && !(Number.isSafeInteger(m.days) && m.days >= 0))))) throw new Error('Invalid payment schedule');
       if (row.counterPlan !== undefined && (typeof row.counterPlan !== 'object' || row.counterPlan === null || Array.isArray(row.counterPlan) || Object.values(row.counterPlan).some(c => !c || typeof c !== 'object'
         || (c.takeUp !== undefined && !(typeof c.takeUp === 'number' && c.takeUp > 0 && c.takeUp <= 100)) || (c.minimum !== undefined && !(Number.isSafeInteger(c.minimum) && c.minimum >= 0))))) throw new Error('Invalid counter plan');
-      if (row.mealPlan !== undefined && (typeof row.mealPlan !== 'object' || row.mealPlan === null || Array.isArray(row.mealPlan) || Object.entries(row.mealPlan).some(([m, v]) => !['breakfast', 'lunch', 'hightea', 'dinner'].includes(m) || !v || !Number.isSafeInteger(v.guests) || v.guests < 0 || (amount(v.rate, 'meal rate'), false)))) throw new Error('Invalid meal pricing');
-      if (row.dishes?.some(d => !d || typeof d.name !== 'string' || (d.meal !== undefined && !['breakfast', 'lunch', 'hightea', 'dinner'].includes(d.meal)))) throw new Error('Invalid menu');
+      if (row.mealPlan !== undefined && (typeof row.mealPlan !== 'object' || row.mealPlan === null || Array.isArray(row.mealPlan) || Object.entries(row.mealPlan).some(([m, v]) => (v?.menu !== undefined && (typeof v.menu !== 'string' || v.menu.length > 64)) || !['breakfast', 'lunch', 'hightea', 'dinner', 'latenight'].includes(m) || !v || !Number.isSafeInteger(v.guests) || v.guests < 0 || (amount(v.rate, 'meal rate'), false)))) throw new Error('Invalid meal pricing');
+      if (row.dishes?.some(d => !d || typeof d.name !== 'string' || (d.meal !== undefined && !['breakfast', 'lunch', 'hightea', 'dinner', 'latenight'].includes(d.meal)))) throw new Error('Invalid menu');
       if (row.menuVersions !== undefined && (!Array.isArray(row.menuVersions) || row.menuVersions.some(v => !v || !Array.isArray(v.dishes)))) throw new Error('Invalid menu history');
       if (row.logistics !== undefined && (typeof row.logistics !== 'object' || row.logistics === null || Array.isArray(row.logistics) || Object.values(row.logistics).some(v => typeof v !== 'string'))) throw new Error('Invalid venue logistics');
       if (row.recon != null && (typeof row.recon !== 'object' || Array.isArray(row.recon) || !Number.isSafeInteger(row.recon.costPaise) || !Number.isSafeInteger(row.recon.billPaise) || typeof row.recon.sig !== 'string')) throw new Error('Invalid reconciliation');
@@ -557,7 +567,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.16.3';
+export const APP_VERSION = '4.17.0';
 const COUNT_METHOD_IDS = ['tokens', 'tally', 'gate', 'coupons', 'joint', 'other'];
 export async function checkAndMigrate() {
   await openDB();

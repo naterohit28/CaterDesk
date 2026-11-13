@@ -5,7 +5,7 @@ const { chromium, devices } = require('playwright');
 const assert = require('assert/strict');
 
 const X = n => `<img src=x onerror="window.__xss=${n}"><svg onload="window.__xss=${n}"></svg>"><b data-xss="${n}">x</b>`;
-const day = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+const day = n => { const d = new Date(); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };   // local date, as the app uses
 const DATA = {
   version: 'ffv2', photos: [],
   vendors: [{ id: 'v1', name: X(1), cat: 'Live Counter', specialty: X(2), phone: '9000000001', notes: X(3) }, { id: 'p1', name: X(4), kind: 'person', notes: X(5) }],

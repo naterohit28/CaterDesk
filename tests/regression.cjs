@@ -82,7 +82,7 @@ await test('lender credit, booking advance, newest events first and staff tips',
  await p.locator('#exp-pay [data-pay="credit"]').click();assert((await opts()).includes('uncle'));assert(!(await p.locator('#exp-ven-quick [data-ven="uncle"]').count()),'never a usual-vendor suggestion');
  await p.locator('#exp-cats [data-cat="Raw Material"]').click();await p.locator('#exp-amt').fill('8000');await p.locator('#exp-vendor').selectOption('uncle');await p.locator('#btn-save-exp').click();await p.waitForTimeout(300);
  assert.equal((await db(async d=>d.getAll('expenses'))).filter(x=>x.venId==='uncle'&&x.pay==='credit'&&x.amt===8000).length,1);
- await p.locator('#n-expenses').click();assert.match(await p.locator('#exp-list .sec .meta').first().innerText(),/1 person/);
+ await p.locator('#n-expenses').click();assert.match(await p.locator('#exp-list .sec .sec-amt').first().innerText(),/1 person/);
  await p.locator('#n-vendors').click();assert.match(await p.locator('#ven-list').innerText(),/Other people[\s\S]*Uncle Lender/);
  await p.locator('#fab').click();await p.waitForSelector('#ven-modal.active');await p.locator('#ven-kind [data-kind="person"]').click();assert(!(await p.locator('#ven-cat-row').isVisible()));
  await p.locator('#ven-name').fill('Cousin');await p.locator('#btn-save-ven').click();await p.waitForTimeout(300);
@@ -332,7 +332,7 @@ await test('meals (any mix of breakfast, lunch, high tea, dinner), headcount per
  await p.locator('#ev-meals [data-meal="hightea"]').click();await p.locator('#ev-meals [data-meal="dinner"]').click();assert.equal(await pressed('hightea'),'true');
  for(const [id,v] of [['ev-name','Dinner Party'],['ev-date','2026-12-12'],['ev-venue','Hall'],['ev-billing','90000']])await p.locator('#'+id).fill(v);await p.locator('#btn-save-event').click();await p.waitForTimeout(300);
  const dp=(await db(async d=>d.getAll('events'))).find(e=>e.name==='Dinner Party');assert.deepEqual(dp.meals,['breakfast','lunch','hightea','dinner'],'all four, in day order');
- assert.match(await p.locator('#ev-list').innerText(),/Breakfast \+ Lunch \+ High tea \+ Dinner/);
+ assert.match(await p.locator('#ev-list').innerText(),/4 meals/);
  await p.locator('#ev-list [data-action="evdetail"]',{hasText:'Dinner Party'}).click();await p.locator('#hdr-edit').click();await p.waitForSelector('#ev-modal.active');
  await p.locator('#ev-meals [data-meal="breakfast"]').click();await p.locator('#ev-meals [data-meal="lunch"]').click();await p.locator('#btn-save-event').click();await p.waitForTimeout(300);
  assert.deepEqual((await db(async d=>d.getAll('events'))).find(e=>e.name==='Dinner Party').meals,['hightea','dinner'],'unticking works');

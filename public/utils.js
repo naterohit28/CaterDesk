@@ -75,11 +75,11 @@ export const markupPct = (price, cost) => Number(cost) > 0 ? Math.round((price -
 
 /* Per-meal pricing (§6.4, Q-01): each meal has its own guests and rate; totals add in paise. Guests of different
    meals are never added up as people (35 at breakfast and 900 at dinner are not 935 guests). */
-export const MEAL_ORDER = ['breakfast', 'lunch', 'hightea', 'dinner'];
+export const MEAL_ORDER = ['breakfast', 'lunch', 'hightea', 'dinner', 'latenight'];
 export function mealPlanTotal(plan) {
   const lines = MEAL_ORDER.filter(m => plan?.[m]).map(m => {
     const guests = Number(plan[m].guests) || 0, rate = Number(plan[m].rate) || 0;
-    return { meal: m, guests, rate, totalPaise: guests * toPaise(rate) };
+    return { meal: m, guests, rate, ...(plan[m].menu ? { menu: plan[m].menu } : {}), totalPaise: guests * toPaise(rate) };
   }).filter(l => l.guests > 0 && l.rate > 0);
   const totalPaise = lines.reduce((s, l) => s + l.totalPaise, 0);
   return { lines: lines.map(l => ({ ...l, total: fromPaise(l.totalPaise) })), total: fromPaise(totalPaise), totalPaise };
@@ -120,7 +120,7 @@ export function menuChangeImpact(before = [], after = [], orders = []) {
    the contract is only a proposal until approved, and approved plates reach the bill only when the owner adds them.
    A request belongs to the count it was made for; after a new count it is marked as made for an older count, and a
    new extra needs a new request (G-37). Records are append-only. */
-export const COUNT_MEALS = ['breakfast', 'lunch', 'hightea', 'dinner'];
+export const COUNT_MEALS = ['breakfast', 'lunch', 'hightea', 'dinner', 'latenight'];
 /* The counting method agreed with the client before the event (spec §11.5): plates issued, people present and
    billable plates may differ, so the method is part of the terms, not a post-event assumption. */
 export const COUNT_METHODS = [
@@ -211,6 +211,58 @@ export function equalSplit(totalRupees, n) {
   return Array.from({ length: n }, (_, i) => fromPaise(i === n - 1 ? totalP - each * (n - 1) : each));
 }
 
+/* ── QUOTATIONS (spec §6.1, §6.3–6.6, Q-01, G-03) ── */
+/* A quote is a numbered version on the event: meal lines (guests × rate, each meal on its own rate), extra items and
+   discounts. A draft can be edited; once sent it is frozen and a change is a new version, so no sent or accepted quote
+   is ever overwritten. Amounts are before any applicable GST: tax is not calculated here until the owner's GST rules
+   are approved (O-01/O-02). Accepting a version changes nothing by itself: the owner confirms it as the event's bill. */
+export const QUOTE_STATUS = { draft: ['Draft', 'मसुदा', 'due'], sent: ['Sent', 'पाठवले', ''], accepted: ['Accepted', 'मान्य', 'pos'], declined: ['Declined', 'नाकारले', 'neg'] };
+export function quoteTotal(q) {
+  const lines = (q?.lines || []).map(l => {
+    const totalP = l.kind === 'meal' ? (Number(l.guests) || 0) * toPaise(l.rate || 0) : l.kind === 'discount' ? -toPaise(l.amt || 0) : toPaise(l.amt || 0);
+    return { ...l, totalP, total: fromPaise(totalP) };
+  });
+  const totalP = lines.reduce((s, l) => s + l.totalP, 0);
+  // GST is optional and entirely the owner's: their rate on their chosen taxable amount (no rate is ever assumed)
+  const g = q?.gst, gstP = g && Number(g.rate) > 0 ? Math.round(toPaise(g.taxable || 0) * Number(g.rate) / 100) : 0;
+  return { lines, totalP, total: fromPaise(totalP), gstP, gst: fromPaise(gstP), grandP: totalP + gstP, grand: fromPaise(totalP + gstP) };
+}
+export function checkQuote(q) {
+  const lines = q?.lines || [];
+  if (!lines.some(l => l.kind === 'meal' || l.kind === 'item')) return 'Add at least one meal or item';
+  for (const l of lines) {
+    if (l.kind === 'meal' && !(Number.isSafeInteger(Number(l.guests)) && Number(l.guests) > 0 && Number(l.rate) > 0)) return 'Each meal needs guests and a rate';
+    if (l.kind !== 'meal' && !(String(l.label || '').trim() && Number(l.amt) > 0)) return 'Each item or discount needs a name and an amount';
+    if ([l.rate, l.amt].some(v => v != null && v !== '' && Math.abs(Number(v) * 100 - Math.round(Number(v) * 100)) > .001)) return 'Use at most two decimals';
+  }
+  if (new Set(lines.filter(l => l.kind === 'meal').map(l => l.meal)).size !== lines.filter(l => l.kind === 'meal').length) return 'Each meal can appear only once';
+  if (quoteTotal(q).totalP <= 0) return 'The discount is more than the quote';
+  if (q.gst) {
+    const r = Number(q.gst.rate), tP = toPaise(q.gst.taxable || 0);
+    if (!(r > 0 && r <= 100) || Math.abs(r * 100 - Math.round(r * 100)) > .001) return 'Enter the GST % (e.g. 5)';
+    if (!(tP > 0)) return 'Enter the amount GST is charged on';
+    if (tP > quoteTotal(q).totalP) return 'GST is charged on more than the quote';
+  }
+  return '';
+}
+// The next draft: a copy of the latest version, or the event's meal plan when there is no quote yet
+export function nextQuoteDraft(ev) {
+  const last = (ev.quotes || []).at(-1);
+  const lines = last ? structuredClone(last.lines)
+    : MEAL_ORDER.filter(m => ev.mealPlan?.[m]?.guests > 0).map(m => ({ kind: 'meal', meal: m, guests: ev.mealPlan[m].guests, rate: ev.mealPlan[m].rate, ...(ev.mealPlan[m].menu ? { menu: ev.mealPlan[m].menu } : {}) }));
+  return { v: (last?.v || 0) + 1, status: 'draft', lines: lines.length ? lines : [{ kind: 'meal', meal: 'dinner', guests: Number(ev.guests) || '', rate: '' }],
+    showRates: last ? last.showRates !== false : true, terms: last?.terms || '', ...(last?.gst ? { gst: { ...last.gst } } : {}) };
+}
+// A version is superseded when a later one was sent or accepted
+export const quoteSuperseded = (ev, q) => (ev.quotes || []).some(o => o.v > q.v && ['sent', 'accepted'].includes(o.status));
+
+/* ── GST ON THE EVENT ── */
+/* The event's bill is the business's income before GST. GST (from an accepted quote) is added to what the client owes,
+   never to income or contribution. */
+export const gstPaise = ev => toPaise(ev?.gst?.amount || 0);
+export const clientDueP = ev => toPaise(ev?.billing || 0) + gstPaise(ev);
+export const clientDue = ev => fromPaise(clientDueP(ev));
+
 /* ── FINAL SETTLEMENT (spec §6.7, §10.3, G-35) ── */
 /* What the client was billed, what they paid, and what is still owed are kept apart. A lower payment never
    changes the bill by itself: the balance stays outstanding (optionally marked disputed) until the owner
@@ -219,14 +271,14 @@ export function equalSplit(totalRupees, n) {
 export const SETTLE_KINDS = { discount: ['Discount agreed', 'सवलत'], waiver: ['Waived', 'माफ'], writeoff: ['Written off (will not be paid)', 'बुडीत'] };
 export function settlementStatus(ev, cPays) {
   const changes = ev.billChanges || [];
-  const billedP = toPaise(ev.billing || 0), recP = cPays.filter(p => p.evId === ev.id).reduce((s, p) => s + toPaise(p.amt), 0);
+  const billedP = clientDueP(ev), recP = cPays.filter(p => p.evId === ev.id).reduce((s, p) => s + toPaise(p.amt), 0);
   const adjustments = changes.filter(c => SETTLE_KINDS[c.kind]);
   const outstandingP = billedP - recP;
   const disputedP = ev.dispute && outstandingP > 0 ? Math.min(toPaise(ev.dispute.amt), outstandingP) : 0;
   return { original: changes.length ? changes[0].from : ev.billing, changes, adjustments,
     adjusted: fromPaise(adjustments.reduce((s, c) => s + toPaise(c.from) - toPaise(c.to), 0)),
     billed: fromPaise(billedP), received: fromPaise(recP), outstanding: fromPaise(Math.max(0, outstandingP)), over: fromPaise(Math.max(0, -outstandingP)),
-    disputed: fromPaise(disputedP), taxReview: adjustments.some(c => c.taxReview) };
+    disputed: fromPaise(disputedP), taxReview: adjustments.some(c => c.taxReview), gst: fromPaise(gstPaise(ev)) };
 }
 
 /* ── CLIENT PAYMENT MILESTONES (spec §11.2, scenario P-01, G-09) ── */
@@ -237,7 +289,7 @@ export function settlementStatus(ev, cPays) {
    after the event, as for events without a schedule. Outstanding is never shown as overdue just because it is unpaid. */
 export const PAY_WHEN = ['booking', 'date', 'before', 'after'];
 export function paymentSchedule(ev, cPays, now = today()) {
-  const billP = toPaise(ev.billing);
+  const billP = clientDueP(ev);   // instalments are of what the client pays (GST included when recorded)
   const recP = cPays.filter(p => p.evId === ev.id).reduce((s, p) => s + toPaise(p.amt), 0);
   const outstandingP = Math.max(0, billP - recP);
   const plan = Array.isArray(ev.payPlan) ? ev.payPlan : [];
@@ -586,10 +638,10 @@ export function calcEventExpenses(eventId, expenses) {
 export function calcEventPL(ev, cPays, expenses) {
   const received = calcEventReceived(ev.id, cPays);
   const expTotal = calcEventExpenses(ev.id, expenses);
-  const pending  = fromPaise(toPaise(ev.billing) - toPaise(received));
+  const pending  = fromPaise(clientDueP(ev) - toPaise(received));   // GST included; contribution below is not
   const profit   = fromPaise(toPaise(ev.billing) - toPaise(expTotal));
   const margin   = ev.billing > 0 ? Math.round(profit / ev.billing * 100) : 0;
-  const pctPaid  = ev.billing > 0 ? Math.min(100, received / ev.billing * 100) : 0;
+  const pctPaid  = clientDueP(ev) > 0 ? Math.min(100, toPaise(received) / clientDueP(ev) * 100) : 0;
   // Per-plate figures need a guest count; budget figures need an expected cost
   const guests   = Number(ev.guests) || 0;
   const budget   = Number(ev.budget) || 0;

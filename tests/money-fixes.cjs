@@ -3,7 +3,7 @@ const BASE_URL = process.env.TEST_BASE_URL; if (!BASE_URL || !/^http:\/\/127\.0\
 const { chromium, devices } = require('playwright');
 const assert = require('node:assert/strict');
 
-const day = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+const day = n => { const d = new Date(); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };   // local date, as the app uses
 const ev = (id, name, date, extra = {}) => ({ id, name, date, venue: 'Sample Hall', type: 'Wedding – लग्न', billing: 400000, guests: 500, photoIds: [], mobile: '9000000005', ...extra });
 const DATA = { version: 'ffv2', photos: [], vendors: [], vPays: [], expenses: [],
   events: [
@@ -38,17 +38,17 @@ const DATA = { version: 'ffv2', photos: [], vendors: [], vPays: [], expenses: []
 
   await test('F1: once a milestone is due, the reminder asks for that amount only', async () => {
     await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); const { _rev, ...e } = d.events.find(x => x.id === 'P');
-      e.payPlan[1].date = new Date().toISOString().slice(0, 10); await db.putOne('events', e); });
+      e.payPlan[1].date = (await import('./utils.js')).today(); await db.putOne('events', e); });
     await openEvent('P'); const msg = decodeURIComponent(await p.locator('#ev-contact a', { hasText: 'Remind' }).getAttribute('href'));
     assert.match(msg, /₹2,00,000 is now due for Sample Planned .* as per the payment schedule \(total balance ₹3,00,000\)/);
   });
 
   await test('F2: Pending is red only when the plan has something overdue, not merely because the event date passed', async () => {
     await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); const { _rev, ...e } = d.events.find(x => x.id === 'P');
-      e.payPlan[1].date = new Date(Date.now() + 10 * 864e5).toISOString().slice(0, 10); await db.putOne('events', e); });
+      const u = await import('./utils.js'); e.payPlan[1].date = u.addDays(u.today(), 10); await db.putOne('events', e); });
     await openEvent('P'); assert.equal(await p.locator('#ev-pending').getAttribute('class'), 'amt-md due', 'event is past but nothing overdue: amber');
     await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); const { _rev, ...e } = d.events.find(x => x.id === 'P');
-      e.payPlan[1].date = new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10); await db.putOne('events', e); });
+      const u = await import('./utils.js'); e.payPlan[1].date = u.addDays(u.today(), -2); await db.putOne('events', e); });
     await openEvent('P'); assert.equal(await p.locator('#ev-pending').getAttribute('class'), 'amt-md neg', 'a milestone is overdue: red');
     await openEvent('N'); assert.equal(await p.locator('#ev-pending').getAttribute('class'), 'amt-md neg', 'no plan, event over: red as before');
   });

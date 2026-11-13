@@ -5,7 +5,7 @@ const BASE_URL = process.env.TEST_BASE_URL; if (!BASE_URL || !/^http:\/\/127\.0\
 const { chromium, devices } = require('playwright');
 const assert = require('node:assert/strict');
 
-const day = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+const day = n => { const d = new Date(); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };   // local date, as the app uses
 const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
   vendors: [{ id: 'v1', name: 'Sample Chaat Counter', cat: 'Live Counter', phone: '9000000001' }],
   events: [{ id: 'e1', name: 'Sample Reception', date: day(7), venue: 'Sample Hall', type: 'Wedding – लग्न', billing: 500000, guests: 500, meals: ['breakfast', 'dinner'], photoIds: [],
@@ -46,7 +46,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     await p.locator('#ev-mp summary').click();
     await p.fill('#ev-mp-dinner-g', '900'); await p.fill('#ev-mp-dinner-r', '800'); await p.fill('#ev-mp-breakfast-g', '35'); await p.fill('#ev-mp-breakfast-r', '150');
     assert.equal(await p.inputValue('#ev-billing'), '725250', 'empty bill filled from the meal total');
-    assert.match(await p.locator('#ev-mp-total').innerText(), /Breakfast 35 × ₹150 = ₹5,250 · Dinner 900 × ₹800 = ₹7,20,000 · Total ₹7,25,250 \(before tax\)/);
+    assert.match(await p.locator('#ev-mp-total').innerText(), /Breakfast\s*35 × ₹150\s*₹5,250\s*Dinner\s*900 × ₹800\s*₹7,20,000\s*Meals total\s*₹7,25,250\s*Before tax/);
     // Changing dinner's rate leaves breakfast as it is
     await p.fill('#ev-mp-dinner-r', '820');
     assert.equal(await p.inputValue('#ev-mp-breakfast-r'), '150'); assert.equal(await p.inputValue('#ev-billing'), '743250');
@@ -61,7 +61,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     assert(!saved.guests, 'meal guests are never added up (no 935) into the event guest count');
     await openEvent('Sample Meal Priced');
     const line = await p.locator('#meal-plan').innerText();
-    assert.match(line, /meals total ₹7,25,250/); assert.match(line, /Bill is ₹24,750 more than the meal prices/);
+    assert.match(line, /Meals total\s*₹7,25,250/); assert.match(line, /Bill is ₹24,750 more than the meal prices/);
   });
 
   await test('unticking a meal drops its price; an event without meal prices is unchanged', async () => {
@@ -137,6 +137,29 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
         try { await db.importAllData(d, 'replace'); out.push('accepted'); } catch (e) { out.push(e.message.split('.')[0]); } }
       return out; });
     assert.deepEqual(r, ['Invalid meal pricing', 'Invalid meal pricing', 'Invalid money amount: meal rate', 'Invalid menu', 'Invalid menu history']);
+  });
+
+  await test('each meal can have its own menu: picking one fills the rate from its slab; it is saved with the meal and shown', async () => {
+    await p.reload(); await p.waitForSelector('#kpi .card');
+    await p.locator('#n-events:visible').click(); await p.locator('#fab').click(); await p.waitForSelector('#ev-modal.active');
+    await p.fill('#ev-name', 'Sample Menu Per Meal'); await p.fill('#ev-date', day(25)); await p.fill('#ev-venue', 'Sample Lawn');
+    for (const m of ['breakfast', 'lunch', 'hightea', 'dinner', 'latenight']) await p.locator(`#ev-meals [data-meal="${m}"]`).click();
+    await p.locator('#ev-mp summary').click();
+    assert.equal(await p.locator('#ev-mp-rows [data-mp]').count(), 5, 'five meals in a day');
+    await p.fill('#ev-mp-dinner-g', '400'); await p.selectOption('#ev-mp-dinner-m', 'golden');
+    assert.equal(await p.inputValue('#ev-mp-dinner-r'), '800', 'Golden for 400 guests: the 301+ slab');
+    await p.fill('#ev-mp-lunch-g', '200'); await p.fill('#ev-mp-lunch-r', '700'); await p.selectOption('#ev-mp-lunch-m', 'golden');
+    assert.equal(await p.inputValue('#ev-mp-lunch-r'), '700', 'a rate typed by hand is kept');
+    assert.match(await p.locator('#ev-mp-m-dinner, #ev-mp-dinner-m').first().evaluate(s => s.options[0].text), /^No menu/);
+    await p.locator('#btn-save-event').click(); await p.waitForTimeout(500);
+    if (await p.locator('#ask-modal.active').count()) await p.locator('#ask-actions button').last().click();
+    const saved = (await dump()).events.find(e => e.name === 'Sample Menu Per Meal');
+    assert.deepEqual(saved.mealPlan, { lunch: { guests: 200, rate: 700, menu: 'golden' }, dinner: { guests: 400, rate: 800, menu: 'golden' } });
+    await openEvent('Sample Menu Per Meal');
+    assert.match(await p.locator('#meal-plan').innerText(), /Lunch\s*Golden\s*200 × ₹700\s*₹1,40,000\s*Dinner\s*Golden\s*400 × ₹800\s*₹3,20,000/);
+    const text = await p.evaluate(async () => { const d = await (await import('./db.js')).exportAllData(); const e = d.events.find(x => x.name === 'Sample Menu Per Meal');
+      return (await import('./utils.js')).nextQuoteDraft(e).lines; });
+    assert.deepEqual(text.map(l => l.menu), ['golden', 'golden'], 'a new quote keeps each meal\'s menu');
   });
 
   assert.deepEqual(errors, []);
