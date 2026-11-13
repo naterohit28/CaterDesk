@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
+  RECON_CHECKS, ACTIVE_ORDER, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.4.0';
+const APP_BUILD = '4.4.1';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1372,6 +1372,8 @@ async function saveLabour() {
 
 /* ── EVENT MENU & VENDOR ORDERS ──────────────────── */
 const ORDER_STATUS = {
+  prepared:  { en: 'Not sent yet', mr: 'पाठवायची', tone: 'due' },
+  opened:    { en: 'WhatsApp opened', mr: 'WhatsApp उघडले', tone: 'due' },
   sent:      { en: 'Sent', mr: 'पाठवले', tone: '' },
   confirmed: { en: 'Confirmed', mr: 'पक्के', tone: 'info' },
   delivered: { en: 'Delivered', mr: 'आले', tone: 'pos' },
@@ -1396,9 +1398,26 @@ function counterVendor(head) {
   return rankVendors('Live Counter', head)[0][0]?.id || '';
 }
 
+// Orders whose counter is no longer on the menu (dishes removed): kept in view with their status or warning
+function offMenuOrders(ev) {
+  const onMenu = new Set(dishGroups(ev).keys());
+  const latest = new Map();
+  for (const o of ev.orders || []) if (!onMenu.has(o.head)) latest.set(o.head, o);   // the newest per counter
+  if (!latest.size) return '';
+  return `<div class="meta" style="padding:var(--s3) var(--s4) 0">${tr('Orders for counters no longer on the menu', 'मेनूत नसलेल्या काउंटरच्या ऑर्डर')}</div>`
+    + [...latest.values()].map(o => {
+      const ven = D.vendors.find(v => v.id === o.venId), st = ORDER_STATUS[o.status] || ORDER_STATUS.sent;
+      return `<div class="row" style="min-height:56px" data-off-order="${esc(o.id)}">
+        <div class="row-ic">${icon('utensils', 18)}</div>
+        <div class="row-body"><div class="title-sm trunc">${esc(short(o.head))}${ven ? ` · <span data-nl>${esc(ven.name)}</span>` : ''}</div>
+          <div class="meta">${tr('Not on the current menu', 'सध्याच्या मेनूत नाही')}</div></div>
+        <button type="button" class="chip ${o.menuChanged ? 'due' : st.tone}" data-action="order-status" data-id="${esc(o.id)}">${o.menuChanged ? tr('Menu changed · resend', 'मेनू बदलला · पुन्हा पाठवा') : tr(st.en, st.mr) + (o.plates ? ' · ' + o.plates : '')}</button>
+      </div>`; }).join('');
+}
+
 function menuOrdersCard(ev) {
   const dishes = ev.dishes || [];
-  if (!dishes.length) return `
+  if (!dishes.length && !(ev.orders || []).length) return `
     <div class="sec"><span class="sec-title">Menu & orders – मेनू व ऑर्डर</span></div>
     <div class="card pad"><div class="meta">${tr('Add the dishes agreed with the client. Counter items become vendor orders you can send on WhatsApp.', 'ग्राहकाशी ठरलेले पदार्थ जोडा. काउंटरचे पदार्थ विक्रेत्यांना ऑर्डर म्हणून WhatsApp वर पाठवता येतात.')}</div>
       <button type="button" class="btn-sm" style="margin-top:var(--s3)" data-action="menu-edit">${icon('plus', 16)}${tr('Add menu', 'मेनू जोडा')}</button></div>`;
@@ -1421,7 +1440,7 @@ function menuOrdersCard(ev) {
     <div class="sec"><span class="sec-title">Menu & orders – मेनू व ऑर्डर</span>
       <button type="button" class="btn-sm" data-action="menu-edit">${icon('pencil', 16)}${tr('Edit', 'बदला')}</button></div>
     <div class="card list" id="menu-orders">
-      ${counters || `<div class="list-empty">${tr('No counter items found. Tap a dish below to say which counter supplies it.', 'काउंटरचे पदार्थ सापडले नाहीत. खालील पदार्थावर टॅप करा.')}</div>`}
+      ${counters || (dishes.length ? '' : `<div class="list-empty">${tr('No dishes on the menu.', 'मेनूमध्ये पदार्थ नाहीत.')}</div>`) || `<div class="list-empty">${tr('No counter items found. Tap a dish below to say which counter supplies it.', 'काउंटरचे पदार्थ सापडले नाहीत. खालील पदार्थावर टॅप करा.')}</div>`}
       ${kitchen.length ? `<div class="row" style="min-height:48px"><div class="row-ic">${icon('basket', 18)}</div>
         <div class="row-body"><div class="title-sm">${tr('Our kitchen', 'आपले किचन')}</div><div class="meta" data-nl>${esc(kitchen.join(', '))}</div></div></div>` : ''}
       ${ev.outsourced ? `<div class="meta" style="padding:var(--s3) var(--s4)">${tr('Outsourced event: the full menu goes to the caterer doing the event.', 'आउटसोर्स कार्यक्रम: संपूर्ण मेनू त्या केटररला जातो.')}</div>` : `<div style="padding:var(--s3) var(--s4)">
@@ -1429,6 +1448,7 @@ function menuOrdersCard(ev) {
         <div class="chips-row" style="margin:0;padding:0;flex-wrap:wrap">${dishes.map((d, i) =>
           `<button type="button" class="f-chip" data-action="dish-assign" data-id="${i}" data-nl style="max-width:100%;overflow:hidden;text-overflow:ellipsis">${esc(d.name)}${d.head ? ` · ${esc(short(d.head))}` : ''}${d.meal ? ` · ${esc(MEALS[d.meal] || '')}` : ''}</button>`).join('')}</div>
       </div>`}
+      ${offMenuOrders(ev)}
     </div>`;
 }
 
@@ -1552,9 +1572,12 @@ async function sendOrder() {
   const ven = D.vendors.find(v => v.id === venId);
   const id = qv('ord-id') || uid('OR');
   const old = (ev.orders || []).find(x => x.id === id);
+  const phoneOk = !!phoneDigits(ven?.phone);
+  // Opening WhatsApp is not proof the message was sent: a new order is 'opened' (or 'prepared' without a phone),
+  // and only you mark it sent, or the vendor's confirmation, moves it on. A menu-change warning stays until then.
+  const status = !old || old.status === 'cancelled' ? (phoneOk ? 'opened' : 'prepared') : old.status === 'prepared' && phoneOk ? 'opened' : old.status;
   const o = { ...(old || {}), id, head: qv('ord-head'), venId, plates: Number(qv('ord-plates')) || 0, date: qv('ord-date'), time: qv('ord-time'),
-              notes: qv('ord-notes'), status: old && old.status !== 'cancelled' ? old.status : 'sent', at: new Date().toISOString() };
-  delete o.menuChanged;   // sent again with the current menu
+              notes: qv('ord-notes'), status, at: new Date().toISOString(), ...(phoneOk ? { openedAt: new Date().toISOString() } : {}) };
   const orders = old ? ev.orders.map(x => x.id === id ? o : x) : [...(ev.orders || []), o];
   const saved = await patchEvent(ev.id, { orders });
   closeModals();
@@ -1570,7 +1593,8 @@ async function orderAction(orderId) {
   const next = await askSheet({
     title: `${short(o.head)} · ${ven?.name || ''} – ${ORDER_STATUS[o.status].en}`,
     actions: [
-      ...(o.status === 'sent' ? [{ label: 'Vendor confirmed – पक्के', value: 'confirmed', style: 'btn-secondary' }] : []),
+      ...(['prepared', 'opened'].includes(o.status) || o.menuChanged ? [{ label: 'I have sent it – पाठवले', value: 'sent', style: 'btn-secondary' }] : []),
+      ...(['prepared', 'opened', 'sent'].includes(o.status) || o.menuChanged ? [{ label: 'Vendor confirmed – पक्के', value: 'confirmed', style: 'btn-secondary' }] : []),
       ...(o.status !== 'delivered' ? [{ label: 'Delivered · record bill – आले, बिल नोंदवा', value: 'delivered', style: 'btn-primary' }] : []),
       { label: 'Edit / send again – बदला', value: 'edit', style: 'btn-secondary' },
       ...(o.status !== 'delivered' ? [{ label: 'Cancel order – रद्द', value: 'cancelled', style: 'btn-danger' }] : [])
@@ -1578,7 +1602,8 @@ async function orderAction(orderId) {
   });
   if (!next) return;
   if (next === 'edit') { openOrderModal({ orderId }); return; }
-  await patchEvent(ev.id, { orders: ev.orders.map(x => x.id === orderId ? { ...x, status: next } : x) });
+  // Marking it sent or vendor-confirmed is what clears a menu-change warning (the latest menu went out)
+  await patchEvent(ev.id, { orders: ev.orders.map(x => { if (x.id !== orderId) return x; const y = { ...x, status: next }; if (['sent', 'confirmed'].includes(next)) delete y.menuChanged; return y; }) });
   refreshCurrent();
   if (next !== 'delivered') return;
   // Outsourced: their charge was recorded when the event was booked; don't count it twice
@@ -1596,7 +1621,7 @@ async function cancelOrderFromSheet() {
 // Home: orders due today or tomorrow that haven't arrived yet
 function deliveriesCard() {
   const t = today(), tm = addDays(t, 1);
-  const due = D.events.flatMap(ev => (ev.orders || []).filter(o => ['sent', 'confirmed'].includes(o.status) && (o.date === t || o.date === tm)).map(o => ({ ev, o })))
+  const due = D.events.flatMap(ev => (ev.orders || []).filter(o => ACTIVE_ORDER.includes(o.status) && (o.date === t || o.date === tm)).map(o => ({ ev, o })))
     .sort((a, b) => (a.o.date + (a.o.time || '')).localeCompare(b.o.date + (b.o.time || '')));
   if (!due.length) return '';
   return `
@@ -1634,6 +1659,7 @@ function contributionLabel(ev, recon) {
 
 const RECON_WHAT = { costs: ['Costs', 'खर्च'], bill: ['Bill', 'बिल'], guests: ['Guests', 'पाहुणे'] };
 function changeText(c) {
+  if (c.what === 'details') return tr('A cost’s vendor, category or item changed', 'खर्चाचा विक्रेता/प्रकार/वस्तू बदलली');
   const v = n => c.what === 'guests' ? String(n) : fmtCurrency(n);
   return tr(`${RECON_WHAT[c.what][0]} ${v(c.from)} → ${v(c.to)}`, `${RECON_WHAT[c.what][1]} ${v(c.from)} → ${v(c.to)}`);
 }
@@ -2332,7 +2358,11 @@ let venueOffer = null;
 function updateVenueHint() {
   const hint = q('ev-venue-hint');
   const filled = qv('ev-vtype') || qv('ev-locality') || Object.keys(readLogistics()).length;
-  venueOffer = filled ? null : venueSuggestion(D.events, qv('ev-venue'), qv('ev-id'));
+  const offer = filled ? null : venueSuggestion(D.events, qv('ev-venue'), qv('ev-id'));
+  // Same suggestion already showing: leave it as it is. Re-drawing it here (this runs when the venue box loses
+  // focus, i.e. on the way to tapping "Use") would replace the button under the finger and lose the tap.
+  if (offer && venueOffer && offer.from === venueOffer.from && !hint.hidden) return;
+  venueOffer = offer;
   hint.hidden = !venueOffer;
   if (!venueOffer) { hint.innerHTML = ''; return; }
   const what = [venueTypeLabel(venueOffer), venueOffer.locality, Object.keys(venueOffer.logistics).length ? `${Object.keys(venueOffer.logistics).length} logistics` : ''].filter(Boolean).join(' · ');
@@ -2346,6 +2376,8 @@ function useVenueOffer() {
   q('ev-logi').open = !!Object.keys(venueOffer.logistics).length;
   syncEvTypeFields(); venueOffer = null; q('ev-venue-hint').hidden = true;
 }
+
+let expLogi = '';
 
 // Values the menu last filled in, so a changed menu or guest count updates them
 // but never overwrites a figure typed by hand
@@ -2670,6 +2702,7 @@ function openExpModal(arg) {
   const pre  = arg && typeof arg === 'object' && (arg.prefill || arg.resume) || null;
   const ex   = arg && typeof arg === 'object' && !pre ? arg : null;
   formBase.exp = snapshot(ex);   // an expense or bill draft being edited; null for a new entry
+  expLogi = pre?.logi || '';     // which venue reminder a new expense answers (one expense per reminder)
   expTouched = { item: !!(ex || pre?.head), pay: !!(ex || arg?.resume) };
   const evId = ex?.evId || pre?.evId || (typeof arg === 'string' && arg) || defaultEventId();
   const last = readPref('ffv2_lastexp', {});
@@ -2825,6 +2858,7 @@ async function saveExpense({ next = false } = {}) {
 
   const base = formBase.exp && formBase.exp.id === expWork.id ? formBase.exp : null;
   const record = editedRecord(base, {
+    ...(!base && expLogi ? { logi: expLogi } : {}),
     id:    expWork.id,
     evId:  data.evId,
     cat:   qv('exp-cat'),
@@ -2845,6 +2879,7 @@ async function saveExpense({ next = false } = {}) {
   const i = D.expenses.findIndex(x => x.id === record.id);
   if (i >= 0) D.expenses[i] = record; else D.expenses.push(record);
   expWork.saved = true;
+  expLogi = '';   // a "+Next" entry answers no reminder unless opened from one
   try { localStorage.removeItem('ffv2_expdraft'); } catch {}   // saved: nothing left to resume
   writePref('ffv2_lastexp', { cat: record.cat, head: record.head, mode: record.mode || readPref('ffv2_lastexp', {}).mode });
 
@@ -3365,7 +3400,7 @@ function bindAllEvents() {
       case 'venue-fill':   useVenueOffer(); break;
       case 'logi-add': {
         const ev = D.events.find(e => e.id === curRef), p = ev && logisticsPrompts(ev, D.expenses)[Number(id)];
-        if (p) openExpModal({ prefill: { evId: ev.id, cat: p.cat, head: p.head } });
+        if (p) openExpModal({ prefill: { evId: ev.id, cat: p.cat, head: p.head, logi: p.key } });
         break;
       }
       case 'recon-reopen': reopenRecon(); break;

@@ -443,7 +443,7 @@ export async function prepareImport(payload) {
         throw new Error('Missing or duplicate ID in ' + name);
       seen.add(row.id);
       if (row._rev !== undefined && (!Number.isSafeInteger(row._rev) || row._rev < 0)) throw new Error('Invalid record revision');
-      for (const field of ['venue', 'mobile', 'type', 'notes', 'cat', 'head', 'mode', 'phone', 'specialty', 'dueDate', 'evId', 'venId', 'eventId', 'expenseId', 'createdAt', 'kind', 'menu', 'outVenId', 'venueType', 'venueTypeOther', 'locality', 'typeOther']) {
+      for (const field of ['venue', 'mobile', 'type', 'notes', 'cat', 'head', 'mode', 'phone', 'specialty', 'dueDate', 'evId', 'venId', 'eventId', 'expenseId', 'createdAt', 'kind', 'menu', 'outVenId', 'logi', 'venueType', 'venueTypeOther', 'locality', 'typeOther']) {
         if (row[field] === null) row[field] = '';
         if (row[field] !== undefined && typeof row[field] !== 'string') throw new Error('Invalid text field: ' + field);
       }
@@ -529,7 +529,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.4.0';
+export const APP_VERSION = '4.4.1';
 export async function checkAndMigrate() {
   await openDB();
   const storedVer = await getMeta('app_version');

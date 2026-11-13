@@ -85,11 +85,14 @@ export function mealPlanTotal(plan) {
   return { lines: lines.map(l => ({ ...l, total: fromPaise(l.totalPaise) })), total: fromPaise(totalPaise), totalPaise };
 }
 
+// Order states: prepared (saved, not opened), opened (WhatsApp opened: not proof it was sent), sent (you
+// confirmed you sent it), confirmed (the vendor confirmed), delivered, cancelled. Older orders are 'sent'.
+export const ACTIVE_ORDER = ['prepared', 'opened', 'sent', 'confirmed'];
 /* Menu changed after orders were sent (G-11): which active orders' counters had dishes added, removed or moved
    to another meal. Nothing is sent; the orders are only marked for the user to reissue. */
 export function menuChangeImpact(before = [], after = [], orders = []) {
   const sig = (dishes, head) => dishes.filter(d => (d.head || '') === head).map(d => `${String(d.name).trim().toLowerCase()}|${d.meal || ''}`).sort().join('\n');
-  return orders.filter(o => ['sent', 'confirmed'].includes(o.status) && sig(before, o.head) !== sig(after, o.head)).map(o => o.id);
+  return orders.filter(o => ACTIVE_ORDER.includes(o.status) && sig(before, o.head) !== sig(after, o.head)).map(o => o.id);
 }
 
 /* ── VENUE DETAILS (CD5-VEN-01) ──────────────────── */
@@ -130,17 +133,28 @@ export const LOGISTICS = [
 /* Costing reminders from the logistics recorded for an event (G-41). They are prompts only: nothing is added
    as an expense. `recorded` is true once the event has an expense under the matching item. */
 const LOGISTIC_PROMPTS = [
-  { when: l => l.power === 'generator',  en: 'Generator required: add its rent and diesel',          mr: 'जनरेटर लागेल: भाडे व डिझेल नोंदवा', head: 'Generator / Power' },
-  { when: l => l.kitchen === 'temporary', en: 'Temporary kitchen: add setup and hired material',      mr: 'तात्पुरते किचन: साहित्य भाडे नोंदवा', head: 'Rented Material – भाड्याचे साहित्य' },
-  { when: l => l.gas === 'none',          en: 'No cooking at the venue: add transport of cooked food', mr: 'ठिकाणी स्वयंपाक नाही: वाहतूक नोंदवा', head: 'Transport – वाहतूक' },
-  { when: l => l.water === 'arrange',     en: 'Water to arrange: add tanker or cans',                 mr: 'पाणी आणावे: टँकर नोंदवा', head: 'Water Tanker' },
-  { when: l => ['rental', 'mixed'].includes(l.equipment), en: 'Hired equipment: add the rental',      mr: 'भाड्याचे साहित्य: भाडे नोंदवा', head: 'Rented Material – भाड्याचे साहित्य' },
-  { when: l => l.access === 'restricted', en: 'Restricted parking/loading: allow extra transport or loading', mr: 'पार्किंग अडचण: जास्त वाहतूक/हमाली', head: 'Transport – वाहतूक' }
+  { key: 'generator', when: l => l.power === 'generator',  en: 'Generator required: add its rent and diesel',          mr: 'जनरेटर लागेल: भाडे व डिझेल नोंदवा', head: 'Generator / Power' },
+  { key: 'kitchen', when: l => l.kitchen === 'temporary', en: 'Temporary kitchen: add setup and hired material',      mr: 'तात्पुरते किचन: साहित्य भाडे नोंदवा', head: 'Rented Material – भाड्याचे साहित्य' },
+  { key: 'transport', when: l => l.gas === 'none',          en: 'No cooking at the venue: add transport of cooked food', mr: 'ठिकाणी स्वयंपाक नाही: वाहतूक नोंदवा', head: 'Transport – वाहतूक' },
+  { key: 'water', when: l => l.water === 'arrange',     en: 'Water to arrange: add tanker or cans',                 mr: 'पाणी आणावे: टँकर नोंदवा', head: 'Water Tanker' },
+  { key: 'equipment', when: l => ['rental', 'mixed'].includes(l.equipment), en: 'Hired equipment: add the rental',      mr: 'भाड्याचे साहित्य: भाडे नोंदवा', head: 'Rented Material – भाड्याचे साहित्य' },
+  { key: 'access', when: l => l.access === 'restricted', en: 'Restricted parking/loading: allow extra transport or loading', mr: 'पार्किंग अडचण: जास्त वाहतूक/हमाली', head: 'Transport – वाहतूक' }
 ];
+/* Each requirement needs its own expense: one added from a reminder carries that reminder's key (`logi`); an
+   expense entered by hand under the same item counts for one reminder only, so one generator bill can never also
+   mark the hired equipment as recorded. */
 export function logisticsPrompts(ev, expenses) {
   const l = ev?.logistics; if (!l || typeof l !== 'object') return [];
-  const has = new Set(expenses.filter(x => x.evId === ev.id && !x.draft && x.cat === 'Operations').map(x => x.head));
-  return LOGISTIC_PROMPTS.filter(p => p.when(l)).map(p => ({ en: p.en, mr: p.mr, cat: 'Operations', head: p.head, recorded: has.has(p.head) }));
+  const mine = expenses.filter(x => x.evId === ev.id && !x.draft && x.cat === 'Operations');
+  const active = LOGISTIC_PROMPTS.filter(p => p.when(l));
+  const tagged = new Set(mine.filter(x => x.logi).map(x => x.logi));
+  const spare = new Map();   // untagged expenses per item, handed out one per reminder
+  for (const x of mine) if (!x.logi || !active.some(p => p.key === x.logi)) spare.set(x.head, (spare.get(x.head) || 0) + 1);
+  return active.map(p => {
+    let recorded = tagged.has(p.key);
+    if (!recorded && spare.get(p.head) > 0) { spare.set(p.head, spare.get(p.head) - 1); recorded = true; }
+    return { key: p.key, en: p.en, mr: p.mr, cat: 'Operations', head: p.head, recorded };
+  });
 }
 
 // Repeat venue (G-42): details from the latest other event at the same venue name, to *suggest* only
@@ -486,11 +500,14 @@ export function eventStage(ev) {
 }
 
 function costRows(evId, expenses) { return expenses.filter(x => x.evId === evId && !x.draft); }
+const fnv = keys => { let h = 2166136261; for (const ch of keys.join('|')) { h ^= ch.codePointAt(0); h = Math.imul(h, 16777619) >>> 0; } return h.toString(36); };
 function snapshotOf(ev, rows) {
-  const keys = rows.map(x => `${x.id}:${toPaise(x.amt)}`).sort();
-  let h = 2166136261;   // FNV-1a over the cost list: catches a changed, added or removed cost even if the total is equal
-  for (const ch of keys.join('|')) { h ^= ch.codePointAt(0); h = Math.imul(h, 16777619) >>> 0; }
-  return { n: keys.length, costPaise: rows.reduce((s, x) => s + toPaise(x.amt), 0), sig: h.toString(36), billPaise: toPaise(ev.billing), guests: Number(ev.guests) || 0 };
+  // sig: each cost's id and amount (reconciliations made by 4.2–4.4 hold only this one)
+  // sig2: also its vendor, category and item, so a cost moved to another vendor or item with the same amount is caught
+  return { n: rows.length, costPaise: rows.reduce((s, x) => s + toPaise(x.amt), 0),
+    sig: fnv(rows.map(x => `${x.id}:${toPaise(x.amt)}`).sort()),
+    sig2: fnv(rows.map(x => `${x.id}:${toPaise(x.amt)}:${x.venId || ''}:${x.cat || ''}:${x.head || ''}`).sort()),
+    billPaise: toPaise(ev.billing), guests: Number(ev.guests) || 0 };
 }
 export function reconSnapshot(ev, expenses) { return snapshotOf(ev, costRows(ev.id, expenses)); }
 
@@ -499,6 +516,7 @@ function compare(ev, snap) {
   if (!r || typeof r !== 'object') return { state: 'pending', changes: [] };
   const changes = [];
   if (snap.sig !== r.sig || snap.n !== r.n || snap.costPaise !== r.costPaise) changes.push({ what: 'costs', from: fromPaise(r.costPaise || 0), to: fromPaise(snap.costPaise) });
+  else if (r.sig2 && snap.sig2 !== r.sig2) changes.push({ what: 'details' });   // same amounts, but a vendor, category or item changed
   if (snap.billPaise !== r.billPaise) changes.push({ what: 'bill', from: fromPaise(r.billPaise || 0), to: fromPaise(snap.billPaise) });
   if (snap.guests !== r.guests) changes.push({ what: 'guests', from: r.guests || 0, to: snap.guests });
   return changes.length ? { state: 'reopened', changes, at: r.at } : { state: 'reconciled', changes, at: r.at };
@@ -545,8 +563,9 @@ export function reopenFields(ev, reason = 'manual', at = new Date().toISOString(
 export function costChecklist(ev, events, expenses) {
   if (ev.outsourced) return null;
   const norm = v => String(v || '').split(' – ')[0].trim().toLowerCase();
-  const withCosts = new Set(expenses.map(x => x.evId));
-  const others = events.filter(e => e.id !== ev.id && !e.outsourced && withCosts.has(e.id)).sort((a, b) => b.date.localeCompare(a.date));
+  // The reference is the latest *reconciled* event: its costs are known to be complete
+  const done = reconciledIds(events, expenses);
+  const others = events.filter(e => e.id !== ev.id && !e.outsourced && done.has(e.id)).sort((a, b) => b.date.localeCompare(a.date));
   const ref = (ev.menu && others.find(e => e.menu === ev.menu)) || others.find(e => e.type === ev.type);
   if (!ref) return null;
   const items = new Map();

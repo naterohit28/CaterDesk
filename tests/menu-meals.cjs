@@ -116,14 +116,18 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     assert.equal(popups, 0, 'nothing was sent');
     await openEvent('Sample Reception');
     assert.match(await p.locator('#menu-orders').innerText(), /Menu changed · resend/);
-    // Re-sending the order with the current menu clears the flag and keeps its other details
+    // Re-sending opens WhatsApp with the current menu; the warning stays until you mark it sent (v4.4.1)
     await p.locator('[data-action="order-status"]').click(); await p.waitForSelector('#ask-modal.active');
     await p.locator('#ask-actions button', { hasText: 'Edit / send again' }).click(); await p.waitForSelector('#ord-modal.active');
     assert.match(await p.locator('#ord-items').innerText(), /Pani Puri/); assert.doesNotMatch(await p.locator('#ord-items').innerText(), /Sev Puri/);
     await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500);
     ctx.off('page', count);
-    const o = (await ev('e1')).orders[0];
-    assert.equal(o.menuChanged, undefined); assert.equal(o.status, 'confirmed'); assert.equal(o.ref, 'vendor-ref-1', 'other order details kept');
+    let o = (await ev('e1')).orders[0];
+    assert.equal(o.menuChanged, true, 'still flagged after WhatsApp opened'); assert.equal(o.status, 'confirmed'); assert.equal(o.ref, 'vendor-ref-1', 'other order details kept');
+    await openEvent('Sample Reception'); await p.locator('[data-action="order-status"]').click(); await p.waitForSelector('#ask-modal.active');
+    await p.locator('#ask-actions button', { hasText: 'Vendor confirmed' }).click(); await p.waitForTimeout(400);
+    o = (await ev('e1')).orders[0];
+    assert.equal(o.menuChanged, undefined, 'cleared once the vendor confirmed the new menu'); assert.equal(o.status, 'confirmed'); assert.equal(o.ref, 'vendor-ref-1');
   });
 
   await test('import refuses malformed meal prices and menus', async () => {
