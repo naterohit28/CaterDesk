@@ -249,7 +249,7 @@ export function paymentSchedule(ev, cPays, now = today()) {
   const dueDateOf = m => m.when === 'booking' ? '' : m.when === 'date' ? m.date : m.when === 'before' ? addDays(ev.date, -(m.days || 0)) : addDays(ev.date, m.days || 0);
   let rows = plan.map(m => ({ id: m.id, label: m.label || '', when: m.when, pct: m.pct, amtP: m.pct != null ? Math.round(billP * m.pct / 100) : toPaise(m.amt), dueDate: dueDateOf(m) }));
   const plannedP = rows.reduce((s, r) => s + r.amtP, 0);
-  if (plannedP < billP) rows.push({ id: '__rest', label: 'Balance (not on the schedule)', when: 'after', unscheduled: true, amtP: billP - plannedP, dueDate: addDays(ev.date, 1) });
+  if (plannedP < billP) rows.push({ id: '__rest', label: 'Balance', when: 'after', unscheduled: true, amtP: billP - plannedP, dueDate: addDays(ev.date, 1) });
   rows.sort((a, b) => (a.dueDate === '' ? -1 : b.dueDate === '' ? 1 : a.dueDate.localeCompare(b.dueDate)));
   let left = recP, dueP = 0, overP = 0;
   rows = rows.map(r => {
@@ -464,7 +464,9 @@ export function fmtDate(d) {
 
 export function fmtCurrency(n) {
   const v = Number(n || 0);
-  return (v < 0 ? '-₹' : '₹') + Math.abs(v).toLocaleString('en-IN');
+  // Paise show as two digits (₹2,500.50, not ₹2,500.5); whole rupees stay without decimals
+  const a = Math.abs(v), frac = Math.round(a * 100) % 100 !== 0;
+  return (v < 0 ? '-₹' : '₹') + a.toLocaleString('en-IN', frac ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : { maximumFractionDigits: 2 });
 }
 
 /* ── VALIDATION ──────────────────────────────────── */

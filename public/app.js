@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.15.0';
+const APP_BUILD = '4.16.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -250,16 +250,25 @@ let refreshing = false;
 async function refreshNow() {
   if (refreshing) return;
   refreshing = true;
-  q('hdr-refresh').classList.add('spin');
   try {
     if (!overlays.length && !activeSaves.size) { await loadAll(); refreshCurrent(); }
     let release = null;
     try { release = await window.caterDeskUpdate?.(); } catch {}
-    if (release && release !== APP_BUILD && !overlays.length && !activeSaves.size) { location.reload(); return; }
-    // Quiet when nothing changed; speak only when an update is waiting on an open entry
-    if (release && release !== APP_BUILD) showToast(`v${release} ready – close your entry to update`);
-  } finally { refreshing = false; q('hdr-refresh').classList.remove('spin'); }
+    // Quiet when nothing changed; a new release is announced with an Update button (nothing reloads behind your back)
+    if (release && release !== APP_BUILD) announceUpdate(release);
+  } finally { refreshing = false; }
 }
+let announced = '';
+function announceUpdate(release) {
+  if (announced === release) return;
+  announced = release;
+  showToast(`New version v${release} is ready – नवीन आवृत्ती`, 'success', { label: 'Update – अपडेट', run: () => {
+    if (overlays.length || activeSaves.size) { announced = ''; showToast('Save or close your entry first, then update – आधी नोंद जतन करा', 'error'); return; }
+    location.reload(); } });
+}
+// Coming back to the app (or every 30 minutes while open): reload entries made elsewhere and look for a new version
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshNow(); });
+setInterval(() => { if (document.visibilityState === 'visible') refreshNow(); }, 30 * 60 * 1000);
 
 function initPullToRefresh() {
   const ind = q('ptr');
@@ -663,7 +672,6 @@ function setHeader() {
   q('hdr-back').hidden = !detail;
   q('hdr-edit').hidden = !detail;
   q('hdr-delete').hidden = !detail;
-  q('hdr-refresh').hidden = detail;   // detail pages already carry back/edit/delete; refresh lives on the main tabs
 }
 
 function goBack(fallback) {
@@ -1135,6 +1143,7 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
       ${scheduleBlock(ev)}
       ${settleLine(ev)}
       ${countLine(ev)}
+      ${eventTools(ev)}
       <div class="metrics">
         <div class="metric"><div class="label">Expenses – खर्च</div><div class="amt-md">${fmtCurrency(exTot)}</div></div>
         <div class="metric"><div class="label">${contributionLabel(ev, recon)}</div><div class="amt-md ${noCosts ? 'muted' : profit >= 0 ? 'pos' : 'neg'}">${fmtCurrency(profit)}</div></div>
@@ -1152,8 +1161,6 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
     ${reconCard(ev, recon)}
 
     ${logisticsCard(ev)}
-
-    <div class="btn-row" style="margin:0 0 var(--s3)"><button type="button" class="btn btn-secondary" data-action="fs-open">${icon('clipboard', 18)}${tr('Function sheet', 'फंक्शन शीट')}</button></div>
 
     ${ev.notes ? `<div class="card pad"><div class="label">Notes – नोंदी</div><div class="notes-text" data-nl>${esc(ev.notes)}</div></div>` : ''}
 
@@ -1407,7 +1414,7 @@ async function saveLabour() {
     const others = splitParts(D.expenses, old.split.id).filter(x => x.id !== r.id);
     const billP = toPaise(r.amt), othersP = others.reduce((s, x) => s + toPaise(x.amt), 0);
     if (billP - othersP <= 0) {
-      showToast(`${short(r.head)} is shared with other events (${fmtCurrency(othersP / 100)} on them), more than this sheet's ${fmtCurrency(r.amt)}. Change the split first (Expenses → Share bill). Nothing was saved.`, 'error');
+      showToast(`${short(r.head)} is shared with other events (${fmtCurrency(othersP / 100)} on them), more than this sheet's ${fmtCurrency(r.amt)}. Change the split first (Expenses → Split bill). Nothing was saved.`, 'error');
       return;
     }
     r.split = { ...old.split, total: r.amt };
@@ -1804,15 +1811,24 @@ function logisticsCard(ev) {
 // Event page: once the event is over, what is settled and what is still owed or disputed
 function settleLine(ev) {
   const st = settlementStatus(ev, D.cPays);
-  if (ev.date > today() && !st.adjustments.length) return '';
-  if (!st.outstanding && !st.over && !st.adjustments.length) return '';
+  if (!settleDue(ev)) return '';
   const lines = [
     ...st.adjustments.map(c => `${SETTLE_KINDS[c.kind][0]} ${fmtCurrency(c.from - c.to)} · <span data-nl>${esc(c.reason)}</span>`),
     ...(st.disputed ? [`<span class="due">${tr(`Disputed ${fmtCurrency(st.disputed)}`, `वादग्रस्त ${fmtCurrency(st.disputed)}`)}</span> · <span data-nl>${esc(ev.dispute.reason)}</span>`] : []),
     ...(st.over ? [`<span class="due">${tr(`Received ${fmtCurrency(st.over)} more than the bill`, `बिलापेक्षा ${fmtCurrency(st.over)} जास्त मिळाले`)}</span>`] : []),
     ...(st.taxReview ? [`<span class="due">${tr('Tax / invoice review needed (ask your accountant)', 'कर / बिल तपासणी आवश्यक')}</span>`] : [])];
-  return `<div style="margin-top:var(--s3)" id="settle-line">${lines.map(l => `<div class="meta">${l}</div>`).join('')}
-    <button type="button" class="btn-sm" style="margin-top:var(--s2)" data-action="settle-open">${icon('check', 16)}${tr('Final settlement', 'अंतिम हिशोब')}</button></div>`;
+  return `<div style="margin-top:var(--s3)" id="settle-line">${lines.map(l => `<div class="meta">${l}</div>`).join('')}</div>`;
+}
+const settleDue = ev => { const st = settlementStatus(ev, D.cPays); return (ev.date <= today() || st.adjustments.length) && !!(st.outstanding || st.over || st.adjustments.length); };
+// The event's tools in one wrapping row of equal buttons (each opens its own sheet)
+function eventTools(ev) {
+  const b = (action, ic, en, mr) => `<button type="button" class="btn-sm" data-action="${action}">${icon(ic, 16)}${tr(en, mr)}</button>`;
+  return `<div class="tool-row" id="ev-tools">
+    ${paymentSchedule(ev, D.cPays).scheduled ? '' : b('plan-edit', 'calendar', 'Payment schedule', 'हप्ते ठरवा')}
+    ${b('count-open', 'users', 'Guest count', 'पाहुणे मोजणी')}
+    ${settleDue(ev) ? b('settle-open', 'check', 'Final settlement', 'अंतिम हिशोब') : ''}
+    ${b('fs-open', 'clipboard', 'Function sheet', 'फंक्शन शीट')}
+  </div>`;
 }
 function openSettle() { renderSettle(); openSheet('settle-modal'); }
 function renderSettle() {
@@ -1874,8 +1890,7 @@ function countLine(ev) {
   const lines = countKeys(ev).map(k => ({ k, s: guestCountStatus(ev, k) })).filter(x => x.s.started);
   return `<div style="margin-top:var(--s3)" id="count-line">${lines.map(({ k, s }) => `<div class="meta" data-nl>${MEAL_NAME(k)}: ${tr(`contracted ${s.contracted} · counted ${s.counted ?? '—'}${s.extra ? ` · extra ${s.extra}` : ''}${s.accepted ? ` · approved ${s.accepted}` : ''}${s.disputed ? ` · disputed ${s.disputed}` : ''}${s.billed ? ` · billed ${s.billed}` : ''}`,
     `करार ${s.contracted} · मोजले ${s.counted ?? '—'}${s.extra ? ` · जास्त ${s.extra}` : ''}`)}</div>`).join('')}
-    ${ev.date >= today() && !countPolicyAgreed(ev.countPolicy) ? `<div class="meta due" id="count-policy-flag">${tr('Count method not agreed with the client yet', 'मोजणीची पद्धत ग्राहकाशी ठरलेली नाही')}</div>` : ''}
-    <button type="button" class="btn-sm" style="margin-top:var(--s2)" data-action="count-open">${icon('users', 16)}${tr('Guest count / Extra plates', 'पाहुणे / जास्त ताटे')}</button></div>`;
+    ${ev.date >= today() && !countPolicyAgreed(ev.countPolicy) ? `<div class="meta due" id="count-policy-flag">${tr('Count method not agreed with the client yet', 'मोजणीची पद्धत ग्राहकाशी ठरलेली नाही')}</div>` : ''}</div>`;
 }
 let countMeal = 'all';
 function openCountModal() {
@@ -2127,7 +2142,7 @@ async function saveSplit() {
   closeModals(); refreshCurrent();
   const stockP = rows.filter(r => r.evId === STOCK).reduce((t, r) => t + toPaise(r.amt), 0);
   showToast(stockP ? `${fmtCurrency(stockP / 100)} kept as common stock, on no event – साठ्यात ठेवले`
-    : shared ? `Bill shared across ${rows.length} events – बिल वाटले` : 'Bill is on one event again – एका कार्यक्रमावर');
+    : shared ? `Bill split across ${rows.length} events – बिल वाटले` : 'Bill is on one event again – एका कार्यक्रमावर');
 }
 
 /* ── RECONCILIATION (D-4) ── */
@@ -2653,15 +2668,14 @@ function rSummary() {
 
   q('summary-content').innerHTML = `
     <div class="metric-tiles">
-      <div class="card"><div class="label">Contribution – योगदान</div><div class="amt-lg ${profit >= 0 ? 'pos' : 'neg'}">${fmtCurrency(profit)}</div></div>
+      <div class="card"><div class="label">Contribution – योगदान</div><div class="amt-lg ${profit >= 0 ? 'pos' : 'neg'}">${fmtCurrency(profit)}</div>
+        ${P.events.length ? `<div class="meta" id="contrib-final">${tr(`${done.size} of ${P.events.length} final · before overheads`, `${P.events.length} पैकी ${done.size} अंतिम`)}</div>` : ''}</div>
       <div class="card"><div class="label">Margin – मार्जिन</div><div class="amt-lg ${totalBill > 0 ? (profit >= 0 ? 'pos' : 'neg') : 'muted'}">${totalBill > 0 ? Math.round(profit / totalBill * 100) + '%' : '—'}</div></div>
       <div class="card"><div class="label">Billed – बिल</div><div class="amt-lg">${fmtCurrency(totalBill)}</div></div>
       <div class="card"><div class="label">Events – कार्यक्रम</div><div class="amt-lg">${P.events.length}</div></div>
     </div>
     ${missing.size ? `<div class="card" style="margin-top:var(--s3)"><div class="note alert"><span class="note-ic">${icon('receipt', 16)}</span>
       <div>${tr(`${missing.size} event${missing.size > 1 ? 's have' : ' has'} no expenses, so contribution here is overstated.`, `${missing.size} कार्यक्रमांचा खर्च नोंदवलेला नाही, त्यामुळे नफा जास्त दिसतो.`)}</div></div></div>` : ''}
-    ${P.events.length ? `<div class="card" style="margin-top:var(--s3)"><div class="note"><span class="note-ic">${icon('receipt', 16)}</span>
-      <div>${tr(`${done.size} of ${P.events.length} event${P.events.length > 1 ? 's' : ''} reconciled; the rest are provisional. Contribution is bills minus each event's costs, before overheads, salaries and tax, so it is not company net profit.`, `${P.events.length} पैकी ${done.size} कार्यक्रम जुळवले; बाकी अंदाजे. योगदान = बिल − कार्यक्रमाचा खर्च (ओव्हरहेड, पगार, कर आधी), हा कंपनीचा निव्वळ नफा नव्हे.`)}</div></div></div>` : ''}
     ${booksCard(books)}
     <div class="sec"></div>
     ${perPlateReport(P, missing)}
@@ -2795,13 +2809,13 @@ function whenText(r) {
 }
 function scheduleBlock(ev) {
   const s = paymentSchedule(ev, D.cPays);
-  if (!s.scheduled) return `<button type="button" class="btn-sm" style="margin-top:var(--s3)" data-action="plan-edit">${icon('calendar', 16)}${tr('Payment schedule', 'हप्ते ठरवा')}</button>`;
+  if (!s.scheduled) return '';   // its button sits in the event's action row
   return `<div id="pay-schedule" style="margin-top:var(--s4);padding-top:var(--s4);border-top:1px solid var(--line)">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:var(--s2)">
       <span class="label">${tr(`Due now ${fmtCurrency(s.dueNow)}`, `आता देय ${fmtCurrency(s.dueNow)}`)}${s.overdue > 0 ? ` · <span class="neg">${tr(`overdue ${fmtCurrency(s.overdue)}`, `थकीत ${fmtCurrency(s.overdue)}`)}</span>` : ''}</span>
       <button type="button" class="btn-sm" data-action="plan-edit">${icon('pencil', 16)}${tr('Edit', 'बदला')}</button></div>
     ${s.rows.map(r => `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:var(--s2);margin-top:6px">
-      <div class="meta" style="min-width:0"><span data-nl>${esc(r.label || (r.unscheduled ? 'Balance (not on the schedule)' : 'Milestone'))}</span> · ${whenText(r)}</div>
+      <div class="meta" style="min-width:0"><span data-nl>${esc(r.label || (r.unscheduled ? 'Balance' : 'Milestone'))}</span> · ${whenText(r)}</div>
       <div style="white-space:nowrap"><span class="amt-sm">${fmtCurrency(r.amount)}</span> <span class="chip ${PAY_STATE[r.state][2]}">${(rest => tr(PAY_STATE[r.state][0] + rest, PAY_STATE[r.state][1] + rest))(r.paid > 0 && r.rest > 0 ? ` · ${fmtCurrency(r.rest)}` : '')}</span></div></div>`).join('')}
     ${s.overScheduled > 0 ? `<div class="meta due" style="margin-top:6px">${tr(`The schedule adds up to ${fmtCurrency(s.overScheduled)} more than the bill`, `हप्ते बिलापेक्षा ${fmtCurrency(s.overScheduled)} जास्त`)}</div>` : ''}
   </div>`;
@@ -3306,11 +3320,11 @@ function openExpModal(arg) {
   const part = ex?.split ? splitParts(D.expenses, ex.split.id) : null;
   q('exp-amt').disabled = !!part; q('exp-ev').disabled = !!part || !!ex?.stock;
   q('exp-split-note').hidden = !part && !ex?.stock;
-  q('exp-split-note').innerHTML = part && ex.stock ? tr(`Shared bill: the common-stock part of ${fmtCurrency(ex.split.total)}, on no event yet. To use it for an event, move it with Share bill; the bill total stays the same.`,
+  q('exp-split-note').innerHTML = part && ex.stock ? tr(`Shared bill: the common-stock part of ${fmtCurrency(ex.split.total)}, on no event yet. To use it for an event, move it with Split bill; the bill total stays the same.`,
     `वाटलेले बिल: ${fmtCurrency(ex.split.total)} पैकी साठ्याचा भाग.`)
     : part ? tr(`Shared bill: this event's part of ${fmtCurrency(ex.split.total)} across ${part.length} events. Changes to vendor, item, date or payment apply to every part.`,
     `वाटलेले बिल: ${fmtCurrency(ex.split.total)} पैकी या कार्यक्रमाचा वाटा (${part.length} कार्यक्रम).`)
-    : ex?.stock ? tr('Common stock, on no event yet. To use it for an event, move it with Share bill.', 'साठा – अजून कोणत्याही कार्यक्रमावर नाही.') : '';
+    : ex?.stock ? tr('Common stock, on no event yet. To use it for an event, move it with Split bill.', 'साठा – अजून कोणत्याही कार्यक्रमावर नाही.') : '';
   q('btn-share-exp').hidden = !ex || !!ex.draft;
   q('btn-save-exp-next').hidden = !!ex;
   clearFieldErrors();
@@ -3454,7 +3468,7 @@ async function saveExpense({ next = false } = {}) {
   if (dup) {
     const vn = D.vendors.find(v => v.id === venId)?.name || 'this vendor';
     const again = await askSheet({ title: 'Same bill number – तोच बिल क्रमांक',
-      message: `${vn}: bill no. ${billNo} is already recorded on ${fmtDate(dup.date)} for ${fmtCurrency(dup.split?.total ?? dup.amt)}. If it is the same bill, saving it again counts it twice; to put it on more events, open that entry and use Share bill.`,
+      message: `${vn}: bill no. ${billNo} is already recorded on ${fmtDate(dup.date)} for ${fmtCurrency(dup.split?.total ?? dup.amt)}. If it is the same bill, saving it again counts it twice; to put it on more events, open that entry and use Split bill.`,
       actions: [{ label: 'Different bill, save – वेगळे बिल', value: true, style: 'btn-secondary' }] });
     if (!again) return;
   }
@@ -4266,7 +4280,6 @@ function bindAllEvents() {
   // 4. expenses of one event
   q('exp-ev-filter').addEventListener('change', e => { expensePage = 1; F.expEv = e.target.value; rExp(); });
   // 2. refresh: header button, and pull down at the top of a page
-  q('hdr-refresh').addEventListener('click', () => refreshNow());
   initPullToRefresh();
   ['ev-billing', 'ev-out-charge'].forEach(id => q(id).addEventListener('input', updateOutHint));
   q('ev-guests').addEventListener('input', updateMenuHint);

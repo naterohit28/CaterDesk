@@ -68,7 +68,6 @@
     <span class="trunc" id="hdr-text" data-nl>CaterDesk</span>
   </div>
   <div class="hdr-actions">
-    <button type="button" class="icon-btn" id="hdr-refresh" aria-label="Refresh"><i data-ic="refresh" data-size="20"></i></button>
     <button type="button" class="icon-btn" id="hdr-edit" aria-label="Edit" hidden><i data-ic="pencil"></i></button>
     <button type="button" class="icon-btn danger" id="hdr-delete" aria-label="Delete" hidden><i data-ic="trash"></i></button>
     <button type="button" class="icon-btn" id="drawer-toggle" aria-label="Settings" aria-controls="drawer" aria-expanded="false"><i data-ic="menu" data-size="22"></i></button>
@@ -359,7 +358,7 @@
     </div>
     <div class="s-foot"><div class="btn-row">
       <button type="button" class="btn btn-ghost danger" id="btn-del-exp" hidden>Delete – हटवा</button>
-      <button type="button" class="btn btn-secondary" id="btn-share-exp" hidden>Share bill – वाटा</button>
+      <button type="button" class="btn btn-secondary" id="btn-share-exp" hidden>Split bill – वाटा</button>
       <button type="button" class="btn btn-secondary" id="btn-save-exp-next">+ Next – पुढील</button>
       <button type="button" class="btn btn-primary" id="btn-save-exp">Save – जतन</button>
     </div></div>
@@ -565,7 +564,7 @@
 <div class="modal-ov" id="split-modal">
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="split-mtitle">
     <div class="s-handle"></div>
-    <div class="s-head"><div class="s-title" id="split-mtitle">Share bill across events – बिल वाटा</div><button type="button" class="icon-btn" data-action="close-modal" aria-label="Close"><i data-ic="x"></i></button></div>
+    <div class="s-head"><div class="s-title" id="split-mtitle">Split bill: events or stock – बिल वाटा</div><button type="button" class="icon-btn" data-action="close-modal" aria-label="Close"><i data-ic="x"></i></button></div>
     <div class="ask-msg" id="split-sum"></div>
     <div id="split-rows"></div>
     <div class="btn-row" style="margin:var(--s2) 0 var(--s4)">

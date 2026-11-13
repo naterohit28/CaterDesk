@@ -44,7 +44,7 @@ const DATA = { version: 'ffv2', photos: [], vPays: [], expenses: [], vendors: []
     const block = await p.locator('#pay-schedule').innerText();
     assert.match(block, /Due now ₹0/); assert.doesNotMatch(block, /overdue/i);
     assert.match(block, /Advance · On booking\s*₹1,00,000\s*Paid/); assert.match(block, /Second payment[\s\S]*₹2,00,000\s*Upcoming/);
-    assert.match(block, /Balance \(not on the schedule\)[\s\S]*₹1,00,000\s*Upcoming/);
+    assert.match(block, /Balance ·[\s\S]*₹1,00,000\s*Upcoming/);
     assert.match(await p.locator('#tab-evdetail .metric', { hasText: 'Pending' }).first().innerText(), /₹3,00,000/, 'outstanding stays ₹3,00,000');
     assert.match(await homeChip('Sample Contract'), /On schedule/);
   });

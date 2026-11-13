@@ -193,7 +193,7 @@ html[data-lang="both"] .fab .t-mr { display: none; } /* keep the button one line
 .btn:disabled { opacity: .45; }
 .btn-primary { background: var(--brand); color: var(--on-brand); }
 .btn-primary:active { background: var(--brand-press); }
-.btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--line-strong); }
+.btn-secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--line-strong); }   /* stands out from the card it sits on */
 .btn-secondary:active { background: var(--surface-2); }
 .btn-ghost { color: var(--text-2); }
 .btn-ghost:active { background: var(--surface-2); }
@@ -207,6 +207,7 @@ html.dark .btn-danger { background: #DC2626; }
   transition: transform var(--press) var(--ease-out);
 }
 .btn-sm::before { content: ''; position: absolute; inset: -4px 0; } /* 44px tall hit area */
+.btn-sm:not(:has(svg)) { padding: 0 var(--s3); justify-content: center; }   /* text-only (e.g. Pay): centred, even sides */
 .btn-sm:active { transform: scale(.96); }
 
 .del-btn {
@@ -231,6 +232,10 @@ html.dark .btn-danger { background: #DC2626; }
 .search input::-webkit-search-cancel-button { filter: grayscale(1); }
 .chips-row { display: flex; gap: var(--s2); overflow-x: auto; margin: var(--s3) calc(-1 * var(--s4)) 0; padding: 0 var(--s4); }
 .chips-row:empty { display: none; }
+/* Event tools: one wrapping row of equal small buttons */
+.tool-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); margin-top: var(--s3); }
+.tool-row .btn-sm { width: 100%; min-height: 40px; justify-content: center; padding: 0 var(--s2); }
+.tool-row .btn-sm:last-child:nth-child(odd) { grid-column: 1 / -1; }
 .f-chip {
   flex-shrink: 0; min-height: 36px; padding: 0 var(--s3); border-radius: var(--r-full);
   border: 1px solid var(--line-strong); background: var(--surface); color: var(--text-2);
