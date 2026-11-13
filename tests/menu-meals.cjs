@@ -123,7 +123,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500);
     ctx.off('page', count);
     let o = (await ev('e1')).orders[0];
-    assert.equal(o.menuChanged, true, 'still flagged after WhatsApp opened'); assert.equal(o.status, 'confirmed'); assert.equal(o.ref, 'vendor-ref-1', 'other order details kept');
+    assert.equal(o.menuChanged, true, 'still flagged after WhatsApp opened'); assert.equal(o.status, 'opened', 'the revised message is opened, not confirmed (4.9.0 versions)'); assert.equal(o.ref, 'vendor-ref-1', 'other order details kept');
     await openEvent('Sample Reception'); await p.locator('[data-action="order-status"]').click(); await p.waitForSelector('#ask-modal.active');
     await p.locator('#ask-actions button', { hasText: 'Vendor confirmed' }).click(); await p.waitForTimeout(400);
     o = (await ev('e1')).orders[0];

@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
+  RECON_CHECKS, ACTIVE_ORDER, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.8.1';
+const APP_BUILD = '4.9.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1459,7 +1459,7 @@ function offMenuOrders(ev) {
         <div class="row-ic">${icon('utensils', 18)}</div>
         <div class="row-body"><div class="title-sm trunc">${esc(short(o.head))}${ven ? ` · <span data-nl>${esc(ven.name)}</span>` : ''}</div>
           <div class="meta">${tr('Not on the current menu', 'सध्याच्या मेनूत नाही')}</div></div>
-        <button type="button" class="chip ${o.menuChanged ? 'due' : st.tone}" data-action="order-status" data-id="${esc(o.id)}">${o.menuChanged ? tr('Menu changed · resend', 'मेनू बदलला · पुन्हा पाठवा') : tr(st.en, st.mr) + (o.plates ? ' · ' + o.plates : '')}</button>
+        <button type="button" class="chip ${o.menuChanged ? 'due' : st.tone}" data-action="order-status" data-id="${esc(o.id)}">${o.menuChanged ? tr('Menu changed · resend', 'मेनू बदलला · पुन्हा पाठवा') : (x => tr(st.en + x, st.mr + x))(o.plates ? ' · ' + o.plates : '')}</button>
       </div>`; }).join('');
 }
 
@@ -1479,7 +1479,7 @@ function menuOrdersCard(ev) {
       <div class="row-ic">${icon('utensils', 18)}</div>
       <div class="row-body"><div class="title-sm trunc">${ev.outsourced ? tr('Whole event', 'संपूर्ण कार्यक्रम') : esc(short(head))}${ven ? ` · <span data-nl>${esc(ven.name)}</span>` : ''}</div>
         <div class="meta trunc" data-nl>${esc(names.join(', '))}</div>${counterPlanLine(ev, head, o)}</div>
-      ${o ? `<button type="button" class="chip ${o.menuChanged ? 'due' : st.tone}" data-action="order-status" data-id="${esc(o.id)}">${o.menuChanged ? tr('Menu changed · resend', 'मेनू बदलला · पुन्हा पाठवा') : tr(st.en, st.mr) + (o.plates ? ' · ' + o.plates : '')}</button>`
+      ${o ? `<button type="button" class="chip ${o.menuChanged ? 'due' : st.tone}" data-action="order-status" data-id="${esc(o.id)}">${o.menuChanged ? tr('Menu changed · resend', 'मेनू बदलला · पुन्हा पाठवा') : (x => tr(st.en + x, st.mr + x))(o.plates ? ' · ' + o.plates : '')}</button>`
           : `<button type="button" class="btn-sm" data-action="order-new" data-id="${esc(head)}">${icon('message', 16)}${tr('Order', 'ऑर्डर')}</button>`}
     </div>`;
   }).join('');
@@ -1657,6 +1657,14 @@ async function sendOrder() {
   const status = !old || old.status === 'cancelled' ? (phoneOk ? 'opened' : 'prepared') : old.status === 'prepared' && phoneOk ? 'opened' : old.status;
   const o = { ...(old || {}), id, head: qv('ord-head'), venId, plates: Number(qv('ord-plates')) || 0, date: qv('ord-date'), time: qv('ord-time'),
               notes: qv('ord-notes'), status, at: new Date().toISOString(), ...(phoneOk ? { openedAt: new Date().toISOString() } : {}) };
+  // Keep every different message sent for this order (G-26); the latest version starts as opened/prepared
+  const now = new Date().toISOString();
+  const versioned = addOrderMessage(old?.messages, orderMessage(ev, o, ven), phoneOk, now);
+  o.messages = versioned.messages;
+  // A new instruction is not yet sent or confirmed. An order from before message versions (no recorded messages) can't
+  // be shown to be unchanged, so a resend of it is treated the same way.
+  const unproven = old && !(old.messages || []).length;
+  if ((versioned.changed || unproven) && old && ['sent', 'confirmed'].includes(old.status)) o.status = phoneOk ? 'opened' : 'prepared';
   if (below) o.belowMinimum = minimum; else delete o.belowMinimum;
   const sugg = ev.outsourced ? null : counterSuggestion(counterGuests(ev, o.head).guests, takeUp, minimum);
   if (sugg) o.suggested = sugg.proposed; else delete o.suggested;   // what the plan proposed; the order (plates) is yours
@@ -1667,7 +1675,7 @@ async function sendOrder() {
   closeModals();
   refreshCurrent();
   const phone = phoneDigits(ven?.phone);
-  if (phone) window.open(`https://wa.me/${phone}?text=${encodeURIComponent(orderMessage(saved, o, ven))}`, '_blank', 'noopener');
+  if (phone) window.open(`https://wa.me/${phone}?text=${encodeURIComponent(o.messages.at(-1).text)}`, '_blank', 'noopener');
   else showToast(`Order saved. ${ven?.name || 'This vendor'} has no phone number – add it to send on WhatsApp.`, 'error');
 }
 
@@ -1681,13 +1689,22 @@ async function orderAction(orderId) {
       ...(['prepared', 'opened', 'sent'].includes(o.status) || o.menuChanged ? [{ label: 'Vendor confirmed – पक्के', value: 'confirmed', style: 'btn-secondary' }] : []),
       ...(o.status !== 'delivered' ? [{ label: 'Delivered · record bill – आले, बिल नोंदवा', value: 'delivered', style: 'btn-primary' }] : []),
       { label: 'Edit / send again – बदला', value: 'edit', style: 'btn-secondary' },
+      ...((o.messages || []).length ? [{ label: `Messages sent (${o.messages.length}) – पाठवलेले संदेश`, value: 'history', style: 'btn-secondary' }] : []),
       ...(o.status !== 'delivered' ? [{ label: 'Cancel order – रद्द', value: 'cancelled', style: 'btn-danger' }] : [])
     ]
   });
   if (!next) return;
   if (next === 'edit') { openOrderModal({ orderId }); return; }
+  if (next === 'history') {
+    const MSG = { prepared: 'Not sent yet', opened: 'WhatsApp opened (not confirmed sent)', sent: 'Sent (you confirmed)', confirmed: 'Vendor confirmed' };
+    await askSheet({ title: `${short(o.head)} · messages – संदेश`,
+      message: [...o.messages].reverse().map(m => `Version ${m.v} · ${fmtDate(m.at.slice(0, 10))} ${m.at.slice(11, 16)} · ${MSG[m.status]}\n${m.text}`).join('\n\n— — —\n\n'), actions: [] });
+    return;
+  }
   // Marking it sent or vendor-confirmed is what clears a menu-change warning (the latest menu went out)
-  await patchEvent(ev.id, { orders: ev.orders.map(x => { if (x.id !== orderId) return x; const y = { ...x, status: next }; if (['sent', 'confirmed'].includes(next)) delete y.menuChanged; return y; }) });
+  await patchEvent(ev.id, { orders: ev.orders.map(x => { if (x.id !== orderId) return x; const y = { ...x, status: next };
+    if (['sent', 'confirmed'].includes(next)) { delete y.menuChanged; if (y.messages?.length) y.messages = markOrderMessage(y.messages, next, new Date().toISOString()); }
+    return y; }) });
   refreshCurrent();
   if (next !== 'delivered') return;
   // Outsourced: their charge was recorded when the event was booked; don't count it twice
