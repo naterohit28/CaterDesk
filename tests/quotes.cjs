@@ -29,7 +29,7 @@ const DATA = { version: 'ffv2', photos: [], vendors: [], vPays: [], cPays: [],
 
   await test('G-03 / Q-01: a new quote starts from the meal plan – 900 × ₹800 + 35 × ₹150 = ₹7,25,250, each meal on its own rate', async () => {
     await openQuote();
-    assert.match(await p.locator('#quote-total').innerText(), /Total ₹7,25,250 · before any applicable GST/);
+    assert.match(await p.locator('#quote-total').innerText(), /Total · before any GST\s*₹7,25,250/);
     assert.deepEqual(await p.locator('#quote-lines [data-k="meal"]').evaluateAll(s => s.map(x => x.value)), ['breakfast', 'dinner']);
     await line(0, 'rate').fill('175');   // breakfast rate changes; dinner untouched
     assert.match(await p.locator('#quote-total').innerText(), /₹7,26,125/);
@@ -64,7 +64,7 @@ const DATA = { version: 'ffv2', photos: [], vendors: [], vPays: [], cPays: [],
     const text = await p.evaluate(async () => { const d = await (await import('./db.js')).exportAllData(); return d.events[0].quotes[0]; });
     await openQuote(); await p.locator('#quote-rates').uncheck(); await p.locator('[data-action="quote-share"]').click(); await p.waitForSelector('#ask-modal.active');
     const msg = await p.locator('#ask-msg').innerText();
-    assert.match(msg, /Dinner: 900 guests\n/); assert.doesNotMatch(msg, /×|₹800|Transport: ₹/); assert.match(msg, /Total: ₹7,30,000/);
+    assert.match(msg, /Breakfast: ₹6,125\nDinner: ₹7,20,000\nTransport: ₹8,000/, 'each line shows its amount'); assert.doesNotMatch(msg, /guests|×|₹800 /); assert.match(msg, /Total: ₹7,30,000/);
     await p.locator('#ask-actions button').last().click().catch(() => {}); await p.keyboard.press('Escape').catch(() => {});
     assert.equal(text.lines.length, 4);
   });
@@ -91,7 +91,7 @@ const DATA = { version: 'ffv2', photos: [], vendors: [], vPays: [], cPays: [],
     await p.selectOption('#quote-evidence', 'verbal'); await p.locator('[data-action="quote-accept"]').click(); await p.waitForTimeout(250);
     assert.match(await p.locator('#toast-msg').innerText(), /who accepted/);
     await p.fill('#quote-by', 'Sample Client, on call'); await p.locator('[data-action="quote-accept"]').click(); await p.waitForSelector('#ask-modal.active');
-    assert.match(await p.locator('#ask-msg').innerText(), /Bill ₹6,00,000 → ₹7,70,000 \(before any applicable GST\)\. Agreed meals: Breakfast 35 @ ₹175, Dinner 950 @ ₹800/);
+    assert.match(await p.locator('#ask-msg').innerText(), /Bill ₹6,00,000 → ₹7,70,000 \(before GST\)\. Agreed meals: Breakfast 35 @ ₹175, Dinner 950 @ ₹800/);
     await p.locator('#ask-actions button').last().click(); await p.waitForTimeout(300);
     assert.equal((await ev()).billing, 600000, 'cancel changes nothing'); assert.equal((await ev()).quotes[1].status, 'sent');
     await p.locator('[data-action="quote-accept"]').click(); await p.waitForSelector('#ask-modal.active'); await p.locator('#ask-actions button').first().click(); await p.waitForTimeout(500);
@@ -115,6 +115,65 @@ const DATA = { version: 'ffv2', photos: [], vendors: [], vPays: [], cPays: [],
         try { await db.importAllData(d, 'replace'); out.push('accepted'); } catch (e) { out.push(e.message.split(':')[0].split('.')[0]); } }
       return out; });
     assert.deepEqual(r, ['Invalid quote', 'Invalid money amount', 'Invalid quote', 'Invalid quote']);
+  });
+
+  await test('five meals in a day (incl. Late night), 4-digit guests and rates fit, and a discount row is clearly marked', async () => {
+    await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); const { _rev, ...e } = d.events[0];
+      await db.putOne('events', { ...e, id: 'F', name: 'Sample Five Meals', quotes: [], billChanges: [], recon: null, reconHistory: [], meals: ['breakfast', 'lunch', 'hightea', 'dinner', 'latenight'],
+        mealPlan: { breakfast: { guests: 1200, rate: 1250 }, lunch: { guests: 1200, rate: 1450 }, hightea: { guests: 900, rate: 350 }, dinner: { guests: 1200, rate: 1850 }, latenight: { guests: 300, rate: 400 } } }); });
+    await p.reload(); await p.waitForSelector('#kpi .card'); await p.locator('#n-events:visible').click();
+    await p.locator('#ev-list [data-action="evdetail"][data-id="F"]:visible').click(); await p.locator('[data-action="quote-open"]').click(); await p.waitForSelector('#quote-modal.active');
+    assert.deepEqual(await p.locator('#quote-lines [data-k="meal"]').evaluateAll(s => s.map(x => x.value)), ['breakfast', 'lunch', 'hightea', 'dinner', 'latenight']);
+    assert.match(await p.locator('#quote-lines [data-k="meal"]').last().evaluate(s => s.selectedOptions[0].text), /Late night/);
+    await p.locator('[data-ql-add="discount"]').click();
+    assert.match(await p.locator('#quote-lines .q-line.discount .q-tag').innerText(), /Discount \(taken off the total\)/);
+    await p.waitForTimeout(300);
+    const clipped = await p.locator('#quote-lines select, #quote-lines input[type="number"]').evaluateAll(els => els.filter(el => { const cs = getComputedStyle(el), c = document.createElement('canvas').getContext('2d');
+      c.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`; const t = el.tagName === 'SELECT' ? el.selectedOptions[0].text : '8888';
+      return c.measureText(t).width > el.getBoundingClientRect().width - parseFloat(cs.borderLeftWidth) * 2 - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight); }).map(el => [el.tagName, el.tagName === 'SELECT' ? el.selectedOptions[0].text : el.value, getComputedStyle(el).fontSize, el.clientWidth]));
+    assert.deepEqual(clipped, [], 'every meal name and 4-digit number fits on a 360px screen');
+  });
+
+  await test('GST: owner-entered % on a chosen amount; client sees subtotal, GST and total; bill stays before GST, the client owes GST on top', async () => {
+    const check = qt => p.evaluate(q => import('./utils.js').then(u => u.checkQuote(q)), qt);
+    const base = [{ kind: 'meal', meal: 'dinner', guests: 100, rate: 1000 }];
+    assert.equal(await check({ lines: base, gst: { rate: '', taxable: 100000 } }), 'Enter the GST % (e.g. 5)');
+    assert.equal(await check({ lines: base, gst: { rate: 5, taxable: 200000 } }), 'GST is charged on more than the quote');
+    await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); const { _rev, ...e } = d.events[0];
+      await db.putOne('events', { ...e, id: 'G', name: 'Sample GST Event', quotes: [], billChanges: [], recon: null, reconHistory: [], billing: 0, meals: ['dinner'], mealPlan: { dinner: { guests: 100, rate: 1000 } } }); });
+    await p.reload(); await p.waitForSelector('#kpi .card'); await p.locator('#n-events:visible').click();
+    await p.locator('#ev-list [data-action="evdetail"][data-id="G"]:visible').click(); await p.locator('[data-action="quote-open"]').click(); await p.waitForSelector('#quote-modal.active');
+    await p.locator('[data-ql-add="item"]').click(); await line(1, 'label').fill('Counter setup'); await line(1, 'amt').fill('20000');
+    await p.locator('[data-gst-add]').click(); await p.fill('[data-g="rate"]', '5');
+    assert.equal(await p.locator('[data-g="taxable"]').inputValue(), '120000', 'GST is charged on the subtotal unless changed');
+    assert.match(await p.locator('#quote-total').innerText(), /Subtotal\s*₹1,20,000\s*GST @ 5% on ₹1,20,000\s*₹6,000\s*Total incl\. GST\s*₹1,26,000/);
+    await p.evaluate(() => { window.open = () => null; });
+    await p.locator('[data-action="quote-share"]').click(); await p.waitForSelector('#ask-modal.active');
+    assert.match(await p.locator('#ask-msg').innerText(), /Counter setup: ₹20,000\n\nSubtotal: ₹1,20,000\nGST @ 5% on ₹1,20,000: ₹6,000\nTotal: ₹1,26,000/);
+    await p.locator('#ask-actions button').first().click(); await p.waitForTimeout(300);
+    await p.locator('[data-action="quote-sent"]').click(); await p.waitForTimeout(400);
+    await p.selectOption('#quote-evidence', 'written'); await p.locator('[data-action="quote-accept"]').click(); await p.waitForSelector('#ask-modal.active');
+    assert.match(await p.locator('#ask-msg').innerText(), /Bill ₹0 → ₹1,20,000 \(before GST\)\. GST ₹6,000 \(5% on ₹1,20,000\) is added to what the client pays: ₹1,26,000\. GST is not your income/);
+    await p.locator('#ask-actions button').first().click(); await p.waitForTimeout(500);
+    const e = (await p.evaluate(async () => (await import('./db.js')).exportAllData())).events.find(x => x.id === 'G');
+    assert.deepEqual([e.billing, e.gst], [120000, { rate: 5, taxable: 120000, amount: 6000, from: 'Quote v1' }]);
+    const r = await p.evaluate(async () => { const u = await import('./utils.js'); const db = await import('./db.js');
+      await db.putOne('cPays', { id: 'gp', evId: 'G', amt: 126000, date: u.today(), mode: 'UPI' });
+      const d = await db.exportAllData(), ev = d.events.find(x => x.id === 'G'), pl = u.calcEventPL(ev, d.cPays, d.expenses), st = u.settlementStatus(ev, d.cPays);
+      return [pl.profit, pl.pending, st.outstanding, st.over]; });
+    assert.deepEqual(r, [120000, 0, 0, 0], 'contribution excludes GST; paying the GST-inclusive total settles it exactly');
+    await p.reload(); await p.waitForSelector('#kpi .card'); await p.locator('#n-events:visible').click(); await p.locator('#ev-list [data-action="evdetail"][data-id="G"]:visible').click();
+    assert.match(await p.locator('#ev-gst').innerText(), /\+ GST ₹6,000/);
+  });
+
+  await test('an event with no bill yet is never "Paid": its card shows the sent quote instead', async () => {
+    await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); const { _rev, ...e } = d.events[0];
+      await db.putOne('events', { ...e, id: 'N', name: 'Sample No Bill', billing: 0, gst: undefined, billChanges: [], recon: null, reconHistory: [],
+        quotes: [{ v: 1, status: 'sent', at: '2026-01-01T00:00:00.000Z', sentAt: '2026-01-01T00:00:00.000Z', showRates: true, lines: [{ kind: 'meal', meal: 'dinner', guests: 100, rate: 500 }] }] }); });
+    await p.reload(); await p.waitForSelector('#kpi .card'); await p.locator('#n-events:visible').click();
+    const card = p.locator('#ev-list [data-action="evdetail"][data-id="N"]');
+    assert.match(await card.innerText(), /Quote sent[\s\S]*Quote v1\s*₹50,000/); assert.doesNotMatch(await card.innerText(), /Paid|Collected/);
+    assert.equal(await card.locator('.prog').count(), 0);
   });
 
   assert.deepEqual(errors, []);

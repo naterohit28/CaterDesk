@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, gstPaise, clientDue, clientDueP, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -723,9 +723,10 @@ function rHome() {
   const profit  = (Math.round(tb * 100) - Math.round(te * 100)) / 100;
   const done = reconciledIds(P.events, P.expenses);
   const provisional = P.events.filter(e => !done.has(e.id)).length;
-  const pending = Math.max(0, tb - rc);
+  const due = sumRupees(P.events, e => clientDue(e));   // what clients pay, GST included where recorded
+  const pending = Math.max(0, due - rc);
   const margin  = tb > 0 ? Math.round(profit / tb * 100) : 0;
-  const collected = tb > 0 ? Math.min(100, rc / tb * 100) : 0;
+  const collected = due > 0 ? Math.min(100, rc / due * 100) : 0;
   const pl = periodLabel();
 
   q('kpi').innerHTML = `
@@ -816,7 +817,7 @@ function rHome() {
 function cashCard() {
   const limit = addDays(today(), 30);
   const collect = D.events.filter(e => e.date <= limit)
-    .reduce((s, e) => s + Math.max(0, e.billing - calcEventReceived(e.id, D.cPays)), 0);
+    .reduce((s, e) => s + Math.max(0, clientDue(e) - calcEventReceived(e.id, D.cPays)), 0);
   const pay = pendingCredit().filter(u => !u.x.dueDate || u.x.dueDate <= limit).reduce((s, u) => s + u.left, 0);
   if (!collect && !pay) return '';
   const net = collect - pay;
@@ -864,7 +865,7 @@ function toPayCard(evId = '') {
   const total = items.reduce((s, u) => s + u.left, 0);
   return `
     <div class="sec"><span class="sec-title">To pay – देणे बाकी</span>
-      <span class="meta">${tr(`${fmtCurrency(total)} · ${payeeCount(items)}`, `${fmtCurrency(total)} · ${new Set(items.map(u => u.x.venId)).size} जणांना`)}</span></div>
+      <span class="sec-amt due">${fmtCurrency(total)}<small>${tr(payeeCount(items), `${new Set(items.map(u => u.x.venId)).size} जणांना`)}</small></span></div>
     <div class="card list" id="to-pay-list">${items.map(b => {
       const { x, left } = b, ven = D.vendors.find(v => v.id === x.venId), where = billWhere(b);
       return `<div class="row" role="button" tabindex="0" data-action="edit-exp" data-id="${esc(x.id)}">
@@ -889,7 +890,7 @@ function payVendorsCard() {
   const seeAll = more ? `<div class="row" role="button" tabindex="0" data-action="go" data-id="expenses" style="min-height:48px">
       <div class="row-body title-sm">${all.length === 1 ? tr('See 1 bill to pay', '१ देणे पाहा') : tr(`See all ${all.length} to pay`, `सर्व ${all.length} देणी पाहा`)}</div>${icon('chevron', 18)}</div>` : '';
   return `
-    <div class="sec"><span class="sec-title">Pay vendors – विक्रेत्यांना द्या</span><span class="meta">${fmtCurrency(total)}</span></div>
+    <div class="sec"><span class="sec-title">Pay vendors – विक्रेत्यांना द्या</span><span class="sec-amt due">${fmtCurrency(total)}</span></div>
     <div class="card list">${due.map(({ x, left }) => {
       const ven = D.vendors.find(v => v.id === x.venId);
       return `<div class="row" role="button" tabindex="0" data-action="vendetail" data-id="${esc(x.venId)}">
@@ -925,14 +926,15 @@ function draftsCard() {
 function eventStatus(ev) {
   const { received: rec, pending: pend } = calcEventPL(ev, D.cPays, D.expenses);
   const noCosts = isOverdue(ev) && !ev.outsourced && !D.expenses.some(x => x.evId === ev.id);
-  return { rec, pend, noCosts, overdue: paymentSchedule(ev, D.cPays).overdue > 0 };
+  return { rec, pend, noCosts, overdue: paymentSchedule(ev, D.cPays).overdue > 0, noBill: clientDueP(ev) === 0 };   // no bill yet: not "paid"
 }
 
 function eventCard(ev) {
   const { received: rec, pending: pend, pctPaid: pct, budget, overBudget } = calcEventPL(ev, D.cPays, D.expenses);
   const st = eventStatus(ev);
   let chip;
-  if (pend <= 0)          chip = `<span class="chip pos">${tr('Paid', 'पूर्ण')}</span>`;
+  if (st.noBill)          chip = `<span class="chip">${tr((ev.quotes || []).some(q => q.status === 'sent') ? 'Quote sent' : 'No bill yet', 'बिल नाही')}</span>`;
+  else if (pend <= 0)     chip = `<span class="chip pos">${tr('Paid', 'पूर्ण')}</span>`;
   else if (st.overdue)    chip = `<span class="chip neg">${tr('Overdue', 'थकीत')}</span>`;
   else if (rec > 0)       chip = `<span class="chip due">${tr('Partial', 'अंशतः')}</span>`;
   else                    chip = `<span class="chip">${tr('Unpaid', 'बाकी')}</span>`;
@@ -951,12 +953,14 @@ function eventCard(ev) {
       </div>
     </div>
     <div class="item-foot">
-      ${pend > 0
+      ${st.noBill ? (sentQ => sentQ ? `<div><div class="label">${tr(`Quote v${sentQ.v}`, `दरपत्रक v${sentQ.v}`)}</div><div class="amt-md">${fmtCurrency(quoteTotal(sentQ).grand)}</div></div>`
+          : `<div class="meta">${tr('Bill not set yet', 'बिल ठरले नाही')}</div>`)((ev.quotes || []).filter(q => q.status === 'sent').at(-1))
+        : pend > 0
         ? `<div><div class="label">To collect – बाकी</div><div class="amt-md ${st.overdue ? 'neg' : 'due'}">${fmtCurrency(pend)}</div></div>`
         : `<div><div class="label">Collected – मिळाले</div><div class="amt-md pos">${fmtCurrency(rec)}</div></div>`}
-      ${pend > 0 ? `<div class="meta">${tr(`${fmtCurrency(rec)} of ${fmtCurrency(ev.billing)}`, `${fmtCurrency(ev.billing)} पैकी ${fmtCurrency(rec)}`)}</div>` : ''}
+      ${pend > 0 ? `<div class="meta">${tr(`${fmtCurrency(rec)} of ${fmtCurrency(clientDue(ev))}`, `${fmtCurrency(clientDue(ev))} पैकी ${fmtCurrency(rec)}`)}</div>` : ''}
     </div>
-    <div class="prog"><span style="width:${pct}%"></span></div>
+    ${st.noBill ? '' : `<div class="prog"><span style="width:${pct}%"></span></div>`}
   </div>`;
 }
 
@@ -965,7 +969,7 @@ const EV_FILTERS = {
   collect: { label: 'To collect – बाकी',       test: s => s.pend > 0 },
   overdue: { label: 'Overdue – थकीत',          test: s => s.overdue },
   nocost:  { label: 'No costs – खर्च नाही',    test: s => s.noCosts },
-  paid:    { label: 'Paid – पूर्ण',            test: s => s.pend <= 0 }
+  paid:    { label: 'Paid – पूर्ण',            test: s => s.pend <= 0 && !s.noBill }
 };
 
 function rEvents() {
@@ -1066,7 +1070,7 @@ function vendorDuesLink(vn, bal) {
 function receiptLink(ev, p) {
   // "Paid so far" as of this payment, so a receipt for an older payment ignores later ones
   const upTo = D.cPays.filter(x => x.evId === ev.id && (x.date < p.date || (x.date === p.date && x.id <= p.id)) || x.id === p.id);
-  const received = upTo.reduce((s, x) => s + (Number(x.amt) || 0), 0), left = Math.max(0, ev.billing - received);
+  const received = upTo.reduce((s, x) => s + (Number(x.amt) || 0), 0), left = Math.max(0, clientDue(ev) - received);
   const mode = String(p.mode || 'Cash').split(' – ')[0];
   const msg = `Namaste! Payment receipt for ${ev.name} (${fmtDate(ev.date)})
 `
@@ -1137,12 +1141,12 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
 
     <div class="card pad">
       <div class="metrics" style="margin:0;padding:0;border:0">
-        <div class="metric"><div class="label">Bill – बिल</div><div class="amt-md">${fmtCurrency(ev.billing)}</div></div>
+        <div class="metric"><div class="label">Bill – बिल</div><div class="amt-md">${fmtCurrency(ev.billing)}</div>${ev.gst?.amount ? `<div class="meta" id="ev-gst">${tr(`+ GST ${fmtCurrency(ev.gst.amount)}`, `+ जीएसटी ${fmtCurrency(ev.gst.amount)}`)}</div>` : ''}</div>
         <div class="metric"><div class="label">Received – मिळाले</div><div class="amt-md pos">${fmtCurrency(rec)}</div></div>
         <div class="metric"><div class="label">Pending – बाकी</div><div class="amt-md ${pend > 0 ? (pendingOverdue(ev) ? 'neg' : 'due') : 'muted'}" id="ev-pending">${fmtCurrency(Math.max(0, pend))}</div></div>
       </div>
       ${rec > 0 ? `<div class="prog" style="margin-top:var(--s3)" aria-label="Collected ${pct}%"><span style="width:${pct}%"></span></div>
-      <div class="meta" style="margin-top:6px" id="ev-collected">${tr(`${pct}% of the bill collected`, `बिलाच्या ${pct}% वसुली`)}</div>` : ''}
+      <div class="meta" style="margin-top:6px" id="ev-collected">${tr(`${Math.round(pct)}% of ${ev.gst?.amount ? `${fmtCurrency(clientDue(ev))} (incl. GST)` : 'the bill'} collected`, `बिलाच्या ${Math.round(pct)}% वसुली`)}</div>` : ''}
       ${mealPlanLine(ev)}
       ${scheduleBlock(ev)}
       ${quoteLine(ev)}
@@ -1217,8 +1221,9 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
 
 /* ── MEAL ────────────────────────────────────────── */
 // Any mix of meals, always shown in the order of the day
-const MEALS = { breakfast: 'Breakfast', lunch: 'Lunch', hightea: 'High tea', dinner: 'Dinner' };
-const mealLabel = ev => Object.keys(MEALS).filter(m => (ev.meals || []).includes(m)).map(m => MEALS[m]).join(' + ');
+const MEALS = { breakfast: 'Breakfast', lunch: 'Lunch', hightea: 'High tea', dinner: 'Dinner', latenight: 'Late night' };
+// Up to two meals by name; more than that as a count (the meal table on the event lists them)
+const mealLabel = ev => { const ms = Object.keys(MEALS).filter(m => (ev.meals || []).includes(m)); return ms.length > 2 ? `${ms.length} meals` : ms.map(m => MEALS[m]).join(' + '); };
 const evMeals = () => [...q('ev-meals').querySelectorAll('[aria-pressed="true"]')].map(b => b.dataset.meal);
 function setEvMeals(meals) {
   q('ev-meals').querySelectorAll('[data-meal]').forEach(b => b.setAttribute('aria-pressed', String(meals.includes(b.dataset.meal))));
@@ -1859,11 +1864,14 @@ const renderQuoteFit = () => { renderQuote(); requestAnimationFrame(() => fitSel
 function quoteText(ev, q) {
   const t = quoteTotal(q), L = [`Quotation (version ${q.v}) – ${ev.name}`, `${fmtDate(ev.date)}${ev.venue ? ' · ' + ev.venue : ''}`, ''];
   for (const l of t.lines) {
-    if (l.kind === 'meal') L.push(q.showRates !== false ? `${MEALS[l.meal]}: ${l.guests} guests × ${fmtCurrency(l.rate)} = ${fmtCurrency(l.total)}` : `${MEALS[l.meal]}: ${l.guests} guests`);
-    else if (l.kind === 'item') L.push(q.showRates !== false ? `${l.label}: ${fmtCurrency(l.amt)}` : l.label);
+    // Rates hidden: each line shows its amount only (no guest count or per-plate rate)
+    const mealName = l.kind === 'meal' ? MEALS[l.meal] + (l.menu && menuById(l.menu) ? ` (${menuById(l.menu).name} menu)` : '') : '';
+    if (l.kind === 'meal') L.push(q.showRates !== false ? `${mealName}: ${l.guests} guests × ${fmtCurrency(l.rate)} = ${fmtCurrency(l.total)}` : `${mealName}: ${fmtCurrency(l.total)}`);
+    else if (l.kind === 'item') L.push(`${l.label}: ${fmtCurrency(l.amt)}`);
     else L.push(`${l.label}: −${fmtCurrency(l.amt)}`);
   }
-  L.push('', `Total: ${fmtCurrency(t.total)} (before any applicable GST)`);
+  if (t.gstP) L.push('', `Subtotal: ${fmtCurrency(t.total)}`, `GST @ ${q.gst.rate}% on ${fmtCurrency(q.gst.taxable)}: ${fmtCurrency(t.gst)}`, `Total: ${fmtCurrency(t.grand)}`);
+  else L.push('', `Total: ${fmtCurrency(t.total)} (before any applicable GST)`);
   if (q.terms?.trim()) L.push('', q.terms.trim());
   return L.join('\n');
 }
@@ -1881,22 +1889,30 @@ function renderQuote() {
     const mealOpts = sel => Object.entries(MEALS).map(([k, v]) => `<option value="${k}"${k === sel ? ' selected' : ''}>${v}</option>`).join('');
     q('quote-body').innerHTML = `
       ${cur.lines.some(l => l.kind === 'meal') ? `<div class="q-head" aria-hidden="true"><span>${tr('Meal', 'जेवण')}</span><span>${tr('Guests', 'पाहुणे')}</span><span>${tr('₹ / plate', '₹ / ताट')}</span><span></span></div>` : ''}
-      <div id="quote-lines">${cur.lines.map((l, i) => `<div class="q-line" data-ql="${i}">
+      <div id="quote-lines">${cur.lines.map((l, i) => `<div class="q-line${l.kind === 'discount' ? ' discount' : ''}" data-ql="${i}">
+        ${l.kind === 'discount' ? `<div class="q-tag">${tr('Discount (taken off the total)', 'सवलत (एकूणमधून वजा)')}</div>` : ''}
         ${l.kind === 'meal'
           ? `<div class="field" style="margin:0"><select data-k="meal" aria-label="Meal">${mealOpts(l.meal)}</select></div>
              <div class="field" style="margin:0"><input type="number" data-k="guests" min="1" inputmode="numeric" placeholder="Guests" aria-label="Guests" value="${l.guests ?? ''}"></div>
              <div class="field" style="margin:0"><input type="number" data-k="rate" min="0" inputmode="decimal" placeholder="₹ / plate" aria-label="Rate per plate" value="${l.rate ?? ''}"></div>`
-          : `<div class="field" style="margin:0"><input type="text" data-k="label" maxlength="200" placeholder="${l.kind === 'discount' ? 'Discount – reason' : 'Item, e.g. Transport'}" aria-label="${l.kind === 'discount' ? 'Discount reason' : 'Item'}" value="${esc(l.label || '')}"></div>
-             <div class="field" style="margin:0;grid-column:span 2"><input type="number" data-k="amt" min="0" inputmode="decimal" placeholder="${l.kind === 'discount' ? '− ₹' : '₹'}" aria-label="Amount" value="${l.amt ?? ''}"></div>`}
+          : `<div class="field" style="margin:0"><input type="text" data-k="label" maxlength="200" placeholder="${l.kind === 'discount' ? 'Reason, e.g. loyal client' : 'Item, e.g. Transport'}" aria-label="${l.kind === 'discount' ? 'Discount reason' : 'Item'}" value="${esc(l.label || '')}"></div>
+             <div class="field" style="margin:0;grid-column:span 2"><input type="number" data-k="amt" min="0" inputmode="decimal" placeholder="${l.kind === 'discount' ? '− ₹ amount' : '₹ amount'}" aria-label="Amount" value="${l.amt ?? ''}"></div>`}
         <button type="button" class="icon-btn" data-ql-del="${i}" aria-label="Remove line">${icon('x', 16)}</button></div>`).join('')}</div>
-      <div class="tool-row three" style="margin:var(--s2) 0 var(--s3)">
+      ${cur.gst ? `<div class="q-head q-gst-head" aria-hidden="true"><span>${tr('GST charged on ₹', 'जीएसटी रकमेवर ₹')}</span><span>${tr('Rate %', 'दर %')}</span><span style="text-align:right">${tr('GST', 'जीएसटी')}</span><span></span></div>
+      <div class="q-line" id="quote-gst">
+        <div class="field" style="margin:0"><input type="number" data-g="taxable" min="0" inputmode="decimal" placeholder="₹" aria-label="Amount GST is charged on" value="${cur.gst.taxable ?? ''}"></div>
+        <div class="field" style="margin:0"><input type="number" data-g="rate" min="0" max="100" inputmode="decimal" placeholder="%" aria-label="GST rate %" value="${cur.gst.rate ?? ''}"></div>
+        <div class="q-gst-amt" id="quote-gst-amt">${fmtCurrency(t.gst)}</div>
+        <button type="button" class="icon-btn" data-gst-del aria-label="Remove GST">${icon('x', 16)}</button></div>` : ''}
+      <div class="tool-row${cur.gst ? ' three' : ''}" style="margin:var(--s2) 0 var(--s3)">
         <button type="button" class="btn-sm" data-ql-add="meal">+ ${tr('Meal', 'जेवण')}</button>
         <button type="button" class="btn-sm" data-ql-add="item">+ ${tr('Item', 'बाब')}</button>
         <button type="button" class="btn-sm" data-ql-add="discount">+ ${tr('Discount', 'सवलत')}</button>
+        ${cur.gst ? '' : `<button type="button" class="btn-sm" data-gst-add>+ ${tr('GST', 'जीएसटी')}</button>`}
       </div>
       <label class="check-row"><input type="checkbox" id="quote-rates"${cur.showRates !== false ? ' checked' : ''}><span>${tr('Show per-plate rates to the client', 'ग्राहकाला प्रति ताट दर दाखवा')}</span></label>
       <div class="field"><label for="quote-terms">${tr('Terms / note for the client', 'अटी / टीप')}</label><textarea id="quote-terms" maxlength="2000" placeholder="e.g. 50% advance to confirm; valid for 15 days">${esc(cur.terms || '')}</textarea></div>
-      <div class="ask-msg" id="quote-total">${tr(`Total ${fmtCurrency(t.total)} · before any applicable GST`, `एकूण ${fmtCurrency(t.total)} · कर वगळून`)}</div>
+      <div id="quote-total">${quoteTotalsHtml(cur)}</div>
       <div class="btn-row" style="margin-top:var(--s3)">
         <button type="button" class="btn btn-secondary" data-action="quote-save">${tr('Save draft', 'मसुदा जतन')}</button>
         <button type="button" class="btn btn-wa" data-action="quote-share">${icon('message', 18)}${tr('Share', 'पाठवा')}</button>
@@ -1909,7 +1925,7 @@ function renderQuote() {
   q('quote-body').innerHTML = `
     <div class="list" style="padding:0">${t.lines.map(l => `<div class="row" style="min-height:44px"><div class="row-body"><div class="title-sm">${l.kind === 'meal' ? MEALS[l.meal] : esc(l.label)}</div>
       ${l.kind === 'meal' ? `<div class="meta">${l.guests} × ${fmtCurrency(l.rate)}</div>` : ''}</div><div class="amt-sm">${l.kind === 'discount' ? '−' : ''}${fmtCurrency(Math.abs(l.total))}</div></div>`).join('')}</div>
-    <div class="ask-msg" style="margin-top:var(--s2)">${tr(`Total ${fmtCurrency(t.total)} · before any applicable GST`, `एकूण ${fmtCurrency(t.total)} · कर वगळून`)}</div>
+    <div style="margin-top:var(--s2)">${quoteTotalsHtml(cur)}</div>
     <div class="meta" id="quote-status">${tr(`Sent ${when(cur.sentAt)}`, `पाठवले ${when(cur.sentAt)}`)}${cur.status === 'accepted' ? ` · ${tr(`accepted ${when(cur.acceptedAt)} · ${cur.evidence}${cur.by ? ` (${esc(cur.by)})` : ''}`, `मान्य ${when(cur.acceptedAt)}`)}` : cur.status === 'declined' ? ` · ${tr('declined', 'नाकारले')}` : ''}${sup ? ` · ${tr('replaced by a later version', 'नंतरच्या आवृत्तीने बदलले')}` : ''}</div>
     ${cur.status === 'sent' && !sup ? `
       <div class="f2" style="margin-top:var(--s3)">
@@ -1920,6 +1936,13 @@ function renderQuote() {
         <button type="button" class="btn btn-secondary" data-action="quote-decline">${tr('Client declined', 'नाकारले')}</button>
         <button type="button" class="btn btn-primary" data-action="quote-accept">${tr('Client accepted', 'मान्य केले')}</button>
       </div>` : ''}`;
+}
+// Subtotal, GST and the total the client pays, right-aligned in one column
+function quoteTotalsHtml(qt) {
+  const t = quoteTotal(qt), row = (l, v, cls = '') => `<div class="q-sum${cls}"><span>${l}</span><span>${v}</span></div>`;
+  return t.gstP
+    ? row(tr('Subtotal', 'उप-एकूण'), fmtCurrency(t.total)) + row(tr(`GST @ ${qt.gst.rate}% on ${fmtCurrency(qt.gst.taxable)}`, `जीएसटी ${qt.gst.rate}%`), fmtCurrency(t.gst)) + row(tr('Total incl. GST', 'एकूण (जीएसटीसह)'), fmtCurrency(t.grand), ' grand')
+    : row(tr('Total · before any GST', 'एकूण · कराशिवाय'), fmtCurrency(t.total), ' grand');
 }
 function readQuoteForm() {
   if (!quoteDraft) return;
@@ -1933,11 +1956,12 @@ async function saveQuotes(mutate, extra = {}) {
   try { return await patchEvent(ev.id, { quotes: qs, ...(typeof extra === 'function' ? extra(qs, ev) : extra) }); }
   catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return null; }
 }
-const cleanLines = lines => lines.map(l => l.kind === 'meal' ? { kind: 'meal', meal: l.meal, guests: Number(l.guests), rate: Number(l.rate) } : { kind: l.kind, label: String(l.label).trim(), amt: Number(l.amt) });
+const cleanLines = lines => lines.map(l => l.kind === 'meal' ? { kind: 'meal', meal: l.meal, guests: Number(l.guests), rate: Number(l.rate), ...(l.menu ? { menu: l.menu } : {}) } : { kind: l.kind, label: String(l.label).trim(), amt: Number(l.amt) });
 async function saveQuoteDraft() {
   readQuoteForm();
   const err = checkQuote(quoteDraft); if (err) { showToast(err + ' – तपासा', 'error'); return null; }
   const d = { ...quoteDraft, lines: cleanLines(quoteDraft.lines), at: new Date().toISOString() };
+  if (d.gst) d.gst = { rate: Number(d.gst.rate), taxable: Number(d.gst.taxable) };
   const saved = await saveQuotes(qs => { const i = qs.findIndex(x => x.v === d.v); if (i >= 0) qs[i] = d; else qs.push(d); });
   if (saved) quoteDraft = structuredClone(d);
   return saved ? d : null;
@@ -1971,17 +1995,19 @@ async function quoteAction(action) {
     const evidence = qv('quote-evidence'), by = qv('quote-by').trim();
     if (!evidence) { showToast('Say how the client accepted: written or verbal – मान्यता कशी मिळाली?', 'error'); return; }
     if (evidence === 'verbal' && !by) { showToast('For a verbal acceptance, write who accepted – कोणी मान्य केले?', 'error'); return; }
-    const t = quoteTotal(cur), to = t.total;
-    const meals = Object.fromEntries(cur.lines.filter(l => l.kind === 'meal').map(l => [l.meal, { guests: l.guests, rate: l.rate }]));
+    const t = quoteTotal(cur), to = t.total;   // the bill is the business's income, before GST
+    const meals = Object.fromEntries(cur.lines.filter(l => l.kind === 'meal').map(l => [l.meal, { guests: l.guests, rate: l.rate, ...(l.menu ? { menu: l.menu } : {}) }]));
     const mealText = Object.entries(meals).map(([m, v]) => `${MEALS[m]} ${v.guests} @ ${fmtCurrency(v.rate)}`).join(', ');
     const ok = await askSheet({ title: `Use quote v${cur.v} for this event? – वापरायचे?`,
-      message: `Bill ${fmtCurrency(ev.billing)} → ${fmtCurrency(to)} (before any applicable GST). Agreed meals: ${mealText || 'none'}. Guest counts already started keep their own contracted figures. A reconciled event becomes provisional again.`,
+      message: `Bill ${fmtCurrency(ev.billing)} → ${fmtCurrency(to)} (before GST). ${t.gstP ? `GST ${fmtCurrency(t.gst)} (${cur.gst.rate}% on ${fmtCurrency(cur.gst.taxable)}) is added to what the client pays: ${fmtCurrency(t.grand)}. GST is not your income, so contribution uses ${fmtCurrency(to)}. ` : ev.gst ? 'This quote has no GST, so the GST recorded on the event is removed. ' : ''}Agreed meals: ${mealText || 'none'}. Guest counts already started keep their own contracted figures. A reconciled event becomes provisional again.`,
       actions: [{ label: 'Yes, use it – हो', value: true, style: 'btn-primary' }] });
     if (!ok) return;
     const saved = await saveQuotes(qs => { Object.assign(qs.find(y => y.v === cur.v), { status: 'accepted', acceptedAt: now, evidence, ...(by ? { by } : {}) }); },
       (qs, e) => ({ ...(toPaise(e.billing) !== t.totalP ? { billing: to, billChanges: [...(e.billChanges || []), { at: now, from: e.billing, to, reason: `Quote v${cur.v} accepted` }] } : {}),
-        ...(Object.keys(meals).length ? { mealPlan: meals, meals: MEAL_ORDER.filter(m => meals[m] || (e.meals || []).includes(m)) } : {}) }));
+        ...(Object.keys(meals).length ? { mealPlan: meals, meals: MEAL_ORDER.filter(m => meals[m] || (e.meals || []).includes(m)) } : {}),
+        ...(t.gstP ? { gst: { rate: cur.gst.rate, taxable: cur.gst.taxable, amount: t.gst, from: `Quote v${cur.v}` } } : {}) }));
     if (!saved) return;
+    if (!t.gstP && ev.gst) await patchEvent(ev.id, {}, ['gst']);
     closeModals(); refreshCurrent(); showToast(`Quote v${cur.v} accepted · bill ${fmtCurrency(to)} – मान्य`);
   }
 }
@@ -1995,7 +2021,8 @@ function renderSettle() {
     ${st.changes.length ? row(tr('Bill as agreed', 'मूळ बिल'), fmtCurrency(st.original)) : ''}
     ${st.changes.map(c => row(`${c.kind ? SETTLE_KINDS[c.kind][0] : tr('Change', 'बदल')} · <span data-nl>${esc(c.reason)}</span> · ${fmtDate(String(c.at).slice(0, 10))}${c.ack ? ` · ${c.ack === 'none' ? tr('client not acknowledged', 'ग्राहकाची संमती नाही') : tr(`client ${c.ack}`, c.ack)}` : ''}`,
       `${c.to >= c.from ? '+' : '−'}${fmtCurrency(Math.abs(c.to - c.from))}`)).join('')}
-    ${row(tr('Bill now', 'आताचे बिल'), fmtCurrency(st.billed))}
+    ${st.gst ? row(tr('Bill (before GST)', 'बिल (जीएसटीशिवाय)'), fmtCurrency(ev.billing)) + row(tr(`GST ${ev.gst.rate}%`, 'जीएसटी'), fmtCurrency(st.gst)) : ''}
+    ${row(st.gst ? tr('Client pays', 'ग्राहकाने द्यायचे') : tr('Bill now', 'आताचे बिल'), fmtCurrency(st.billed))}
     ${row(tr('Received', 'मिळाले'), fmtCurrency(st.received), 'pos')}
     ${row(tr('Still owed', 'बाकी'), fmtCurrency(st.outstanding), st.outstanding ? 'due' : 'muted')}
     ${st.over ? `<div class="meta due" style="margin-top:var(--s2)">${tr(`Received ${fmtCurrency(st.over)} more than the bill. Check for a refund due or a bill change.`, `बिलापेक्षा ${fmtCurrency(st.over)} जास्त मिळाले.`)}</div>` : ''}
@@ -2547,7 +2574,7 @@ function rExp() {
     const month = !isNaN(d)
       ? tr(d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }), d.toLocaleDateString('mr-IN', { month: 'long', year: 'numeric' }))
       : 'No date – दिनांक नाही';
-    return `<div class="sec"><span class="sec-title">${month}</span><span class="meta">${fmtCurrency(xs.reduce((s, x) => s + x.amt, 0))}</span></div>
+    return `<div class="sec"><span class="sec-title">${month}</span><span class="sec-amt">${fmtCurrency(xs.reduce((s, x) => s + x.amt, 0))}</span></div>
     <div class="card list">${xs.map(x => expenseRow(x)).join('')}</div>`;
   }).join('') + (list.length > PAGE_SIZE ? `<div class="btn-row" style="margin:16px 0"><button type="button" class="btn btn-secondary" data-action="expense-prev" ${expensePage === 1 ? 'disabled' : ''}>Previous – मागील</button><span role="status">${expensePage} / ${Math.ceil(list.length / PAGE_SIZE)}</span><button type="button" class="btn btn-secondary" data-action="expense-next" ${expensePage * PAGE_SIZE >= list.length ? 'disabled' : ''}>Next – पुढील</button></div>` : '');
 }
@@ -2881,16 +2908,22 @@ function fitSelects(root = document) {
 document.addEventListener('change', e => { if (e.target.matches?.('.field select')) fitSelects(e.target.closest('.field')); });
 // Quote editor: typing updates the working draft and its total; version chips and line buttons
 function quoteInput(e) {
-  const row = e.target.closest?.('[data-ql]'); if (!row || !quoteDraft) return;
-  quoteDraft.lines[Number(row.dataset.ql)][e.target.dataset.k] = e.target.value;
+  if (!quoteDraft) return;
+  if (e.target.dataset.g) { quoteDraft.gst[e.target.dataset.g] = e.target.value; quoteDraft.gst.auto = false; }
+  else { const row = e.target.closest?.('[data-ql]'); if (!row) return; quoteDraft.lines[Number(row.dataset.ql)][e.target.dataset.k] = e.target.value;
+    // GST follows the subtotal until its amount is typed by hand
+    if (quoteDraft.gst?.auto !== false && quoteDraft.gst) quoteDraft.gst.taxable = quoteTotal({ lines: quoteDraft.lines.map(l => ({ ...l, guests: Number(l.guests) || 0 })) }).total; }
   const t = quoteTotal({ lines: quoteDraft.lines.map(l => ({ ...l, guests: Number(l.guests) || 0 })) });
-  q('quote-total').textContent = `Total ${fmtCurrency(t.total)} · before any applicable GST`;
+  q('quote-total').innerHTML = quoteTotalsHtml({ ...quoteDraft, lines: quoteDraft.lines.map(l => ({ ...l, guests: Number(l.guests) || 0 })) });
+  if (q('quote-gst-amt')) q('quote-gst-amt').textContent = fmtCurrency(quoteTotal({ ...quoteDraft, lines: quoteDraft.lines.map(l => ({ ...l, guests: Number(l.guests) || 0 })) }).gst);
 }
-document.addEventListener('input', e => { if (e.target.closest?.('#quote-lines')) quoteInput(e); });
-document.addEventListener('change', e => { if (e.target.closest?.('#quote-lines')) quoteInput(e); });
+document.addEventListener('input', e => { if (e.target.closest?.('#quote-lines, #quote-gst')) quoteInput(e); });
+document.addEventListener('change', e => { if (e.target.closest?.('#quote-lines, #quote-gst')) quoteInput(e); });
 document.addEventListener('click', e => {
   if (!e.target.closest?.('#quote-modal')) return;
   const v = e.target.closest('[data-qv]'), add = e.target.closest('[data-ql-add]'), del = e.target.closest('[data-ql-del]');
+  if (e.target.closest('[data-gst-add]') && quoteDraft) { readQuoteForm(); quoteDraft.gst = { rate: '', taxable: quoteTotal({ lines: quoteDraft.lines.map(l => ({ ...l, guests: Number(l.guests) || 0 })) }).total }; renderQuoteFit(); q('quote-modal').querySelector('[data-g="rate"]')?.focus(); return; }
+  if (e.target.closest('[data-gst-del]') && quoteDraft) { readQuoteForm(); delete quoteDraft.gst; renderQuoteFit(); return; }
   if (v) { readQuoteForm(); quoteView = Number(v.dataset.qv); renderQuoteFit(); }
   else if (add && quoteDraft) { readQuoteForm(); const k = add.dataset.qlAdd;
     quoteDraft.lines.push(k === 'meal' ? { kind: 'meal', meal: Object.keys(MEALS).find(m => !quoteDraft.lines.some(l => l.meal === m)) || 'dinner', guests: '', rate: '' } : { kind: k, label: '', amt: '' }); renderQuoteFit(); }
@@ -3081,11 +3114,17 @@ async function savePlan() {
 }
 
 // Event page: the bill by meal; the bill itself stays the one commercial amount
+// Meals as a small table: meal (and its menu) · guests × rate · amount, then the total
+function mealTable(t) {
+  return `<div class="meal-table">${t.lines.map(l => `<div class="mt-row"><span class="mt-meal">${MEALS[l.meal]}${l.menu && menuById(l.menu) ? `<small>${esc(menuById(l.menu).name)}</small>` : ''}</span>
+      <span class="mt-calc">${l.guests} × ${fmtCurrency(l.rate)}</span><span class="mt-amt">${fmtCurrency(l.total)}</span></div>`).join('')}
+    ${t.lines.length > 1 ? `<div class="mt-row mt-total"><span class="mt-meal">${tr('Meals total', 'एकूण')}</span><span class="mt-calc"></span><span class="mt-amt">${fmtCurrency(t.total)}</span></div>` : ''}</div>`;
+}
 function mealPlanLine(ev) {
   const t = mealPlanTotal(ev.mealPlan || {}); if (!t.lines.length) return '';
   const diff = Math.round(Number(ev.billing) * 100) - t.totalPaise;
-  return `<div class="meta" id="meal-plan" data-nl style="margin-top:var(--s3)">${t.lines.map(l => `${MEALS[l.meal]} ${l.guests} × ${fmtCurrency(l.rate)} = ${fmtCurrency(l.total)}`).join(' · ')}${t.lines.length > 1 ? ` · ${tr('meals total', 'एकूण')} ${fmtCurrency(t.total)}` : ''}
-    ${diff ? `<div class="due">${tr(`Bill is ${fmtCurrency(Math.abs(diff) / 100)} ${diff > 0 ? 'more' : 'less'} than the meal prices (extras or a discount?)`, `बिल जेवणाच्या दरांपेक्षा ${fmtCurrency(Math.abs(diff) / 100)} ${diff > 0 ? 'जास्त' : 'कमी'}`)}</div>` : ''}</div>`;
+  return `<div id="meal-plan" data-nl style="margin-top:var(--s3)">${mealTable(t)}
+    ${diff ? `<div class="meta due" style="margin-top:6px">${tr(`Bill is ${fmtCurrency(Math.abs(diff) / 100)} ${diff > 0 ? 'more' : 'less'} than the meal prices (extras or a discount?)`, `बिल जेवणाच्या दरांपेक्षा ${fmtCurrency(Math.abs(diff) / 100)} ${diff > 0 ? 'जास्त' : 'कमी'}`)}</div>` : ''}</div>`;
 }
 
 /* ── Price by meal in the event form (spec §6.4) ── */
@@ -3093,29 +3132,31 @@ let mpAuto = '';   // the bill value last filled from the meal total, so a typed
 function readMealPlan() {
   const plan = {};
   document.querySelectorAll('#ev-mp-rows [data-mp]').forEach(row => {
-    const g = row.querySelector('[data-k="guests"]').value, r = row.querySelector('[data-k="rate"]').value;
-    if (g || r) plan[row.dataset.mp] = { guests: g === '' ? 0 : Math.max(0, Math.floor(Number(g))), rate: r === '' ? 0 : Number(r) };
+    const g = row.querySelector('[data-k="guests"]').value, r = row.querySelector('[data-k="rate"]').value, mn = row.querySelector('[data-k="menu"]').value;
+    if (g || r || mn) plan[row.dataset.mp] = { guests: g === '' ? 0 : Math.max(0, Math.floor(Number(g))), rate: r === '' ? 0 : Number(r), ...(mn ? { menu: mn } : {}) };
   });
   return plan;
 }
 function renderMealPlan(values) {
   const meals = MEAL_ORDER.filter(m => evMeals().includes(m));
   q('ev-mp').hidden = !meals.length;
-  q('ev-mp-rows').innerHTML = meals.map(m => `<div class="f2" data-mp="${m}">
-    <div class="field"><label for="ev-mp-${m}-g">${MEALS[m]} guests – पाहुणे</label><input type="number" id="ev-mp-${m}-g" data-k="guests" min="0" inputmode="numeric" placeholder="${esc(qv('ev-guests') || '0')}" value="${values[m]?.guests || ''}"></div>
-    <div class="field"><label for="ev-mp-${m}-r">₹ / plate – दर</label><input type="number" id="ev-mp-${m}-r" data-k="rate" min="0" inputmode="decimal" placeholder="0" value="${values[m]?.rate || ''}"></div></div>`).join('');
+  // One row per meal: its own menu, guests and rate (a day can have breakfast, lunch, high tea, dinner, late night)
+  q('ev-mp-rows').innerHTML = `<div class="q-head mp-head" aria-hidden="true"><span>${tr('Meal · menu', 'जेवण · मेनू')}</span><span>${tr('Guests', 'पाहुणे')}</span><span>${tr('₹ / plate', '₹ / ताट')}</span></div>`
+    + meals.map(m => `<div class="mp-row" data-mp="${m}"><div class="mp-name">${MEALS[m]}</div>
+    <div class="field" style="margin:0"><select id="ev-mp-${m}-m" data-k="menu" aria-label="${MEALS[m]} menu"><option value="">No menu – मेनू नाही</option>${MENUS.map(x => `<option value="${x.id}"${values[m]?.menu === x.id ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select></div>
+    <div class="field" style="margin:0"><input type="number" id="ev-mp-${m}-g" data-k="guests" min="0" inputmode="numeric" aria-label="${MEALS[m]} guests" placeholder="${esc(qv('ev-guests') || '0')}" value="${values[m]?.guests || ''}"></div>
+    <div class="field" style="margin:0"><input type="number" id="ev-mp-${m}-r" data-k="rate" min="0" inputmode="decimal" aria-label="${MEALS[m]} rate per plate" placeholder="0" value="${values[m]?.rate || ''}"></div></div>`).join('');
   updateMealPlan();
 }
 // Only meals still ticked, with both guests and a rate, are kept
 function mealPlanFields(meals) {
   const plan = readMealPlan(), out = {};
-  for (const m of meals) if (plan[m]?.guests > 0 && plan[m]?.rate > 0) out[m] = { guests: plan[m].guests, rate: Math.round(plan[m].rate * 100) / 100 };
+  for (const m of meals) if (plan[m]?.guests > 0 && plan[m]?.rate > 0) out[m] = { guests: plan[m].guests, rate: Math.round(plan[m].rate * 100) / 100, ...(plan[m].menu ? { menu: plan[m].menu } : {}) };
   return out;
 }
 function updateMealPlan() {
   const t = mealPlanTotal(mealPlanFields(MEAL_ORDER.filter(m => evMeals().includes(m))));
-  q('ev-mp-total').innerHTML = t.lines.length ? t.lines.map(l => `${MEALS[l.meal]} ${l.guests} × ${fmtCurrency(l.rate)} = ${fmtCurrency(l.total)}`).join(' · ')
-    + ` · <b>${tr('Total', 'एकूण')} ${fmtCurrency(t.total)}</b> ${tr('(before tax)', '(कराआधी)')}` : '';
+  q('ev-mp-total').innerHTML = t.lines.length ? mealTable(t) + `<div class="meta" style="margin-top:4px">${tr('Before tax', 'कराआधी')}</div>` : '';
   // The meal total fills the bill only if the bill is empty or still holds the last filled total
   const bill = q('ev-billing').value;
   if (t.total > 0 && (!bill || bill === mpAuto || bill === evAuto.bill)) { q('ev-billing').value = String(t.total); mpAuto = String(t.total); evAuto.bill = ''; updateQuote(); }
@@ -4509,6 +4550,13 @@ function bindAllEvents() {
   q('menu-review').addEventListener('click', e => { const b = e.target.closest('[data-md-del]'); if (!b) return;
     menuDraft.splice(Number(b.dataset.mdDel), 1); q('menu-text').value = menuDraft.map(d => d.name).join('\n'); renderMenuReview(); });
   q('ev-mp-rows').addEventListener('input', updateMealPlan);
+  q('ev-mp-rows').addEventListener('change', e => {
+    if (e.target.dataset.k !== 'menu') return;
+    const row = e.target.closest('[data-mp]'), menu = menuById(e.target.value), rate = row.querySelector('[data-k="rate"]');
+    const guests = row.querySelector('[data-k="guests"]').value || qv('ev-guests');
+    if (menu && (!rate.value || rate.dataset.auto === rate.value)) { rate.value = String(menuRate(menu, guests)); rate.dataset.auto = rate.value; }
+    updateMealPlan();
+  });
   q('plan-rows').addEventListener('input', e => { const row = e.target.closest('[data-pm]'), k = e.target.dataset.k; if (!row || !k) return;
     const m = planDraft[Number(row.dataset.pm)]; if (k === 'amt') m.amtRaw = e.target.value; else m[k] = e.target.value; updatePlanSum(); });
   q('plan-rows').addEventListener('change', e => { const row = e.target.closest('[data-pm]'); if (!row || e.target.dataset.k !== 'when') return;

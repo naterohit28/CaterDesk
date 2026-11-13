@@ -237,10 +237,42 @@ html.dark .btn-danger { background: #DC2626; }
 .tool-row .btn-sm { width: 100%; min-height: 40px; justify-content: center; padding: 0 var(--s2); white-space: nowrap; overflow: hidden; }
 .tool-row .btn-sm:last-child:nth-child(odd) { grid-column: 1 / -1; }
 /* Quote lines: meal | guests | rate | remove, or item (2 cols) | amount | remove */
-.q-line, .q-head { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, .8fr) minmax(0, .9fr) var(--tap); gap: var(--s2); align-items: center; margin-bottom: var(--s2); }
+.q-line, .q-head { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, .9fr) minmax(0, .9fr) 32px; gap: 6px; align-items: center; margin-bottom: var(--s2); }
+.q-line input[type="number"] { padding-left: 10px; padding-right: 8px; font-variant-numeric: tabular-nums; }   /* room for 4–5 digits */
+.q-line .icon-btn { width: 32px; }
+/* No spinner arrows in number boxes (desktop browsers draw them and they eat the digits' room; phones never show them) */
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; display: none; margin: 0; }
+.q-line select { padding-left: 10px; padding-right: 24px; background-position: right 6px center; }   /* full meal names on a small phone */
+.q-line.discount input { color: var(--neg); }
+.q-tag { grid-column: 1 / -1; font-size: var(--fs-xs); font-weight: 600; color: var(--neg); margin: 2px 0 -2px 2px; }
 .q-head { margin-bottom: 4px; font-size: var(--fs-xs); font-weight: 600; color: var(--text-2); }
 .q-head span { padding-left: 2px; }
 .tool-row.three { grid-template-columns: repeat(3, 1fr); }
+/* A section's money total: a clear amount, coloured by what it means (amber = you owe) */
+.sec-amt { font-size: var(--fs-md); font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; display: inline-flex; align-items: baseline; gap: 6px; }
+.sec-amt.due { color: var(--due); }
+.sec-amt small { font-size: var(--fs-xs); font-weight: 500; color: var(--text-2); }
+/* Meals table (event page, event form) */
+.meal-table { display: grid; gap: 2px; font-size: var(--fs-sm); }
+.mt-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.1fr) minmax(0, .9fr); gap: var(--s2); align-items: baseline; padding: 3px 0; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.mt-meal { color: var(--text); font-weight: 600; min-width: 0; }
+.mt-meal small { display: block; font-weight: 500; color: var(--text-3, var(--text-2)); font-size: var(--fs-xs); }
+.mt-amt { text-align: right; color: var(--text); font-weight: 600; white-space: nowrap; }
+.mt-calc { white-space: nowrap; }
+.mt-total { border-top: 1px solid var(--line); margin-top: 2px; padding-top: 6px; }
+.mt-total .mt-amt { font-weight: 700; }
+/* Event form: one row per meal – name above, then menu | guests | rate */
+.mp-head { grid-template-columns: minmax(0, 1.6fr) minmax(0, .9fr) minmax(0, .9fr); }
+.mp-row { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, .9fr) minmax(0, .9fr); gap: 6px; align-items: center; margin-bottom: var(--s2); }
+.mp-name { grid-column: 1 / -1; font-size: var(--fs-xs); font-weight: 650; color: var(--text); margin: 2px 0 -2px 2px; }
+.mp-row select { padding-left: 10px; padding-right: 24px; background-position: right 6px center; }
+.mp-row input[type="number"] { padding-left: 10px; padding-right: 8px; font-variant-numeric: tabular-nums; }
+.q-gst-amt { font-weight: 650; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.q-sum { display: flex; justify-content: space-between; gap: var(--s3); font-size: var(--fs-sm); color: var(--text-2); padding: 4px 2px; font-variant-numeric: tabular-nums; }
+.q-sum span:last-child { color: var(--text); font-weight: 600; white-space: nowrap; }
+.q-sum.grand { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 8px; font-size: var(--fs-md); color: var(--text); font-weight: 650; }
+.q-sum.grand span:last-child { font-weight: 700; }
 .tool-row.three .btn-sm, .tool-row.three .btn-sm:last-child { grid-column: auto; }
 .f-chip {
   flex-shrink: 0; min-height: 36px; padding: 0 var(--s3); border-radius: var(--r-full);

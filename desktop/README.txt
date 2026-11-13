@@ -1,6 +1,6 @@
 CATERDESK DESKTOP TEST v4.17.0
 
-Current source/package-template version: 4.17.0. Checked 13 November 2026.
+Current source/package-template version: 4.17.0. Checked 14 November 2026.
 This header is not proof that an older downloaded ZIP includes the same build.
 The latest GitHub binary release verified on that date is v2.4.7; the owner's
 existing Apps/Desktop bundle also contains v2.4.7. Build current source for the

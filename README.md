@@ -4,7 +4,7 @@
 
 An offline-first app for catering events, expenses, vendor credit, client collections, menus and vendor orders. Business records stay in the device's browser storage; the hosted app also sends limited error diagnostics to its server.
 
-**Current source and hosted web build: v4.17.0.** Documentation checked on **13 November 2026**.
+**Current source and hosted web build: v4.17.0.** Documentation checked on **14 November 2026**.
 
 [Open the app](https://expense-calculator-kohl.vercel.app/) · [Download published packages](https://github.com/naterohit28/CaterDesk/releases) · [Historical reliability report](docs/RELIABILITY.md) · [Competitor/name research and Claude evaluation notes](docs/research/README.md) · [Report an issue](https://github.com/naterohit28/CaterDesk/issues)
 
@@ -339,7 +339,7 @@ This is a short source-feature history, not a list of available binary downloads
 
 | Version | Main changes |
 | --- | --- |
-| 4.17.0 | **Quotations (v5 Phase 2):** a *Quote* on each event with meal lines (guests × rate per meal), items and discounts; drafts are editable, a sent version is locked and changes make a new version; the client gets WhatsApp text without costs (per-plate rates optional), amounts before any applicable GST; *Client accepted* needs written/verbal evidence and an explicit confirm that sets the bill and agreed meals (logged; reconciliation reopens). No tax maths yet (O-01/O-02); no PDF yet (D-3). |
+| 4.17.0 | **Quotations with optional GST (v5 Phase 2):** a *Quote* on each event – meal lines (guests × rate, each meal with its own menu), items such as counter setup, clearly marked discounts, and optional **GST** (your rate % on the amount you choose, with Subtotal · GST · **Total incl. GST**). Drafts are editable; *I have sent it* locks a version and changes make a new one. The client gets WhatsApp text without costs (per-plate rates optional; when hidden, each line shows its amount). *Client accepted* needs written/verbal evidence and a confirm: the bill becomes the quote total **before GST** (your income); GST is recorded on the event and added to what the client owes. Also: **Late night** as a fifth meal, a **menu per meal** in the event form (rate filled from the menu's slab), meals shown as a **table**, events without a bill show *Quote sent* / *No bill yet* (never *Paid*), bold section totals, 4–5 digit number boxes. No client PDF yet (D-3). |
 | 4.16.3 | **Payment and count fixes from the owner's audit:** with a payment plan, *Remind* asks only for what is due now (no reminder when nothing is due); *Pending* turns red only when something is overdue by the plan; % instalments add up to the bill to the paisa; changing an agreed counting term needs the client's agreement again; an extra-plate request is saved before WhatsApp opens; a failed bill change never shows a success message. |
 | 4.16.2 | **Alignment pass:** tab icons centred, even period switch (Month · 3 months · FY · All time), no floating button over Home's quick actions, captioned *collected* bar, tool buttons on one line. |
 | 4.16.1 | Long vendor and event names fit their pickers (full-width, text shrinks to no less than 13px). |
