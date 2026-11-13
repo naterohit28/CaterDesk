@@ -44,10 +44,10 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], vendors: [],
   await test('G-32: client acknowledges 530 (30 extra) of the claimed 560: 30 accepted, 30 disputed, both kept', async () => {
     await openCounts('dinner');
     const id = (await status('dinner')).requests[0].id;
-    await p.fill(`[data-accept="${id}"]`, '30'); await p.locator(`[data-action="count-accept"][data-id="${id}"]`).click(); await p.waitForTimeout(400);
+    await p.fill(`[data-accept="${id}"]`, '30'); await p.selectOption(`[data-evidence="${id}"]`, 'written'); await p.locator(`[data-action="count-accept"][data-id="${id}"]`).click(); await p.waitForTimeout(400);
     const s = await status('dinner');
     assert.deepEqual([s.accepted, s.disputed, s.unbilled, s.billed], [30, 30, 30, 0]);
-    assert.match(await p.locator('#count-body').innerText(), /accepted 30 · disputed 30/);
+    assert.match(await p.locator('#count-body').innerText(), /accepted 30 · written · disputed 30/);
     assert.equal((await ev()).billing, 405250, 'accepting does not bill by itself');
   });
 

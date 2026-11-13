@@ -465,6 +465,12 @@ export async function prepareImport(payload) {
         || !Array.isArray(c.counts) || c.counts.some(x => !x || !Number.isSafeInteger(x.n) || x.n < 0 || typeof x.at !== 'string')
         || !Array.isArray(c.requests) || c.requests.some(r => !r || !Number.isSafeInteger(r.qty) || r.qty <= 0 || !['requested', 'approved'].includes(r.status)
           || (r.status === 'approved' && !(Number.isSafeInteger(r.accepted) && r.accepted >= 0 && r.accepted <= r.qty)) || (amount(r.rate, 'extra plate rate'), false))))) throw new Error('Invalid guest count');
+      if (row.guestCounts && Object.values(row.guestCounts).some(c => c.requests.some(r => (r.evidence !== undefined && !['written', 'verbal'].includes(r.evidence)) || (r.text !== undefined && typeof r.text !== 'string')))) throw new Error('Invalid guest count');
+      if (row.countPolicy !== undefined && (typeof row.countPolicy !== 'object' || row.countPolicy === null || Array.isArray(row.countPolicy)
+        || ['method', 'counter', 'rep', 'repPhone', 'rules'].some(k => row.countPolicy[k] !== undefined && (typeof row.countPolicy[k] !== 'string' || row.countPolicy[k].length > 2000))
+        || (row.countPolicy.method && !COUNT_METHOD_IDS.includes(row.countPolicy.method)))) throw new Error('Invalid count arrangement');
+      if (row.functionSheet !== undefined && (typeof row.functionSheet !== 'object' || row.functionSheet === null || Array.isArray(row.functionSheet)
+        || ['timings', 'setup'].some(k => row.functionSheet[k] !== undefined && (typeof row.functionSheet[k] !== 'string' || row.functionSheet[k].length > 4000)))) throw new Error('Invalid function sheet');
       if (row.billChanges !== undefined && (!Array.isArray(row.billChanges) || row.billChanges.some(b => !b || typeof b.reason !== 'string' || (amount(b.from, 'bill'), amount(b.to, 'bill'), false)))) throw new Error('Invalid bill history');
       if (row.orders?.some(o => o?.messages !== undefined && (!Array.isArray(o.messages) || o.messages.some(m => !m || typeof m.text !== 'string' || !['prepared', 'opened', 'sent', 'confirmed'].includes(m.status))))) throw new Error('Invalid order messages');
       if (row.additional !== undefined && typeof row.additional !== 'boolean') throw new Error('Invalid extra flag');
@@ -543,7 +549,8 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.10.0';
+export const APP_VERSION = '4.11.0';
+const COUNT_METHOD_IDS = ['tokens', 'tally', 'gate', 'coupons', 'joint', 'other'];
 export async function checkAndMigrate() {
   await openDB();
   const storedVer = await getMeta('app_version');
