@@ -5,7 +5,7 @@ const { chromium, devices } = require('playwright');
 const fs = require('fs');
 const REPORT_ONLY = process.env.UI_AUDIT_REPORT === '1';
 
-const day = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+const day = n => { const d = new Date(); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };   // local date, as the app uses
 const DATA = {
   version: 'ffv2', photos: [],
   vendors: [

@@ -236,6 +236,12 @@ html.dark .btn-danger { background: #DC2626; }
 .tool-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); margin-top: var(--s3); }
 .tool-row .btn-sm { width: 100%; min-height: 40px; justify-content: center; padding: 0 var(--s2); white-space: nowrap; overflow: hidden; }
 .tool-row .btn-sm:last-child:nth-child(odd) { grid-column: 1 / -1; }
+/* Quote lines: meal | guests | rate | remove, or item (2 cols) | amount | remove */
+.q-line, .q-head { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, .8fr) minmax(0, .9fr) var(--tap); gap: var(--s2); align-items: center; margin-bottom: var(--s2); }
+.q-head { margin-bottom: 4px; font-size: var(--fs-xs); font-weight: 600; color: var(--text-2); }
+.q-head span { padding-left: 2px; }
+.tool-row.three { grid-template-columns: repeat(3, 1fr); }
+.tool-row.three .btn-sm, .tool-row.three .btn-sm:last-child { grid-column: auto; }
 .f-chip {
   flex-shrink: 0; min-height: 36px; padding: 0 var(--s3); border-radius: var(--r-full);
   border: 1px solid var(--line-strong); background: var(--surface); color: var(--text-2);

@@ -211,6 +211,43 @@ export function equalSplit(totalRupees, n) {
   return Array.from({ length: n }, (_, i) => fromPaise(i === n - 1 ? totalP - each * (n - 1) : each));
 }
 
+/* ── QUOTATIONS (spec §6.1, §6.3–6.6, Q-01, G-03) ── */
+/* A quote is a numbered version on the event: meal lines (guests × rate, each meal on its own rate), extra items and
+   discounts. A draft can be edited; once sent it is frozen and a change is a new version, so no sent or accepted quote
+   is ever overwritten. Amounts are before any applicable GST: tax is not calculated here until the owner's GST rules
+   are approved (O-01/O-02). Accepting a version changes nothing by itself: the owner confirms it as the event's bill. */
+export const QUOTE_STATUS = { draft: ['Draft', 'मसुदा', 'due'], sent: ['Sent', 'पाठवले', ''], accepted: ['Accepted', 'मान्य', 'pos'], declined: ['Declined', 'नाकारले', 'neg'] };
+export function quoteTotal(q) {
+  const lines = (q?.lines || []).map(l => {
+    const totalP = l.kind === 'meal' ? (Number(l.guests) || 0) * toPaise(l.rate || 0) : l.kind === 'discount' ? -toPaise(l.amt || 0) : toPaise(l.amt || 0);
+    return { ...l, totalP, total: fromPaise(totalP) };
+  });
+  const totalP = lines.reduce((s, l) => s + l.totalP, 0);
+  return { lines, totalP, total: fromPaise(totalP) };
+}
+export function checkQuote(q) {
+  const lines = q?.lines || [];
+  if (!lines.some(l => l.kind === 'meal' || l.kind === 'item')) return 'Add at least one meal or item';
+  for (const l of lines) {
+    if (l.kind === 'meal' && !(Number.isSafeInteger(Number(l.guests)) && Number(l.guests) > 0 && Number(l.rate) > 0)) return 'Each meal needs guests and a rate';
+    if (l.kind !== 'meal' && !(String(l.label || '').trim() && Number(l.amt) > 0)) return 'Each item or discount needs a name and an amount';
+    if ([l.rate, l.amt].some(v => v != null && v !== '' && Math.abs(Number(v) * 100 - Math.round(Number(v) * 100)) > .001)) return 'Use at most two decimals';
+  }
+  if (new Set(lines.filter(l => l.kind === 'meal').map(l => l.meal)).size !== lines.filter(l => l.kind === 'meal').length) return 'Each meal can appear only once';
+  if (quoteTotal(q).totalP <= 0) return 'The discount is more than the quote';
+  return '';
+}
+// The next draft: a copy of the latest version, or the event's meal plan when there is no quote yet
+export function nextQuoteDraft(ev) {
+  const last = (ev.quotes || []).at(-1);
+  const lines = last ? structuredClone(last.lines)
+    : MEAL_ORDER.filter(m => ev.mealPlan?.[m]?.guests > 0).map(m => ({ kind: 'meal', meal: m, guests: ev.mealPlan[m].guests, rate: ev.mealPlan[m].rate }));
+  return { v: (last?.v || 0) + 1, status: 'draft', lines: lines.length ? lines : [{ kind: 'meal', meal: 'dinner', guests: Number(ev.guests) || '', rate: '' }],
+    showRates: last ? last.showRates !== false : true, terms: last?.terms || '' };
+}
+// A version is superseded when a later one was sent or accepted
+export const quoteSuperseded = (ev, q) => (ev.quotes || []).some(o => o.v > q.v && ['sent', 'accepted'].includes(o.status));
+
 /* ── FINAL SETTLEMENT (spec §6.7, §10.3, G-35) ── */
 /* What the client was billed, what they paid, and what is still owed are kept apart. A lower payment never
    changes the bill by itself: the balance stays outstanding (optionally marked disputed) until the owner

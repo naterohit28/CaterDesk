@@ -474,6 +474,13 @@ export async function prepareImport(payload) {
       if (row.billChanges !== undefined && (!Array.isArray(row.billChanges) || row.billChanges.some(b => !b || typeof b.reason !== 'string' || (amount(b.from, 'bill'), amount(b.to, 'bill'), false)
         || (b.kind !== undefined && !['discount', 'waiver', 'writeoff'].includes(b.kind)) || (b.ack !== undefined && !['written', 'verbal', 'none'].includes(b.ack))
         || (b.kind && !(b.to < b.from && b.reason.trim()))))) throw new Error('Invalid bill history');
+      if (row.quotes !== undefined && (!Array.isArray(row.quotes) || row.quotes.length > 100 || row.quotes.some(qt => !qt || !Number.isSafeInteger(qt.v) || qt.v < 1
+        || !['draft', 'sent', 'accepted', 'declined'].includes(qt.status) || !Array.isArray(qt.lines) || qt.lines.length > 50
+        || qt.lines.some(l => !l || (l.kind === 'meal' ? !['breakfast', 'lunch', 'hightea', 'dinner'].includes(l.meal) || !Number.isSafeInteger(l.guests) || l.guests < 0 || (amount(l.rate, 'quote rate'), false)
+          : !['item', 'discount'].includes(l.kind) || typeof l.label !== 'string' || l.label.length > 200 || (amount(l.amt, 'quote amount'), false)))
+        || [qt.terms, qt.text, qt.by].some(x => x !== undefined && (typeof x !== 'string' || x.length > 5000))
+        || (qt.evidence !== undefined && !['written', 'verbal'].includes(qt.evidence)))
+        || new Set(row.quotes.map(qt => qt.v)).size !== row.quotes.length)) throw new Error('Invalid quote');
       if (row.dispute !== undefined && (!row.dispute || typeof row.dispute.reason !== 'string' || !row.dispute.reason.trim() || typeof row.dispute.at !== 'string' || (amount(row.dispute.amt, 'disputed amount'), false))) throw new Error('Invalid dispute');
       if (row.orders?.some(o => o?.messages !== undefined && (!Array.isArray(o.messages) || o.messages.some(m => !m || typeof m.text !== 'string' || !['prepared', 'opened', 'sent', 'confirmed'].includes(m.status))))) throw new Error('Invalid order messages');
       if (row.additional !== undefined && typeof row.additional !== 'boolean') throw new Error('Invalid extra flag');
@@ -557,7 +564,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.16.3';
+export const APP_VERSION = '4.17.0';
 const COUNT_METHOD_IDS = ['tokens', 'tally', 'gate', 'coupons', 'joint', 'other'];
 export async function checkAndMigrate() {
   await openDB();

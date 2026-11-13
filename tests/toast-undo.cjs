@@ -4,7 +4,7 @@ const BASE_URL = process.env.TEST_BASE_URL; if (!BASE_URL || !/^http:\/\/127\.0\
 const { chromium, devices } = require('playwright');
 const assert = require('node:assert/strict');
 
-const day = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+const day = n => { const d = new Date(); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };   // local date, as the app uses
 const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], vendors: [],
   events: [{ id: 'e1', name: 'Sample Party', date: day(-2), venue: 'Sample Hall', type: 'Wedding – लग्न', billing: 100000, guests: 100, photoIds: [] }],
   expenses: [{ id: 'x1', evId: 'e1', cat: 'Labour', head: 'Cook – स्वयंपाकी', amt: 5000, date: day(-2), pay: 'paid' },
