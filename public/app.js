@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.4.1';
+const APP_BUILD = '4.4.2';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -339,6 +339,7 @@ function showLoading(show) {
 
 /* ── TOAST ───────────────────────────────────────── */
 // action: optional { label, run } — shows a button (e.g. Undo) and keeps the toast up longer
+const TOAST_ACTION_MS = 8000;
 function showToast(msg, type = 'success', action = null) {
   const t   = q('toast');
   const btn = q('toast-action');
@@ -348,10 +349,13 @@ function showToast(msg, type = 'success', action = null) {
   btn.textContent = action ? action.label : '';
   btn.onclick = action ? () => { hideToast(); action.run(); } : null;
   clearTimeout(t._t);
-  t._t = action ? null : setTimeout(hideToast, type === 'error' ? 10000 : 4000);
+  // A message with a button (e.g. Undo) stays a little longer, then closes by itself. The change it offers to undo
+  // is already saved, so closing it only ends the chance to undo; it never loses or changes data.
+  t._t = setTimeout(hideToast, action ? TOAST_ACTION_MS : type === 'error' ? 10000 : 4000);
 }
 
 function hideToast() {
+  clearTimeout(q('toast')._t);
   q('toast').className = '';
   q('toast-action').onclick = null;
 }
