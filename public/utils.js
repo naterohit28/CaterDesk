@@ -243,20 +243,36 @@ export const VPAY_RULES = {
   date:  { required: true, date: true, requiredMsg: 'Date – दिनांक आवश्यक आहे' }
 };
 
+/* ── MONEY IN PAISE ──────────────────────────────── */
+// Amounts are stored in rupees (up to two decimals, as validated on import and entry). Totals are added
+// in whole paise so they are exact (no 0.1 + 0.2 drift). One rounding rule: half a paisa or more rounds
+// away from zero.
+export function toPaise(rupees) {
+  const n = Number(rupees);
+  if (!Number.isFinite(n)) return 0;
+  const [whole, frac] = Math.abs(n).toFixed(6).split('.');
+  const p = Number(whole) * 100 + Number(frac.slice(0, 2)) + (Number(frac[2]) >= 5 ? 1 : 0);
+  return n < 0 ? -p : p;
+}
+export const fromPaise = p => p / 100;
+export const sumRupees = (list, get = x => x.amt) => fromPaise(list.reduce((s, x) => s + toPaise(get(x)), 0));
+
 /* ── BUSINESS CALCULATIONS ───────────────────────── */
 export function calcEventReceived(eventId, cPays) {
-  return cPays.filter(p => p.evId === eventId).reduce((s, p) => s + (Number(p.amt) || 0), 0);
+  return sumRupees(cPays.filter(p => p.evId === eventId));
 }
 
+// Every recorded expense counts, paid or still on credit: an unpaid bill is a recorded cost (D-4)
 export function calcEventExpenses(eventId, expenses) {
-  return expenses.filter(x => x.evId === eventId).reduce((s, x) => s + (Number(x.amt) || 0), 0);
+  return sumRupees(expenses.filter(x => x.evId === eventId && !x.draft));
 }
 
+// `profit` is the event's contribution (bill − its recorded costs), before company overheads
 export function calcEventPL(ev, cPays, expenses) {
   const received = calcEventReceived(ev.id, cPays);
   const expTotal = calcEventExpenses(ev.id, expenses);
-  const pending  = ev.billing - received;
-  const profit   = ev.billing - expTotal;
+  const pending  = fromPaise(toPaise(ev.billing) - toPaise(received));
+  const profit   = fromPaise(toPaise(ev.billing) - toPaise(expTotal));
   const margin   = ev.billing > 0 ? Math.round(profit / ev.billing * 100) : 0;
   const pctPaid  = ev.billing > 0 ? Math.min(100, received / ev.billing * 100) : 0;
   // Per-plate figures need a guest count; budget figures need an expected cost
@@ -276,18 +292,20 @@ export function calcEventPL(ev, cPays, expenses) {
 export function costByCategory(events, expenses) {
   const costs = new Map();
   for (const x of expenses) {
+    if (x.draft) continue;
     if (!costs.has(x.evId)) costs.set(x.evId, new Map());
     const m = costs.get(x.evId);
-    m.set(x.cat || 'Other', (m.get(x.cat || 'Other') || 0) + (Number(x.amt) || 0));
+    m.set(x.cat || 'Other', fromPaise(toPaise(m.get(x.cat || 'Other') || 0) + toPaise(x.amt)));
   }
   return costs;
 }
 
-export function costVsUsual(ev, events, costs) {
+// "Usual" comes only from reconciled events (`done`: their ids), whose costs are known to be complete
+export function costVsUsual(ev, events, costs, done = new Set()) {
   const guests = Number(ev.guests) || 0;
   const mine = costs.get(ev.id);
   if (ev.outsourced || !guests || !mine) return null;
-  const usable = e => e.id !== ev.id && !e.outsourced && Number(e.guests) > 0 && costs.has(e.id);
+  const usable = e => e.id !== ev.id && !e.outsourced && Number(e.guests) > 0 && costs.has(e.id) && done.has(e.id);
   let peers = ev.menu ? events.filter(e => usable(e) && e.menu === ev.menu) : [];
   let basis = peers.length ? 'menu' : 'type';
   if (!peers.length) peers = events.filter(e => usable(e) && e.type === ev.type);
@@ -303,11 +321,13 @@ export function costVsUsual(ev, events, costs) {
   return { basis, n: peers.length, guests, rows };
 }
 
-/* Vendor price creep: for each vendor and item, cost per plate at their latest event against
-   their average per plate at earlier events. Per plate, so a bigger event is not a price rise.
-   Needs guest counts; outsourced events are left out. Flags rises of 8% or more. */
+/* Vendor spend per guest: for each vendor and item, what you paid per plate at their latest event against
+   their average per plate at earlier events. This is spend per guest, not the vendor's unit price: a
+   change of menu, quantity or service also moves it. Reconciled events only (a half-entered event would
+   look like a change); outsourced events and events without guests are left out. Flags rises of 8%+. */
 export function priceCreep(expenses, events, minPct = 8) {
-  const evs = new Map(events.filter(e => Number(e.guests) > 0 && !e.outsourced).map(e => [e.id, e]));
+  const done = reconciledIds(events, expenses);
+  const evs = new Map(events.filter(e => Number(e.guests) > 0 && !e.outsourced && done.has(e.id)).map(e => [e.id, e]));
   const sums = new Map();   // venId|head → Map evId → amount
   for (const x of expenses) {
     if (!x.venId || !x.head || !evs.has(x.evId)) continue;
@@ -331,17 +351,93 @@ export function priceCreep(expenses, events, minPct = 8) {
   return out.sort((a, b) => b.pct - a.pct);
 }
 
-/* What a menu has actually cost per plate: past events on that menu with a guest count and
-   recorded costs (events with no costs would drag the average to zero). */
+/* What a menu has actually cost per plate: reconciled events on that menu with a guest count. Events whose
+   costs are still pending would understate the cost (G-22). */
 export function menuCostPerPlate(menuId, events, expenses, excludeId = '') {
+  const done = reconciledIds(events, expenses);
   const spent = new Map();
-  for (const x of expenses) spent.set(x.evId, (spent.get(x.evId) || 0) + (Number(x.amt) || 0));
+  for (const x of expenses) if (!x.draft) spent.set(x.evId, (spent.get(x.evId) || 0) + toPaise(x.amt));
   let guests = 0, cost = 0, n = 0;
   for (const e of events) {
-    if (e.menu !== menuId || e.id === excludeId || e.outsourced || !(Number(e.guests) > 0) || !spent.get(e.id)) continue;
+    if (e.menu !== menuId || e.id === excludeId || e.outsourced || !(Number(e.guests) > 0) || !spent.get(e.id) || !done.has(e.id)) continue;
     guests += Number(e.guests); cost += spent.get(e.id); n++;
   }
-  return n ? { n, perPlate: Math.round(cost / guests) } : null;
+  return n ? { n, perPlate: Math.round(fromPaise(cost) / guests) } : null;
+}
+
+/* ── RECONCILIATION (D-4, P1-B) ──────────────────── */
+/* Two separate things:
+   - Operational status, from the date only: upcoming, today or held. Never stored.
+   - Financial reconciliation, stored on the event as `recon` when the owner confirms that every cost is in
+     (the checks below). Until then the event's contribution is provisional. `recon` keeps a snapshot of
+     everything that decides the contribution: each cost (id and paise), the bill and the guest count. If any
+     of them changes afterwards, the event is "reopened": provisional again, with what changed shown, and
+     nothing rewritten. Each reconcile and reopen is appended to `reconHistory`, which is never edited.
+   Paid or unpaid makes no difference: an unpaid bill is a recorded cost. Old events have no `recon` and are
+   simply pending; no existing record is changed. */
+export const RECON_CHECKS = [
+  { id: 'bills',  en: 'All supplier and vendor bills for this event are entered, paid or not', mr: 'या कार्यक्रमाची सर्व विक्रेता बिले नोंदवली (भरलेली असो वा नसो)' },
+  { id: 'shared', en: 'Shared purchases (stock or one bill for several events) have this event’s share entered', mr: 'एकत्र खरेदीचा (साठा / अनेक कार्यक्रमांचे एक बिल) या कार्यक्रमाचा वाटा नोंदवला' },
+  { id: 'final',  en: 'Final guest count, extra plates and bill adjustments with the client are entered', mr: 'अंतिम पाहुणे, जास्त ताटे व ग्राहकाशी बिलातील बदल नोंदवले' }
+];
+
+export function eventStage(ev) {
+  const d = daysSince(ev.date);
+  return d < 0 ? 'upcoming' : d === 0 ? 'today' : 'held';
+}
+
+function costRows(evId, expenses) { return expenses.filter(x => x.evId === evId && !x.draft); }
+function snapshotOf(ev, rows) {
+  const keys = rows.map(x => `${x.id}:${toPaise(x.amt)}`).sort();
+  let h = 2166136261;   // FNV-1a over the cost list: catches a changed, added or removed cost even if the total is equal
+  for (const ch of keys.join('|')) { h ^= ch.codePointAt(0); h = Math.imul(h, 16777619) >>> 0; }
+  return { n: keys.length, costPaise: rows.reduce((s, x) => s + toPaise(x.amt), 0), sig: h.toString(36), billPaise: toPaise(ev.billing), guests: Number(ev.guests) || 0 };
+}
+export function reconSnapshot(ev, expenses) { return snapshotOf(ev, costRows(ev.id, expenses)); }
+
+function compare(ev, snap) {
+  const r = ev.recon;
+  if (!r || typeof r !== 'object') return { state: 'pending', changes: [] };
+  const changes = [];
+  if (snap.sig !== r.sig || snap.n !== r.n || snap.costPaise !== r.costPaise) changes.push({ what: 'costs', from: fromPaise(r.costPaise || 0), to: fromPaise(snap.costPaise) });
+  if (snap.billPaise !== r.billPaise) changes.push({ what: 'bill', from: fromPaise(r.billPaise || 0), to: fromPaise(snap.billPaise) });
+  if (snap.guests !== r.guests) changes.push({ what: 'guests', from: r.guests || 0, to: snap.guests });
+  return changes.length ? { state: 'reopened', changes, at: r.at } : { state: 'reconciled', changes, at: r.at };
+}
+// { state: 'pending' | 'reconciled' | 'reopened', changes: [{ what: 'costs'|'bill'|'guests', from, to }], at }
+export function reconStatus(ev, expenses) { return compare(ev, reconSnapshot(ev, expenses)); }
+
+export function reconciledIds(events, expenses) {
+  const by = new Map();
+  for (const x of expenses) { if (x.draft) continue; if (!by.has(x.evId)) by.set(x.evId, []); by.get(x.evId).push(x); }
+  return new Set(events.filter(e => e.recon && compare(e, snapshotOf(e, by.get(e.id) || [])).state === 'reconciled').map(e => e.id));
+}
+
+// What stops an event being reconciled right now (shown in the checklist; the ticks are the owner's to give)
+export function reconBlockers(ev, expenses, drafts = []) {
+  const out = [];
+  if (eventStage(ev) === 'upcoming') out.push({ en: 'The event has not happened yet', mr: 'कार्यक्रम अजून झालेला नाही' });
+  if (!costRows(ev.id, expenses).length) out.push({ en: 'No costs are recorded for this event', mr: 'या कार्यक्रमाचा खर्च नोंदवलेला नाही' });
+  const open = drafts.filter(d => d.evId === ev.id).length;
+  if (open) out.push({ en: `${open} bill photo${open > 1 ? 's' : ''} for this event still to be filled in`, mr: `या कार्यक्रमाची ${open} बिले भरायची बाकी` });
+  return out;
+}
+
+// The record fields to save when the owner reconciles: a new snapshot, and the history with this entry added
+export function reconcileFields(ev, expenses, checks, at = new Date().toISOString()) {
+  const snap = reconSnapshot(ev, expenses);
+  const prior = compare(ev, snap);
+  const history = Array.isArray(ev.reconHistory) ? [...ev.reconHistory] : [];
+  if (prior.state === 'reopened') history.push({ action: 'reopened', at, since: prior.at, changes: prior.changes });
+  history.push({ action: 'reconciled', at, checks: [...checks], costPaise: snap.costPaise, billPaise: snap.billPaise, guests: snap.guests });
+  return { recon: { at, checks: [...checks], ...snap }, reconHistory: history };
+}
+
+// The owner reopens a reconciled event by hand (e.g. a late bill is expected): the snapshot is removed, the history kept
+export function reopenFields(ev, reason = 'manual', at = new Date().toISOString()) {
+  const history = Array.isArray(ev.reconHistory) ? [...ev.reconHistory] : [];
+  history.push({ action: 'reopened', at, since: ev.recon?.at || '', reason });
+  return { recon: null, reconHistory: history };
 }
 
 /* Usual costs for an event, taken from the latest other event with costs on the same menu
@@ -554,14 +650,15 @@ export function generateInsights(events, cPays, expenses, vendors, vPays = []) {
       mr: `${b(missing.length)} मागील कार्यक्रमांचा खर्च नोंदवलेला नाही — नफा जास्त दिसतो` });
   }
 
-  // Best profit event (only among events that have costs, or the "best" is just the uncosted one)
-  const costed = evPL.filter(r => !missing.some(m => m.id === r.ev.id));
+  // Best event: reconciled events only, whose contribution is final (a provisional figure can look best)
+  const done = reconciledIds(events, expenses);
+  const costed = evPL.filter(r => done.has(r.ev.id));
   const best = costed.length ? costed.reduce((a, c) => a.profit > c.profit ? a : c, costed[0]) : null;
   if (best && best.profit > 0) {
     const n = b(esc(best.ev.name)), amt = b(fmtCurrency(best.profit));
     insights.push({ type: 'success', icon: 'trophy',
-      en: `Best event: ${n} with ${amt} profit`,
-      mr: `सर्वोत्तम कार्यक्रम: ${n} — ${amt} नफा` });
+      en: `Best reconciled event: ${n} with ${amt} contribution`,
+      mr: `सर्वोत्तम जुळवलेला कार्यक्रम: ${n} — ${amt} योगदान` });
   }
 
   // Loss-making events

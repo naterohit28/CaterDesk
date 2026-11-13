@@ -4,6 +4,8 @@ const {chromium}=require('playwright');const fs=require('fs');const assert=requi
 const ev={id:'e',name:'Wedding',date:'2026-10-25',venue:'Pune',billing:10000,photoIds:[]};const empty=()=>({version:'ffv2',events:[],expenses:[],vendors:[],cPays:[],vPays:[],photos:[]});
 const db=(fn,arg)=>p.evaluate(async({fn,arg})=>new Function('d','arg','return ('+fn+')(d,arg)')(await import('./db.js'),arg),{fn:fn.toString(),arg});
 const seed=async(a)=>{await db(async(d,a)=>{await d.setMeta('pin_hash',null);await d.importAllData(a)},a||{...empty(),events:[ev]});await p.evaluate(()=>{localStorage.removeItem('ffv2_last');localStorage.removeItem('ffv2_expdraft')});await p.reload();await p.waitForSelector('#kpi .card');};
+// Reference events used as benchmarks must be reconciled (v4.2.0, G-22): marks them as the owner would
+const reconcileIds=async ids=>{await p.evaluate(async ids=>{const db=await import('./db.js'),u=await import('./utils.js');const d=await db.exportAllData();for(const id of ids){const {_rev,...e}=d.events.find(x=>x.id===id);await db.putOne('events',{...e,...u.reconcileFields(e,d.expenses,['bills','shared','final'])})}},ids);await p.reload();await p.waitForSelector('#kpi .card');};
 await test('valid all-store roundtrip',async()=>{const a=empty();a.events=[ev];a.vendors=[{id:'v',name:'Vendor'}];a.expenses=[{id:'x',evId:'e',venId:'v',amt:100,date:'2026-10-25',pay:'credit',billIds:['b']},{id:'draft',draft:true,evId:'e',amt:0}];a.cPays=[{id:'cp',evId:'e',amt:10,date:'2026-10-25'}];a.vPays=[{id:'vp',venId:'v',amt:10,date:'2026-10-25'}];a.photos=[{id:'b',expenseId:'x',data:'data:image/png;base64,AA=='}];await seed(a);const before=await db(async d=>d.exportAllData());await db(async(d,a)=>d.importAllData(a),before);const after=await db(async d=>d.exportAllData());for(const k of ['events','expenses','vendors','cPays','vPays','photos']){assert.equal(before[k].length,after[k].length);assert.deepEqual(before[k].map(({_rev,...r})=>r),after[k].map(({_rev,...r})=>r));}return 'All six stores and drafts retained';});
 await test('malformed restore preserves original',async()=>{await seed();let rejected=false;try{await db(async(d,a)=>d.importAllData(a),{...empty(),events:[{name:'Missing ID'}]})}catch{rejected=true}assert(rejected);assert.equal((await db(async d=>d.getAll('events'))).length,1);});
 await test('late transaction failure rolls back clears and writes',async()=>{await seed();const result=await db(async(d,a)=>{const native=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(...args){if(this.name==='vendors')throw new DOMException('Injected failure','QuotaExceededError');return native.apply(this,args)};let rejected=false;try{await d.importAllData(a)}catch{rejected=true}finally{IDBObjectStore.prototype.put=native}return {rejected,events:await d.getAll('events')}},{...empty(),events:[{...ev,id:'new'}],vendors:[{id:'v',name:'Vendor'}]});assert(result.rejected);assert.equal(result.events[0].id,'e');});
@@ -93,12 +95,12 @@ await test('menu fills bill and expected cost; checklist shows missed usual cost
  await seed({...empty(),vendors:[{id:'murugan',name:'Murugan',cat:'Live Counter'}],
   events:[{...ev,id:'g1',name:'Golden One',menu:'golden',guests:200,date:'2026-09-01'},{...ev,id:'g2',name:'Golden Two',menu:'golden',guests:100,date:recent}],
   expenses:[{id:'a',evId:'g1',cat:'Live Counter',head:dosa,amt:60000,date:'2026-09-01',pay:'paid',venId:'murugan'},{id:'b',evId:'g1',cat:'Labour',head:cook,amt:40000,date:'2026-09-01',pay:'paid'},
-            {id:'c',evId:'g2',cat:'Labour',head:cook,amt:20000,date:recent,pay:'paid'}]});
+            {id:'c',evId:'g2',cat:'Labour',head:cook,amt:20000,date:recent,pay:'paid'}]});await reconcileIds(['g1']);
  assert.match(await p.locator('#nudges').innerText(),/Check costs[\s\S]*Golden Two[\s\S]*1 usual cost not recorded/);
  await p.locator('#n-events').click();await p.locator('#fab').click();await p.waitForSelector('#ev-modal.active');
  await p.locator('#ev-menu').selectOption('golden');await p.locator('#ev-guests').fill('250');
  assert.equal(await p.locator('#ev-billing').inputValue(),'225000','Golden 101-300 pax at 900');
- assert.equal(await p.locator('#ev-budget').inputValue(),String(Math.round(120000/300)*250),'expected cost from past Golden cost per plate');
+ assert.equal(await p.locator('#ev-budget').inputValue(),String(Math.round(100000/200)*250),'expected cost from reconciled Golden events only (Golden Two is still costs pending)');
  await p.locator('#ev-guests').fill('400');assert.equal(await p.locator('#ev-billing').inputValue(),'320000','301+ pax at 800');
  assert.deepEqual(await p.locator('#ev-menu optgroup').evaluateAll(g=>g.map(x=>x.label.split(' – ')[0])),['Buffet','Banana leaf']);
  await p.locator('#ev-menu').selectOption('maharashtrian');await p.locator('#ev-guests').fill('100');assert.equal(await p.locator('#ev-billing').inputValue(),'80000','banana leaf 50-150 pax at 800');
@@ -114,7 +116,7 @@ await test('menu fills bill and expected cost; checklist shows missed usual cost
  assert.match(await p.locator('#exp-amt').getAttribute('placeholder'),/60,000/);assert.equal(await p.locator('#exp-ev').inputValue(),'g2');
  await p.locator('#exp-amt').fill('30000');await p.locator('#btn-save-exp').click();await p.waitForTimeout(500);
  assert.match(await p.locator('#tab-evdetail').innerText(),/All recorded/);
- await p.locator('#n-summary').click();await p.locator('#tab-summary [data-period-seg] [data-id="all"]').click();assert.match(await p.locator('#summary-content').innerText(),/Menu profit ranking[\s\S]*1\. Golden/);
+ await p.locator('#n-summary').click();await p.locator('#tab-summary [data-period-seg] [data-id="all"]').click();assert.match(await p.locator('#summary-content').innerText(),/Menu contribution ranking[\s\S]*1\. Golden/);
 });
 await test('outsourced event saves vendor charge as credit and shows commission',async()=>{
  await seed({...empty(),events:[],vendors:[{id:'kaka',name:'Kaka Caterers',cat:'Live Counter'}]});
@@ -143,7 +145,7 @@ await test('v3.1: reopens last screen, resumes unsaved expense, vendor habits, c
   events:[{...ev,id:'a',name:'Golden A',menu:'golden',guests:100,date:'2026-08-01',billing:90000},{...ev,id:'b',name:'Golden B',menu:'golden',guests:100,date:'2026-09-01',billing:90000},{...ev,id:'s',name:'Soon Party',date:soonIso,billing:50000}],
   cPays:[{id:'cp',evId:'s',amt:20000,date:'2026-10-01'}],
   expenses:[{id:'1',evId:'a',cat:'Live Counter',head:chaat,amt:20000,date:'2026-08-01',pay:'credit',venId:'rajiv'},{id:'2',evId:'a',cat:'Labour',head:cook,amt:10000,date:'2026-08-01',pay:'paid',mode:'UPI'},
-            {id:'3',evId:'b',cat:'Live Counter',head:chaat,amt:30000,date:'2026-09-01',pay:'credit',venId:'rajiv'},{id:'4',evId:'b',cat:'Labour',head:cook,amt:10000,date:'2026-09-01',pay:'paid',mode:'UPI'}]});
+            {id:'3',evId:'b',cat:'Live Counter',head:chaat,amt:30000,date:'2026-09-01',pay:'credit',venId:'rajiv'},{id:'4',evId:'b',cat:'Labour',head:cook,amt:10000,date:'2026-09-01',pay:'paid',mode:'UPI'}]});await reconcileIds(['a','b']);
  // Cash: collect 1,60,000 (a, b overdue: 90k each; s: 30k) → to pay: 50,000 undated credit
  const cash=await p.locator('#cash-30').innerText();assert.match(cash,/Next 30 days[\s\S]*₹2,10,000[\s\S]*₹50,000[\s\S]*\+₹1,60,000/);
  // Cost vs usual: B's live counter 300/plate vs usual (from A) 200 → +50%
@@ -254,7 +256,7 @@ await test('v3.4: quote helper, receipt, price creep, labour sheet, quiet refres
   events:[{...ev,id:'g1',name:'Golden One',menu:'golden',guests:100,billing:85000,date:'2026-08-01'},{...ev,id:'g2',name:'Golden Two',menu:'golden',guests:200,billing:170000,date:'2026-09-01',mobile:'9876543210'}],
   expenses:[{id:'a',evId:'g1',cat:'Live Counter',head:dosa,amt:5000,date:'2026-08-01',pay:'paid',venId:'mur'},{id:'b',evId:'g1',cat:'Raw Material',head:'Grocery – किराणा',amt:45000,date:'2026-08-01',pay:'paid'},
             {id:'c',evId:'g2',cat:'Live Counter',head:dosa,amt:12000,date:'2026-09-01',pay:'paid',venId:'mur'},{id:'d',evId:'g2',cat:'Raw Material',head:'Grocery – किराणा',amt:88000,date:'2026-09-01',pay:'paid'}],
-  cPays:[{id:'cp1',evId:'g2',amt:50000,date:'2026-08-20',mode:'UPI'}]});
+  cPays:[{id:'cp1',evId:'g2',amt:50000,date:'2026-08-20',mode:'UPI'}]});await reconcileIds(['g1','g2']);
  // Big New event: full width above the other three
  const [ne,ae]=await p.locator('.qa-grid > .qa').evaluateAll(b=>b.slice(0,2).map(x=>x.getBoundingClientRect().width));assert(ne>ae*2.5,'New event spans the row');
  // Quiet refresh: no "Up to date" message
@@ -262,7 +264,7 @@ await test('v3.4: quote helper, receipt, price creep, labour sheet, quiet refres
  // Quote helper: Golden costs (50000+100000)/300 = 500/plate
  await p.locator('#n-events').click();await p.locator('#fab').click();await p.waitForSelector('#ev-modal.active');
  await p.locator('#ev-menu').selectOption('golden');await p.locator('#ev-guests').fill('250');
- const quote=await p.locator('#ev-quote').innerText();assert.match(quote,/Golden usually costs you ₹500\/plate \(2 events\)/);assert.match(quote,/margin is about 44%/);assert.match(quote,/quote at least ₹715\/plate/);assert.match(quote,/Card ₹900 · you actually billed ₹850\/plate on average \(2 events\)/);
+ const quote=await p.locator('#ev-quote').innerText();assert.match(quote,/Golden usually costs you ₹500\/plate \(2 reconciled events\)/);assert.match(quote,/margin is about 44%/);assert.match(quote,/quote at least ₹715\/plate/);assert.match(quote,/Card ₹900 · you actually billed ₹850\/plate on average \(2 events\)/);
  await p.locator('#ev-modal [data-action="close-modal"]').click();await p.waitForTimeout(150);
  // Receipt: WhatsApp link on the payment, with the account so far
  await p.locator('#ev-list [data-action="evdetail"]',{hasText:'Golden Two'}).click();await p.waitForSelector('#tab-evdetail .detail-name');
@@ -283,7 +285,8 @@ await test('v3.4: quote helper, receipt, price creep, labour sheet, quiet refres
  await p.locator('#n-events').click();await p.locator('#ev-list [data-action="evdetail"]',{hasText:'Golden One'}).click();await p.waitForSelector('[data-action="lab-edit"]');await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');
  await p.locator('#lab-rows [data-lab="0"] [data-k="role"]').selectOption(boys);await p.locator('#lab-rows [data-lab="0"] [data-k="role"]').selectOption(cook);
  assert(!(await p.locator('#btn-lab-copy').isHidden()),'copy from last event offered');await p.locator('#lab-modal [data-action="close-modal"]').click();await p.waitForTimeout(150);
- // Price creep: Murugan dosa 50/plate → 60/plate = +20%
+ // Price creep: Murugan dosa 50/plate → 60/plate = +20%. The labour sheet added costs to Golden Two, which reopened it; reconcile it again (spend benchmarks use reconciled events only)
+ await reconcileIds(['g2']);
  await p.locator('#n-vendors').click();await p.locator('#ven-list [data-action="vendetail"]',{hasText:'Murugan'}).click();await p.waitForSelector('#price-check');
  assert.match(await p.locator('#price-check').innerText(),/Dosa[\s\S]*₹60\/plate now · ₹50 before \(1 event\)[\s\S]*\+20%/);
  await p.locator('#n-summary').click();await p.locator('#tab-summary [data-period-seg] [data-id="all"]').click();assert.match(await p.locator('#price-creep').innerText(),/Murugan · Dosa[\s\S]*\+20%/);

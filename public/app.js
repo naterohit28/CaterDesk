@@ -15,7 +15,8 @@ import {
   uid, today, daysSince, fmtDate, fmtCurrency, esc,
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, daysUntil, addDays,
-  sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, parseMenu, dishCounter, learnedDishes,
+  sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
+  RECON_CHECKS, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -23,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.1.1';
+const APP_BUILD = '4.2.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -705,10 +706,12 @@ function periodLabel() {
 function rHome() {
   renderPeriodSegs();
   const P = sliceByPeriod(D, period);
-  const tb = P.events.reduce((s, e) => s + e.billing, 0);
-  const te = P.expenses.reduce((s, x) => s + x.amt, 0);
-  const rc = P.cPays.reduce((s, p) => s + p.amt, 0);
-  const profit  = tb - te;
+  const tb = sumRupees(P.events, e => e.billing);
+  const te = sumRupees(P.expenses);
+  const rc = sumRupees(P.cPays);
+  const profit  = (Math.round(tb * 100) - Math.round(te * 100)) / 100;
+  const done = reconciledIds(P.events, P.expenses);
+  const provisional = P.events.filter(e => !done.has(e.id)).length;
   const pending = Math.max(0, tb - rc);
   const margin  = tb > 0 ? Math.round(profit / tb * 100) : 0;
   const collected = tb > 0 ? Math.min(100, rc / tb * 100) : 0;
@@ -716,11 +719,11 @@ function rHome() {
 
   q('kpi').innerHTML = `
     <div class="card hero">
-      <div class="label">${tr(`Net profit · ${pl.en}`, `निव्वळ नफा · ${pl.mr}`)}</div>
+      <div class="label">${tr(`Event contribution · ${pl.en}`, `कार्यक्रम योगदान · ${pl.mr}`)}</div>
       <div class="amt-xl ${profit < 0 ? 'neg' : ''}" style="margin-top:4px">${fmtCurrency(profit)}</div>
       <div class="hero-sub">${P.events.length ? tr(
-        `${margin}% margin on ${fmtCurrency(tb)} billed · ${P.events.length} event${P.events.length > 1 ? 's' : ''}`,
-        `${fmtCurrency(tb)} बिलावर ${margin}% मार्जिन · ${P.events.length} कार्यक्रम`)
+        `${margin}% margin on ${fmtCurrency(tb)} billed · ${P.events.length} event${P.events.length > 1 ? 's' : ''}${provisional ? ` · ${provisional} provisional` : ''}`,
+        `${fmtCurrency(tb)} बिलावर ${margin}% मार्जिन · ${P.events.length} कार्यक्रम${provisional ? ` · ${provisional} अंदाजे` : ''}`)
         : tr('No events in this period', 'या कालावधीत कार्यक्रम नाहीत')}</div>
       <div class="metrics">
         <div class="metric"><div class="label">Received – मिळाले</div><div class="amt-md pos">${fmtCurrency(rc)}</div></div>
@@ -743,7 +746,7 @@ function rHome() {
       <div class="sec"><span class="sec-title">Record costs – खर्च नोंदवा</span><span class="meta">${missing.length}</span></div>
       <div class="card">
         <div class="note alert"><span class="note-ic">${icon('receipt', 16)}</span>
-          <div>${tr('These events have no expenses yet, so their profit is overstated.', 'या कार्यक्रमांचा खर्च नोंदवलेला नाही, त्यामुळे नफा जास्त दिसतो.')}</div></div>
+          <div>${tr('These events have no expenses yet, so their contribution is overstated.', 'या कार्यक्रमांचा खर्च नोंदवलेला नाही, त्यामुळे योगदान जास्त दिसते.')}</div></div>
         <div class="list">${missing.slice(0, 5).map(e => `
           <div class="row" role="button" tabindex="0" data-action="evdetail" data-id="${esc(e.id)}">
             <div class="row-body"><div class="title-sm trunc" data-nl>${esc(e.name)}</div><div class="meta">${fmtDate(e.date)}</div></div>
@@ -974,7 +977,7 @@ function costingBlock(pl, noCosts) {
     <div class="metrics">
       <div class="metric"><div class="label">${tr(`Bill/plate · ${pl.guests}`, `बिल/ताट · ${pl.guests}`)}</div><div class="amt-md">${fmtCurrency(pl.billPerPlate)}</div></div>
       <div class="metric"><div class="label">Cost/plate – खर्च/ताट</div><div class="amt-md">${fmtCurrency(pl.costPerPlate)}</div></div>
-      <div class="metric"><div class="label">Profit/plate – नफा/ताट</div><div class="amt-md ${noCosts ? 'muted' : pl.profitPerPlate >= 0 ? 'pos' : 'neg'}">${fmtCurrency(pl.profitPerPlate)}</div></div>
+      <div class="metric"><div class="label">Contribution / plate – योगदान / ताट</div><div class="amt-md ${noCosts ? 'muted' : pl.profitPerPlate >= 0 ? 'pos' : 'neg'}">${fmtCurrency(pl.profitPerPlate)}</div></div>
     </div>` : '';
   const used = pl.budgetUsed || 0;
   const tone = used > 100 ? 'neg' : used >= 90 ? 'due' : 'pos';
@@ -996,7 +999,8 @@ function costingBlock(pl, noCosts) {
   return plate + budget + ask;
 }
 
-// Vendor page: items whose cost per plate has risen against this vendor's own past events
+// Vendor page: items whose spend per plate has risen against this vendor's own past reconciled events.
+// Spend per guest, not the vendor's unit rate: menu, quantity or service changes also move it.
 function priceCheckCard(vn) {
   const rises = priceCreep(D.expenses, D.events).filter(r => r.venId === vn.id);
   if (!rises.length) return '';
@@ -1004,10 +1008,10 @@ function priceCheckCard(vn) {
   return `<div class="sec"><span class="sec-title">Price check – दर तपासणी</span></div>
     <div class="card list" id="price-check">${rises.map(r => {
       const item = short(r.head);
-      const msg = `Namaste ${vn.name}! For ${item}, my recent bill (${r.ev.name}) came to ${fmtCurrency(r.latest)} per plate, against about ${fmtCurrency(r.avg)} per plate before. Can we keep the earlier rate? Thank you!`;
+      const msg = `Namaste ${vn.name}! For ${item}, my recent bill (${r.ev.name}) came to ${fmtCurrency(r.latest)} per plate, against about ${fmtCurrency(r.avg)} per plate before. Has your rate changed? Thank you!`;
       return `<div class="row" style="min-height:52px">
         <div class="row-body"><div class="title-sm trunc">${esc(item)}</div>
-          <div class="meta">${tr(`${fmtCurrency(r.latest)}/plate now · ${fmtCurrency(r.avg)} before (${r.n} event${r.n > 1 ? 's' : ''})`, `आता ${fmtCurrency(r.latest)}/ताट · आधी ${fmtCurrency(r.avg)}`)}</div></div>
+          <div class="meta">${tr(`Spend ${fmtCurrency(r.latest)}/plate now · ${fmtCurrency(r.avg)} before (${r.n} event${r.n > 1 ? 's' : ''})`, `खर्च आता ${fmtCurrency(r.latest)}/ताट · आधी ${fmtCurrency(r.avg)}`)}</div></div>
         <div class="meta" style="font-variant-numeric:tabular-nums">↑ +${r.pct}%</div>
         ${phone ? `<a class="del-btn" data-action="ext" href="https://wa.me/${esc(phone)}?text=${esc(encodeURIComponent(msg))}" target="_blank" rel="noopener" aria-label="Discuss rate on WhatsApp">${icon('message', 16)}</a>` : ''}
       </div>`;
@@ -1072,6 +1076,7 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
   const noCosts = isOverdue(ev) && !ev.outsourced && !exps.length;
   const outVen = ev.outsourced ? D.vendors.find(v => v.id === ev.outVenId) : null;
   const menu = menuById(ev.menu);
+  const recon = reconStatus(ev, D.expenses);
 
   q('tab-evdetail').innerHTML = `
     <div class="card pad">
@@ -1089,7 +1094,7 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
 
     ${noCosts ? `<div class="card">
       <div class="note alert"><span class="note-ic">${icon('receipt', 16)}</span>
-        <div>${tr('No expenses recorded yet — the profit below is not real until you add them.', 'अजून खर्च नोंदवलेला नाही — खर्च जोडेपर्यंत खालील नफा खरा नाही.')}</div></div>
+        <div>${tr('No expenses recorded yet — the contribution below is not real until you add them.', 'अजून खर्च नोंदवलेला नाही — खर्च जोडेपर्यंत खालील नफा खरा नाही.')}</div></div>
     </div>` : ''}
 
     <div class="card pad">
@@ -1101,7 +1106,7 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
       <div class="prog" style="margin-top:var(--s3)"><span style="width:${pct}%"></span></div>
       <div class="metrics">
         <div class="metric"><div class="label">Expenses – खर्च</div><div class="amt-md">${fmtCurrency(exTot)}</div></div>
-        <div class="metric"><div class="label">${ev.outsourced ? 'Commission – कमिशन' : 'Profit – नफा'}</div><div class="amt-md ${noCosts ? 'muted' : profit >= 0 ? 'pos' : 'neg'}">${fmtCurrency(profit)}</div></div>
+        <div class="metric"><div class="label">${contributionLabel(ev, recon)}</div><div class="amt-md ${noCosts ? 'muted' : profit >= 0 ? 'pos' : 'neg'}">${fmtCurrency(profit)}</div></div>
         <div class="metric"><div class="label">Margin – मार्जिन</div><div class="amt-md ${noCosts ? 'muted' : profit >= 0 ? 'pos' : 'neg'}">${ev.billing > 0 ? margin + '%' : '—'}</div></div>
       </div>
       ${ev.outsourced ? '' : costingBlock(plFull, noCosts)}
@@ -1112,6 +1117,8 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
           : `<a class="btn btn-wa" href="https://wa.me/${esc(phone)}" target="_blank" rel="noopener">${icon('message', 18)}WhatsApp</a>`}
       </div>` : ''}
     </div>
+
+    ${reconCard(ev, recon)}
 
     ${ev.notes ? `<div class="card pad"><div class="label">Notes – नोंदी</div><div class="notes-text" data-nl>${esc(ev.notes)}</div></div>` : ''}
 
@@ -1561,8 +1568,92 @@ function deliveriesCard() {
 }
 
 // Quiet comparison, per category, of this event's cost per plate with the usual for its menu/type
+/* ── RECONCILIATION (D-4) ── */
+// Event contribution = bill − this event's recorded costs, before overheads. Provisional until reconciled.
+function contributionLabel(ev, recon) {
+  const base = ev.outsourced ? ['Commission', 'कमिशन'] : ['Contribution', 'योगदान'];
+  return recon.state === 'reconciled' ? `${base[0]} – ${base[1]}` : `${base[0]} · provisional – ${base[1]} · अंदाजे`;
+}
+
+const RECON_WHAT = { costs: ['Costs', 'खर्च'], bill: ['Bill', 'बिल'], guests: ['Guests', 'पाहुणे'] };
+function changeText(c) {
+  const v = n => c.what === 'guests' ? String(n) : fmtCurrency(n);
+  return tr(`${RECON_WHAT[c.what][0]} ${v(c.from)} → ${v(c.to)}`, `${RECON_WHAT[c.what][1]} ${v(c.from)} → ${v(c.to)}`);
+}
+
+function reconHistoryList(ev) {
+  const h = Array.isArray(ev.reconHistory) ? ev.reconHistory : [];
+  if (!h.length) return '';
+  const line = e => e.action === 'reconciled'
+    ? tr(`Reconciled · costs ${fmtCurrency((e.costPaise || 0) / 100)} · bill ${fmtCurrency((e.billPaise || 0) / 100)}`, `जुळवले · खर्च ${fmtCurrency((e.costPaise || 0) / 100)}`)
+    : (e.changes?.length ? tr('Reopened: ', 'पुन्हा उघडले: ') + e.changes.map(changeText).join(', ') : tr('Reopened by you', 'तुम्ही पुन्हा उघडले'));
+  return `<details style="margin-top:var(--s3)"><summary class="meta" style="cursor:pointer">${tr(`History (${h.length})`, `इतिहास (${h.length})`)}</summary>
+    ${[...h].reverse().map(e => `<div class="meta" style="margin-top:4px">${fmtDate(String(e.at || '').slice(0, 10))} · ${line(e)}</div>`).join('')}</details>`;
+}
+
+function reconCard(ev, recon) {
+  if (eventStage(ev) === 'upcoming') return '';
+  const head = (chip, text) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:var(--s2)">${chip}${text}</div>`;
+  if (recon.state === 'reconciled') return `<div class="card pad" id="recon-card">
+    ${head(`<span class="chip pos">${tr('Reconciled', 'जुळवले')}</span>`, `<button type="button" class="btn-sm" data-action="recon-reopen">${tr('Reopen', 'पुन्हा उघडा')}</button>`)}
+    <div class="meta" style="margin-top:var(--s2)">${tr(`All costs confirmed on ${fmtDate(String(recon.at).slice(0, 10))}. This contribution is final for the event (before overheads).`, `${fmtDate(String(recon.at).slice(0, 10))} रोजी सर्व खर्च निश्चित. हे योगदान अंतिम आहे.`)}</div>
+    ${reconHistoryList(ev)}</div>`;
+  const reopened = recon.state === 'reopened';
+  return `<div class="card pad" id="recon-card">
+    ${head(`<span class="chip ${reopened ? 'neg' : 'due'}">${reopened ? tr('Changed after reconciling', 'जुळवल्यानंतर बदल') : tr('Costs pending', 'खर्च बाकी')}</span>`,
+      `<button type="button" class="btn-sm" data-action="recon-open">${reopened ? tr('Review', 'तपासा') : tr('Reconcile', 'जुळवा')}</button>`)}
+    <div class="meta" style="margin-top:var(--s2)">${reopened
+      ? `${recon.changes.map(changeText).join(' · ')} · ${tr(`since you reconciled on ${fmtDate(String(recon.at).slice(0, 10))}. The contribution is provisional again until you review it.`, 'पुन्हा तपासेपर्यंत योगदान अंदाजे.')}`
+      : tr('The contribution is provisional until you confirm every bill is in. Unpaid bills count as costs.', 'सर्व बिले आल्याचे निश्चित करेपर्यंत योगदान अंदाजे आहे. न भरलेली बिलेही खर्चच.')}</div>
+    ${reconHistoryList(ev)}</div>`;
+}
+
+let reconBase = null;   // the event as it was when the checklist opened
+function openReconModal() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  reconBase = structuredClone(ev);
+  const pl = calcEventPL(ev, D.cPays, D.expenses);
+  const exps = D.expenses.filter(x => x.evId === ev.id);
+  const credit = sumRupees(exps.filter(x => x.pay === 'credit'));
+  const blockers = reconBlockers(ev, D.expenses, D.drafts);
+  q('recon-sum').innerHTML = `
+    <div>${tr(`Costs recorded: <b>${fmtCurrency(pl.expTotal)}</b> in ${exps.length} entr${exps.length === 1 ? 'y' : 'ies'}`, `नोंदलेला खर्च: <b>${fmtCurrency(pl.expTotal)}</b> (${exps.length})`)}${credit ? tr(` · ${fmtCurrency(credit)} still on credit (counted)`, ` · ${fmtCurrency(credit)} उधारीवर (मोजले)`) : ''}</div>
+    <div>${tr(`Bill <b>${fmtCurrency(ev.billing)}</b>${ev.guests ? ` · ${ev.guests} guests` : ''} · contribution <b>${fmtCurrency(pl.profit)}</b>${ev.billing > 0 ? ` (${pl.margin}%)` : ''}`, `बिल <b>${fmtCurrency(ev.billing)}</b> · योगदान <b>${fmtCurrency(pl.profit)}</b>`)}</div>`;
+  q('recon-block').innerHTML = blockers.map(b => `<div class="note alert" style="margin-top:var(--s2)"><span class="note-ic">${icon('alert', 16)}</span><div>${tr(b.en, b.mr)}</div></div>`).join('');
+  q('recon-checks').innerHTML = RECON_CHECKS.map(c => `<label class="check-row"><input type="checkbox" data-check="${c.id}"${blockers.length ? ' disabled' : ''}><span>${tr(c.en, c.mr)}</span></label>`).join('');
+  updateReconSave();
+  openSheet('recon-modal');
+}
+function updateReconSave() {
+  const boxes = [...document.querySelectorAll('#recon-checks input')];
+  q('btn-save-recon').disabled = !boxes.length || boxes.some(b => !b.checked || b.disabled);
+}
+async function saveRecon() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev || !reconBase) return;
+  const checks = [...document.querySelectorAll('#recon-checks input:checked')].map(b => b.dataset.check);
+  if (checks.length !== RECON_CHECKS.length || reconBlockers(ev, D.expenses, D.drafts).length) return;
+  // Costs, bill or guests changed while the checklist was open: show the new figures instead of confirming old ones
+  const changed = JSON.stringify(reconStatus(reconBase, D.expenses)) !== JSON.stringify(reconStatus(ev, D.expenses))
+    || ev.billing !== reconBase.billing || ev.guests !== reconBase.guests || ev._rev !== reconBase._rev;
+  if (changed) { showToast('This event changed while the checklist was open. Check the figures again.', 'error'); openReconModal(); return; }
+  try {
+    await patchEvent(ev.id, reconcileFields(ev, D.expenses, checks));
+  } catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
+  closeModals(); refreshCurrent();
+  showToast('Reconciled: contribution is final – जुळवले: योगदान अंतिम');
+}
+async function reopenRecon() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev?.recon) return;
+  const ok = await askSheet({ title: 'Reopen reconciliation? – पुन्हा उघडायचे?',
+    message: 'The contribution becomes provisional until you reconcile again. The history is kept.',
+    actions: [{ label: 'Reopen – पुन्हा उघडा', value: true, style: 'btn-primary' }] });
+  if (!ok) return;
+  try { await patchEvent(ev.id, reopenFields(ev)); } catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
+  refreshCurrent();
+}
+
 function costVsUsualCard(ev) {
-  const cmp = costVsUsual(ev, D.events, costByCategory(D.events, D.expenses));
+  const cmp = costVsUsual(ev, D.events, costByCategory(D.events, D.expenses), reconciledIds(D.events, D.expenses));
   if (!cmp) return '';
   const basis = cmp.basis === 'menu' ? (menuById(ev.menu)?.name || 'menu') : (ev.type || '').split(' – ')[0];
   return `
@@ -1842,7 +1933,7 @@ function menuRanking(rows) {
       <div class="row-body"><div class="title-sm">${i + 1}. ${esc(g.name)}</div>
         <div class="meta">${tr(`${g.n} event${g.n > 1 ? 's' : ''} · bill ${fmtCurrency(Math.round(g.bill / g.guests))} · cost ${fmtCurrency(Math.round(g.cost / g.guests))} per plate`,
           `${g.n} कार्यक्रम · बिल ${fmtCurrency(Math.round(g.bill / g.guests))} · खर्च ${fmtCurrency(Math.round(g.cost / g.guests))} प्रति ताट`)}</div></div>
-      <div class="row-end"><div class="amt-sm ${g.profit >= 0 ? 'pos' : 'neg'}">${fmtCurrency(g.profit)}</div><div class="meta">${tr(`profit/plate · ${g.margin}%`, `नफा/ताट · ${g.margin}%`)}</div></div>
+      <div class="row-end"><div class="amt-sm ${g.profit >= 0 ? 'pos' : 'neg'}">${fmtCurrency(g.profit)}</div><div class="meta">${tr(`contribution/plate · ${g.margin}%`, `योगदान/ताट · ${g.margin}%`)}</div></div>
     </div>`).join('');
 }
 
@@ -1851,8 +1942,8 @@ function priceCreepReport() {
   const list = priceCreep(D.expenses, D.events).slice(0, 6);
   if (!list.length) return '';
   return `<div class="card pad" style="padding-bottom:var(--s2)" id="price-creep">
-    <div class="chart-title">${icon('store', 18)}Vendor price creep – दरवाढ</div>
-    <div class="meta">${tr('Cost per plate at the latest event against the same vendor’s earlier events.', 'त्याच विक्रेत्याच्या आधीच्या कार्यक्रमांशी प्रति ताट तुलना.')}</div>
+    <div class="chart-title">${icon('store', 18)}Vendor spend per plate rising – प्रति ताट खर्च वाढ</div>
+    <div class="meta">${tr('Spend per plate at the latest reconciled event against the same vendor’s earlier ones. Not the vendor’s rate: menu or quantity changes also move it.', 'त्याच विक्रेत्याच्या आधीच्या जुळवलेल्या कार्यक्रमांशी प्रति ताट खर्च तुलना. हा विक्रेत्याचा दर नव्हे.')}</div>
     ${list.map(r => {
       const ven = D.vendors.find(v => v.id === r.venId);
       return `<div class="row" role="button" tabindex="0" data-action="vendetail" data-id="${esc(r.venId)}" style="min-height:48px">
@@ -1865,10 +1956,10 @@ function priceCreepReport() {
 
 // Categories that cost more than usual in this period, summed over events (shown quietly)
 function costsHigherReport(P) {
-  const costs = costByCategory(D.events, D.expenses);
+  const costs = costByCategory(D.events, D.expenses), done = reconciledIds(D.events, D.expenses);
   const over = new Map();
   for (const ev of P.events) {
-    const cmp = costVsUsual(ev, D.events, costs); if (!cmp) continue;
+    const cmp = costVsUsual(ev, D.events, costs, done); if (!cmp) continue;
     for (const r of cmp.rows) if (r.diff > 0 && r.usual) {
       const o = over.get(r.cat) || { amt: 0, events: 0 };
       o.amt += r.diff * cmp.guests; o.events++; over.set(r.cat, o);
@@ -1887,16 +1978,18 @@ function costsHigherReport(P) {
 }
 
 function perPlateReport(P, missing) {
+  const done = reconciledIds(D.events, D.expenses);
   const rows = P.events
-    .map(ev => ({ ev, ...calcEventPL(ev, P.cPays, P.expenses) }))
+    .map(ev => ({ ev, ...calcEventPL(ev, P.cPays, P.expenses), final: done.has(ev.id) }))
     .filter(r => r.guests && !r.ev.outsourced && !missing.has(r.ev.id) && r.expTotal > 0);
+  const finals = rows.filter(r => r.final);   // menu and type benchmarks: reconciled events only (G-22)
   if (!rows.length) {
     return `<div class="card pad"><div class="chart-title">${icon('utensils', 18)}Per plate – प्रति ताट</div>
-      <div class="meta">${tr('Add a guest count to your events to see cost and profit per plate here.', 'प्रति ताट खर्च पाहण्यासाठी कार्यक्रमात पाहुण्यांची संख्या जोडा.')}</div></div>`;
+      <div class="meta">${tr('Add a guest count to your events to see cost and contribution per plate here.', 'प्रति ताट खर्च पाहण्यासाठी कार्यक्रमात पाहुण्यांची संख्या जोडा.')}</div></div>`;
   }
   const group = keyOf => {
     const by = new Map();
-    rows.forEach(r => {
+    finals.forEach(r => {
       const t = keyOf(r.ev); if (!t) return;
       const g = by.get(t) || { n: 0, guests: 0, cost: 0, bill: 0 };
       g.n++; g.guests += r.guests; g.cost += r.expTotal; g.bill += r.ev.billing;
@@ -1908,16 +2001,17 @@ function perPlateReport(P, missing) {
       <div class="row-end"><div class="amt-sm">${fmtCurrency(Math.round(g.cost / g.guests))}</div><div class="meta">${tr('cost/plate', 'खर्च/ताट')}</div></div>
     </div>`).join('');
   };
-  const menuRows = menuRanking(rows);
+  const menuRows = menuRanking(finals);
   const typeRows = group(ev => (ev.type || 'Other').split(' – ')[0]);
+  const noFinal = finals.length ? '' : `<div class="meta">${tr('Menu and type averages use reconciled events only. Reconcile finished events to see them.', 'मेनू व प्रकार सरासरी फक्त जुळवलेल्या कार्यक्रमांवरून.')}</div>`;
   const eventRows = rows.sort((a, b) => b.profitPerPlate - a.profitPerPlate).map(r => `
     <div class="row" role="button" tabindex="0" data-action="evdetail" data-id="${esc(r.ev.id)}" style="min-height:52px">
-      <div class="row-body"><div class="title-sm trunc" data-nl>${esc(r.ev.name)}</div><div class="meta">${tr(`${r.guests} plates · cost ${fmtCurrency(r.costPerPlate)}/plate`, `${r.guests} ताट · खर्च ${fmtCurrency(r.costPerPlate)}/ताट`)}</div></div>
-      <div class="row-end"><div class="amt-sm ${r.profitPerPlate >= 0 ? 'pos' : 'neg'}">${fmtCurrency(r.profitPerPlate)}</div><div class="meta">${tr('profit/plate', 'नफा/ताट')}</div></div>
+      <div class="row-body"><div class="title-sm trunc" data-nl>${esc(r.ev.name)}</div><div class="meta">${tr(`${r.guests} plates · cost ${fmtCurrency(r.costPerPlate)}/plate${r.final ? '' : ' · provisional'}`, `${r.guests} ताट · खर्च ${fmtCurrency(r.costPerPlate)}/ताट${r.final ? '' : ' · अंदाजे'}`)}</div></div>
+      <div class="row-end"><div class="amt-sm ${r.profitPerPlate >= 0 ? 'pos' : 'neg'}">${fmtCurrency(r.profitPerPlate)}</div><div class="meta">${tr('contribution/plate', 'योगदान/ताट')}</div></div>
     </div>`).join('');
   return `<div class="card pad" style="padding-bottom:var(--s2)">
-    ${menuRows ? `<div class="chart-title">${icon('utensils', 18)}Menu profit ranking – मेनू नफा क्रम</div>${menuRows}
-    <div class="chart-title" style="margin-top:var(--s4)">` : '<div class="chart-title">'}${icon('utensils', 18)}Per plate by type – प्रकारानुसार प्रति ताट</div>${typeRows}
+    ${menuRows ? `<div class="chart-title">${icon('utensils', 18)}Menu contribution ranking – मेनू योगदान क्रम</div>${menuRows}
+    <div class="chart-title" style="margin-top:var(--s4)">` : '<div class="chart-title">'}${icon('utensils', 18)}Per plate by type – प्रकारानुसार प्रति ताट</div>${typeRows || noFinal}
     <div class="chart-title" style="margin-top:var(--s4)">${icon('calendar', 18)}Per plate by event – कार्यक्रमनिहाय</div>${eventRows}
   </div>`;
 }
@@ -1925,9 +2019,10 @@ function perPlateReport(P, missing) {
 function rSummary() {
   renderPeriodSegs();
   const P = sliceByPeriod(D, period);
-  const totalBill = P.events.reduce((s, e) => s + e.billing, 0);
-  const totalExp  = P.expenses.reduce((s, x) => s + x.amt, 0);
-  const profit    = totalBill - totalExp;
+  const totalBill = sumRupees(P.events, e => e.billing);
+  const totalExp  = sumRupees(P.expenses);
+  const profit    = (Math.round(totalBill * 100) - Math.round(totalExp * 100)) / 100;
+  const done      = reconciledIds(P.events, P.expenses);
   const noData    = t => `<div class="list-empty">${t}</div>`;
   const missing   = new Set(eventsMissingCosts(P.events, P.expenses).map(e => e.id));
 
@@ -1947,7 +2042,7 @@ function rSummary() {
   const plRows = evPL.map(r => `
     <div class="bar-row" role="button" tabindex="0" data-action="evdetail" data-id="${esc(r.ev.id)}">
       <div style="min-width:0"><div class="bar-label trunc" style="color:var(--text)" data-nl>${esc(r.ev.name)}</div>
-        <div class="meta">${missing.has(r.ev.id) ? `<span class="neg">${tr('no costs', 'खर्च नाही')}</span>` : fmtDate(r.ev.date)}</div></div>
+        <div class="meta">${missing.has(r.ev.id) ? `<span class="neg">${tr('no costs', 'खर्च नाही')}</span>` : fmtDate(r.ev.date) + (done.has(r.ev.id) ? '' : tr(' · provisional', ' · अंदाजे'))}</div></div>
       <div class="bar-track"><div class="bar-fill" style="width:${Math.abs(r.profit) / maxAbsPL * 100}%;background:var(${missing.has(r.ev.id) ? '--line-strong' : r.profit >= 0 ? '--pos' : '--neg'})"></div></div>
       <div class="bar-val ${missing.has(r.ev.id) ? 'muted' : r.profit >= 0 ? 'pos' : 'neg'}">${fmtCurrency(r.profit)}</div>
     </div>`).join('') || noData('No events – कार्यक्रम नाही');
@@ -1971,18 +2066,20 @@ function rSummary() {
 
   q('summary-content').innerHTML = `
     <div class="metric-tiles">
-      <div class="card"><div class="label">Net profit – निव्वळ नफा</div><div class="amt-lg ${profit >= 0 ? 'pos' : 'neg'}">${fmtCurrency(profit)}</div></div>
+      <div class="card"><div class="label">Contribution – योगदान</div><div class="amt-lg ${profit >= 0 ? 'pos' : 'neg'}">${fmtCurrency(profit)}</div></div>
       <div class="card"><div class="label">Margin – मार्जिन</div><div class="amt-lg ${totalBill > 0 ? (profit >= 0 ? 'pos' : 'neg') : 'muted'}">${totalBill > 0 ? Math.round(profit / totalBill * 100) + '%' : '—'}</div></div>
       <div class="card"><div class="label">Billed – बिल</div><div class="amt-lg">${fmtCurrency(totalBill)}</div></div>
       <div class="card"><div class="label">Events – कार्यक्रम</div><div class="amt-lg">${P.events.length}</div></div>
     </div>
     ${missing.size ? `<div class="card" style="margin-top:var(--s3)"><div class="note alert"><span class="note-ic">${icon('receipt', 16)}</span>
-      <div>${tr(`${missing.size} event${missing.size > 1 ? 's have' : ' has'} no expenses, so profit here is overstated.`, `${missing.size} कार्यक्रमांचा खर्च नोंदवलेला नाही, त्यामुळे नफा जास्त दिसतो.`)}</div></div></div>` : ''}
+      <div>${tr(`${missing.size} event${missing.size > 1 ? 's have' : ' has'} no expenses, so contribution here is overstated.`, `${missing.size} कार्यक्रमांचा खर्च नोंदवलेला नाही, त्यामुळे नफा जास्त दिसतो.`)}</div></div></div>` : ''}
+    ${P.events.length ? `<div class="card" style="margin-top:var(--s3)"><div class="note"><span class="note-ic">${icon('receipt', 16)}</span>
+      <div>${tr(`${done.size} of ${P.events.length} event${P.events.length > 1 ? 's' : ''} reconciled; the rest are provisional. Contribution is bills minus each event's costs, before overheads, salaries and tax, so it is not company net profit.`, `${P.events.length} पैकी ${done.size} कार्यक्रम जुळवले; बाकी अंदाजे. योगदान = बिल − कार्यक्रमाचा खर्च (ओव्हरहेड, पगार, कर आधी), हा कंपनीचा निव्वळ नफा नव्हे.`)}</div></div></div>` : ''}
     <div class="sec"></div>
     ${perPlateReport(P, missing)}
     ${costsHigherReport(P)}
     ${priceCreepReport()}
-    <div class="card pad"><div class="chart-title">${icon('calendar', 18)}Profit by event – कार्यक्रमनिहाय नफा</div>${plRows}</div>
+    <div class="card pad"><div class="chart-title">${icon('calendar', 18)}Contribution by event – कार्यक्रमनिहाय नफा</div>${plRows}</div>
     <div class="card pad"><div class="chart-title">${icon('receipt', 18)}Spending by category – खर्चाचे प्रकार</div>${catBars}</div>
     <div class="card pad"><div class="chart-title">${icon('wallet', 18)}Collections by mode – पद्धतीनुसार वसुली</div>${modeRows}</div>
     <div class="card pad" style="padding-bottom:var(--s2)"><div class="chart-title">${icon('trophy', 18)}Biggest events – सर्वात मोठे कार्यक्रम</div>
@@ -2110,14 +2207,15 @@ function updateQuote() {
     const g = list.reduce((s, e) => s + Number(e.guests), 0);
     return g ? { n: list.length, perPlate: Math.round(list.reduce((s, e) => s + val(e), 0) / g) } : null;
   };
-  const costed = peers.filter(e => spent.get(e.id));
+  const done = reconciledIds(D.events, D.expenses);
+  const costed = peers.filter(e => spent.get(e.id) && done.has(e.id));   // reconciled: complete costs only
   const byMenu = menu ? costed.filter(e => e.menu === menu.id) : [];
   const basis = byMenu.length ? menu.name : (type || '').split(' – ')[0];
   const cost = avg(byMenu.length ? byMenu : costed.filter(e => e.type === type), e => spent.get(e.id));
   const billed = menu ? avg(peers.filter(e => e.menu === menu.id), e => e.billing) : null;
   const lines = [];
   if (cost) {
-    lines.push(`${esc(basis)} usually costs you <b>${fmtCurrency(cost.perPlate)}/plate</b> (${cost.n} event${cost.n > 1 ? 's' : ''})`);
+    lines.push(`${esc(basis)} usually costs you <b>${fmtCurrency(cost.perPlate)}/plate</b> (${cost.n} reconciled event${cost.n > 1 ? 's' : ''})`);
     if (bill && guests) {
       const pp = Math.round(bill / guests), m = Math.round((pp - cost.perPlate) / pp * 100);
       lines.push(`At ${fmtCurrency(pp)}/plate your margin is about <b class="${m < TARGET_MARGIN ? 'due' : 'pos'}">${m}%</b> · minimum ${TARGET_MARGIN}%`);
@@ -2145,7 +2243,7 @@ function updateMenuHint() {
     if (past) fill('ev-budget', 'budget', past.perPlate * guests);
   }
   hint.textContent = `${menu.name} @ ${fmtCurrency(rate)}/plate` + (guests ? ` × ${guests} = ${fmtCurrency(rate * guests)}` : ' · add guests to fill the bill')
-    + (past ? ` · usually costs ${fmtCurrency(past.perPlate)}/plate (${past.n} event${past.n > 1 ? 's' : ''})` : ' · cost per plate shows after the first event on this menu');
+    + (past ? ` · usually costs ${fmtCurrency(past.perPlate)}/plate (${past.n} reconciled event${past.n > 1 ? 's' : ''})` : ' · cost per plate shows once an event on this menu is reconciled');
   hint.hidden = false;
   updateQuote();
 }
@@ -3092,6 +3190,8 @@ function bindAllEvents() {
       case 'dish-assign':  assignDish(Number(id)); break;
       case 'order-new':    openOrderModal({ head: id }); break;
       case 'order-status': orderAction(id); break;
+      case 'recon-open':   openReconModal(); break;
+      case 'recon-reopen': reopenRecon(); break;
       case 'check-add': {
         const it = CHECKLIST[Number(id)];
         if (it) openExpModal({ prefill: { evId: curRef, cat: it.cat, head: it.head, venId: it.venId, amt: it.amt } });
@@ -3303,6 +3403,8 @@ function bindAllEvents() {
   document.querySelectorAll('[data-diag-set]').forEach(b => b.addEventListener('click', () => { writePref('ffv2_diagnostics', b.dataset.diagSet === 'on'); syncSettingsUI(); }));
   // Sharing must start within the tap, so begin the backup first, then close the panel
   q('btn-export').addEventListener('click', () => { exportData(); closeOverlay(); });
+  q('recon-checks').addEventListener('change', updateReconSave);
+  q('btn-save-recon').addEventListener('click', saveRecon);
   // File picker must open inside the tap itself, so click first, then close the panel
   q('btn-import').addEventListener('click', () => { q('import-input').click(); closeOverlay(); });
   q('btn-set-pin').addEventListener('click', async () => { await closeOverlay(); showPinScreen('set'); });
