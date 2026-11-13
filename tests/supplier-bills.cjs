@@ -77,8 +77,8 @@ const DATA = { version: 'ffv2', photos: [], cPays: [],
     const after = (await dump()).expenses.find(x => x.id === st.id);
     assert.deepEqual([after.evId, after.stock, after.amt, after.notes], ['', true, 6000, 'kept in store room']);
     await fresh(); await p.locator('#n-summary:visible').click(); await p.locator('#tab-summary [data-period-seg] [data-id="all"]').click();
-    await p.waitForSelector('#stock-note');
-    assert.match(await p.locator('#stock-note').innerText(), /Common stock: ₹6,000 of supplier bills is on no event yet/);
+    await p.waitForSelector('#books-check');
+    assert.match(await p.locator('#books-check').innerText(), /Bills ₹1,55,000 = event costs ₹1,49,000 \+ common stock ₹6,000/);
   });
 
   await test('moving ₹4,000 of stock to a later event: bill and payable unchanged, history kept, reconciled event reopens', async () => {
