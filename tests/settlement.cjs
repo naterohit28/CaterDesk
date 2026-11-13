@@ -74,7 +74,7 @@ const DATA = { version: 'ffv2', photos: [], vendors: [], vPays: [],
     const line = await p.locator('#settle-line').innerText();
     assert.match(line, /Discount agreed ₹8,000 · round figure agreed at handover/); assert.match(line, /Tax \/ invoice review needed/);
     await p.locator('#n-summary:visible').click(); await p.locator('#tab-summary [data-period-seg] [data-id="all"]').click();
-    assert.match(await p.locator('#settle-note').innerText(), /Discounts, waivers and write-offs agreed: ₹8,000/);
+    assert.match(await p.locator('#books-check').innerText(), /Discounts \/ waivers \/ write-offs agreed \(tax review needed\)\s*₹8,000/);
   });
 
   await test('backup keeps the settlement exactly; invented kinds, increases and reasonless disputes are refused', async () => {

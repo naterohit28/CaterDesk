@@ -671,6 +671,40 @@ export function menuCostPerPlate(menuId, events, expenses, excludeId = '') {
   return n ? { n, perPlate: Math.round(fromPaise(cost) / guests) } : null;
 }
 
+/* Delivered orders whose bill is not in: none linked (`order`) and no bill at all from that vendor on the event.
+   An outsourced event's charge was recorded at booking. */
+export function deliveredWithoutBill(ev, expenses) {
+  if (ev.outsourced) return [];
+  return (ev.orders || []).filter(o => o.status === 'delivered' && o.venId
+    && !expenses.some(x => !x.draft && (x.order === o.id || (x.evId === ev.id && x.venId === o.venId))));
+}
+
+/* ── BOOKS CHECK (spec §10, Phase 4 exit gate) ── */
+/* The owner's one-look check that the money adds up, all time: every bill rupee sits on exactly one event or in
+   common stock; every shared bill's parts add up to it; what vendors are owed and what clients owe, with
+   advances, credit notes, agreed reductions and disputes shown apart (never netted away). */
+export function booksCheck(events, expenses, cPays, vPays) {
+  const P = x => toPaise(x || 0), evIds = new Set(events.map(e => e.id)), real = expenses.filter(x => !x.draft);
+  const spentP = real.reduce((s, x) => s + P(x.amt), 0);
+  const eventP = real.filter(x => evIds.has(x.evId)).reduce((s, x) => s + P(x.amt), 0);
+  const stockP = real.filter(x => x.stock).reduce((s, x) => s + P(x.amt), 0);
+  const groups = new Map();
+  for (const x of real) if (x.split) { const g = groups.get(x.split.id) || { total: P(x.split.total), sum: 0 }; g.sum += P(x.amt); groups.set(x.split.id, g); }
+  const badSplits = [...groups.values()].filter(g => g.sum !== g.total).length;
+  let owedP = 0, advanceP = 0;
+  for (const venId of new Set([...real.filter(x => x.venId).map(x => x.venId), ...vPays.map(p => p.venId)])) {
+    const b = P(calcVendorBalance(venId, real, vPays).balance); if (b > 0) owedP += b; else advanceP -= b;
+  }
+  const creditNotesP = vPays.filter(p => p.kind === 'credit').reduce((s, p) => s + P(p.amt), 0);
+  let receivableP = 0, overP = 0, disputedP = 0, adjustedP = 0;
+  for (const e of events) { const st = settlementStatus(e, cPays); receivableP += P(st.outstanding); overP += P(st.over); disputedP += P(st.disputed); adjustedP += P(st.adjusted); }
+  const unbilled = events.reduce((n, e) => n + deliveredWithoutBill(e, real).length, 0);
+  const f = fromPaise;
+  return { spent: f(spentP), eventCosts: f(eventP), stock: f(stockP), unplaced: f(spentP - eventP - stockP), splits: groups.size, badSplits,
+    owed: f(owedP), advance: f(advanceP), creditNotes: f(creditNotesP), receivable: f(receivableP), overReceived: f(overP), disputed: f(disputedP), adjusted: f(adjustedP), unbilled,
+    ok: spentP === eventP + stockP && !badSplits };
+}
+
 /* ── RECONCILIATION (D-4, P1-B) ──────────────────── */
 /* Two separate things:
    - Operational status, from the date only: upcoming, today or held. Never stored.
@@ -730,6 +764,8 @@ export function reconBlockers(ev, expenses, drafts = []) {
   if (!costRows(ev.id, expenses).length) out.push({ en: 'No costs are recorded for this event', mr: 'या कार्यक्रमाचा खर्च नोंदवलेला नाही' });
   const open = drafts.filter(d => d.evId === ev.id).length;
   if (open) out.push({ en: `${open} bill photo${open > 1 ? 's' : ''} for this event still to be filled in`, mr: `या कार्यक्रमाची ${open} बिले भरायची बाकी` });
+  const unbilled = deliveredWithoutBill(ev, expenses).length;
+  if (unbilled) out.push({ en: `${unbilled} delivered order${unbilled > 1 ? 's have' : ' has'} no bill from that vendor yet`, mr: `${unbilled} आलेल्या ऑर्डरचे बिल नोंदवले नाही` });
   return out;
 }
 

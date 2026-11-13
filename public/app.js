@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, settlementStatus, SETTLE_KINDS, STOCK, stockTotal, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.14.0';
+const APP_BUILD = '4.15.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -2585,6 +2585,23 @@ function perPlateReport(P, missing) {
   </div>`;
 }
 
+/* Reports: does the money add up? All time, one line each; a red line is something to look at */
+function booksCard(b) {
+  if (!b.spent && !b.receivable && !b.owed && !b.advance) return '';
+  const line = (ok, en, mr, amt = '') => `<div class="row" style="min-height:44px"><div class="row-ic" style="color:var(${ok ? '--pos' : '--due'})">${icon(ok ? 'check' : 'alert', 16)}</div>
+    <div class="row-body"><div class="meta" style="color:var(--ink)">${tr(en, mr)}</div></div>${amt ? `<div class="amt-sm">${amt}</div>` : ''}</div>`;
+  return `<div class="card" style="margin-top:var(--s3)" id="books-check"><div class="chart-title" style="padding:var(--s3) var(--s4) 0">${icon('receipt', 18)}${tr('Books check · all time', 'हिशोब तपासणी')}</div><div class="list">
+    ${line(!b.unplaced, b.unplaced ? `${fmtCurrency(b.unplaced)} of bills is on no event and not in stock` : `Bills ${fmtCurrency(b.spent)} = event costs ${fmtCurrency(b.eventCosts)}${b.stock ? ` + common stock ${fmtCurrency(b.stock)}` : ''}`, 'बिले = कार्यक्रम खर्च + साठा')}
+    ${b.splits ? line(!b.badSplits, b.badSplits ? `${b.badSplits} shared bill${b.badSplits > 1 ? 's do' : ' does'} not add up to its parts` : `${b.splits} shared bill${b.splits > 1 ? 's' : ''}, every part adds up`, 'वाटलेली बिले जुळतात') : ''}
+    ${line(true, `Owed to vendors${b.creditNotes ? ` (after ${fmtCurrency(b.creditNotes)} credit notes)` : ''}`, 'विक्रेत्यांना देणे', fmtCurrency(b.owed))}
+    ${b.advance ? line(true, 'Advances paid to vendors', 'विक्रेत्यांना आगाऊ', fmtCurrency(b.advance)) : ''}
+    ${line(true, `Clients still owe${b.disputed ? `, ${fmtCurrency(b.disputed)} disputed` : ''}`, 'ग्राहकांकडून येणे', fmtCurrency(b.receivable))}
+    ${b.overReceived ? line(false, 'Received more than the bill (refund or bill change?)', 'बिलापेक्षा जास्त मिळाले', fmtCurrency(b.overReceived)) : ''}
+    ${b.adjusted ? line(false, 'Discounts / waivers / write-offs agreed (tax review needed)', 'सवलत / माफी (कर तपासणी)', fmtCurrency(b.adjusted)) : ''}
+    ${b.unbilled ? line(false, `${b.unbilled} delivered order${b.unbilled > 1 ? 's have' : ' has'} no bill yet`, 'आलेल्या ऑर्डरचे बिल नाही') : ''}
+  </div></div>`;
+}
+
 function rSummary() {
   renderPeriodSegs();
   const P = sliceByPeriod(D, period);
@@ -2594,9 +2611,7 @@ function rSummary() {
   const done      = reconciledIds(P.events, P.expenses);
   const noData    = t => `<div class="list-empty">${t}</div>`;
   const missing   = new Set(eventsMissingCosts(P.events, P.expenses).map(e => e.id));
-  const stock     = stockTotal(D.expenses);
-  const settled   = P.events.map(e => ({ e, st: settlementStatus(e, P.cPays) }));
-  const adjusted  = settled.reduce((t, r) => t + toPaise(r.st.adjusted), 0) / 100, disputed = settled.reduce((t, r) => t + toPaise(r.st.disputed), 0) / 100;
+  const books     = booksCheck(D.events, D.expenses, D.cPays, D.vPays);
 
   const byCat = {};
   P.expenses.forEach(x => { byCat[x.cat] = (byCat[x.cat] || 0) + x.amt; });
@@ -2647,11 +2662,7 @@ function rSummary() {
       <div>${tr(`${missing.size} event${missing.size > 1 ? 's have' : ' has'} no expenses, so contribution here is overstated.`, `${missing.size} कार्यक्रमांचा खर्च नोंदवलेला नाही, त्यामुळे नफा जास्त दिसतो.`)}</div></div></div>` : ''}
     ${P.events.length ? `<div class="card" style="margin-top:var(--s3)"><div class="note"><span class="note-ic">${icon('receipt', 16)}</span>
       <div>${tr(`${done.size} of ${P.events.length} event${P.events.length > 1 ? 's' : ''} reconciled; the rest are provisional. Contribution is bills minus each event's costs, before overheads, salaries and tax, so it is not company net profit.`, `${P.events.length} पैकी ${done.size} कार्यक्रम जुळवले; बाकी अंदाजे. योगदान = बिल − कार्यक्रमाचा खर्च (ओव्हरहेड, पगार, कर आधी), हा कंपनीचा निव्वळ नफा नव्हे.`)}</div></div></div>` : ''}
-    ${adjusted || disputed ? `<div class="card" style="margin-top:var(--s3)" id="settle-note"><div class="note"><span class="note-ic">${icon('wallet', 16)}</span>
-      <div>${tr(`${adjusted ? `Discounts, waivers and write-offs agreed: ${fmtCurrency(adjusted)} (already taken off the bills above; tax review needed).` : ''}${adjusted && disputed ? ' ' : ''}${disputed ? `Disputed and still owed: ${fmtCurrency(disputed)}.` : ''}`,
-        `${adjusted ? `सवलत / माफी: ${fmtCurrency(adjusted)}.` : ''}${disputed ? ` वादग्रस्त बाकी: ${fmtCurrency(disputed)}.` : ''}`)}</div></div></div>` : ''}
-    ${stock ? `<div class="card" style="margin-top:var(--s3)" id="stock-note"><div class="note"><span class="note-ic">${icon('receipt', 16)}</span>
-      <div>${tr(`Common stock: ${fmtCurrency(stock)} of supplier bills is on no event yet. It is owed to the vendors but is not in any event's costs or the contribution above.`, `साठा: ${fmtCurrency(stock)} चे सामान अजून कोणत्याही कार्यक्रमावर नाही; वरच्या योगदानात धरलेले नाही.`)}</div></div></div>` : ''}
+    ${booksCard(books)}
     <div class="sec"></div>
     ${perPlateReport(P, missing)}
     ${costsHigherReport(P)}
