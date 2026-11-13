@@ -4,7 +4,7 @@
 
 An offline-first app for catering events, expenses, vendor credit, client collections, menus and vendor orders. Business records stay in the device's browser storage; the hosted app also sends limited error diagnostics to its server.
 
-**Current source and hosted web build: v4.2.1.** Documentation checked on **13 November 2026**.
+**Current source and hosted web build: v4.2.2.** Documentation checked on **13 November 2026**.
 
 [Open the app](https://expense-calculator-kohl.vercel.app/) · [Download published packages](https://github.com/naterohit28/Expense-Calculator/releases) · [Historical reliability report](docs/RELIABILITY.md) · [Competitor/name research and Claude evaluation notes](docs/research/README.md) · [Report an issue](https://github.com/naterohit28/Expense-Calculator/issues)
 
@@ -31,16 +31,16 @@ The **APK wrapper version, hosted web version and bundled desktop version are in
 
 | Component | Verified state on 3 November 2026 | Meaning |
 | --- | --- | --- |
-| Source and hosted web app | **4.2.1** | Current UI, data/export version, service worker and error reporter |
+| Source and hosted web app | **4.2.2** | Current UI, data/export version, service worker and error reporter |
 | Service-worker release cache | `flavor-fusion-v2-cache-v25` | Installed web assets; this number is not the database schema version |
-| Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** | APK package inspected locally; launches the hosted app, which can run 4.2.1 |
+| Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** | APK package inspected locally; launches the hosted app, which can run 4.2.2 |
 | Android requirements for that local wrapper | min API **24**, target API **36** | Android 7.0+ and a compatible browser provider |
 | Latest GitHub Release with downloadable binaries | **2.4.7** | APK and desktop ZIP; later source tags do not imply newer binaries were uploaded |
 | Desktop package currently in the owner's `Apps/Desktop` folder | **2.4.7** | A static older bundle, not the current source build |
-| Desktop launcher source/instructions | **4.2.1** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
+| Desktop launcher source/instructions | **4.2.2** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
 | IndexedDB schema | **4** | Kept separate from application version changes |
 
-Do not relabel an older package as 4.2.1. Use the [release assets](https://github.com/naterohit28/Expense-Calculator/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
+Do not relabel an older package as 4.2.2. Use the [release assets](https://github.com/naterohit28/Expense-Calculator/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
 
 ## Current features
 
@@ -116,7 +116,7 @@ The app requests persistent storage where supported, but storage can still be lo
 ### Back up
 
 1. Unlock the app and choose **Settings → Share / save backup**.
-2. When the backup is ready, choose **Share** (the phone's share menu: **Drive**, **Files**, WhatsApp or email) or **Save to phone (Downloads)**. The choice is a fresh tap because Android opens the share menu only shortly after a tap, and building a backup with photos can take longer. Android does not offer `.json` files to the share menu, so the backup is shared as `caterdesk-backup-YYYY-MM-DD.txt` (same content; CaterDesk imports `.txt` and `.json`). Where no share menu exists the file downloads as `.json`. Keep more than one dated copy outside the device.
+2. When the backup is ready, choose **Share** (the phone's share menu: **Drive**, **Files**, WhatsApp or email) or **Save to phone (Downloads)**. The choice is a fresh tap because Android opens the share menu only shortly after a tap, and building a backup with photos can take longer. Android Chrome refuses to share `.json` files, so the backup is always shared as `caterdesk-backup-YYYY-MM-DD.txt` (same content; CaterDesk imports `.txt` and `.json`). Where no share menu exists the file downloads as `.json`. Keep more than one dated copy outside the device.
 3. Before updates, migration or imports, confirm that the file is actually saved and keep the previous backup.
 
 Backups contain business records and images. Protect them as private documents. Sending a file to a share sheet does not prove a chosen destination retained it.
@@ -147,17 +147,17 @@ The APK is a **Trusted Web Activity** wrapper around the hosted site. It does no
 1. Keep a business-data backup.
 2. Obtain the intended APK from its actual release assets or the owner's prepared local package. Install over the existing app with the same package/signing identity.
 3. Open online to download updates. Check the **web build in Settings**, not just Android App info.
-4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **4.2.1**.
+4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **4.2.2**.
 
 A newer web release may reload automatically during the first 20 seconds of startup when no active form/save/overlay prevents it, at most once per release per session. Otherwise it waits for a later start or explicit reload. Refresh can also switch versions when no form/save is open. Service-worker cache mappings preserve matching assets for older open pages until navigation.
 
 Do not uninstall or clear browser/site storage to force an update. If Android rejects an APK, check package, versionCode and signing certificate before proceeding. The public certificate association is [`public/.well-known/assetlinks.json`](public/.well-known/assetlinks.json).
 
-The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **4.2.1**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
+The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **4.2.2**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
 
 ## Windows desktop testing
 
-Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v4.2.1 package.
+Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v4.2.2 package.
 
 1. Extract the entire ZIP; keep `app/` beside `CaterDesk-Desktop.exe`.
 2. Run the EXE. Microsoft Edge opens an app window; a tray icon provides **Open CaterDesk**, storage information and **Exit test server**.
@@ -326,6 +326,7 @@ This is a short source-feature history, not a list of available binary downloads
 
 | Version | Main changes |
 | --- | --- |
+| 4.2.2 | **Fix:** on the owner's phone, Share showed *NotAllowedError: Permission denied*. Android Chrome reports that it can share a `.json` file but then refuses it because `.json` is not on its list of shareable types. Share now always sends the `.txt` copy (same content; CaterDesk imports it); Save to phone still downloads `.json`. |
 | 4.2.1 | **Fix:** on the owner's phone, tapping **Share** in the Backup ready sheet still saved to Downloads: the share menu was opened after the sheet closed, which Android does not count as coming from a tap. It now opens inside the tap itself. If the phone still refuses, the backup is saved to Downloads and the reason is shown. |
 | 4.2.0 | **Event reconciliation (v5 P1-B):** an event's contribution (bill − its recorded costs, before overheads) is *provisional* until you reconcile it. On a held event, **Reconcile** shows recorded costs (unpaid bills included), bill, guests and contribution, and asks you to confirm three checks: all supplier/vendor bills, shared-purchase shares, and final guest count and client adjustments. It is refused while the event has no costs or has bill photos still to fill in. If any cost, the bill or the guest count changes afterwards, the event shows what changed and is provisional again; every reconcile and reopen is kept in its history. Home and Reports say *Event contribution* (not net profit) with the number of provisional events. Cost-per-plate averages, the quote helper, cost-vs-usual and vendor spend-per-plate use reconciled events only, and the latter is labelled as spend per guest, not the vendor's rate. Totals are added in whole paise. Existing events are unchanged and show as costs pending. |
 | 4.1.1 | **Fix:** on Android, Share / save backup downloaded the file instead of opening the share menu when building the backup took longer than Android allows after a tap. Once the backup is ready, a sheet now offers **Share (Drive, Files, WhatsApp)** or **Save to phone**; if the phone still refuses to share, the backup is saved to Downloads. |
