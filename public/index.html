@@ -252,6 +252,10 @@
         <button type="button" class="f-chip" data-meal="dinner" aria-pressed="false">Dinner – रात्रीचे जेवण</button>
       </div>
     </div>
+    <!-- Optional price per meal: each meal its own guests and rate; the total can fill the bill (one amount) -->
+    <details class="field" id="ev-mp" hidden><summary class="label" style="cursor:pointer">Price by meal (optional) – जेवणानुसार दर</summary>
+      <div id="ev-mp-rows" style="margin-top:var(--s2)"></div>
+      <div class="meta" id="ev-mp-total" data-nl></div></details>
     <div class="field"><label for="ev-venue">Venue – ठिकाण <span class="req">*</span></label><input type="text" id="ev-venue" placeholder="Hall / location" autocapitalize="words" enterkeyhint="next"></div>
     <!-- Repeat venue: details from the last event there are offered, never filled in by themselves -->
     <div class="meta" id="ev-venue-hint" data-nl hidden style="margin:-6px 0 var(--s3);display:flex;align-items:center;justify-content:space-between;gap:var(--s2)"></div>
@@ -413,7 +417,9 @@
     <div class="s-head"><div class="s-title" id="menu-mtitle">Event menu – कार्यक्रम मेनू</div><button type="button" class="icon-btn" data-action="close-modal" aria-label="Close"><i data-ic="x"></i></button></div>
     <div class="field"><label for="menu-text">Dishes – पदार्थ</label>
       <textarea id="menu-text" rows="9" placeholder="Pani puri&#10;Paneer tikka&#10;Dal makhani&#10;Jeera rice&#10;Gulab jamun"></textarea>
-      <div class="meta" style="margin-top:6px">Paste the menu from WhatsApp, or from a photo: open it in Google Lens → Copy text → paste here. One dish per line or separated by commas. – WhatsApp किंवा Google Lens मधून मेनू पेस्ट करा.</div></div>
+      <div class="meta" style="margin-top:6px">Paste the menu from WhatsApp, or from a photo: open it in Google Lens → Copy text → paste here. One dish per line or separated by commas. Check each dish below before saving. – WhatsApp किंवा Google Lens मधून मेनू पेस्ट करा.</div></div>
+    <!-- Review: each dish as read from the text, with where it comes from and which meal; edit before saving -->
+    <div id="menu-review"></div>
     <div class="s-foot"><button type="button" class="btn btn-primary" id="btn-save-menu">Save menu – जतन करा</button></div>
   </div>
 </div>

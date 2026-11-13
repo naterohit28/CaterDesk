@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
+  RECON_CHECKS, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.3.0';
+const APP_BUILD = '4.4.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1105,6 +1105,7 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
         <div class="metric"><div class="label">Pending – बाकी</div><div class="amt-md ${pend > 0 ? (isOverdue(ev) ? 'neg' : 'due') : 'muted'}">${fmtCurrency(Math.max(0, pend))}</div></div>
       </div>
       <div class="prog" style="margin-top:var(--s3)"><span style="width:${pct}%"></span></div>
+      ${mealPlanLine(ev)}
       <div class="metrics">
         <div class="metric"><div class="label">Expenses – खर्च</div><div class="amt-md">${fmtCurrency(exTot)}</div></div>
         <div class="metric"><div class="label">${contributionLabel(ev, recon)}</div><div class="amt-md ${noCosts ? 'muted' : profit >= 0 ? 'pos' : 'neg'}">${fmtCurrency(profit)}</div></div>
@@ -1411,7 +1412,7 @@ function menuOrdersCard(ev) {
       <div class="row-ic">${icon('utensils', 18)}</div>
       <div class="row-body"><div class="title-sm trunc">${ev.outsourced ? tr('Whole event', 'संपूर्ण कार्यक्रम') : esc(short(head))}${ven ? ` · <span data-nl>${esc(ven.name)}</span>` : ''}</div>
         <div class="meta trunc" data-nl>${esc(names.join(', '))}</div></div>
-      ${o ? `<button type="button" class="chip ${st.tone}" data-action="order-status" data-id="${esc(o.id)}">${tr(st.en, st.mr)}${o.plates ? ' · ' + o.plates : ''}</button>`
+      ${o ? `<button type="button" class="chip ${o.menuChanged ? 'due' : st.tone}" data-action="order-status" data-id="${esc(o.id)}">${o.menuChanged ? tr('Menu changed · resend', 'मेनू बदलला · पुन्हा पाठवा') : tr(st.en, st.mr) + (o.plates ? ' · ' + o.plates : '')}</button>`
           : `<button type="button" class="btn-sm" data-action="order-new" data-id="${esc(head)}">${icon('message', 16)}${tr('Order', 'ऑर्डर')}</button>`}
     </div>`;
   }).join('');
@@ -1426,7 +1427,7 @@ function menuOrdersCard(ev) {
       ${ev.outsourced ? `<div class="meta" style="padding:var(--s3) var(--s4)">${tr('Outsourced event: the full menu goes to the caterer doing the event.', 'आउटसोर्स कार्यक्रम: संपूर्ण मेनू त्या केटररला जातो.')}</div>` : `<div style="padding:var(--s3) var(--s4)">
         <div class="meta" style="margin-bottom:var(--s2)">${tr('Tap a dish to change where it comes from', 'पदार्थ कुठून येतो ते बदलण्यासाठी टॅप करा')}</div>
         <div class="chips-row" style="margin:0;padding:0;flex-wrap:wrap">${dishes.map((d, i) =>
-          `<button type="button" class="f-chip" data-action="dish-assign" data-id="${i}" data-nl style="max-width:100%;overflow:hidden;text-overflow:ellipsis">${esc(d.name)}${d.head ? ` · ${esc(short(d.head))}` : ''}</button>`).join('')}</div>
+          `<button type="button" class="f-chip" data-action="dish-assign" data-id="${i}" data-nl style="max-width:100%;overflow:hidden;text-overflow:ellipsis">${esc(d.name)}${d.head ? ` · ${esc(short(d.head))}` : ''}${d.meal ? ` · ${esc(MEALS[d.meal] || '')}` : ''}</button>`).join('')}</div>
       </div>`}
     </div>`;
 }
@@ -1440,23 +1441,63 @@ async function patchEvent(id, patch) {
   return record;
 }
 
+/* Menu: paste or type the dishes; each is shown for review (counter, meal) before saving. Earlier choices for
+   dishes that stay are kept; new dishes are matched to counters from what you chose before. */
+let menuDraft = [];
 function openMenuModal() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
-  q('menu-text').value = (ev.dishes || []).map(d => d.name).join('\n');
+  menuDraft = (ev.dishes || []).map(d => ({ ...d }));
+  q('menu-text').value = menuDraft.map(d => d.name).join('\n');
+  renderMenuReview();
   openSheet('menu-modal');
   q('menu-text').focus({ preventScroll: true });
+}
+function readMenuText() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const learned = learnedDishes(D.events);
+  const known = new Map([...(ev.dishes || []), ...menuDraft].map(d => [d.name.toLowerCase(), d]));
+  const meals = MEAL_ORDER.filter(m => (ev.meals || []).includes(m));
+  menuDraft = parseMenu(qv('menu-text')).map(name => {
+    const d = known.get(name.toLowerCase());
+    return d ? { ...d, name } : { name, head: dishCounter(name, learned), ...(meals.length === 1 ? { meal: meals[0] } : {}) };
+  });
+  renderMenuReview();
+}
+function renderMenuReview() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const meals = MEAL_ORDER.filter(m => (ev.meals || []).includes(m));
+  const heads = EXPENSE_HEADS['Live Counter'].filter(h => !/counter setup/i.test(h));
+  const sel = (i, k, opts, v) => `<select data-md="${i}" data-k="${k}" style="flex:1;min-width:0">${opts.map(([val, label]) => `<option value="${esc(val)}"${val === v ? ' selected' : ''}>${esc(label)}</option>`).join('')}</select>`;
+  q('menu-review').innerHTML = menuDraft.length ? `<div class="label" style="margin:var(--s2) 0">${tr(`Check ${menuDraft.length} dish${menuDraft.length > 1 ? 'es' : ''}`, `${menuDraft.length} पदार्थ तपासा`)}</div>`
+    + menuDraft.map((d, i) => `<div class="check-row" style="flex-direction:column;align-items:stretch;gap:6px;cursor:default">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--s2)"><span class="title-sm trunc" data-nl>${esc(d.name)}</span>
+        <button type="button" class="icon-btn" data-md-del="${i}" aria-label="Remove dish">${icon('x', 16)}</button></div>
+      <div style="display:flex;gap:var(--s2)">
+        ${ev.outsourced ? '' : sel(i, 'head', [['', 'Our kitchen – आपले किचन'], ...heads.map(h => [h, h])], d.head || '')}
+        ${meals.length > 1 ? sel(i, 'meal', [['', 'All meals – सर्व जेवण'], ...meals.map(m => [m, MEALS[m]])], d.meal || '') : ''}
+      </div></div>`).join('') : '';
 }
 
 async function saveMenu() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
-  const learned = learnedDishes(D.events);
-  const before = new Map((ev.dishes || []).map(d => [d.name.toLowerCase(), d]));
-  // Keep your earlier choices for dishes that stay; match new ones to counters
-  const dishes = parseMenu(qv('menu-text')).map(name => before.get(name.toLowerCase()) || { name, head: dishCounter(name, learned) });
-  await patchEvent(ev.id, { dishes });
+  if (parseMenu(qv('menu-text')).join('\n').toLowerCase() !== menuDraft.map(d => d.name).join('\n').toLowerCase()) readMenuText();
+  const meals = MEAL_ORDER.filter(m => (ev.meals || []).includes(m));
+  const dishes = menuDraft.map(d => { const x = { ...d }; if (!x.meal || !meals.includes(x.meal)) delete x.meal; return x; });
+  const before = ev.dishes || [];
+  const changed = JSON.stringify(before) !== JSON.stringify(dishes);
+  const patch = { dishes };
+  if (changed && before.length) {
+    // Keep the previous menu (G-11) and mark sent/confirmed orders whose counter's dishes changed; nothing is re-sent
+    patch.menuVersions = [...(ev.menuVersions || []), { at: new Date().toISOString(), dishes: before }].slice(-20);
+    const hit = new Set(menuChangeImpact(before, dishes, ev.orders || []));
+    if (hit.size) patch.orders = ev.orders.map(o => hit.has(o.id) ? { ...o, menuChanged: true } : o);
+  }
+  await patchEvent(ev.id, patch);
   closeModals();
+  const flagged = (patch.orders || []).filter(o => o.menuChanged).length;
   const n = ev.outsourced ? 1 : new Set(dishes.filter(d => d.head).map(d => d.head)).size;
-  showToast(n ? `Menu saved · ${n} counter order${n > 1 ? 's' : ''} to send – ${n} ऑर्डर` : 'Menu saved – मेनू जतन झाला');
+  showToast(flagged ? `Menu saved · ${flagged} order${flagged > 1 ? 's' : ''} sent earlier may need updating – ऑर्डर तपासा`
+    : n ? `Menu saved · ${n} counter order${n > 1 ? 's' : ''} to send – ${n} ऑर्डर` : 'Menu saved – मेनू जतन झाला', flagged ? 'error' : 'success');
   refreshCurrent();
 }
 
@@ -1511,8 +1552,9 @@ async function sendOrder() {
   const ven = D.vendors.find(v => v.id === venId);
   const id = qv('ord-id') || uid('OR');
   const old = (ev.orders || []).find(x => x.id === id);
-  const o = { id, head: qv('ord-head'), venId, plates: Number(qv('ord-plates')) || 0, date: qv('ord-date'), time: qv('ord-time'),
+  const o = { ...(old || {}), id, head: qv('ord-head'), venId, plates: Number(qv('ord-plates')) || 0, date: qv('ord-date'), time: qv('ord-time'),
               notes: qv('ord-notes'), status: old && old.status !== 'cancelled' ? old.status : 'sent', at: new Date().toISOString() };
+  delete o.menuChanged;   // sent again with the current menu
   const orders = old ? ev.orders.map(x => x.id === id ? o : x) : [...(ev.orders || []), o];
   const saved = await patchEvent(ev.id, { orders });
   closeModals();
@@ -2194,6 +2236,9 @@ function openEvModal(id) {
   q('ev-logi').open = !!(ev?.logistics && Object.keys(ev.logistics).length);
   syncEvTypeFields(); updateVenueHint();
   setEvMeals(ev?.meals || []);
+  mpAuto = '';
+  renderMealPlan(ev?.mealPlan || {});
+  q('ev-mp').open = !!(ev?.mealPlan && Object.keys(ev.mealPlan).length);
   const menuOpts = leaf => MENUS.filter(m => !!m.leaf === leaf).map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('');
   q('ev-menu').innerHTML = '<option value="">No package – पॅकेज नाही</option>'
     + `<optgroup label="Buffet – बुफे">${menuOpts(false)}</optgroup><optgroup label="Banana leaf – केळीचे पान">${menuOpts(true)}</optgroup>`;
@@ -2211,6 +2256,47 @@ function openEvModal(id) {
   q('ev-mtitle').textContent = ev ? 'Edit event – संपादित करा' : 'New event – नवीन कार्यक्रम';
   clearFieldErrors();
   openSheet('ev-modal');
+}
+
+// Event page: the bill by meal; the bill itself stays the one commercial amount
+function mealPlanLine(ev) {
+  const t = mealPlanTotal(ev.mealPlan || {}); if (!t.lines.length) return '';
+  const diff = Math.round(Number(ev.billing) * 100) - t.totalPaise;
+  return `<div class="meta" id="meal-plan" data-nl style="margin-top:var(--s3)">${t.lines.map(l => `${MEALS[l.meal]} ${l.guests} × ${fmtCurrency(l.rate)} = ${fmtCurrency(l.total)}`).join(' · ')}${t.lines.length > 1 ? ` · ${tr('meals total', 'एकूण')} ${fmtCurrency(t.total)}` : ''}
+    ${diff ? `<div class="due">${tr(`Bill is ${fmtCurrency(Math.abs(diff) / 100)} ${diff > 0 ? 'more' : 'less'} than the meal prices (extras or a discount?)`, `बिल जेवणाच्या दरांपेक्षा ${fmtCurrency(Math.abs(diff) / 100)} ${diff > 0 ? 'जास्त' : 'कमी'}`)}</div>` : ''}</div>`;
+}
+
+/* ── Price by meal in the event form (spec §6.4) ── */
+let mpAuto = '';   // the bill value last filled from the meal total, so a typed bill is never overwritten
+function readMealPlan() {
+  const plan = {};
+  document.querySelectorAll('#ev-mp-rows [data-mp]').forEach(row => {
+    const g = row.querySelector('[data-k="guests"]').value, r = row.querySelector('[data-k="rate"]').value;
+    if (g || r) plan[row.dataset.mp] = { guests: g === '' ? 0 : Math.max(0, Math.floor(Number(g))), rate: r === '' ? 0 : Number(r) };
+  });
+  return plan;
+}
+function renderMealPlan(values) {
+  const meals = MEAL_ORDER.filter(m => evMeals().includes(m));
+  q('ev-mp').hidden = !meals.length;
+  q('ev-mp-rows').innerHTML = meals.map(m => `<div class="f2" data-mp="${m}">
+    <div class="field"><label for="ev-mp-${m}-g">${MEALS[m]} guests – पाहुणे</label><input type="number" id="ev-mp-${m}-g" data-k="guests" min="0" inputmode="numeric" placeholder="${esc(qv('ev-guests') || '0')}" value="${values[m]?.guests || ''}"></div>
+    <div class="field"><label for="ev-mp-${m}-r">₹ / plate – दर</label><input type="number" id="ev-mp-${m}-r" data-k="rate" min="0" inputmode="decimal" placeholder="0" value="${values[m]?.rate || ''}"></div></div>`).join('');
+  updateMealPlan();
+}
+// Only meals still ticked, with both guests and a rate, are kept
+function mealPlanFields(meals) {
+  const plan = readMealPlan(), out = {};
+  for (const m of meals) if (plan[m]?.guests > 0 && plan[m]?.rate > 0) out[m] = { guests: plan[m].guests, rate: Math.round(plan[m].rate * 100) / 100 };
+  return out;
+}
+function updateMealPlan() {
+  const t = mealPlanTotal(mealPlanFields(MEAL_ORDER.filter(m => evMeals().includes(m))));
+  q('ev-mp-total').innerHTML = t.lines.length ? t.lines.map(l => `${MEALS[l.meal]} ${l.guests} × ${fmtCurrency(l.rate)} = ${fmtCurrency(l.total)}`).join(' · ')
+    + ` · <b>${tr('Total', 'एकूण')} ${fmtCurrency(t.total)}</b> ${tr('(before tax)', '(कराआधी)')}` : '';
+  // The meal total fills the bill only if the bill is empty or still holds the last filled total
+  const bill = q('ev-billing').value;
+  if (t.total > 0 && (!bill || bill === mpAuto || bill === evAuto.bill)) { q('ev-billing').value = String(t.total); mpAuto = String(t.total); evAuto.bill = ''; updateQuote(); }
 }
 
 /* ── Venue details in the event form (CD5-VEN-01) ── */
@@ -2295,7 +2381,9 @@ function updateQuote() {
       const pp = Math.round(bill / guests), m = Math.round((pp - cost.perPlate) / pp * 100);
       lines.push(`At ${fmtCurrency(pp)}/plate your margin is about <b class="${m < TARGET_MARGIN ? 'due' : 'pos'}">${m}%</b> · minimum ${TARGET_MARGIN}%`);
     }
-    lines.push(`For a ${TARGET_MARGIN}% margin, quote at least <b>${fmtCurrency(Math.ceil(cost.perPlate / (1 - TARGET_MARGIN / 100)))}/plate</b>`);
+    const pm = priceForMargin(cost.perPlate, TARGET_MARGIN), pu = priceForMarkup(cost.perPlate, TARGET_MARGIN);
+    lines.push(`For a ${TARGET_MARGIN}% margin, quote at least <b>${fmtCurrency(pm)}/plate</b>`);
+    lines.push(`<span class="meta">(${TARGET_MARGIN}% markup on cost would be only ${fmtCurrency(pu)}/plate, a ${marginPct(pu, cost.perPlate)}% margin)</span>`);
   }
   if (billed) lines.push(`Card ${fmtCurrency(menuRate(menu, guests))} · you actually billed <b>${fmtCurrency(billed.perPlate)}/plate</b> on average (${billed.n} event${billed.n > 1 ? 's' : ''})`);
   box.innerHTML = lines.map(l => `<div>${l}</div>`).join('');
@@ -2409,6 +2497,7 @@ async function saveEvent() {
     ...(meals.length ? { meals } : {}),
     venue:    data.venue,
     ...venueFields(),
+    ...(Object.keys(mealPlanFields(meals)).length ? { mealPlan: mealPlanFields(meals) } : {}),
     billing:  data.billing,
     mobile:   data.mobile,
     guests:   data.guests,
@@ -2418,9 +2507,10 @@ async function saveEvent() {
     notes:    qv('ev-notes'),
     photoIds: base?.photoIds || [],
     _v: 2
-  }, [...(meals.length ? [] : ['meals']), ...(out ? [] : ['outsourced', 'outVenId']), ...emptyVenueFields(),
+  }, [...(meals.length ? [] : ['meals']), ...(out ? [] : ['outsourced', 'outVenId']), ...emptyVenueFields(), ...(Object.keys(mealPlanFields(meals)).length ? [] : ['mealPlan']),
       // Older events keep their shape: an empty mobile or budget, or the format marker, is not added to them
-      ...(!data.mobile && !(base && 'mobile' in base) ? ['mobile'] : []), ...(!(Number(data.budget) > 0) && !(base && 'budget' in base) ? ['budget'] : []),
+      ...['mobile', 'notes', 'menu'].filter(k => !(base && k in base) && !{ mobile: data.mobile, notes: qv('ev-notes'), menu: qv('ev-menu') }[k]),
+      ...(!(Number(data.budget) > 0) && !(base && 'budget' in base) ? ['budget'] : []),
       ...(base && !('_v' in base) ? ['_v'] : [])]);
 
   // The advance is saved with the event in one go, as its first payment received
@@ -3467,6 +3557,7 @@ function bindAllEvents() {
     const on = b.getAttribute('aria-pressed') !== 'true';
     b.setAttribute('aria-pressed', String(on));
     if (on && b.dataset.meal === 'lunch') q('ev-meals').querySelector('[data-meal="breakfast"]').setAttribute('aria-pressed', 'true');
+    renderMealPlan(readMealPlan());
   });
   q('ev-handling').addEventListener('click', e => { const b = e.target.closest('[data-h]'); if (b) setEvHandling(b.dataset.h); });
   q('ev-out-ven').addEventListener('change', e => {
@@ -3491,6 +3582,13 @@ function bindAllEvents() {
   // Sharing must start within the tap, so begin the backup first, then close the panel
   q('btn-export').addEventListener('click', () => { exportData(); closeOverlay(); });
   q('recon-checks').addEventListener('change', updateReconSave);
+  let menuTimer;
+  q('menu-text').addEventListener('input', () => { clearTimeout(menuTimer); menuTimer = setTimeout(readMenuText, 300); });
+  q('menu-review').addEventListener('change', e => { const s = e.target.closest('[data-md]'); if (!s) return;
+    const d = menuDraft[Number(s.dataset.md)]; if (!d) return; d[s.dataset.k] = s.value; if (s.dataset.k === 'head') d.manual = true; });
+  q('menu-review').addEventListener('click', e => { const b = e.target.closest('[data-md-del]'); if (!b) return;
+    menuDraft.splice(Number(b.dataset.mdDel), 1); q('menu-text').value = menuDraft.map(d => d.name).join('\n'); renderMenuReview(); });
+  q('ev-mp-rows').addEventListener('input', updateMealPlan);
   q('ev-type').addEventListener('change', syncEvTypeFields);
   q('ev-vtype').addEventListener('change', () => { syncEvTypeFields(); updateVenueHint(); });
   q('ev-venue').addEventListener('change', updateVenueHint);

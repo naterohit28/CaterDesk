@@ -4,9 +4,9 @@
 
 An offline-first app for catering events, expenses, vendor credit, client collections, menus and vendor orders. Business records stay in the device's browser storage; the hosted app also sends limited error diagnostics to its server.
 
-**Current source and hosted web build: v4.3.0.** Documentation checked on **13 November 2026**.
+**Current source and hosted web build: v4.4.0.** Documentation checked on **13 November 2026**.
 
-[Open the app](https://expense-calculator-kohl.vercel.app/) · [Download published packages](https://github.com/naterohit28/Expense-Calculator/releases) · [Historical reliability report](docs/RELIABILITY.md) · [Competitor/name research and Claude evaluation notes](docs/research/README.md) · [Report an issue](https://github.com/naterohit28/Expense-Calculator/issues)
+[Open the app](https://expense-calculator-kohl.vercel.app/) · [Download published packages](https://github.com/naterohit28/CaterDesk/releases) · [Historical reliability report](docs/RELIABILITY.md) · [Competitor/name research and Claude evaluation notes](docs/research/README.md) · [Report an issue](https://github.com/naterohit28/CaterDesk/issues)
 
 CaterDesk was previously called Flavor Fusion. The existing Android package (`com.flavorfusion.expenses`), signing identity, database and desktop profile are retained for continuity. The cloche-and-ledger icon uses teal, ivory and copper; its editable master is [`public/icons/caterdesk.svg`](public/icons/caterdesk.svg). Naming research found existing CaterDesk use in this industry; the app has not been renamed again.
 
@@ -31,16 +31,16 @@ The **APK wrapper version, hosted web version and bundled desktop version are in
 
 | Component | Verified state on 3 November 2026 | Meaning |
 | --- | --- | --- |
-| Source and hosted web app | **4.3.0** | Current UI, data/export version, service worker and error reporter |
+| Source and hosted web app | **4.4.0** | Current UI, data/export version, service worker and error reporter |
 | Service-worker release cache | `flavor-fusion-v2-cache-v25` | Installed web assets; this number is not the database schema version |
-| Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** | APK package inspected locally; launches the hosted app, which can run 4.3.0 |
+| Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** | APK package inspected locally; launches the hosted app, which can run 4.4.0 |
 | Android requirements for that local wrapper | min API **24**, target API **36** | Android 7.0+ and a compatible browser provider |
 | Latest GitHub Release with downloadable binaries | **2.4.7** | APK and desktop ZIP; later source tags do not imply newer binaries were uploaded |
 | Desktop package currently in the owner's `Apps/Desktop` folder | **2.4.7** | A static older bundle, not the current source build |
-| Desktop launcher source/instructions | **4.3.0** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
+| Desktop launcher source/instructions | **4.4.0** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
 | IndexedDB schema | **4** | Kept separate from application version changes |
 
-Do not relabel an older package as 4.3.0. Use the [release assets](https://github.com/naterohit28/Expense-Calculator/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
+Do not relabel an older package as 4.4.0. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
 
 ## Current features
 
@@ -147,17 +147,17 @@ The APK is a **Trusted Web Activity** wrapper around the hosted site. It does no
 1. Keep a business-data backup.
 2. Obtain the intended APK from its actual release assets or the owner's prepared local package. Install over the existing app with the same package/signing identity.
 3. Open online to download updates. Check the **web build in Settings**, not just Android App info.
-4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **4.3.0**.
+4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **4.4.0**.
 
 A newer web release may reload automatically during the first 20 seconds of startup when no active form/save/overlay prevents it, at most once per release per session. Otherwise it waits for a later start or explicit reload. Refresh can also switch versions when no form/save is open. Service-worker cache mappings preserve matching assets for older open pages until navigation.
 
 Do not uninstall or clear browser/site storage to force an update. If Android rejects an APK, check package, versionCode and signing certificate before proceeding. The public certificate association is [`public/.well-known/assetlinks.json`](public/.well-known/assetlinks.json).
 
-The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **4.3.0**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
+The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **4.4.0**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
 
 ## Windows desktop testing
 
-Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v4.3.0 package.
+Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v4.4.0 package.
 
 1. Extract the entire ZIP; keep `app/` beside `CaterDesk-Desktop.exe`.
 2. Run the EXE. Microsoft Edge opens an app window; a tray icon provides **Open CaterDesk**, storage information and **Exit test server**.
@@ -177,8 +177,8 @@ See [`desktop/README.txt`](desktop/README.txt) for packaging caveats and recover
 The browser app is plain HTML, CSS and JavaScript modules, with no frontend bundler or business-data backend credentials required.
 
 ```sh
-git clone https://github.com/naterohit28/Expense-Calculator.git
-cd Expense-Calculator
+git clone https://github.com/naterohit28/CaterDesk.git
+cd CaterDesk
 python -m http.server 8790 --bind 127.0.0.1 --directory public
 ```
 
@@ -212,6 +212,7 @@ Playwright uses the installed **Microsoft Edge** channel. The runner starts an i
 | [`tests/backup-restore.cjs`](tests/backup-restore.cjs) | Backup v5: share-sheet save, restore drill on a second device with identical records and settings, damaged/cut-off/newer/foreign/oversized files refused with data intact, older backups still import (G-15, G-16, G-28) |
 | [`tests/reconciliation.cjs`](tests/reconciliation.cjs) | Reconciliation: paise rounding, legacy events untouched, checklist and blockers, G-12 late bill reopens with history, bill/guest changes reopen, reconciled-only benchmarks (G-22), contribution labels, backup round trip |
 | [`tests/venue-details.cjs`](tests/venue-details.cjs) | Venue details G-39–G-42: occasion vs venue type incl. custom, legacy event unchanged through edit and restore, logistics prompts without automatic expenses, repeat-venue suggestion, reconciled-only venue benchmarks |
+| [`tests/menu-meals.cjs`](tests/menu-meals.cjs) | Margin vs markup (G-04), price by meal (G-03 / Q-01), menu review, menu change after confirmed order keeps the old version and flags the order without sending (G-11), import checks |
 | [`tests/ui-audit.cjs`](tests/ui-audit.cjs) | Touch-phone audit in light and dark at 360px: aligned card edges and equal margins, equal-size buttons/segments/tiles, centred labels, aligned list icons and amounts; every tab, quick action, event/vendor action and dropdown option; sheets close by ✕, Back and outside tap; background stays still under sheets; pull-to-refresh; layout shift; console errors |
 
 Use a normal Git clone with history: the upgrade test reads commit `bdb6a5a`. A source ZIP or shallow clone missing that commit is insufficient. Evidence/screenshots go into ignored `test-artifacts/`.
@@ -252,6 +253,8 @@ A fresh clone does not include this generated project, keystore or credentials. 
 
 ## Deployment, diagnostics and maintenance
 
+The repository was renamed from `Expense-Calculator` to `CaterDesk` on 13 November 2026 (GitHub redirects old links). The web address `expense-calculator-kohl.vercel.app` deliberately keeps the original name: records are stored per web address, so a new address would open an empty app and the Android wrapper is built for this one.
+
 Vercel deploys the repository with `public/` as its output directory and the root `vercel.json` for security/cache headers. The separate `api/client-error.js` is a Vercel function; a plain static host needs an equivalent endpoint or a deliberate reporting change. Documentation, tests, private build material and business backups do not belong in `public/`.
 
 ### Release process
@@ -279,7 +282,7 @@ Keep error/log retention and webhook recipients appropriate for any sensitive te
 ## Repository and local workspace
 
 ```text
-Expense-Calculator/
+CaterDesk/
 ├── README.md
 ├── package.json / package-lock.json
 ├── vercel.json
@@ -327,6 +330,7 @@ This is a short source-feature history, not a list of available binary downloads
 
 | Version | Main changes |
 | --- | --- |
+| 4.4.0 | **Menus and meals (v5 Phase 2, P2-B):** the event menu sheet shows every pasted dish for review before saving: where it comes from (a counter or our kitchen) and, for events with several meals, which meal; dishes can be removed there. Changing a menu keeps the previous version, and vendor orders already sent or confirmed whose counter's dishes changed are marked **Menu changed · resend** (nothing is sent by itself; sending again clears the mark). The event form has an optional **Price by meal**: guests and rate for each ticked meal (e.g. dinner 900 × ₹800 + breakfast 35 × ₹150 = ₹7,25,250 before tax); the total fills an empty bill, never one you typed, and the event page shows the breakdown and any difference from the bill. The quote helper shows the price for the 30% margin target and, labelled separately, what a 30% markup would give. Editing an older event no longer adds empty notes or menu fields. |
 | 4.3.0 | **Venue details (v5 Phase 2, CD5-VEN-01):** the occasion (event type) and the place (new optional **venue type**: hall, lawn, open ground, residence, society, hotel, office, school, community hall, terrace, restaurant or your own) are separate, plus an optional **area** and a collapsed **venue logistics** section (kitchen, cooking, electricity, water, equipment, parking/loading, setting; every answer can stay unknown). Logistics such as a required generator show **Venue costs to check** on the event, with a button to add the cost yourself; nothing is added automatically. A venue used before offers its earlier details with **Use**, without changing past events. Reports add per-plate figures by venue type from reconciled events, with sample sizes. Event types add Anniversary and Pooja; **Other** takes your own wording. Editing an older event no longer adds blank fields or changes a type that is not in today's list. |
 | 4.2.2 | **Fix:** on the owner's phone, Share showed *NotAllowedError: Permission denied*. Android Chrome reports that it can share a `.json` file but then refuses it because `.json` is not on its list of shareable types. Share now always sends the `.txt` copy (same content; CaterDesk imports it); Save to phone still downloads `.json`. |
 | 4.2.1 | **Fix:** on the owner's phone, tapping **Share** in the Backup ready sheet still saved to Downloads: the share menu was opened after the sheet closed, which Android does not count as coming from a tap. It now opens inside the tap itself. If the phone still refuses, the backup is saved to Downloads and the reason is shown. |
