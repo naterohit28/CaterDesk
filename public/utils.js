@@ -189,6 +189,22 @@ export function checkSplit(rows, totalRupees) {
   if (sumP !== totalP) return `The parts add up to ${fromPaise(sumP)}, not the bill's ${fromPaise(totalP)}`;
   return '';
 }
+/* ── SUPPLIER BILLS: COMMON STOCK AND BILL NUMBERS (spec §10.1–10.2, scenario I-01, G-07) ── */
+/* A bill part can go to common stock (bought for the store, not yet used by any event) instead of an event. It is an
+   expense with no event and `stock: true`: the vendor is owed it like any other part, but it is never an event's cost
+   until it is moved to an event by changing the split (the bill total never changes). */
+export const STOCK = '__stock';
+export const isStock = x => !!x?.stock;
+export const stockTotal = expenses => sumRupees(expenses.filter(x => x.stock && !x.draft));
+const billKey = no => String(no || '').toLowerCase().replace(/[\s\-\/#.]/g, '');
+/* The same vendor's bill number recorded on another bill within a year: probably the same bill entered twice.
+   Only a warning – bill numbers can repeat across financial years or on informal bills. */
+export function duplicateBill(expenses, { id, venId, billNo, date, splitId }) {
+  const k = billKey(billNo); if (!k || !venId) return null;
+  const t = Date.parse(date);
+  return expenses.find(x => x.id !== id && (!splitId || x.split?.id !== splitId) && x.venId === venId && billKey(x.billNo) === k
+    && !(Math.abs(Date.parse(x.date) - t) > 365 * 864e5)) || null;
+}
 // Equal parts in paise; the last part takes any leftover paise so the parts add up exactly
 export function equalSplit(totalRupees, n) {
   const totalP = toPaise(totalRupees), each = Math.floor(totalP / n);
@@ -889,7 +905,8 @@ export function periodStart(period) {
 // Events dated in the period, plus the payments and expenses that belong to them
 export function sliceByPeriod(D, period) {
   const start = periodStart(period);
-  if (!start) return D;
+  // Common stock is no event's cost: it stays out of event and period totals (shown on its own)
+  if (!start) return { ...D, expenses: D.expenses.filter(x => !x.stock) };
   const events = D.events.filter(e => (e.date || '') >= start);
   const ids = new Set(events.map(e => e.id));
   return {
