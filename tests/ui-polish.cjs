@@ -83,6 +83,25 @@ const DATA = { version: 'ffv2', photos: [], vPays: [],
     for (const x of r) { assert.equal(x.fits, true); assert(x.size >= 13); }
   });
 
+  await test('alignment: tab icons centred on one point, period buttons even, no floating button over Home quick actions', async () => {
+    await p.reload(); await p.waitForSelector('#kpi .card'); await p.locator('#n-home').click();
+    const icons = await p.locator('nav.bot-nav .nav-it svg').evaluateAll(ss => ss.map(s => { const b = s.getBBox(); return [Math.round((b.x + b.width / 2) * 2) / 2, Math.round((b.y + b.height / 2) * 2) / 2]; }));
+    assert.deepEqual(icons, Array(5).fill([12, 12]), 'every tab icon centred in its 24×24 frame');
+    const tabs = await p.locator('nav.bot-nav .nav-it').evaluateAll(bs => bs.map(b => { const r = b.getBoundingClientRect(), i = b.querySelector('svg').getBoundingClientRect(), l = b.querySelector('.nav-en').getBoundingClientRect();
+      return [Math.round(r.left + r.width / 2), Math.round(i.left + i.width / 2), Math.round(l.left + l.width / 2), Math.round(i.top), Math.round(l.top)]; }));
+    for (const [btn, ic, lab] of tabs) { assert(Math.abs(btn - ic) <= 1 && Math.abs(btn - lab) <= 1, 'icon and label centred in the tab'); }
+    assert.equal(new Set(tabs.map(t => t[3])).size, 1); assert.equal(new Set(tabs.map(t => t[4])).size, 1);
+    const seg = await p.locator('#tab-home .seg.period button').evaluateAll(bs => bs.map(b => b.innerText));
+    assert.deepEqual(seg, ['Month', '3 months', 'FY', 'All time']);
+    assert.equal(await p.locator('#fab').isHidden(), true, 'Home has Add expense in Quick actions; no floating copy over the cards');
+    await p.locator('#n-events').click(); assert.equal(await p.locator('#fab').isVisible(), true, 'other tabs keep their button');
+  });
+
+  await test('the collected bar has a caption, and is left out while nothing is collected', async () => {
+    await openEvent('A'); assert.match(await p.locator('#ev-collected').innerText(), /90% of the bill collected/);
+    await openEvent('B'); assert.equal(await p.locator('#tab-evdetail .prog').count(), 0); assert.equal(await p.locator('#ev-collected').count(), 0);
+  });
+
   assert.deepEqual(errors, []);
   await browser.close();
   console.log(failed ? 'ui polish FAIL' : 'UI polish: money format, event tools row, split wording PASS');

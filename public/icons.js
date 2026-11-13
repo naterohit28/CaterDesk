@@ -5,10 +5,10 @@
  */
 
 const P = {
-  home:     '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  home:     '<g transform="translate(0 .5)"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></g>',
   calendar: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>',
-  receipt:  '<path d="M5 3v18l2.33-1.5L9.67 21 12 19.5l2.33 1.5 2.34-1.5L19 21V3l-2.33 1.5L14.33 3 12 4.5 9.67 3 7.33 4.5Z"/><path d="M9 8h6M9 11h6M12 8a3 3 0 0 1 0 6H9.5l4 3.5"/>',
-  store:    '<path d="M3 9l1.5-5h15L21 9"/><path d="M3 9h18v1.5a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0z"/><path d="M5 13v8h14v-8"/><path d="M10 21v-5h4v5"/>',
+  receipt:  '<path d="M4 3v18l2.67-1.5L9.33 21 12 19.5l2.67 1.5 2.66-1.5L20 21V3l-2.67 1.5L14.67 3 12 4.5 9.33 3 6.67 4.5Z"/><path d="M8.5 8h7M8.5 11h7M12 8a3 3 0 0 1 0 6H9l4.5 3.5"/>',
+  store:    '<g transform="translate(0 -.5)"><path d="M3 9l1.5-5h15L21 9"/><path d="M3 9h18v1.5a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0z"/><path d="M5 13v8h14v-8"/><path d="M10 21v-5h4v5"/></g>',
   chart:    '<path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
   plus:     '<path d="M5 12h14"/><path d="M12 5v14"/>',
   menu:     '<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/>',
