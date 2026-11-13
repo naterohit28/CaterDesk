@@ -14,9 +14,9 @@ import {
   EXPENSE_HEADS, EVENT_TYPES, VENUE_TYPES, LOGISTICS, venueTypeLabel, logisticsPrompts, venueSuggestion, PAY_MODES, PERIODS, MENUS, menuById, menuRate, menuCostPerPlate, costChecklist,
   uid, today, daysSince, fmtDate, fmtCurrency, esc,
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
-  calcEventReceived, calcEventPL, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, daysUntil, addDays,
+  calcEventReceived, calcEventPL, toPaise, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
+  RECON_CHECKS, ACTIVE_ORDER, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.5.0';
+const APP_BUILD = '4.6.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -780,7 +780,7 @@ function rHome() {
 
   // Pending collections (all time) — overdue first, then upcoming
   const od = D.events
-    .map(e => ({ ...e, _p: e.billing - calcEventReceived(e.id, D.cPays), _late: isOverdue(e) }))
+    .map(e => { const s = paymentSchedule(e, D.cPays); return { ...e, _p: s.outstanding, _late: s.overdue > 0, _due: s.dueNow, _od: s.overdue, _sched: s.scheduled }; })
     .filter(e => e._p > 0)
     .sort((a, b) => (b._late - a._late) || (b._p - a._p));
 
@@ -792,7 +792,11 @@ function rHome() {
       </div>
       <div class="row-end">
         <div class="amt-sm ${e._late ? 'neg' : 'due'}">${fmtCurrency(e._p)}</div>
-        ${e._late
+        ${e._sched
+          ? (e._late ? `<span class="chip neg">${tr(`Overdue ${fmtCurrency(e._od)}`, `थकीत ${fmtCurrency(e._od)}`)}</span>`
+            : e._due > 0 ? `<span class="chip due">${tr(`Due now ${fmtCurrency(e._due)}`, `आता देय ${fmtCurrency(e._due)}`)}</span>`
+            : `<span class="chip">${tr('On schedule', 'वेळापत्रकानुसार')}</span>`)
+          : e._late
           ? `<span class="chip neg">${tr(`Overdue ${daysSince(e.date)}d`, `${daysSince(e.date)} दिवस थकीत`)}</span>`
           : `<span class="chip">${tr('Upcoming', 'आगामी')}</span>`}
       </div>
@@ -901,7 +905,7 @@ function draftsCard() {
 function eventStatus(ev) {
   const { received: rec, pending: pend } = calcEventPL(ev, D.cPays, D.expenses);
   const noCosts = isOverdue(ev) && !ev.outsourced && !D.expenses.some(x => x.evId === ev.id);
-  return { rec, pend, noCosts, overdue: pend > 0 && isOverdue(ev) };
+  return { rec, pend, noCosts, overdue: paymentSchedule(ev, D.cPays).overdue > 0 };
 }
 
 function eventCard(ev) {
@@ -1063,8 +1067,13 @@ Thank you!
 }
 
 function reminderLink(ev, pending) {
-  const msg = `Namaste! A gentle reminder from CaterDesk: ${fmtCurrency(pending)} is pending for ${ev.name} (${fmtDate(ev.date)}). Kindly arrange the payment. Thank you!\n\n`
-            + `नमस्कार! ${ev.name} साठी ${fmtCurrency(pending)} बाकी आहे. कृपया देयक करावे. धन्यवाद!`;
+  // With a schedule, ask only for what is due now (never the whole outstanding as if it were overdue)
+  const s = paymentSchedule(ev, D.cPays);
+  const msg = s.scheduled && s.dueNow > 0 && s.dueNow < s.outstanding
+    ? `Namaste! A gentle reminder from CaterDesk: ${fmtCurrency(s.dueNow)} is now due for ${ev.name} (${fmtDate(ev.date)}) as per the payment schedule (total balance ${fmtCurrency(s.outstanding)}). Kindly arrange the payment. Thank you!\n\n`
+      + `नमस्कार! ${ev.name} साठी ठरलेल्या हप्त्यानुसार ${fmtCurrency(s.dueNow)} आता देय आहे (एकूण बाकी ${fmtCurrency(s.outstanding)}). धन्यवाद!`
+    : `Namaste! A gentle reminder from CaterDesk: ${fmtCurrency(pending)} is pending for ${ev.name} (${fmtDate(ev.date)}). Kindly arrange the payment. Thank you!\n\n`
+      + `नमस्कार! ${ev.name} साठी ${fmtCurrency(pending)} बाकी आहे. कृपया देयक करावे. धन्यवाद!`;
   return `https://wa.me/${phoneDigits(ev.mobile)}?text=${encodeURIComponent(msg)}`;
 }
 
@@ -1088,7 +1097,7 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
       <div class="facts">
         <span class="fact">${icon('calendar', 16)}${fmtDate(ev.date)}</span>
         <span class="fact" data-nl>${icon('pin', 16)}${esc(ev.venue)}${ev.locality ? `, ${esc(ev.locality)}` : ''}</span>
-        <span class="chip" data-nl>${esc(ev.typeOther || ev.type)}</span>
+        ${ev.typeOther ? `<span class="chip" data-nl>${esc(ev.typeOther)}</span>` : `<span class="chip">${esc(ev.type)}</span>`}
         ${ev.venueType ? `<span class="chip" data-nl>${esc(venueTypeLabel(ev))}</span>` : ''}
         ${ev.meals?.length ? `<span class="chip">${esc(mealLabel(ev))}</span>` : ''}
         ${menu ? `<span class="chip info">${esc(menu.name)}</span>` : ''}
@@ -1110,6 +1119,7 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
       </div>
       <div class="prog" style="margin-top:var(--s3)"><span style="width:${pct}%"></span></div>
       ${mealPlanLine(ev)}
+      ${scheduleBlock(ev)}
       <div class="metrics">
         <div class="metric"><div class="label">Expenses – खर्च</div><div class="amt-md">${fmtCurrency(exTot)}</div></div>
         <div class="metric"><div class="label">${contributionLabel(ev, recon)}</div><div class="amt-md ${noCosts ? 'muted' : profit >= 0 ? 'pos' : 'neg'}">${fmtCurrency(profit)}</div></div>
@@ -1466,9 +1476,10 @@ function menuOrdersCard(ev) {
 }
 
 // Save changed menu/orders on the event currently open
-async function patchEvent(id, patch) {
+async function patchEvent(id, patch, drop = []) {
   const ev = D.events.find(e => e.id === id); if (!ev) return null;
   const record = { ...ev, ...patch };
+  for (const k of drop) delete record[k];
   await putChecked('events', record, ev);
   D.events = D.events.map(e => e.id === id ? record : e);
   return record;
@@ -2330,6 +2341,78 @@ function openEvModal(id) {
   q('ev-mtitle').textContent = ev ? 'Edit event – संपादित करा' : 'New event – नवीन कार्यक्रम';
   clearFieldErrors();
   openSheet('ev-modal');
+}
+
+// Event page: client payment schedule (due now vs outstanding vs overdue)
+const PAY_STATE = { paid: ['Paid', 'भरले', 'pos'], due: ['Due now', 'आता देय', 'due'], overdue: ['Overdue', 'थकीत', 'neg'], upcoming: ['Upcoming', 'आगामी', ''] };
+function whenText(r) {
+  if (r.when === 'booking') return tr('On booking', 'बुकिंगला');
+  return fmtDate(r.dueDate) + (r.when === 'before' ? tr(' · before event', ' · आधी') : r.when === 'after' && !r.unscheduled ? tr(' · after event', ' · नंतर') : '');
+}
+function scheduleBlock(ev) {
+  const s = paymentSchedule(ev, D.cPays);
+  if (!s.scheduled) return `<button type="button" class="btn-sm" style="margin-top:var(--s3)" data-action="plan-edit">${icon('calendar', 16)}${tr('Payment schedule', 'हप्ते ठरवा')}</button>`;
+  return `<div id="pay-schedule" style="margin-top:var(--s4);padding-top:var(--s4);border-top:1px solid var(--line)">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:var(--s2)">
+      <span class="label">${tr(`Due now ${fmtCurrency(s.dueNow)}`, `आता देय ${fmtCurrency(s.dueNow)}`)}${s.overdue > 0 ? ` · <span class="neg">${tr(`overdue ${fmtCurrency(s.overdue)}`, `थकीत ${fmtCurrency(s.overdue)}`)}</span>` : ''}</span>
+      <button type="button" class="btn-sm" data-action="plan-edit">${icon('pencil', 16)}${tr('Edit', 'बदला')}</button></div>
+    ${s.rows.map(r => `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:var(--s2);margin-top:6px">
+      <div class="meta" style="min-width:0"><span data-nl>${esc(r.label || (r.unscheduled ? 'Balance (not on the schedule)' : 'Milestone'))}</span> · ${whenText(r)}</div>
+      <div style="white-space:nowrap"><span class="amt-sm">${fmtCurrency(r.amount)}</span> <span class="chip ${PAY_STATE[r.state][2]}">${(rest => tr(PAY_STATE[r.state][0] + rest, PAY_STATE[r.state][1] + rest))(r.paid > 0 && r.rest > 0 ? ` · ${fmtCurrency(r.rest)}` : '')}</span></div></div>`).join('')}
+    ${s.overScheduled > 0 ? `<div class="meta due" style="margin-top:6px">${tr(`The schedule adds up to ${fmtCurrency(s.overScheduled)} more than the bill`, `हप्ते बिलापेक्षा ${fmtCurrency(s.overScheduled)} जास्त`)}</div>` : ''}
+  </div>`;
+}
+
+let planDraft = [];
+function openPlanModal() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  planDraft = (ev.payPlan || []).map(m => ({ ...m }));
+  if (!planDraft.length) planDraft = [{ id: uid('PM'), label: 'Advance', when: 'booking', amt: '' }];
+  renderPlanRows();
+  openSheet('plan-modal');
+}
+function renderPlanRows() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const whenOpts = [['booking', 'On booking – बुकिंगला'], ['date', 'On a date – तारखेला'], ['before', 'Days before event – आधी'], ['after', 'Days after event – नंतर']];
+  q('plan-rows').innerHTML = planDraft.map((m, i) => `<div data-pm="${i}" style="display:flex;flex-direction:column;gap:var(--s2);padding:var(--s3) 0;border-bottom:1px solid var(--line)">
+    <div style="display:flex;gap:var(--s2);align-items:center"><div class="field" style="flex:1;min-width:0;margin:0"><input type="text" data-k="label" aria-label="Milestone name" value="${esc(m.label || '')}" placeholder="e.g. Second payment"></div>
+      <button type="button" class="icon-btn" data-pm-del="${i}" aria-label="Remove milestone">${icon('x', 16)}</button></div>
+    <div class="f2" style="margin:0"><div class="field" style="margin:0"><input type="text" data-k="amt" aria-label="Amount in rupees or percent" inputmode="decimal" value="${m.pct != null ? m.pct + '%' : esc(String(m.amt ?? ''))}" placeholder="₹ or % of bill"></div>
+      <div class="field" style="margin:0"><select data-k="when" aria-label="When it is due">${whenOpts.map(([v, l]) => `<option value="${v}"${m.when === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div></div>
+    ${m.when === 'date' ? `<div class="field" style="margin:0"><input type="date" data-k="date" aria-label="Due date" value="${esc(m.date || '')}"></div>` : ['before', 'after'].includes(m.when) ? `<div class="field" style="margin:0"><input type="number" data-k="days" aria-label="Days" min="0" inputmode="numeric" placeholder="Days ${m.when === 'before' ? 'before' : 'after'} the event" value="${m.days ?? ''}"></div>` : ''}
+  </div>`).join('');
+  updatePlanSum();
+}
+function readPlanRow(m) {
+  const raw = String(m.amtRaw ?? (m.pct != null ? m.pct + '%' : m.amt ?? '')).trim();
+  const out = { id: m.id, label: (m.label || '').trim(), when: m.when };
+  if (/%$/.test(raw)) out.pct = Number(raw.slice(0, -1)); else out.amt = raw === '' ? NaN : Number(raw);
+  if (m.when === 'date') out.date = m.date || '';
+  if (['before', 'after'].includes(m.when)) out.days = m.days === '' || m.days == null ? NaN : Math.floor(Number(m.days));
+  if (!out.label) delete out.label;
+  return out;
+}
+function updatePlanSum() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const rows = planDraft.map(readPlanRow);
+  const total = rows.reduce((s, r) => s + (r.pct != null ? Math.round(toPaise(ev.billing) * r.pct / 100) : toPaise(r.amt || 0)), 0) / 100;
+  const diff = Math.round(ev.billing * 100) / 100 - total;
+  q('plan-sum').textContent = `Bill ${fmtCurrency(ev.billing)} · scheduled ${fmtCurrency(total)}` + (diff > 0 ? ` · ${fmtCurrency(diff)} left as balance after the event` : diff < 0 ? ` · ${fmtCurrency(-diff)} more than the bill` : ' · all of the bill');
+}
+async function savePlan() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const rows = planDraft.map(readPlanRow).filter(r => !(r.pct == null && Number.isNaN(r.amt) && !r.label));
+  for (const r of rows) {
+    const bad = r.pct != null ? !(r.pct > 0 && r.pct <= 100) : !(r.amt > 0) || Math.abs(r.amt * 100 - Math.round(r.amt * 100)) > .001;
+    if (bad || (r.when === 'date' && !r.date) || (['before', 'after'].includes(r.when) && !(r.days >= 0))) {
+      showToast('Each milestone needs an amount (₹ or % of the bill) and when it is due – रक्कम व तारीख लिहा', 'error'); return;
+    }
+  }
+  const total = rows.reduce((s, r) => s + (r.pct != null ? Math.round(toPaise(ev.billing) * r.pct / 100) : toPaise(r.amt)), 0);
+  if (total > toPaise(ev.billing)) { showToast('The schedule is more than the bill – हप्ते बिलापेक्षा जास्त', 'error'); return; }
+  try { await patchEvent(ev.id, { payPlan: rows }, rows.length ? [] : ['payPlan']); } catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
+  closeModals(); refreshCurrent();
+  showToast(rows.length ? 'Payment schedule saved – हप्ते जतन' : 'Payment schedule removed – हप्ते काढले');
 }
 
 // Event page: the bill by meal; the bill itself stays the one commercial amount
@@ -3445,6 +3528,7 @@ function bindAllEvents() {
       case 'order-new':    openOrderModal({ head: id }); break;
       case 'order-status': orderAction(id); break;
       case 'recon-open':   openReconModal(); break;
+      case 'plan-edit':    openPlanModal(); break;
       case 'venue-fill':   useVenueOffer(); break;
       case 'logi-add': {
         const ev = D.events.find(e => e.id === curRef), p = ev && logisticsPrompts(ev, D.expenses)[Number(id)];
@@ -3672,6 +3756,13 @@ function bindAllEvents() {
   q('menu-review').addEventListener('click', e => { const b = e.target.closest('[data-md-del]'); if (!b) return;
     menuDraft.splice(Number(b.dataset.mdDel), 1); q('menu-text').value = menuDraft.map(d => d.name).join('\n'); renderMenuReview(); });
   q('ev-mp-rows').addEventListener('input', updateMealPlan);
+  q('plan-rows').addEventListener('input', e => { const row = e.target.closest('[data-pm]'), k = e.target.dataset.k; if (!row || !k) return;
+    const m = planDraft[Number(row.dataset.pm)]; if (k === 'amt') m.amtRaw = e.target.value; else m[k] = e.target.value; updatePlanSum(); });
+  q('plan-rows').addEventListener('change', e => { const row = e.target.closest('[data-pm]'); if (!row || e.target.dataset.k !== 'when') return;
+    const m = planDraft[Number(row.dataset.pm)]; m.amtRaw = row.querySelector('[data-k="amt"]').value; m.when = e.target.value; renderPlanRows(); });
+  q('plan-rows').addEventListener('click', e => { const b = e.target.closest('[data-pm-del]'); if (!b) return; planDraft.splice(Number(b.dataset.pmDel), 1); renderPlanRows(); });
+  q('btn-plan-add').addEventListener('click', () => { planDraft.push({ id: uid('PM'), label: '', when: 'date', amt: '' }); renderPlanRows(); });
+  q('btn-save-plan').addEventListener('click', savePlan);
   for (const id of ['ord-takeup', 'ord-min', 'ord-plates']) q(id).addEventListener('input', updateCounterPlan);
   q('ev-type').addEventListener('change', syncEvTypeFields);
   q('ev-vtype').addEventListener('change', () => { syncEvTypeFields(); updateVenueHint(); });
