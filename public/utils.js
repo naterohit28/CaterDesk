@@ -50,8 +50,68 @@ export const CAT_ICONS = {
 
 export const EVENT_TYPES = [
   'Wedding – लग्न','Engagement – साखरपुडा','Reception – स्वागत समारंभ','Haldi – हळद',
-  'Birthday – वाढदिवस','Corporate – कॉर्पोरेट','Other – इतर'
+  'Birthday – वाढदिवस','Anniversary – वर्धापनदिन','Corporate – कॉर्पोरेट','Pooja / religious – पूजा','Other – इतर'
 ];
+
+/* ── VENUE DETAILS (CD5-VEN-01) ──────────────────── */
+/* The occasion (event `type`) and the physical venue (`venueType`) are separate. Venue type and logistics are
+   stored as fixed ids, independent of the English/Marathi labels, and only when the user picks them. Nothing
+   is inferred from the occasion or the venue name. */
+export const VENUE_TYPES = [
+  { id: 'hall',       en: 'Banquet / marriage hall', mr: 'हॉल / मंगल कार्यालय' },
+  { id: 'lawn',       en: 'Lawn',                    mr: 'लॉन' },
+  { id: 'ground',     en: 'Open ground',             mr: 'मैदान' },
+  { id: 'residence',  en: 'Residence / house party', mr: 'घर' },
+  { id: 'society',    en: 'Society / clubhouse',     mr: 'सोसायटी / क्लबहाऊस' },
+  { id: 'hotel',      en: 'Hotel / resort',          mr: 'हॉटेल / रिसॉर्ट' },
+  { id: 'office',     en: 'Corporate office',        mr: 'ऑफिस' },
+  { id: 'school',     en: 'School / college',        mr: 'शाळा / कॉलेज' },
+  { id: 'community',  en: 'Community hall',          mr: 'समाज मंदिर' },
+  { id: 'terrace',    en: 'Terrace / rooftop',       mr: 'टेरेस' },
+  { id: 'restaurant', en: 'Restaurant / private dining', mr: 'रेस्टॉरंट' },
+  { id: 'other',      en: 'Other',                   mr: 'इतर' }
+];
+export function venueTypeLabel(ev) {
+  if (!ev?.venueType) return '';
+  if (ev.venueType === 'other') return ev.venueTypeOther || 'Other';
+  return VENUE_TYPES.find(v => v.id === ev.venueType)?.en || '';
+}
+
+// Optional logistics; a key that is absent means "unknown" (never recorded, never assumed)
+export const LOGISTICS = [
+  { id: 'kitchen',   en: 'Kitchen',            mr: 'किचन',      opts: [['available', 'Available', 'आहे'], ['temporary', 'Temporary needed', 'तात्पुरते लागेल'], ['none', 'None', 'नाही']] },
+  { id: 'gas',       en: 'Cooking at venue',   mr: 'स्वयंपाक',  opts: [['allowed', 'Gas allowed', 'गॅस चालेल'], ['induction', 'Induction only', 'फक्त इंडक्शन'], ['none', 'No cooking', 'स्वयंपाक नाही']] },
+  { id: 'power',     en: 'Electricity',        mr: 'वीज',       opts: [['venue', 'Venue provides', 'ठिकाणी आहे'], ['generator', 'Generator required', 'जनरेटर लागेल']] },
+  { id: 'water',     en: 'Water',              mr: 'पाणी',      opts: [['venue', 'Venue provides', 'ठिकाणी आहे'], ['arrange', 'Arrange separately', 'वेगळे आणावे']] },
+  { id: 'equipment', en: 'Equipment',          mr: 'साहित्य',   opts: [['venue', 'Venue', 'ठिकाणचे'], ['own', 'Own', 'आपले'], ['rental', 'Rental', 'भाड्याचे'], ['mixed', 'Mixed', 'मिश्र']] },
+  { id: 'access',    en: 'Parking & loading',  mr: 'पार्किंग',  opts: [['easy', 'Easy', 'सोपे'], ['restricted', 'Restricted', 'अडचणीचे']] },
+  { id: 'cover',     en: 'Setting',            mr: 'जागा',      opts: [['indoor', 'Indoor', 'आत'], ['covered', 'Covered outdoor', 'छताखाली बाहेर'], ['open', 'Open air', 'उघड्यावर']] }
+];
+
+/* Costing reminders from the logistics recorded for an event (G-41). They are prompts only: nothing is added
+   as an expense. `recorded` is true once the event has an expense under the matching item. */
+const LOGISTIC_PROMPTS = [
+  { when: l => l.power === 'generator',  en: 'Generator required: add its rent and diesel',          mr: 'जनरेटर लागेल: भाडे व डिझेल नोंदवा', head: 'Generator / Power' },
+  { when: l => l.kitchen === 'temporary', en: 'Temporary kitchen: add setup and hired material',      mr: 'तात्पुरते किचन: साहित्य भाडे नोंदवा', head: 'Rented Material – भाड्याचे साहित्य' },
+  { when: l => l.gas === 'none',          en: 'No cooking at the venue: add transport of cooked food', mr: 'ठिकाणी स्वयंपाक नाही: वाहतूक नोंदवा', head: 'Transport – वाहतूक' },
+  { when: l => l.water === 'arrange',     en: 'Water to arrange: add tanker or cans',                 mr: 'पाणी आणावे: टँकर नोंदवा', head: 'Water Tanker' },
+  { when: l => ['rental', 'mixed'].includes(l.equipment), en: 'Hired equipment: add the rental',      mr: 'भाड्याचे साहित्य: भाडे नोंदवा', head: 'Rented Material – भाड्याचे साहित्य' },
+  { when: l => l.access === 'restricted', en: 'Restricted parking/loading: allow extra transport or loading', mr: 'पार्किंग अडचण: जास्त वाहतूक/हमाली', head: 'Transport – वाहतूक' }
+];
+export function logisticsPrompts(ev, expenses) {
+  const l = ev?.logistics; if (!l || typeof l !== 'object') return [];
+  const has = new Set(expenses.filter(x => x.evId === ev.id && !x.draft && x.cat === 'Operations').map(x => x.head));
+  return LOGISTIC_PROMPTS.filter(p => p.when(l)).map(p => ({ en: p.en, mr: p.mr, cat: 'Operations', head: p.head, recorded: has.has(p.head) }));
+}
+
+// Repeat venue (G-42): details from the latest other event at the same venue name, to *suggest* only
+export function venueSuggestion(events, venue, excludeId = '') {
+  const key = String(venue || '').trim().toLowerCase(); if (!key) return null;
+  const past = events.filter(e => e.id !== excludeId && String(e.venue || '').trim().toLowerCase() === key && (e.venueType || e.locality || (e.logistics && Object.keys(e.logistics).length)))
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
+  if (!past) return null;
+  return { from: past.id, date: past.date, venueType: past.venueType || '', venueTypeOther: past.venueTypeOther || '', locality: past.locality || '', logistics: { ...(past.logistics || {}) } };
+}
 
 /* Menu packages from the rate card. A slab's rate applies from `min` guests up; below the
    smallest slab the smallest slab's rate is used. The bill stays editable on every event. */

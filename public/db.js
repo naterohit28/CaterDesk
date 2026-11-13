@@ -443,7 +443,7 @@ export async function prepareImport(payload) {
         throw new Error('Missing or duplicate ID in ' + name);
       seen.add(row.id);
       if (row._rev !== undefined && (!Number.isSafeInteger(row._rev) || row._rev < 0)) throw new Error('Invalid record revision');
-      for (const field of ['venue', 'mobile', 'type', 'notes', 'cat', 'head', 'mode', 'phone', 'specialty', 'dueDate', 'evId', 'venId', 'eventId', 'expenseId', 'createdAt', 'kind', 'menu', 'outVenId']) {
+      for (const field of ['venue', 'mobile', 'type', 'notes', 'cat', 'head', 'mode', 'phone', 'specialty', 'dueDate', 'evId', 'venId', 'eventId', 'expenseId', 'createdAt', 'kind', 'menu', 'outVenId', 'venueType', 'venueTypeOther', 'locality', 'typeOther']) {
         if (row[field] === null) row[field] = '';
         if (row[field] !== undefined && typeof row[field] !== 'string') throw new Error('Invalid text field: ' + field);
       }
@@ -460,6 +460,7 @@ export async function prepareImport(payload) {
       if (row.meals !== undefined && (!Array.isArray(row.meals) || row.meals.some(m => !['breakfast', 'lunch', 'hightea', 'dinner'].includes(m)))) throw new Error('Invalid meals');
       if (row.labour !== undefined && (typeof row.labour !== 'object' || !Array.isArray(row.labour?.rows))) throw new Error('Invalid labour sheet');
       if (row.kind && !['vendor', 'person'].includes(row.kind)) throw new Error('Invalid vendor kind');
+      if (row.logistics !== undefined && (typeof row.logistics !== 'object' || row.logistics === null || Array.isArray(row.logistics) || Object.values(row.logistics).some(v => typeof v !== 'string'))) throw new Error('Invalid venue logistics');
       if (row.recon != null && (typeof row.recon !== 'object' || Array.isArray(row.recon) || !Number.isSafeInteger(row.recon.costPaise) || !Number.isSafeInteger(row.recon.billPaise) || typeof row.recon.sig !== 'string')) throw new Error('Invalid reconciliation');
       if (row.reconHistory !== undefined && (!Array.isArray(row.reconHistory) || row.reconHistory.some(h => !h || typeof h !== 'object' || !['reconciled', 'reopened'].includes(h.action)))) throw new Error('Invalid reconciliation history');
     }
@@ -525,7 +526,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.2.2';
+export const APP_VERSION = '4.3.0';
 export async function checkAndMigrate() {
   await openDB();
   const storedVer = await getMeta('app_version');
