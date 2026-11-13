@@ -4,7 +4,7 @@
 
 An offline-first app for catering events, expenses, vendor credit, client collections, menus and vendor orders. Business records stay in the device's browser storage; the hosted app also sends limited error diagnostics to its server.
 
-**Current source and hosted web build: v4.7.0.** Documentation checked on **13 November 2026**.
+**Current source and hosted web build: v4.8.0.** Documentation checked on **13 November 2026**.
 
 [Open the app](https://expense-calculator-kohl.vercel.app/) · [Download published packages](https://github.com/naterohit28/CaterDesk/releases) · [Historical reliability report](docs/RELIABILITY.md) · [Competitor/name research and Claude evaluation notes](docs/research/README.md) · [Report an issue](https://github.com/naterohit28/CaterDesk/issues)
 
@@ -31,16 +31,16 @@ The **APK wrapper version, hosted web version and bundled desktop version are in
 
 | Component | Verified state on 3 November 2026 | Meaning |
 | --- | --- | --- |
-| Source and hosted web app | **4.7.0** | Current UI, data/export version, service worker and error reporter |
+| Source and hosted web app | **4.8.0** | Current UI, data/export version, service worker and error reporter |
 | Service-worker release cache | `flavor-fusion-v2-cache-v25` | Installed web assets; this number is not the database schema version |
-| Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** | APK package inspected locally; launches the hosted app, which can run 4.7.0 |
+| Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** | APK package inspected locally; launches the hosted app, which can run 4.8.0 |
 | Android requirements for that local wrapper | min API **24**, target API **36** | Android 7.0+ and a compatible browser provider |
 | Latest GitHub Release with downloadable binaries | **2.4.7** | APK and desktop ZIP; later source tags do not imply newer binaries were uploaded |
 | Desktop package currently in the owner's `Apps/Desktop` folder | **2.4.7** | A static older bundle, not the current source build |
-| Desktop launcher source/instructions | **4.7.0** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
+| Desktop launcher source/instructions | **4.8.0** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
 | IndexedDB schema | **4** | Kept separate from application version changes |
 
-Do not relabel an older package as 4.7.0. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
+Do not relabel an older package as 4.8.0. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
 
 ## Current features
 
@@ -147,17 +147,17 @@ The APK is a **Trusted Web Activity** wrapper around the hosted site. It does no
 1. Keep a business-data backup.
 2. Obtain the intended APK from its actual release assets or the owner's prepared local package. Install over the existing app with the same package/signing identity.
 3. Open online to download updates. Check the **web build in Settings**, not just Android App info.
-4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **4.7.0**.
+4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **4.8.0**.
 
 A newer web release may reload automatically during the first 20 seconds of startup when no active form/save/overlay prevents it, at most once per release per session. Otherwise it waits for a later start or explicit reload. Refresh can also switch versions when no form/save is open. Service-worker cache mappings preserve matching assets for older open pages until navigation.
 
 Do not uninstall or clear browser/site storage to force an update. If Android rejects an APK, check package, versionCode and signing certificate before proceeding. The public certificate association is [`public/.well-known/assetlinks.json`](public/.well-known/assetlinks.json).
 
-The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **4.7.0**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
+The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **4.8.0**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
 
 ## Windows desktop testing
 
-Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v4.7.0 package.
+Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v4.8.0 package.
 
 1. Extract the entire ZIP; keep `app/` beside `CaterDesk-Desktop.exe`.
 2. Run the EXE. Microsoft Edge opens an app window; a tray icon provides **Open CaterDesk**, storage information and **Exit test server**.
@@ -218,6 +218,7 @@ Playwright uses the installed **Microsoft Edge** channel. The runner starts an i
 | [`tests/counter-planning.cjs`](tests/counter-planning.cjs) | Counter planning C-01 (500 × 75% = 375, order 400, served unknown), C-02 (vendor minimum, note below it), independent take-ups, meal-specific guests, import checks |
 | [`tests/payment-schedule.cjs`](tests/payment-schedule.cjs) | Payment schedule G-09 / P-01: outstanding vs due now vs overdue by date, part payments, reminder amount, %, validation, removal, import checks |
 | [`tests/shared-bills.cjs`](tests/shared-bills.cjs) | Shared bills G-13: ₹8,000 + ₹5,000 shared by two events counted once, vendor owed once, edits apply to every part, sums and duplicates refused, delete/Undo as a whole, unshare, import checks |
+| [`tests/labour-no-duplicates.cjs`](tests/labour-no-duplicates.cjs) | Mukadam bill G-14: staff + travel saved once at the negotiated total, hand entries of the same item ask first (Cancel / extra), sheet save over a hand entry asks first, nothing deleted |
 | [`tests/ui-audit.cjs`](tests/ui-audit.cjs) | Touch-phone audit in light and dark at 360px: aligned card edges and equal margins, equal-size buttons/segments/tiles, centred labels, aligned list icons and amounts; every tab, quick action, event/vendor action and dropdown option; sheets close by ✕, Back and outside tap; background stays still under sheets; pull-to-refresh; layout shift; console errors |
 
 Use a normal Git clone with history: the upgrade test reads commit `bdb6a5a`. A source ZIP or shallow clone missing that commit is insufficient. Evidence/screenshots go into ignored `test-artifacts/`.
@@ -335,6 +336,7 @@ This is a short source-feature history, not a list of available binary downloads
 
 | Version | Main changes |
 | --- | --- |
+| 4.8.0 | **Labour bills without double counting (v5 Phase 3, P3-D):** when an event's labour sheet already includes an item (a worker role, or transport when the sheet has travel), typing the same item by hand asks first: it is saved only if it is extra, on top of the contractor's bill, and is then marked *extra to labour sheet*. Saving a sheet that includes an item already typed by hand asks the same; nothing is ever deleted automatically. The negotiated bill total stays exact, with the adjustment explained on the entry. |
 | 4.7.0 | **Shared bills (v5 Phase 3, P3-C):** a saved expense has **Share bill**: split one bill (e.g. ₹8,000 transport for two events) into parts per event, by amount or **Split equally** (to the paisa). The parts always add up to the bill, so it is counted once in every total and the vendor is owed it once. Vendor, item, date and payment are the same on every part (editing one updates all); amount and event are changed only through Share bill. Deleting removes every part (Undo restores every part); removing the other events puts the whole bill back on one event. The bill photo stays with the original entry. |
 | 4.6.0 | **Client payment schedule (v5 Phase 3, P3-B):** an event can have a **Payment schedule**: milestones on booking, on a date, or a number of days before/after the event, each in ₹ or % of the bill. The event shows **due now** and **overdue** separately from the outstanding balance (e.g. ₹4,00,000 contract, ₹1,00,000 received: ₹3,00,000 outstanding, ₹0 due until the second payment's date, then ₹2,00,000 due, and overdue only after that date). Payments received are applied to milestones in order; any part of the bill not on the schedule is due after the event, as before. Home collections show *Due now*, *Overdue* or *On schedule*, and the WhatsApp reminder asks only for what is due now. Events without a schedule work as before. Also: the event-type chip follows the language setting again (4.3.0 showed both languages). |
 | 4.5.0 | **Counter planning (v5 Phase 3, P3-A):** a counter's order form has an optional **Take-up %** (share of guests expected at that counter) and **Vendor minimum**. Plates are suggested from the guests of the meal that counter serves × take-up (e.g. 500 × 75% = 375), raised to the vendor minimum if needed (forecast 221, minimum 250 → 250); the number stays yours to change, and one you typed is never replaced. Ordering below the minimum needs a note. Counters' take-ups are independent (they need not add up to 100%). The plan is kept per counter, offered as a starting point next time, and shown on the menu card with what was ordered; what was actually served is never taken from the order. |
