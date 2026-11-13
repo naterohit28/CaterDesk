@@ -23,7 +23,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.1.0';
+const APP_BUILD = '4.1.1';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -2964,16 +2964,30 @@ async function exportData() {
   } finally { showLoading(false); }
 
   // Android does not offer .json files to the share sheet, so the same backup is also offered as a
-  // .txt file (CaterDesk imports both). The share sheet lists Drive, Files, WhatsApp and email.
+  // .txt file (CaterDesk imports both). Building a backup with photos takes longer than Android allows
+  // between a tap and opening the share sheet, so the user picks where it goes with a fresh tap here.
   let how = 'download';
   const asText = new File([text], `caterdesk-backup-${today()}.txt`, { type: 'text/plain' });
   const shareable = [file, asText].find(f => navigator.canShare?.({ files: [f] }));
   if (shareable) {
-    try {
-      await navigator.share({ files: [shareable], title: 'CaterDesk backup', text: `CaterDesk backup ${fmtDate(today())}` });
-      how = 'shared';
-    } catch (e) {
-      if (e.name === 'AbortError') return;   // closed the share sheet: nothing was saved
+    const size = file.size > 1048576 ? `${(file.size / 1048576).toFixed(1)} MB` : `${Math.ceil(file.size / 1024)} KB`;
+    const where = await askSheet({
+      title: 'Backup ready – बॅकअप तयार',
+      message: `${size}. Save it outside this phone too, e.g. in Google Drive.`,
+      actions: [
+        { label: 'Share – Drive, Files, WhatsApp – पाठवा', value: 'share', style: 'btn-primary' },
+        { label: 'Save to phone (Downloads) – फोनवर जतन', value: 'download', style: 'btn-secondary' }
+      ]
+    });
+    if (!where) return;   // cancelled: nothing was saved
+    if (where === 'share') {
+      try {
+        await navigator.share({ files: [shareable], title: 'CaterDesk backup', text: `CaterDesk backup ${fmtDate(today())}` });
+        how = 'shared';
+      } catch (e) {
+        if (e.name === 'AbortError') return;   // closed the share sheet: nothing was saved
+        // Share refused by the phone: fall through to Downloads so a backup is still saved
+      }
     }
   }
   if (how === 'download') {
