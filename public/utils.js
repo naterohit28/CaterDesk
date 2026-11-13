@@ -211,6 +211,24 @@ export function equalSplit(totalRupees, n) {
   return Array.from({ length: n }, (_, i) => fromPaise(i === n - 1 ? totalP - each * (n - 1) : each));
 }
 
+/* ── FINAL SETTLEMENT (spec §6.7, §10.3, G-35) ── */
+/* What the client was billed, what they paid, and what is still owed are kept apart. A lower payment never
+   changes the bill by itself: the balance stays outstanding (optionally marked disputed) until the owner
+   agrees a discount, waiver or write-off. That lowers the bill with a logged reason and is flagged for the
+   accountant's tax/document review; receipts are never edited. */
+export const SETTLE_KINDS = { discount: ['Discount agreed', 'सवलत'], waiver: ['Waived', 'माफ'], writeoff: ['Written off (will not be paid)', 'बुडीत'] };
+export function settlementStatus(ev, cPays) {
+  const changes = ev.billChanges || [];
+  const billedP = toPaise(ev.billing || 0), recP = cPays.filter(p => p.evId === ev.id).reduce((s, p) => s + toPaise(p.amt), 0);
+  const adjustments = changes.filter(c => SETTLE_KINDS[c.kind]);
+  const outstandingP = billedP - recP;
+  const disputedP = ev.dispute && outstandingP > 0 ? Math.min(toPaise(ev.dispute.amt), outstandingP) : 0;
+  return { original: changes.length ? changes[0].from : ev.billing, changes, adjustments,
+    adjusted: fromPaise(adjustments.reduce((s, c) => s + toPaise(c.from) - toPaise(c.to), 0)),
+    billed: fromPaise(billedP), received: fromPaise(recP), outstanding: fromPaise(Math.max(0, outstandingP)), over: fromPaise(Math.max(0, -outstandingP)),
+    disputed: fromPaise(disputedP), taxReview: adjustments.some(c => c.taxReview) };
+}
+
 /* ── CLIENT PAYMENT MILESTONES (spec §11.2, scenario P-01, G-09) ── */
 /* A schedule (`payPlan`) splits the bill into milestones: on booking, on a date, N days before the event or N days
    after it; each an amount or a % of the bill. Five figures are kept apart: billed, received, outstanding (billed −
