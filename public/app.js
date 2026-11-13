@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
+  RECON_CHECKS, ACTIVE_ORDER, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.4.2';
+const APP_BUILD = '4.5.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1402,6 +1402,15 @@ function counterVendor(head) {
   return rankVendors('Live Counter', head)[0][0]?.id || '';
 }
 
+// Counter row: planned portions and what was ordered; actual served is never inferred from the order
+function counterPlanLine(ev, head, o) {
+  const plan = ev.counterPlan?.[head]; if (ev.outsourced || !plan?.takeUp) return '';
+  const { guests } = counterGuests(ev, head), s = counterSuggestion(guests, plan.takeUp, plan.minimum);
+  if (!s) return '';
+  return `<div class="meta">${tr(`Plan ${s.proposed} (${plan.takeUp}% of ${guests})${o?.plates && o.plates !== s.proposed ? ` · ordered ${o.plates}` : ''}${o?.belowMinimum ? ' · below minimum' : ''}`,
+    `नियोजन ${s.proposed} (${guests} चे ${plan.takeUp}%)${o?.plates && o.plates !== s.proposed ? ` · ऑर्डर ${o.plates}` : ''}`)}</div>`;
+}
+
 // Orders whose counter is no longer on the menu (dishes removed): kept in view with their status or warning
 function offMenuOrders(ev) {
   const onMenu = new Set(dishGroups(ev).keys());
@@ -1434,7 +1443,7 @@ function menuOrdersCard(ev) {
     return `<div class="row" style="min-height:56px">
       <div class="row-ic">${icon('utensils', 18)}</div>
       <div class="row-body"><div class="title-sm trunc">${ev.outsourced ? tr('Whole event', 'संपूर्ण कार्यक्रम') : esc(short(head))}${ven ? ` · <span data-nl>${esc(ven.name)}</span>` : ''}</div>
-        <div class="meta trunc" data-nl>${esc(names.join(', '))}</div></div>
+        <div class="meta trunc" data-nl>${esc(names.join(', '))}</div>${counterPlanLine(ev, head, o)}</div>
       ${o ? `<button type="button" class="chip ${o.menuChanged ? 'due' : st.tone}" data-action="order-status" data-id="${esc(o.id)}">${o.menuChanged ? tr('Menu changed · resend', 'मेनू बदलला · पुन्हा पाठवा') : tr(st.en, st.mr) + (o.plates ? ' · ' + o.plates : '')}</button>`
           : `<button type="button" class="btn-sm" data-action="order-new" data-id="${esc(head)}">${icon('message', 16)}${tr('Order', 'ऑर्डर')}</button>`}
     </div>`;
@@ -1551,13 +1560,39 @@ function openOrderModal({ head, orderId }) {
   const opt = v => ({ v: v.id, l: v.name + (v.phone ? '' : ' (no phone)') });
   populateSelect('ord-ven', [{ v: '', l: 'Choose vendor – विक्रेता निवडा' }, ...[...usual, ...inCat, ...others].map(opt)],
     o?.venId || (ev.outsourced ? ev.outVenId : counterVendor(head)));
-  q('ord-plates').value = o?.plates || ev.guests || '';
+  // Counter plan: this event's, else the last one used for this counter (a starting point; nothing assumed)
+  const own = ev.counterPlan?.[head], prev = own ? null : lastCounterPlan(D.events, head, ev.id);
+  const plan = own || prev || {};
+  q('ord-plan-fields').hidden = !!ev.outsourced;
+  q('ord-takeup').value = !ev.outsourced && plan.takeUp ? plan.takeUp : '';
+  q('ord-min').value = !ev.outsourced && plan.minimum ? plan.minimum : '';
+  ordAuto = '';
+  q('ord-plates').value = o?.plates || '';
+  updateCounterPlan();
+  // No plan: start from this counter's guests (its meal's count if known), still replaceable by a plan
+  if (!q('ord-plates').value) { const g = counterGuests(ev, head).guests || ''; q('ord-plates').value = g; ordAuto = String(g); }
   q('ord-date').value = o?.date || ev.date;
   q('ord-time').value = o?.time || '';
   q('ord-notes').value = o?.notes || '';
   q('btn-cancel-ord').hidden = !o;
   clearFieldErrors();
   openSheet('ord-modal');
+}
+
+let ordAuto = '';   // plates last filled from the plan, so a number typed by hand is never replaced
+function updateCounterPlan() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const hint = q('ord-plan');
+  if (ev.outsourced) { hint.hidden = true; return; }
+  const { guests, meal } = counterGuests(ev, qv('ord-head'));
+  const s = counterSuggestion(guests, qv('ord-takeup'), qv('ord-min'));
+  const plates = Number(qv('ord-plates')) || 0, min = Math.floor(Number(qv('ord-min')) || 0);
+  if (s && (!qv('ord-plates') || qv('ord-plates') === ordAuto)) { q('ord-plates').value = String(s.proposed); ordAuto = String(s.proposed); }
+  const parts = [];
+  if (s) parts.push(tr(`${guests} ${meal ? MEALS[meal].toLowerCase() + ' ' : ''}guests × ${Number(qv('ord-takeup'))}% = ${s.forecast} suggested`, `${guests} पाहुणे × ${Number(qv('ord-takeup'))}% = ${s.forecast}`)
+    + (s.minimumApplied ? tr(` · vendor minimum ${min}`, ` · किमान ${min}`) : ''));
+  if (min && plates && plates < min) parts.push(`<span class="due">${tr(`Below the vendor minimum of ${min}: add a note why`, `किमान ${min} पेक्षा कमी: कारण लिहा`)}</span>`);
+  hint.innerHTML = parts.join('<br>'); hint.hidden = !parts.length;
 }
 
 function orderMessage(ev, o, ven) {
@@ -1574,6 +1609,10 @@ async function sendOrder() {
   const venId = qv('ord-ven');
   if (!venId) { showFieldErrors({ 'ord-ven': 'Choose a vendor – विक्रेता निवडा' }); return; }
   const ven = D.vendors.find(v => v.id === venId);
+  const takeUp = Number(qv('ord-takeup')) || 0, minimum = Math.floor(Number(qv('ord-min')) || 0);
+  if (!ev.outsourced && qv('ord-takeup') && !(takeUp > 0 && takeUp <= 100)) { showFieldErrors({ 'ord-takeup': 'Between 1 and 100 – १ ते १००' }); return; }
+  const below = !ev.outsourced && minimum > 0 && (Number(qv('ord-plates')) || 0) < minimum;
+  if (below && !qv('ord-notes')) { showFieldErrors({ 'ord-notes': `Below the vendor minimum of ${minimum}: add a note why – कारण लिहा` }); return; }
   const id = qv('ord-id') || uid('OR');
   const old = (ev.orders || []).find(x => x.id === id);
   const phoneOk = !!phoneDigits(ven?.phone);
@@ -1582,8 +1621,13 @@ async function sendOrder() {
   const status = !old || old.status === 'cancelled' ? (phoneOk ? 'opened' : 'prepared') : old.status === 'prepared' && phoneOk ? 'opened' : old.status;
   const o = { ...(old || {}), id, head: qv('ord-head'), venId, plates: Number(qv('ord-plates')) || 0, date: qv('ord-date'), time: qv('ord-time'),
               notes: qv('ord-notes'), status, at: new Date().toISOString(), ...(phoneOk ? { openedAt: new Date().toISOString() } : {}) };
+  if (below) o.belowMinimum = minimum; else delete o.belowMinimum;
+  const sugg = ev.outsourced ? null : counterSuggestion(counterGuests(ev, o.head).guests, takeUp, minimum);
+  if (sugg) o.suggested = sugg.proposed; else delete o.suggested;   // what the plan proposed; the order (plates) is yours
   const orders = old ? ev.orders.map(x => x.id === id ? o : x) : [...(ev.orders || []), o];
-  const saved = await patchEvent(ev.id, { orders });
+  const patch = { orders };
+  if (!ev.outsourced && (takeUp || minimum)) patch.counterPlan = { ...(ev.counterPlan || {}), [o.head]: { ...(takeUp ? { takeUp } : {}), ...(minimum ? { minimum } : {}) } };
+  const saved = await patchEvent(ev.id, patch);
   closeModals();
   refreshCurrent();
   const phone = phoneDigits(ven?.phone);
@@ -3628,6 +3672,7 @@ function bindAllEvents() {
   q('menu-review').addEventListener('click', e => { const b = e.target.closest('[data-md-del]'); if (!b) return;
     menuDraft.splice(Number(b.dataset.mdDel), 1); q('menu-text').value = menuDraft.map(d => d.name).join('\n'); renderMenuReview(); });
   q('ev-mp-rows').addEventListener('input', updateMealPlan);
+  for (const id of ['ord-takeup', 'ord-min', 'ord-plates']) q(id).addEventListener('input', updateCounterPlan);
   q('ev-type').addEventListener('change', syncEvTypeFields);
   q('ev-vtype').addEventListener('change', () => { syncEvTypeFields(); updateVenueHint(); });
   q('ev-venue').addEventListener('change', updateVenueHint);

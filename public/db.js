@@ -460,6 +460,8 @@ export async function prepareImport(payload) {
       if (row.meals !== undefined && (!Array.isArray(row.meals) || row.meals.some(m => !['breakfast', 'lunch', 'hightea', 'dinner'].includes(m)))) throw new Error('Invalid meals');
       if (row.labour !== undefined && (typeof row.labour !== 'object' || !Array.isArray(row.labour?.rows))) throw new Error('Invalid labour sheet');
       if (row.kind && !['vendor', 'person'].includes(row.kind)) throw new Error('Invalid vendor kind');
+      if (row.counterPlan !== undefined && (typeof row.counterPlan !== 'object' || row.counterPlan === null || Array.isArray(row.counterPlan) || Object.values(row.counterPlan).some(c => !c || typeof c !== 'object'
+        || (c.takeUp !== undefined && !(typeof c.takeUp === 'number' && c.takeUp > 0 && c.takeUp <= 100)) || (c.minimum !== undefined && !(Number.isSafeInteger(c.minimum) && c.minimum >= 0))))) throw new Error('Invalid counter plan');
       if (row.mealPlan !== undefined && (typeof row.mealPlan !== 'object' || row.mealPlan === null || Array.isArray(row.mealPlan) || Object.entries(row.mealPlan).some(([m, v]) => !['breakfast', 'lunch', 'hightea', 'dinner'].includes(m) || !v || !Number.isSafeInteger(v.guests) || v.guests < 0 || (amount(v.rate, 'meal rate'), false)))) throw new Error('Invalid meal pricing');
       if (row.dishes?.some(d => !d || typeof d.name !== 'string' || (d.meal !== undefined && !['breakfast', 'lunch', 'hightea', 'dinner'].includes(d.meal)))) throw new Error('Invalid menu');
       if (row.menuVersions !== undefined && (!Array.isArray(row.menuVersions) || row.menuVersions.some(v => !v || !Array.isArray(v.dishes)))) throw new Error('Invalid menu history');
@@ -529,7 +531,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.4.2';
+export const APP_VERSION = '4.5.0';
 export async function checkAndMigrate() {
   await openDB();
   const storedVer = await getMeta('app_version');
