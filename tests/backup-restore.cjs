@@ -58,7 +58,7 @@ const noRev = rows => rows.map(({ _rev, ...r }) => r).sort((a, b) => a.id.locale
     await A.p.evaluate(() => {
       window.__got = null;
       navigator.canShare = ({ files }) => files[0].type === 'text/plain';
-      navigator.share = async ({ files }) => { if (!navigator.userActivation.isActive) throw new DOMException('no tap', 'NotAllowedError'); window.__got = { name: files[0].name, type: files[0].type, text: await files[0].text() }; };
+      navigator.share = async ({ files }) => { if (window.event?.type !== 'click') throw new DOMException('Must be handling a user gesture to perform a share request.', 'NotAllowedError'); window.__got = { name: files[0].name, type: files[0].type, text: await files[0].text() }; };
       window.__done = window.FF.exportData();
     });
     await A.p.waitForSelector('#ask-modal.active #ask-actions button');
@@ -87,12 +87,14 @@ const noRev = rows => rows.map(({ _rev, ...r }) => r).sort((a, b) => a.id.locale
     const dl = await wait; assert.match(dl.suggestedFilename(), /^caterdesk-backup-\d{4}-\d{2}-\d{2}\.json$/);
     await A.p.evaluate(() => window.__done); assert.match(await toast(A.p), /Downloads|जतन/);
   });
-  await step('if the phone refuses to share, the backup is still saved to Downloads', async () => {
+  await step('if the phone refuses to share, the backup is still saved to Downloads and the reason is shown', async () => {
+    await A.p.locator('#toast').evaluate(t => t.className = '');
     const wait = A.p.waitForEvent('download');
     await A.p.evaluate(() => { navigator.share = async () => { throw new DOMException('refused', 'NotAllowedError'); }; window.__done = window.FF.exportData(); });
     await A.p.waitForSelector('#ask-modal.active #ask-actions button');
     await A.p.locator('#ask-actions button').first().click();
     const dl = await wait; assert.match(dl.suggestedFilename(), /\.json$/); await A.p.evaluate(() => window.__done);
+    const msg = await toast(A.p); assert.match(msg, /did not open the share menu \(NotAllowedError: refused\)/); assert.match(msg, /saved to Downloads/);
   });
   await step('cancelling the choice saves nothing', async () => {
     let downloads = 0; const count = () => downloads++; A.p.on('download', count);
