@@ -121,6 +121,18 @@ export function menuChangeImpact(before = [], after = [], orders = []) {
    A request belongs to the count it was made for; after a new count it is marked as made for an older count, and a
    new extra needs a new request (G-37). Records are append-only. */
 export const COUNT_MEALS = ['breakfast', 'lunch', 'hightea', 'dinner'];
+/* The counting method agreed with the client before the event (spec §11.5): plates issued, people present and
+   billable plates may differ, so the method is part of the terms, not a post-event assumption. */
+export const COUNT_METHODS = [
+  { id: 'tokens',  en: 'Plate tokens issued',         mr: 'ताट टोकन' },
+  { id: 'tally',   en: 'Service-line tally',          mr: 'रांगेत मोजणी' },
+  { id: 'gate',    en: 'Gate entry count',            mr: 'प्रवेशद्वारावर मोजणी' },
+  { id: 'coupons', en: 'Meal coupons',                mr: 'जेवण कूपन' },
+  { id: 'joint',   en: 'Counted jointly with client', mr: 'ग्राहकासोबत मोजणी' },
+  { id: 'other',   en: 'Other (see rules)',           mr: 'इतर' }
+];
+// Agreed = a method is chosen and you have recorded that the client agreed to it
+export const countPolicyAgreed = p => !!(p && p.method && p.confirmed);
 export const countKey = (ev, meal) => (ev.meals?.length ? meal : 'all');
 export function contractedFor(ev, meal) {
   const g = meal !== 'all' && Number(ev.mealPlan?.[meal]?.guests) || 0;

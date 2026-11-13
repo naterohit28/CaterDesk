@@ -528,6 +528,22 @@
   </div>
 </div>
 
+<!-- FUNCTION SHEET: internal summary for the team (spec §9.3) -->
+<div class="modal-ov" id="fs-modal">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="fs-mtitle">
+    <div class="s-handle"></div>
+    <div class="s-head"><div class="s-title" id="fs-mtitle">Function sheet – फंक्शन शीट</div><button type="button" class="icon-btn" data-action="close-modal" aria-label="Close"><i data-ic="x"></i></button></div>
+    <div class="field"><label for="fs-timings">Timings – वेळा</label><textarea id="fs-timings" rows="2" maxlength="1000" placeholder="e.g. team reaches 4 pm, dinner 8–11 pm"></textarea></div>
+    <div class="field"><label for="fs-setup">Setup needs – तयारी</label><textarea id="fs-setup" rows="2" maxlength="1000" placeholder="e.g. 6 counters, 2 tables for sweets"></textarea></div>
+    <pre class="notes-text" id="fs-text" data-nl style="white-space:pre-wrap;font:inherit;margin:0 0 var(--s3);padding:var(--s3);border:1px solid var(--line);border-radius:12px"></pre>
+    <div class="btn-row">
+      <button type="button" class="btn btn-secondary" data-action="fs-copy">Copy – कॉपी</button>
+      <button type="button" class="btn btn-primary" data-action="fs-share">Share – पाठवा</button>
+    </div>
+    <button type="button" class="btn btn-ghost" style="width:100%;margin-top:var(--s2)" data-action="fs-save">Save timings & setup – जतन</button>
+  </div>
+</div>
+
 <!-- SHARED BILL: one bill split across events, counted once (G-13) -->
 <div class="modal-ov" id="split-modal">
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="split-mtitle">

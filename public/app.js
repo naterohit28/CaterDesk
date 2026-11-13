@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.10.0';
+const APP_BUILD = '4.11.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1139,6 +1139,8 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
 
     ${logisticsCard(ev)}
 
+    <div class="btn-row" style="margin:0 0 var(--s3)"><button type="button" class="btn btn-secondary" data-action="fs-open">${icon('clipboard', 18)}${tr('Function sheet', 'फंक्शन शीट')}</button></div>
+
     ${ev.notes ? `<div class="card pad"><div class="label">Notes – नोंदी</div><div class="notes-text" data-nl>${esc(ev.notes)}</div></div>` : ''}
 
     ${menu ? `<details class="card pad"><summary class="label" style="cursor:pointer">${tr(`${menu.name} menu · ${menu.items.length} items`, `${menu.name} मेनू · ${menu.items.length}`)}</summary>
@@ -1760,6 +1762,7 @@ function countLine(ev) {
   const lines = countKeys(ev).map(k => ({ k, s: guestCountStatus(ev, k) })).filter(x => x.s.started);
   return `<div style="margin-top:var(--s3)" id="count-line">${lines.map(({ k, s }) => `<div class="meta" data-nl>${MEAL_NAME(k)}: ${tr(`contracted ${s.contracted} · counted ${s.counted ?? '—'}${s.extra ? ` · extra ${s.extra}` : ''}${s.accepted ? ` · approved ${s.accepted}` : ''}${s.disputed ? ` · disputed ${s.disputed}` : ''}${s.billed ? ` · billed ${s.billed}` : ''}`,
     `करार ${s.contracted} · मोजले ${s.counted ?? '—'}${s.extra ? ` · जास्त ${s.extra}` : ''}`)}</div>`).join('')}
+    ${ev.date >= today() && !countPolicyAgreed(ev.countPolicy) ? `<div class="meta due" id="count-policy-flag">${tr('Count method not agreed with the client yet', 'मोजणीची पद्धत ग्राहकाशी ठरलेली नाही')}</div>` : ''}
     <button type="button" class="btn-sm" style="margin-top:var(--s2)" data-action="count-open">${icon('users', 16)}${tr('Guest count / Extra plates', 'पाहुणे / जास्त ताटे')}</button></div>`;
 }
 let countMeal = 'all';
@@ -1777,11 +1780,24 @@ function renderCount() {
   const reqRows = s.requests.map(r => `<div class="meta" style="margin-top:6px" data-req="${esc(r.id)}">
     ${tr(`Asked ${r.qty} extra @ ${fmtCurrency(r.rate)} on ${fmtAt(r.at)}`, `${r.qty} जास्त @ ${fmtCurrency(r.rate)} विचारले`)}${r.forOlderCount ? ` · <span class="due">${tr('made for an earlier count', 'आधीच्या मोजणीसाठी')}</span>` : ''}
     ${r.status === 'requested'
-      ? `<div style="display:flex;gap:var(--s2);align-items:center;margin-top:4px"><div class="field" style="margin:0;flex:1"><input type="number" data-accept="${esc(r.id)}" min="0" max="${r.qty}" inputmode="numeric" placeholder="Extra plates accepted" aria-label="Extra plates the client accepted"></div>
+      ? `<div class="f2" style="margin-top:4px"><div class="field" style="margin:0"><input type="number" data-accept="${esc(r.id)}" min="0" max="${r.qty}" inputmode="numeric" placeholder="Accepted" aria-label="Extra plates the client accepted"></div>
+           <div class="field" style="margin:0"><select data-evidence="${esc(r.id)}" aria-label="How the client approved"><option value="">Written / verbal?</option><option value="written">Written reply / signed sheet</option><option value="verbal">Verbal (said in person or on call)</option></select></div></div>
+         <div style="display:flex;gap:var(--s2);align-items:center;margin-top:4px"><div class="field" style="margin:0;flex:1"><input type="text" data-by="${esc(r.id)}" maxlength="200" placeholder="Who approved / ref." aria-label="Who approved, or a reference to the reply"></div>
          <button type="button" class="btn-sm" data-action="count-accept" data-id="${esc(r.id)}">${tr('Record', 'नोंदवा')}</button></div>`
-      : ` · <b>${tr(`accepted ${r.accepted}`, `मान्य ${r.accepted}`)}</b>${r.disputed ? ` · <span class="neg">${tr(`disputed ${r.disputed}`, `वाद ${r.disputed}`)}</span>` : ''}${r.billedAt ? ` · ${tr('added to bill', 'बिलात जोडले')}` : ''}`}
+      : ` · <b>${tr(`accepted ${r.accepted}`, `मान्य ${r.accepted}`)}</b>${r.evidence ? ` · ${r.evidence === 'written' ? tr('written', 'लेखी') : tr('verbal', 'तोंडी')}${r.by ? ` (<span data-nl>${esc(r.by)}</span>)` : ''}` : ''}${r.disputed ? ` · <span class="neg">${tr(`disputed ${r.disputed}`, `वाद ${r.disputed}`)}</span>` : ''}${r.billedAt ? ` · ${tr('added to bill', 'बिलात जोडले')}` : ''}`}
   </div>`).join('');
+  const cp = ev.countPolicy || {}, agreed = countPolicyAgreed(cp);
   q('count-body').innerHTML = `
+    <details class="card pad" id="count-policy" style="margin:0 0 var(--s3)"${agreed || ev.date <= today() ? '' : ' open'}>
+      <summary class="label" style="cursor:pointer">${agreed ? tr(`Count method: ${COUNT_METHODS.find(m => m.id === cp.method).en} · agreed`, `मोजणी: ${COUNT_METHODS.find(m => m.id === cp.method).mr} · ठरले`) : tr('Count method not agreed with the client yet', 'मोजणीची पद्धत ठरलेली नाही')}</summary>
+      <div class="field" style="margin-top:var(--s2)"><label for="cp-method">${tr('How plates are counted', 'मोजणीची पद्धत')}</label><select id="cp-method"><option value="">Choose – निवडा</option>${COUNT_METHODS.map(m => `<option value="${m.id}"${m.id === cp.method ? ' selected' : ''}>${esc(m.en + ' – ' + m.mr)}</option>`).join('')}</select></div>
+      <div class="field"><label for="cp-counter">${tr('Who counts, and where', 'कोण व कुठे मोजणार')}</label><input type="text" id="cp-counter" maxlength="200" value="${esc(cp.counter || '')}" placeholder="e.g. supervisor at plate counter"></div>
+      <div class="f2"><div class="field"><label for="cp-rep">${tr('Client representative', 'ग्राहक प्रतिनिधी')}</label><input type="text" id="cp-rep" maxlength="100" value="${esc(cp.rep || '')}" placeholder="Name"></div>
+        <div class="field"><label for="cp-rep-phone">${tr('Their phone', 'फोन')}</label><input type="tel" id="cp-rep-phone" maxlength="20" inputmode="tel" value="${esc(cp.repPhone || '')}" placeholder="Mobile"></div></div>
+      <div class="field"><label for="cp-rules">${tr('Rules agreed', 'ठरलेले नियम')}</label><textarea id="cp-rules" rows="2" maxlength="1000" placeholder="Second servings, kids, staff and vendor meals, tolerance">${esc(cp.rules || '')}</textarea></div>
+      <label class="check-row"><input type="checkbox" id="cp-confirmed"${cp.confirmed ? ' checked' : ''}><span>${tr('The client agreed to this method', 'ग्राहकाने ही पद्धत मान्य केली')}</span></label>
+      <button type="button" class="btn btn-secondary" style="width:100%;margin-top:var(--s2)" data-action="count-policy-save">${tr('Save count method', 'पद्धत जतन')}</button>
+    </details>
     <div class="card pad" style="margin:0 0 var(--s3)">
       <div class="label">${tr(`${MEAL_NAME(k)} · contracted ${s.contracted} @ ${fmtCurrency(s.rate)}`, `करार ${s.contracted} @ ${fmtCurrency(s.rate)}`)}</div>
       <div class="meta" style="margin-top:4px">${s.counted == null ? tr('Not counted yet', 'अजून मोजले नाही') : tr(`Counted ${s.counted} (${fmtAt(s.last.at)})`, `मोजले ${s.counted}`)}${s.extra ? ` · <b>${tr(`${s.extra} over the contract (proposed, not billed)`, `${s.extra} जास्त (प्रस्तावित)`)}</b>` : ''}</div>
@@ -1815,14 +1831,21 @@ async function countAction(action, id) {
     if (had != null && !note) { showFieldErrors({ 'count-note': 'Say why the count changed – कारण लिहा' }); return; }
     await saveGuestCounts(c => { c.counts.push({ at: now, n, ...(had != null ? { reason: note, correctionOf: c.counts.at(-1).at } : note ? { note } : {}) }); });
   } else if (action === 'count-request') {
-    const s = guestCountStatus(D.events.find(e => e.id === curRef), countMeal); if (!s.unrequested) return;
-    await saveGuestCounts(c => { c.requests.push({ id: uid('XR'), at: now, qty: s.unrequested, rate: c.rate, countAt: c.counts.at(-1).at, status: 'requested' }); });
-    showToast('Approval request recorded. Nothing is billed until the client accepts and you add it. – विनंती नोंदवली');
+    const ev = D.events.find(e => e.id === curRef), s = guestCountStatus(ev, countMeal); if (!s.unrequested) return;
+    const text = extraPlatesMessage(ev, countMeal, s, s.unrequested);
+    const phone = phoneDigits(ev.countPolicy?.repPhone) || phoneDigits(ev.mobile);
+    if (phone) window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank', 'noopener');   // inside the tap
+    await saveGuestCounts(c => { c.requests.push({ id: uid('XR'), at: now, qty: s.unrequested, rate: c.rate, countAt: c.counts.at(-1).at, status: 'requested', text }); });
+    showToast(phone ? 'Request kept. Opening WhatsApp is not approval: record the client\'s reply when it comes. – विनंती नोंदवली'
+      : 'Approval request recorded. Nothing is billed until the client accepts and you add it. – विनंती नोंदवली');
   } else if (action === 'count-accept') {
     const input = document.querySelector(`[data-accept="${CSS.escape(id)}"]`); const n = Math.floor(Number(input?.value));
     const r = (D.events.find(e => e.id === curRef).guestCounts?.[countMeal]?.requests || []).find(x => x.id === id);
     if (!r || input.value === '' || !(n >= 0) || n > r.qty) { showToast(`Enter 0 to ${r?.qty ?? ''} plates – संख्या तपासा`, 'error'); return; }
-    await saveGuestCounts(c => { const x = c.requests.find(y => y.id === id); x.status = 'approved'; x.accepted = n; x.acceptedAt = now; });
+    const evidence = document.querySelector(`[data-evidence="${CSS.escape(id)}"]`)?.value || '', by = (document.querySelector(`[data-by="${CSS.escape(id)}"]`)?.value || '').trim();
+    if (!evidence) { showToast('Say how the client approved: written or verbal – मान्यता कशी मिळाली?', 'error'); return; }
+    if (evidence === 'verbal' && !by) { showToast('For a verbal approval, write who approved – कोणी मान्य केले?', 'error'); return; }
+    await saveGuestCounts(c => { const x = c.requests.find(y => y.id === id); Object.assign(x, { status: 'approved', accepted: n, acceptedAt: now, evidence, ...(by ? { by } : {}) }); });
   } else if (action === 'count-bill') {
     const ev = D.events.find(e => e.id === curRef), s = guestCountStatus(ev, countMeal);
     const add = s.requests.filter(r => r.unbilled).reduce((t, r) => t + toPaise(r.rate) * r.unbilled, 0);
@@ -1837,6 +1860,94 @@ async function countAction(action, id) {
     closeModals(); refreshCurrent(); showToast(`Bill is now ${fmtCurrency(to)} – बिल अद्ययावत`); return;
   }
   refreshCurrent(); renderCount();
+}
+
+async function saveCountPolicy() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const p = { method: qv('cp-method'), counter: qv('cp-counter'), rep: qv('cp-rep'), repPhone: qv('cp-rep-phone'), rules: qv('cp-rules') };
+  for (const k of Object.keys(p)) if (!p[k]) delete p[k];
+  const confirmed = q('cp-confirmed').checked;
+  if (confirmed && !p.method) { showFieldErrors({ 'cp-method': 'Choose the method the client agreed – पद्धत निवडा' }); return; }
+  const old = ev.countPolicy || {};
+  if (confirmed) { p.confirmed = true; p.confirmedAt = old.confirmed && old.method === p.method ? old.confirmedAt : new Date().toISOString(); }
+  try { await patchEvent(ev.id, Object.keys(p).length ? { countPolicy: p } : {}, Object.keys(p).length ? [] : ['countPolicy']); }
+  catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
+  refreshCurrent(); renderCount(); showToast('Count method saved – मोजणी पद्धत जतन');
+}
+// Prefilled, editable request to the client's representative; amounts come from the agreed data (spec §11.5)
+function extraPlatesMessage(ev, k, s, qty) {
+  const cp = ev.countPolicy || {}, meal = MEAL_NAME(k).toLowerCase(), method = COUNT_METHODS.find(m => m.id === cp.method);
+  return `Hello${cp.rep ? ' ' + cp.rep : ''}, for ${ev.name}${k === 'all' ? '' : ' ' + meal} on ${fmtDate(ev.date)}, the confirmed quantity is ${s.contracted} covers at ${fmtCurrency(s.rate)} per additional cover, before any applicable tax. `
+    + `Our ${method ? method.en.toLowerCase() : 'count'} currently shows ${s.counted}, i.e. ${qty} more (estimated ${fmtCurrency(toPaise(s.rate) * qty / 100)}). `
+    + `Please reply "Approved: ${qty} extra ${k === 'all' ? '' : meal + ' '}covers at ${fmtCurrency(s.rate)} each" (or call us to discuss) so we can record your approval.`;
+}
+
+/* ── FUNCTION SHEET (spec §9.3): one light internal summary for the team; no money on it ── */
+function functionSheetText(ev, extra = ev.functionSheet || {}) {
+  const L = [], line = (label, v) => { if (v) L.push(`${label}: ${v}`); };
+  L.push(`FUNCTION SHEET – ${ev.name}`);
+  line('Date', fmtDate(ev.date));
+  line('Event', ev.typeOther || short(ev.type));
+  line('Venue', [ev.venue, ev.locality].filter(Boolean).join(', ') + (ev.venueType ? ` (${venueTypeLabel(ev).split(' – ')[0]})` : ''));
+  line('Client phone', ev.mobile);
+  L.push(`Timings: ${extra.timings || 'not set'}`);
+  const plan = ev.mealPlan || {}, meals = countKeys(ev).filter(k => k !== 'all');
+  L.push('', 'GUESTS');
+  if (meals.length) for (const m of meals) L.push(`- ${MEALS[m]}: ${plan[m]?.guests || ev.guests || '—'}`);
+  else L.push(`- ${ev.guests || '—'}`);
+  const cp = ev.countPolicy || {}, method = COUNT_METHODS.find(m => m.id === cp.method);
+  L.push('', 'COUNTING');
+  L.push(`- Method: ${method ? method.en : 'not set'}${countPolicyAgreed(cp) ? ' (agreed with client)' : ' – NOT AGREED WITH CLIENT YET'}`);
+  if (cp.counter) L.push(`- Who counts: ${cp.counter}`);
+  if (cp.rep) L.push(`- Client representative: ${cp.rep}${cp.repPhone ? ', ' + cp.repPhone : ''}`);
+  if (cp.rules) L.push(`- Rules: ${cp.rules}`);
+  const groups = dishGroups(ev), menu = menuById(ev.menu);
+  L.push('', 'MENU');
+  if (groups.size) for (const [head, names] of groups) {
+    if (!head) { L.push(`- Our kitchen: ${names.join(', ')}`); continue; }
+    const o = [...(ev.orders || [])].reverse().find(x => x.head === head && x.status !== 'cancelled');
+    const ven = D.vendors.find(v => v.id === o?.venId);
+    L.push(`- ${ev.outsourced ? 'Whole event' : short(head)}: ${names.join(', ')}`);
+    L.push(`  ${ven ? `${ven.name}${ven.phone ? ' (' + ven.phone + ')' : ''}` : 'No vendor order yet'}${o ? ` · ${o.plates ? o.plates + ' plates · ' : ''}${ORDER_STATUS[o.status]?.en || o.status}` : ''}`);
+  } else if (menu) L.push(`- ${menu.name}: ${menu.items.join(', ')}`);
+  else L.push('- Not entered');
+  const staff = (ev.labour?.rows || []).map(labRow).filter(r => !isExtra(r) && heads(r));
+  if (staff.length) { L.push('', 'STAFF'); for (const r of staff) L.push(`- ${short(r.role)}: ${heads(r)}`); }
+  const logi = ev.logistics || {}, setup = LOGISTICS.filter(x => logi[x.id] && logi[x.id] !== 'unknown').map(x => `${x.en}: ${(x.opts.find(o => o[0] === logi[x.id]) || [, logi[x.id]])[1]}`);
+  if (setup.length || extra.setup) { L.push('', 'SETUP'); for (const s of setup) L.push(`- ${s}`); if (extra.setup) L.push(`- ${extra.setup}`); }
+  if (ev.notes) L.push('', 'NOTES', ev.notes);
+  return L.join('\n');
+}
+function openFunctionSheet() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  q('fs-timings').value = ev.functionSheet?.timings || ''; q('fs-setup').value = ev.functionSheet?.setup || '';
+  renderFunctionSheet(); openSheet('fs-modal');
+}
+const fsDraft = () => { const t = qv('fs-timings'), s = qv('fs-setup'); return { ...(t ? { timings: t } : {}), ...(s ? { setup: s } : {}) }; };
+function renderFunctionSheet() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  q('fs-text').textContent = functionSheetText(ev, fsDraft());
+}
+async function saveFunctionSheet(quiet) {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const d = fsDraft(), old = ev.functionSheet || {};
+  if ((old.timings || '') === (d.timings || '') && (old.setup || '') === (d.setup || '')) { if (!quiet) showToast('Function sheet saved – जतन'); return; }
+  try { await patchEvent(ev.id, Object.keys(d).length ? { functionSheet: d } : {}, Object.keys(d).length ? [] : ['functionSheet']); }
+  catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
+  if (!quiet) showToast('Function sheet saved – जतन');
+}
+function shareFunctionSheet() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const text = functionSheetText(ev, fsDraft());
+  if (navigator.share) navigator.share({ title: `Function sheet – ${ev.name}`, text }).catch(() => {});   // inside the tap
+  else window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+  saveFunctionSheet(true);
+}
+async function copyFunctionSheet() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  try { await navigator.clipboard.writeText(functionSheetText(ev, fsDraft())); showToast('Copied – कॉपी केले'); }
+  catch { showToast('Could not copy. Use Share instead. – कॉपी झाले नाही', 'error'); }
+  saveFunctionSheet(true);
 }
 
 /* ── SHARED BILL EDITOR (G-13) ── */
@@ -3757,6 +3868,11 @@ function bindAllEvents() {
       case 'recon-open':   openReconModal(); break;
       case 'plan-edit':    openPlanModal(); break;
       case 'count-open':   openCountModal(); break;
+      case 'count-policy-save': saveCountPolicy(); break;
+      case 'fs-open':  openFunctionSheet(); break;
+      case 'fs-save':  saveFunctionSheet(); break;
+      case 'fs-share': shareFunctionSheet(); break;
+      case 'fs-copy':  copyFunctionSheet(); break;
       case 'count-save': case 'count-request': case 'count-accept': case 'count-bill': countAction(action, id); break;
       case 'venue-fill':   useVenueOffer(); break;
       case 'logi-add': {
@@ -3836,6 +3952,7 @@ function bindAllEvents() {
   q('exp-q').addEventListener('input', e => { expensePage = 1; F.expQ = e.target.value.trim(); rExp(); });
   q('ven-q').addEventListener('input', e => { F.venQ = e.target.value.trim(); rVen(); });
 
+  ['fs-timings', 'fs-setup'].forEach(id => q(id).addEventListener('input', renderFunctionSheet));
   // Photo / import inputs
   q('photo-input').addEventListener('change', function () { handlePhotoInput(this.files); });
   ['bill-cam', 'bill-gal'].forEach(inputId => q(inputId).addEventListener('change', async function () {
