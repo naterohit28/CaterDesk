@@ -53,6 +53,45 @@ export const EVENT_TYPES = [
   'Birthday – वाढदिवस','Anniversary – वर्धापनदिन','Corporate – कॉर्पोरेट','Pooja / religious – पूजा','Other – इतर'
 ];
 
+/* ── PRICING ARITHMETIC (spec §6.3) ──────────────── */
+/* Margin and markup are different things and are never interchanged:
+     margin = contribution / price      markup = contribution / cost
+   Price for a target margin m: cost / (1 − m). Price for a target markup u: cost × (1 + u).
+   e.g. cost ₹700: 30% margin → ₹1,000; 30% markup → ₹910 (a 23.08% margin).
+   No price is suggested without a positive cost, or when the margin is 100% or more. Amounts round up to the
+   rupee for a price (never below the target) and percentages to two decimals. */
+export function priceForMargin(cost, marginPct) {
+  const c = Number(cost), m = Number(marginPct) / 100;
+  if (!(c > 0) || !Number.isFinite(m) || m < 0 || m >= 1) return null;
+  return Math.ceil(Math.round(c * 100) / (1 - m) / 100 - 1e-9);
+}
+export function priceForMarkup(cost, markupPct) {
+  const c = Number(cost), u = Number(markupPct) / 100;
+  if (!(c > 0) || !Number.isFinite(u) || u < 0) return null;
+  return Math.ceil(Math.round(c * 100) * (1 + u) / 100 - 1e-9);
+}
+export const marginPct = (price, cost) => Number(price) > 0 ? Math.round((price - cost) / price * 10000) / 100 : null;
+export const markupPct = (price, cost) => Number(cost) > 0 ? Math.round((price - cost) / cost * 10000) / 100 : null;
+
+/* Per-meal pricing (§6.4, Q-01): each meal has its own guests and rate; totals add in paise. Guests of different
+   meals are never added up as people (35 at breakfast and 900 at dinner are not 935 guests). */
+export const MEAL_ORDER = ['breakfast', 'lunch', 'hightea', 'dinner'];
+export function mealPlanTotal(plan) {
+  const lines = MEAL_ORDER.filter(m => plan?.[m]).map(m => {
+    const guests = Number(plan[m].guests) || 0, rate = Number(plan[m].rate) || 0;
+    return { meal: m, guests, rate, totalPaise: guests * toPaise(rate) };
+  }).filter(l => l.guests > 0 && l.rate > 0);
+  const totalPaise = lines.reduce((s, l) => s + l.totalPaise, 0);
+  return { lines: lines.map(l => ({ ...l, total: fromPaise(l.totalPaise) })), total: fromPaise(totalPaise), totalPaise };
+}
+
+/* Menu changed after orders were sent (G-11): which active orders' counters had dishes added, removed or moved
+   to another meal. Nothing is sent; the orders are only marked for the user to reissue. */
+export function menuChangeImpact(before = [], after = [], orders = []) {
+  const sig = (dishes, head) => dishes.filter(d => (d.head || '') === head).map(d => `${String(d.name).trim().toLowerCase()}|${d.meal || ''}`).sort().join('\n');
+  return orders.filter(o => ['sent', 'confirmed'].includes(o.status) && sig(before, o.head) !== sig(after, o.head)).map(o => o.id);
+}
+
 /* ── VENUE DETAILS (CD5-VEN-01) ──────────────────── */
 /* The occasion (event `type`) and the physical venue (`venueType`) are separate. Venue type and logistics are
    stored as fixed ids, independent of the English/Marathi labels, and only when the user picks them. Nothing
