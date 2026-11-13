@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.2.0';
+const APP_BUILD = '4.2.1';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -2099,7 +2099,9 @@ function closeModals() {
   return closeOverlay();
 }
 
-// In-app replacement for confirm(): resolves to the chosen action's value, or null on Cancel / Back
+// In-app replacement for confirm(): resolves to the chosen action's value, or null on Cancel / Back.
+// An action with `run` calls it inside the tap itself (Android allows some things, like the share menu,
+// only directly from a tap) and resolves to what it returns.
 function askSheet({ title, message = '', actions }) {
   return new Promise(resolve => {
     let result = null;
@@ -2112,7 +2114,7 @@ function askSheet({ title, message = '', actions }) {
       b.type = 'button';
       b.className = 'btn ' + (a.style || 'btn-primary');
       b.textContent = a.label;
-      b.addEventListener('click', () => { result = a.value; closeOverlay(); });
+      b.addEventListener('click', () => { result = a.run ? a.run() : a.value; closeOverlay(); });
       box.appendChild(b);
     });
     openSheet('ask-modal', () => resolve(result));
@@ -3064,29 +3066,29 @@ async function exportData() {
   // Android does not offer .json files to the share sheet, so the same backup is also offered as a
   // .txt file (CaterDesk imports both). Building a backup with photos takes longer than Android allows
   // between a tap and opening the share sheet, so the user picks where it goes with a fresh tap here.
-  let how = 'download';
+  let how = 'download', refused = '';
   const asText = new File([text], `caterdesk-backup-${today()}.txt`, { type: 'text/plain' });
   const shareable = [file, asText].find(f => navigator.canShare?.({ files: [f] }));
   if (shareable) {
     const size = file.size > 1048576 ? `${(file.size / 1048576).toFixed(1)} MB` : `${Math.ceil(file.size / 1024)} KB`;
+    // The share menu is opened inside the Share tap itself; opening it after the sheet closes is refused on Android
+    const why = e => ({ refused: `${e?.name || 'Error'}${e?.message ? ': ' + String(e.message).slice(0, 120) : ''}` });
+    const share = () => {
+      try { return navigator.share({ files: [shareable], title: 'CaterDesk backup', text: `CaterDesk backup ${fmtDate(today())}` }).then(() => 'shared', e => e?.name === 'AbortError' ? 'aborted' : why(e)); }
+      catch (e) { return Promise.resolve(why(e)); }
+    };
     const where = await askSheet({
       title: 'Backup ready – बॅकअप तयार',
       message: `${size}. Save it outside this phone too, e.g. in Google Drive.`,
       actions: [
-        { label: 'Share – Drive, Files, WhatsApp – पाठवा', value: 'share', style: 'btn-primary' },
+        { label: 'Share – Drive, Files, WhatsApp – पाठवा', run: share, style: 'btn-primary' },
         { label: 'Save to phone (Downloads) – फोनवर जतन', value: 'download', style: 'btn-secondary' }
       ]
     });
-    if (!where) return;   // cancelled: nothing was saved
-    if (where === 'share') {
-      try {
-        await navigator.share({ files: [shareable], title: 'CaterDesk backup', text: `CaterDesk backup ${fmtDate(today())}` });
-        how = 'shared';
-      } catch (e) {
-        if (e.name === 'AbortError') return;   // closed the share sheet: nothing was saved
-        // Share refused by the phone: fall through to Downloads so a backup is still saved
-      }
-    }
+    const outcome = await where;
+    if (!outcome || outcome === 'aborted') return;   // cancelled or closed the share menu: nothing was saved
+    if (outcome === 'shared') how = 'shared';
+    else if (outcome.refused) refused = outcome.refused;   // phone refused: save to Downloads and say why
   }
   if (how === 'download') {
     const url = URL.createObjectURL(file);
@@ -3099,7 +3101,8 @@ async function exportData() {
   lastExport = new Date().toISOString();
   await setMeta('last_export', lastExport);
   const size = file.size > 1048576 ? `${(file.size / 1048576).toFixed(1)} MB` : `${Math.ceil(file.size / 1024)} KB`;
-  showToast(how === 'shared' ? `Backup shared (${size}) – बॅकअप पाठवला` : `Backup saved to Downloads (${size}) – बॅकअप जतन`);
+  showToast(how === 'shared' ? `Backup shared (${size}) – बॅकअप पाठवला`
+    : refused ? `The phone did not open the share menu (${refused}). Backup saved to Downloads (${size}).` : `Backup saved to Downloads (${size}) – बॅकअप जतन`, refused ? 'error' : 'success');
   if (CT === 'home') rHome();
 }
 
