@@ -196,7 +196,7 @@ const base = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
     await p.locator('#n-summary:visible').click(); await p.locator('#tab-summary [data-period-seg] [data-id="all"]').click();
     const body = await text('#summary-content');
     assert.match(body, /Contribution/); assert.doesNotMatch(body, /Net profit/);
-    assert.match(body, /2 of 4 events reconciled; the rest are provisional/); assert.match(body, /not company net profit/);
+    assert.match(body, /2 of 4 final · before overheads/);
     assert.match(body, /Vendor spend per plate rising/); assert.match(body, /Not the vendor’s rate/);
     await p.locator('#n-home:visible').click(); assert.match(await text('#kpi .hero'), /Event contribution/); assert.match(await text('#kpi .hero'), /2 provisional/);
   });

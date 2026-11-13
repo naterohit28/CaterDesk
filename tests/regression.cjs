@@ -247,9 +247,9 @@ await test('v3.3.1: new caterer on the go, outsourced menu, expenses by event, r
  const rows=await p.locator('#exp-list [data-action="edit-exp"]').count();assert.equal(rows,1);assert.equal(await p.locator('#exp-tot').innerText(),'₹1,111');
  await p.locator('#fab').click();await p.waitForSelector('#exp-modal.active');assert.equal(await p.locator('#exp-ev').inputValue(),'own');
  await p.locator('#exp-modal [data-action="close-modal"]').click();await p.waitForTimeout(150);await p.locator('#exp-ev-filter').selectOption('');
- // 2. refresh picks up an entry made elsewhere
+ // 2. coming back to the app picks up an entry made elsewhere
  await db(async d=>d.putOne('expenses',{id:'x3',evId:'own',cat:'Labour',head:'Cook – स्वयंपाकी',amt:2222,date:'2026-12-01',pay:'paid'}));
- await p.locator('#hdr-refresh').click();await p.waitForTimeout(1500);assert.match(await p.locator('#exp-list').innerText(),/₹2,222/);
+ await p.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));await p.waitForTimeout(1500);assert.match(await p.locator('#exp-list').innerText(),/₹2,222/);
 });
 await test('v3.4: quote helper, receipt, price creep, labour sheet, quiet refresh, big New event',async()=>{
  const H=await p.evaluate(async()=>(await import('./utils.js')).EXPENSE_HEADS);const dosa=H['Live Counter'].find(h=>h.startsWith('Dosa')),cook=H.Labour.find(h=>h.startsWith('Cook')),boys=H.Labour.find(h=>h.startsWith('Boys'));
@@ -261,7 +261,7 @@ await test('v3.4: quote helper, receipt, price creep, labour sheet, quiet refres
  // Big New event: full width above the other three
  const [ne,ae]=await p.locator('.qa-grid > .qa').evaluateAll(b=>b.slice(0,2).map(x=>x.getBoundingClientRect().width));assert(ne>ae*2.5,'New event spans the row');
  // Quiet refresh: no "Up to date" message
- await p.locator('#hdr-refresh').click();await p.waitForTimeout(1500);assert(!/Up to date/.test(await p.locator('#toast').innerText()));
+ await p.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));await p.waitForTimeout(1500);assert(!/Up to date/.test(await p.locator('#toast').innerText()));
  // Quote helper: Golden costs (50000+100000)/300 = 500/plate
  await p.locator('#n-events').click();await p.locator('#fab').click();await p.waitForSelector('#ev-modal.active');
  await p.locator('#ev-menu').selectOption('golden');await p.locator('#ev-guests').fill('250');

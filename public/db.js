@@ -557,7 +557,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.15.0';
+export const APP_VERSION = '4.16.0';
 const COUNT_METHOD_IDS = ['tokens', 'tally', 'gate', 'coupons', 'joint', 'other'];
 export async function checkAndMigrate() {
   await openDB();
