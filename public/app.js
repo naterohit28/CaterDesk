@@ -14,7 +14,7 @@ import {
   EXPENSE_HEADS, EVENT_TYPES, VENUE_TYPES, LOGISTICS, venueTypeLabel, logisticsPrompts, venueSuggestion, PAY_MODES, PERIODS, MENUS, menuById, menuRate, menuCostPerPlate, costChecklist,
   uid, today, daysSince, fmtDate, fmtCurrency, esc,
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
-  calcEventReceived, calcEventPL, toPaise, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, daysUntil, addDays,
+  calcEventReceived, calcEventPL, toPaise, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
   RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, STOCK, stockTotal, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.12.0';
+const APP_BUILD = '4.13.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -828,6 +828,19 @@ function pendingCredit() {
     (a.x.dueDate || '9999').localeCompare(b.x.dueDate || '9999') || (a.x.date || '').localeCompare(b.x.date || ''));
 }
 
+// The same, one row per bill: a shared bill's parts are one bill, owed once
+function pendingBills() {
+  return unpaidBills(D.expenses, D.vPays).sort((a, b) =>
+    (a.x.dueDate || '9999').localeCompare(b.x.dueDate || '9999') || (a.x.date || '').localeCompare(b.x.date || ''));
+}
+// Where a bill went: its event, "Common stock", or "3 events"
+function billWhere(b) {
+  if (b.parts.length === 1) { const x = b.parts[0], ev = D.events.find(e => e.id === x.evId);
+    return ev ? `<span data-nl>${esc(ev.name)}</span>` : x.stock ? tr('Common stock', 'साठा') : ''; }
+  const evs = new Set(b.parts.filter(x => x.evId).map(x => x.evId)).size, stock = b.parts.some(x => x.stock);
+  return tr(`${evs} event${evs === 1 ? '' : 's'}${stock ? ' + stock' : ''}`, `${evs} कार्यक्रम${stock ? ' + साठा' : ''}`);
+}
+
 // "4 vendors, 1 person" — who the unpaid credit is owed to
 function payeeCount(items) {
   const ids = [...new Set(items.map(u => u.x.venId))];
@@ -838,30 +851,30 @@ function payeeCount(items) {
 
 // Expenses tab, top: everything still owed to vendors and lenders, each with a one-tap Pay
 function toPayCard(evId = '') {
-  const items = pendingCredit().filter(u => !evId || u.x.evId === evId);
+  // For one event: its own share of each bill. Otherwise: each bill once, whatever events it covers.
+  const items = evId ? pendingCredit().filter(u => u.x.evId === evId).map(u => ({ ...u, key: billKeyOf(u.x), parts: [u.x] })) : pendingBills();
   if (!items.length) return '';
   const total = items.reduce((s, u) => s + u.left, 0);
   return `
     <div class="sec"><span class="sec-title">To pay – देणे बाकी</span>
       <span class="meta">${tr(`${fmtCurrency(total)} · ${payeeCount(items)}`, `${fmtCurrency(total)} · ${new Set(items.map(u => u.x.venId)).size} जणांना`)}</span></div>
-    <div class="card list" id="to-pay-list">${items.map(({ x, left }) => {
-      const ven = D.vendors.find(v => v.id === x.venId);
-      const ev  = D.events.find(e => e.id === x.evId);
+    <div class="card list" id="to-pay-list">${items.map(b => {
+      const { x, left } = b, ven = D.vendors.find(v => v.id === x.venId), where = billWhere(b);
       return `<div class="row" role="button" tabindex="0" data-action="edit-exp" data-id="${esc(x.id)}">
         <div class="avatar" data-nl style="width:36px;height:36px;font-size:13px">${esc(initials(ven?.name))}</div>
         <div class="row-body">
           <div class="title-sm trunc" data-nl>${esc(ven?.name || '—')}</div>
-          <div class="meta trunc">${esc(x.head || x.cat)}${ev ? ` · <span data-nl>${esc(ev.name)}</span>` : x.stock ? ` · ${tr('Common stock', 'साठा')}` : ''} · ${fmtDate(x.date)}</div>
+          <div class="meta trunc">${esc(short(x.head || x.cat))}${x.billNo ? ` · #${esc(x.billNo)}` : ''}${where ? ` · ${where}` : ''} · ${fmtDate(x.date)}</div>
         </div>
         <div class="row-end"><div class="amt-sm">${fmtCurrency(left)}</div>${creditChip(x)}</div>
-        <button type="button" class="btn-sm" data-action="open-vpay" data-id="${esc(x.venId)}">${tr('Pay', 'द्या')}</button>
+        <button type="button" class="btn-sm" data-action="open-vpay" data-id="${esc(x.venId)}" data-bill="${esc(b.key)}">${tr('Pay', 'द्या')}</button>
       </div>`;
     }).join('')}</div>`;
 }
 
 // Home: credit due within a week (or overdue), plus a link to everything still owed
 function payVendorsCard() {
-  const all = pendingCredit();
+  const all = pendingBills();
   if (!all.length) return '';
   const due = all.filter(u => u.x.dueDate && daysUntil(u.x.dueDate) <= 7);
   const total = all.reduce((s, u) => s + u.left, 0);
@@ -1034,7 +1047,7 @@ function vendorDuesLink(vn, bal) {
     return `• ${(x.head || x.cat || '').split(' – ')[0]}${ev ? ' – ' + ev.name : ''} (${fmtDate(x.date)}): ${fmtCurrency(left)}`;
   });
   const msg = `Namaste ${vn.name}! As per my records:\n`
-    + `${isPerson(vn) ? 'Lent / paid for me' : 'Supplied'}: ${fmtCurrency(bal.supplied)}\nPaid: ${fmtCurrency(bal.paid)}\n`
+    + `${isPerson(vn) ? 'Lent / paid for me' : 'Supplied'}: ${fmtCurrency(bal.supplied)}\nPaid: ${fmtCurrency(bal.paid)}\n` + (bal.credits ? `Credit notes: ${fmtCurrency(bal.credits)}\n` : '')
     + `Balance due to you: ${fmtCurrency(bal.balance)}\n`
     + (items.length ? `\nPending:\n${items.join('\n')}\n` : '')
     + `\nPlease check and confirm. Thank you!`;
@@ -1422,6 +1435,12 @@ const ORDER_STATUS = {
   cancelled: { en: 'Cancelled', mr: 'रद्द', tone: 'neg' }
 };
 const short = head => String(head || '').split(' – ')[0];
+// A delivered order says whether its bill is in yet (an outsourced event's charge was recorded at booking)
+function orderStatus(o, ev) {
+  const st = ORDER_STATUS[o.status] || ORDER_STATUS.sent;
+  if (o.status !== 'delivered' || ev?.outsourced) return st;
+  return D.expenses.some(x => x.order === o.id) ? { en: 'Delivered · billed', mr: 'आले · बिल', tone: 'pos' } : { en: 'Delivered · bill not in', mr: 'आले · बिल नाही', tone: 'due' };
+}
 
 // The event's dishes grouped by the counter that supplies them ('' = your own kitchen)
 const OUT_HEAD = 'Outsourced Event – आउटसोर्स कार्यक्रम';
@@ -1457,7 +1476,7 @@ function offMenuOrders(ev) {
   if (!latest.size) return '';
   return `<div class="meta" style="padding:var(--s3) var(--s4) 0">${tr('Orders for counters no longer on the menu', 'मेनूत नसलेल्या काउंटरच्या ऑर्डर')}</div>`
     + [...latest.values()].map(o => {
-      const ven = D.vendors.find(v => v.id === o.venId), st = ORDER_STATUS[o.status] || ORDER_STATUS.sent;
+      const ven = D.vendors.find(v => v.id === o.venId), st = orderStatus(o, ev);
       return `<div class="row" style="min-height:56px" data-off-order="${esc(o.id)}">
         <div class="row-ic">${icon('utensils', 18)}</div>
         <div class="row-body"><div class="title-sm trunc">${esc(short(o.head))}${ven ? ` · <span data-nl>${esc(ven.name)}</span>` : ''}</div>
@@ -1477,7 +1496,7 @@ function menuOrdersCard(ev) {
   const counters = [...groups].filter(([head]) => head).map(([head, names]) => {
     const o = [...orders].reverse().find(x => x.head === head && x.status !== 'cancelled');
     const ven = D.vendors.find(v => v.id === (o?.venId || (ev.outsourced ? ev.outVenId : counterVendor(head))));
-    const st = o && ORDER_STATUS[o.status];
+    const st = o && orderStatus(o, ev);
     return `<div class="row" style="min-height:56px">
       <div class="row-ic">${icon('utensils', 18)}</div>
       <div class="row-body"><div class="title-sm trunc">${ev.outsourced ? tr('Whole event', 'संपूर्ण कार्यक्रम') : esc(short(head))}${ven ? ` · <span data-nl>${esc(ven.name)}</span>` : ''}</div>
@@ -1693,11 +1712,13 @@ async function orderAction(orderId) {
       ...(o.status !== 'delivered' ? [{ label: 'Delivered · record bill – आले, बिल नोंदवा', value: 'delivered', style: 'btn-primary' }] : []),
       { label: 'Edit / send again – बदला', value: 'edit', style: 'btn-secondary' },
       ...((o.messages || []).length ? [{ label: `Messages sent (${o.messages.length}) – पाठवलेले संदेश`, value: 'history', style: 'btn-secondary' }] : []),
+      ...(o.status === 'delivered' && !orderBillOf(o) ? [{ label: 'Record / link its bill – बिल नोंदवा', value: 'bill', style: 'btn-primary' }] : []),
       ...(o.status !== 'delivered' ? [{ label: 'Cancel order – रद्द', value: 'cancelled', style: 'btn-danger' }] : [])
     ]
   });
   if (!next) return;
   if (next === 'edit') { openOrderModal({ orderId }); return; }
+  if (next === 'bill') { orderBill(ev, o); return; }
   if (next === 'history') {
     const MSG = { prepared: 'Not sent yet', opened: 'WhatsApp opened (not confirmed sent)', sent: 'Sent (you confirmed)', confirmed: 'Vendor confirmed' };
     await askSheet({ title: `${short(o.head)} · messages – संदेश`,
@@ -1712,8 +1733,32 @@ async function orderAction(orderId) {
   if (next !== 'delivered') return;
   // Outsourced: their charge was recorded when the event was booked; don't count it twice
   if (ev.outsourced && D.expenses.some(x => x.evId === ev.id && x.venId === o.venId)) { showToast('Done. Their charge is already recorded for this event.'); return; }
-  // Delivered: the bill goes in as an expense for this counter and vendor
-  openExpModal({ prefill: { evId: ev.id, cat: ev.outsourced ? 'Operations' : 'Live Counter', head: o.head, venId: o.venId } });
+  orderBill(D.events.find(e => e.id === ev.id) || ev, o);
+}
+
+// The bill recorded for an order (an expense carrying `order: id`)
+const orderBillOf = o => D.expenses.find(x => x.order === o.id) || null;
+/* Delivered: the vendor's actual bill. If a bill from this vendor is already on the event (entered from the bill
+   itself, or a shared bill), link it instead of recording it again (G-23); otherwise record it, linked. */
+async function orderBill(ev, o) {
+  if (orderBillOf(o)) { showToast('Its bill is already recorded – बिल आधीच नोंदवले'); return; }
+  const ven = D.vendors.find(v => v.id === o.venId);
+  const open = D.expenses.filter(x => x.evId === ev.id && x.venId === o.venId && !x.order && !x.draft).slice(0, 3);
+  if (open.length) {
+    const pick = await askSheet({ title: 'Bill already recorded? – बिल आधीच नोंदवले?',
+      message: `${ven?.name || 'This vendor'} already has ${open.length === 1 ? 'a bill' : 'bills'} on this event. If the delivery's bill is one of these, link it so it is not counted twice.`,
+      actions: [...open.map(x => ({ label: `Link: ${short(x.head || x.cat)} · ${fmtCurrency(x.split?.total ?? x.amt)} · ${fmtDate(x.date)}`, value: x.id, style: 'btn-primary' })),
+        { label: 'No, record a new bill – नवीन बिल', value: 'new', style: 'btn-secondary' }] });
+    if (!pick) return;
+    if (pick !== 'new') {
+      const x = D.expenses.find(e => e.id === pick); if (!x) return;
+      const { _rev, ...rec } = x;
+      await commitChanges([{ store: 'expenses', record: { ...rec, order: o.id }, expected: x }], { check: true, extraStores: ['events', 'vendors'] });
+      await loadAll(); refreshCurrent();
+      showToast('Bill linked to the order – बिल ऑर्डरला जोडले'); return;
+    }
+  }
+  openExpModal({ prefill: { evId: ev.id, cat: ev.outsourced ? 'Operations' : 'Live Counter', head: o.head, venId: o.venId, order: o.id } });
 }
 
 async function cancelOrderFromSheet() {
@@ -2330,7 +2375,7 @@ function showVenDetail(id, { fromHistory = false } = {}) {
         <div class="metric"><div class="label">${isPerson(vn) ? 'Lent / paid – उधार दिले' : 'Supplied – पुरवले'}</div><div class="amt-md">${fmtCurrency(bal.supplied)}</div></div>
         <div class="metric"><div class="label">Paid – दिले</div><div class="amt-md pos">${fmtCurrency(bal.paid)}</div></div>
         <div class="metric"><div class="label">${bal.balance < 0 ? 'Advance – आगाऊ' : 'You owe – देणे'}</div><div class="amt-md ${bal.balance > 0 ? 'due' : bal.balance < 0 ? 'info' : 'muted'}">${fmtCurrency(Math.abs(bal.balance))}</div></div>
-      </div>`
+      </div>${bal.credits ? `<div class="meta" style="margin-top:var(--s2)">${tr(`Credit notes ${fmtCurrency(bal.credits)} lower what you owe; event costs stay as billed.`, `क्रेडिट नोट ${fmtCurrency(bal.credits)} देणे कमी करतात.`)}</div>` : ''}`
       : `<div class="meta">${tr('Nothing recorded with this vendor yet. Add an expense and pick this vendor, or record a payment.', 'या विक्रेत्याची अजून नोंद नाही.')}</div>`}
       ${phone ? `<div class="btn-row" style="margin-top:var(--s4)" id="ven-contact">
         <a class="btn btn-secondary" href="tel:+${esc(phone)}">${icon('phone', 18)}${tr('Call', 'कॉल')}</a>
@@ -2353,11 +2398,12 @@ function showVenDetail(id, { fromHistory = false } = {}) {
     <div class="card list">
       ${rowsOrEmpty(pays.map(p => {
         const ev = D.events.find(e => e.id === p.evId);
+        const bill = p.billKey ? D.expenses.find(x => billKeyOf(x) === p.billKey) : null;
         return `<div class="row" role="button" tabindex="0" data-action="edit-vpay" data-id="${esc(p.id)}">
-          <div class="row-ic">${icon('wallet', 18)}</div>
+          <div class="row-ic">${icon(p.kind === 'credit' ? 'receipt' : 'wallet', 18)}</div>
           <div class="row-body">
-            <div class="amt-sm">${fmtCurrency(p.amt)}</div>
-            <div class="meta trunc">${fmtDate(p.date)} · ${esc(p.mode)}${ev ? ` · <span data-nl>${esc(ev.name)}</span>` : ''}${p.head ? ' · ' + esc(p.head) : ''}</div>
+            <div class="amt-sm">${fmtCurrency(p.amt)}${p.kind === 'credit' ? ` <span class="chip info">${tr('Credit note', 'क्रेडिट नोट')}</span>` : ''}</div>
+            <div class="meta trunc">${fmtDate(p.date)}${p.mode ? ' · ' + esc(p.mode) : ''}${bill ? ` · ${tr('for', 'साठी')} ${esc(short(bill.head || bill.cat))}${bill.billNo ? ' #' + esc(bill.billNo) : ''}` : ''}${ev ? ` · <span data-nl>${esc(ev.name)}</span>` : ''}${p.head ? ' · ' + esc(p.head) : ''}${p.kind === 'credit' && p.notes ? ' · ' + esc(p.notes) : ''}</div>
           </div>
           <button type="button" class="del-btn" data-action="delete" data-type="vPays" data-id="${esc(p.id)}" aria-label="Delete payment">${icon('trash', 16)}</button>
         </div>`;
@@ -2824,6 +2870,7 @@ function useVenueOffer() {
 }
 
 let expLogi = '';
+let expOrder = '';
 
 // Values the menu last filled in, so a changed menu or guest count updates them
 // but never overwrites a figure typed by hand
@@ -3148,7 +3195,8 @@ function openExpModal(arg) {
   const pre  = arg && typeof arg === 'object' && (arg.prefill || arg.resume) || null;
   const ex   = arg && typeof arg === 'object' && !pre ? arg : null;
   formBase.exp = snapshot(ex);   // an expense or bill draft being edited; null for a new entry
-  expLogi = pre?.logi || '';     // which venue reminder a new expense answers (one expense per reminder)
+  expLogi = pre?.logi || '';
+  expOrder = pre?.order || '';   // the delivered order this new bill is for (G-23)     // which venue reminder a new expense answers (one expense per reminder)
   expTouched = { item: !!(ex || pre?.head), pay: !!(ex || arg?.resume) };
   const evId = ex?.evId || pre?.evId || (typeof arg === 'string' && arg) || defaultEventId();
   const last = readPref('ffv2_lastexp', {});
@@ -3340,6 +3388,7 @@ async function saveExpense({ next = false } = {}) {
   if (!sheetLine) additional = false;
   const record = editedRecord(base, {
     ...(!base && expLogi ? { logi: expLogi } : {}),
+    ...(!base && expOrder ? { order: expOrder } : {}),
     id:    expWork.id,
     evId:  data.evId,
     cat:   qv('exp-cat'),
@@ -3368,7 +3417,7 @@ async function saveExpense({ next = false } = {}) {
   const i = D.expenses.findIndex(x => x.id === record.id);
   if (i >= 0) D.expenses[i] = record; else D.expenses.push(record);
   expWork.saved = true;
-  expLogi = '';   // a "+Next" entry answers no reminder unless opened from one
+  expLogi = ''; expOrder = '';   // a "+Next" entry answers no reminder or order unless opened from one
   try { localStorage.removeItem('ffv2_expdraft'); } catch {}   // saved: nothing left to resume
   writePref('ffv2_lastexp', { cat: record.cat, head: record.head, mode: record.mode || readPref('ffv2_lastexp', {}).mode });
 
@@ -3496,14 +3545,22 @@ async function saveVendor() {
 }
 
 /* ── VENDOR PAYMENT SHEET ────────────────────────── */
-function openVPayModal(venId, payId) {
+function openVPayModal(venId, payId, billKey = '') {
   const p  = payId ? D.vPays.find(x => x.id === payId) : null;
   formBase.vpay = snapshot(p);
   const vid = p?.venId || venId;
   const bal = calcVendorBalance(vid, D.expenses, D.vPays).balance;
+  // Which bill this pays: the vendor's unpaid bills (leaving this payment out), or oldest first
+  const others = D.vPays.filter(x => x.id !== p?.id);
+  const bills = unpaidBills(D.expenses, others).filter(b => b.venId === vid);
+  const sel = p ? p.billKey || '' : billKey;
+  const selBill = bills.find(b => b.key === sel);
+  populateSelect('vpay-bill', [{ v: '', l: 'Oldest bills first – जुनी बिले आधी' }, ...bills.map(b => ({ v: b.key,
+    l: `${short(b.x.head || b.x.cat)}${b.x.billNo ? ' #' + b.x.billNo : ''} · ${fmtDate(b.x.date)} · ${fmtCurrency(b.left)} left` }))], selBill ? sel : '');
+  setVPayKind(p?.kind === 'credit' ? 'credit' : 'pay');
   q('vpay-venid').value = vid;
   q('vpay-id').value    = p?.id || '';
-  q('vpay-amt').value   = p?.amt || (bal > 0 ? bal : '');
+  q('vpay-amt').value   = p?.amt || (selBill ? selBill.left : bal > 0 ? bal : '');
   q('vpay-date').value  = p?.date || today();
   q('vpay-notes').value = p?.notes || '';
   q('vpay-due').textContent = bal > 0 ? `You owe ${fmtCurrency(bal)} – देणे ${fmtCurrency(bal)}` : '';
@@ -3516,6 +3573,14 @@ function openVPayModal(venId, payId) {
   openSheet('vpay-modal');
 }
 
+// Payment (money paid) or credit note (the vendor lowered what you owe; no money moved)
+function setVPayKind(kind) {
+  q('vpay-kind').dataset.value = kind;
+  q('vpay-kind').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.kind === kind)));
+  q('vpay-mode').closest('.field').hidden = kind === 'credit';
+  q('vpay-notes').placeholder = kind === 'credit' ? 'Credit note no. / reason' : 'Reference';
+}
+
 async function saveVPay() {
   const venId = qv('vpay-venid');
   const data = { venId, amt: qf('vpay-amt'), date: qv('vpay-date') };
@@ -3524,14 +3589,17 @@ async function saveVPay() {
 
   const id  = qv('vpay-id');
   const base = id ? formBase.vpay : null;
-  const record = editedRecord(base, { id: id || uid('VP'), venId, evId: qv('vpay-ev'), cat: base?.cat || '', head: base?.head || '', amt: data.amt, date: data.date, mode: qv('vpay-mode'), notes: qv('vpay-notes') });
+  const credit = q('vpay-kind').dataset.value === 'credit', billKey = qv('vpay-bill');
+  if (credit && !qv('vpay-notes').trim()) { showFieldErrors({ 'vpay-notes': 'Write the credit note number or reason – क्रमांक / कारण लिहा' }); return; }
+  const record = editedRecord(base, { id: id || uid('VP'), venId, evId: qv('vpay-ev'), cat: base?.cat || '', head: base?.head || '', amt: data.amt, date: data.date,
+    mode: credit ? '' : qv('vpay-mode'), notes: qv('vpay-notes'), ...(billKey ? { billKey } : {}), ...(credit ? { kind: 'credit' } : {}) }, [...(billKey ? [] : ['billKey']), ...(credit ? [] : ['kind'])]);
 
   await putChecked('vPays', record, base);
   if (id) D.vPays = D.vPays.map(p => p.id === id ? record : p);
   else    D.vPays.push(record);
 
   closeModals();
-  showToast('Vendor payment saved – विक्रेता देयक जतन');
+  showToast(credit ? 'Credit note saved – क्रेडिट नोट जतन' : 'Vendor payment saved – विक्रेता देयक जतन');
   refreshCurrent();
 }
 
@@ -3889,7 +3957,7 @@ function bindAllEvents() {
       case 'vendetail':    showVenDetail(id); break;
       case 'open-cpay':    openCPayModal(id); break;
       case 'open-exp':     openExpModal(id); break;
-      case 'open-vpay':    openVPayModal(id); break;
+      case 'open-vpay':    openVPayModal(id, null, el.dataset.bill || ''); break;
       case 'menu-edit':    openMenuModal(); break;
       case 'lab-edit':     openLabModal(); break;
       case 'dish-assign':  assignDish(Number(id)); break;
@@ -4075,6 +4143,7 @@ function bindAllEvents() {
   q('btn-save-ven').addEventListener('click', () => runSave('vendor', saveVendor));
   q('btn-save-vpay').addEventListener('click', () => runSave('vpay', saveVPay));
   q('btn-del-vpay').addEventListener('click', () => deleteFromSheet('vPays', 'vpay-id'));
+  q('vpay-kind').addEventListener('click', e => { const b = e.target.closest('[data-kind]'); if (b) setVPayKind(b.dataset.kind); });
   q('btn-save-link').addEventListener('click', () => runSave('link', saveLinkExpenses));
 
   // Settings panel / FAB
