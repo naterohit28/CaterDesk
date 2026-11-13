@@ -23,7 +23,7 @@ server.listen(0, '127.0.0.1', async () => {
   const base = `http://127.0.0.1:${server.address().port}`;
   let failed = false;
   try {
-    for (const script of ['regression.cjs', 'attachment-regression.cjs', 'security-smoke.cjs', 'idle-recovery.cjs', 'release-update.cjs', 'ui-audit.cjs', 'labour-audit.cjs', 'xss-canary.cjs', 'diagnostics-redaction.cjs', 'backup-restore.cjs', 'reconciliation.cjs', 'venue-details.cjs', 'menu-meals.cjs', 'audit-441.cjs', 'toast-undo.cjs', 'counter-planning.cjs', 'payment-schedule.cjs', 'shared-bills.cjs']) {
+    for (const script of ['regression.cjs', 'attachment-regression.cjs', 'security-smoke.cjs', 'idle-recovery.cjs', 'release-update.cjs', 'ui-audit.cjs', 'labour-audit.cjs', 'xss-canary.cjs', 'diagnostics-redaction.cjs', 'backup-restore.cjs', 'reconciliation.cjs', 'venue-details.cjs', 'menu-meals.cjs', 'audit-441.cjs', 'toast-undo.cjs', 'counter-planning.cjs', 'payment-schedule.cjs', 'shared-bills.cjs', 'labour-no-duplicates.cjs']) {
       const code = await new Promise((resolve, reject) => {
         const child = spawn(process.execPath, [path.join(__dirname, script)], { cwd: root,
           env: { ...process.env, TEST_BASE_URL: base }, stdio: 'inherit', windowsHide: true });

@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, splitParts, checkSplit, equalSplit, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
+  RECON_CHECKS, ACTIVE_ORDER, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.7.0';
+const APP_BUILD = '4.8.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1352,7 +1352,16 @@ async function saveLabour() {
     if (!byKey.has(key)) byKey.set(key, []);
     byKey.get(key).push(r);
   }
+  // Items already typed in by hand for this event (G-14): the sheet would count them twice. Never deleted here.
+  const dupes = labourDuplicates(ev, D.expenses, [...byKey.keys()]);
+  if (dupes.length) {
+    const keep = await askSheet({ title: 'Already entered by hand – आधी नोंदवले',
+      message: `${dupes.map(x => `${short(x.head)} ${fmtCurrency(x.amt)}`).join(', ')} ${dupes.length > 1 ? 'were' : 'was'} entered separately for this event, and this sheet includes the same item${dupes.length > 1 ? 's' : ''}. Keep both only if ${dupes.length > 1 ? 'they are' : 'it is'} extra, on top of the contractor's bill; otherwise delete the separate entry first.`,
+      actions: [{ label: 'Keep both: it is extra – दोन्ही ठेवा', value: true, style: 'btn-secondary' }] });
+    if (!keep) return;
+  }
   const changes = [], expIds = {}, saved = [];
+  for (const d of dupes) { const { _rev, ...r } = d; changes.push({ store: 'expenses', record: { ...r, additional: true }, expected: d }); }
   for (const [key, rs] of byKey) {
     const [cat, head] = key.split('|');
     const old = D.expenses.find(x => x.id === oldIds[key]);
@@ -1378,7 +1387,8 @@ async function saveLabour() {
   const evRecord = { ...ev, labour: { rows, pay, mode: pay === 'paid' ? qv('lab-mode') : '', venId, expIds, ...(billTotal && rows.length ? { billTotal } : {}) } };
   await commitChanges([{ store: 'events', record: evRecord, expected: ev }, ...changes], { check: true, extraStores: ['vendors'] });
   D.events = D.events.map(e => e.id === ev.id ? evRecord : e);
-  D.expenses = D.expenses.filter(x => !removed.includes(x.id) && !saved.some(r => r.id === x.id)).concat(saved);
+  D.expenses = D.expenses.filter(x => !removed.includes(x.id) && !saved.some(r => r.id === x.id)).concat(saved)
+    .map(x => dupes.some(d => d.id === x.id) ? { ...x, additional: true } : x);
   closeModals();
   showToast(rows.length ? `Labour ${fmtCurrency(saved.reduce((s, r) => s + r.amt, 0))} saved – मजूर खर्च जतन` : 'Labour sheet cleared – मजूर यादी काढली');
   refreshCurrent();
@@ -1909,7 +1919,8 @@ function expenseRow(x, { showEvent = true } = {}) {
     showEvent ? `<span data-nl>${esc(ev?.name || '—')}</span>` : '',
     fmtDate(x.date),
     ven ? `<span data-nl>${esc(ven.name)}</span>` : '',
-    x.split ? tr(`shared · ${fmtCurrency(x.split.total)} bill`, `वाटलेले · ${fmtCurrency(x.split.total)}`) : ''
+    x.split ? tr(`shared · ${fmtCurrency(x.split.total)} bill`, `वाटलेले · ${fmtCurrency(x.split.total)}`) : '',
+    x.additional ? tr('extra to labour sheet', 'मजूर यादीशिवाय') : ''
   ].filter(Boolean).join(' · ');
   return `<div class="row" role="button" tabindex="0" data-action="edit-exp" data-id="${esc(x.id)}">
     <div class="row-ic">${catIcon(x.cat)}</div>
@@ -3048,6 +3059,17 @@ async function saveExpense({ next = false } = {}) {
 
   const base = formBase.exp && formBase.exp.id === expWork.id ? formBase.exp : null;
   if (base?.split) { data.amt = base.amt; data.evId = base.evId; }   // set by the split, not this form
+  // The event's labour sheet already includes this item (G-14): only save it if it is on top of the sheet
+  let additional = !!base?.additional;
+  const sheetLine = labourCovers(D.events.find(e => e.id === data.evId), D.expenses, qv('exp-cat'), qv('exp-head'), expWork.id);
+  if (sheetLine && !additional) {
+    const extra = await askSheet({ title: 'Already in the labour sheet – मजूर यादीत आहे',
+      message: `This event's labour sheet already includes ${short(qv('exp-head'))}: ${fmtCurrency(sheetLine.amt)} (contractor's bill). Saving this too counts it twice unless it is on top of that bill.`,
+      actions: [{ label: 'It is extra, on top – वेगळा खर्च', value: true, style: 'btn-secondary' }] });
+    if (!extra) return;   // nothing saved; the form stays as it was
+    additional = true;
+  }
+  if (!sheetLine) additional = false;
   const record = editedRecord(base, {
     ...(!base && expLogi ? { logi: expLogi } : {}),
     id:    expWork.id,
@@ -3061,8 +3083,9 @@ async function saveExpense({ next = false } = {}) {
     venId,
     dueDate: pay === 'credit' ? qv('exp-due') : '',
     notes: qv('exp-notes'),
-    billIds: expWork.bills.map(b => b.id)
-  }, ['draft']);   // a filled-in bill draft becomes a normal expense
+    billIds: expWork.bills.map(b => b.id),
+    ...(additional ? { additional: true } : {})
+  }, ['draft', ...(additional ? [] : ['additional'])]);   // a filled-in bill draft becomes a normal expense
 
   // One shared bill: vendor, item, date and payment stay the same on every part
   const siblings = base?.split ? splitParts(D.expenses, base.split.id).filter(x => x.id !== record.id).map(s => {

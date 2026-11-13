@@ -95,6 +95,22 @@ export function menuChangeImpact(before = [], after = [], orders = []) {
   return orders.filter(o => ACTIVE_ORDER.includes(o.status) && sig(before, o.head) !== sig(after, o.head)).map(o => o.id);
 }
 
+/* ── LABOUR SHEET OVERLAP (spec §9.1, G-14) ── */
+/* A contractor's bill entered through the labour sheet already includes its staff and any travel/fee lines. An expense
+   typed by hand for the same event and the same item (a labour role, or transport when the sheet has travel) would
+   count that cost twice, unless it is genuinely on top of the sheet; then it is kept and marked `additional`.
+   Returns the sheet expense that already covers this item, or null. */
+export function labourCovers(ev, expenses, cat, head, excludeId = '') {
+  const ids = ev?.labour?.expIds; if (!ids) return null;
+  const id = ids[`${cat}|${head}`]; if (!id || id === excludeId) return null;
+  return expenses.find(x => x.id === id) || null;
+}
+// Hand-typed expenses on this event that a sheet saved now would duplicate (not the sheet's own, not marked extra)
+export function labourDuplicates(ev, expenses, keys) {
+  const sheetIds = new Set(Object.values(ev?.labour?.expIds || {}));
+  return expenses.filter(x => x.evId === ev.id && !x.draft && !x.additional && !sheetIds.has(x.id) && keys.includes(`${x.cat}|${x.head}`));
+}
+
 /* ── SHARED BILLS (spec §6.2 shared resources, G-13) ── */
 /* One bill (e.g. transport ₹8,000 for two events) is entered once and split into parts, one per event. Each part is
    an expense on its event carrying `split: { id, total }`; the parts always add up to the bill, so the cost is counted
