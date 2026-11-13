@@ -475,6 +475,11 @@ export async function prepareImport(payload) {
       if (row.orders?.some(o => o?.messages !== undefined && (!Array.isArray(o.messages) || o.messages.some(m => !m || typeof m.text !== 'string' || !['prepared', 'opened', 'sent', 'confirmed'].includes(m.status))))) throw new Error('Invalid order messages');
       if (row.additional !== undefined && typeof row.additional !== 'boolean') throw new Error('Invalid extra flag');
       if (row.split !== undefined && (!row.split || typeof row.split.id !== 'string' || (amount(row.split.total, 'shared bill'), false))) throw new Error('Invalid shared bill');
+      if (row.stock !== undefined && (row.stock !== true || name !== 'expenses' || row.evId)) throw new Error('Invalid common stock entry');
+      if (row.billNo !== undefined && (typeof row.billNo !== 'string' || row.billNo.length > 60)) throw new Error('Invalid bill number');
+      const badParts = list => !Array.isArray(list) || list.length > 100 || list.some(x => !x || typeof x.evId !== 'string' || (amount(x.amt, 'bill part'), false));
+      if (row.allocLog !== undefined && (!Array.isArray(row.allocLog) || row.allocLog.length > 50
+        || row.allocLog.some(l => !l || typeof l.at !== 'string' || badParts(l.parts) || (l.from !== undefined && badParts(l.from))))) throw new Error('Invalid bill allocation history');
       if (row.payPlan !== undefined && (!Array.isArray(row.payPlan) || row.payPlan.some(m => !m || typeof m.id !== 'string' || !['booking', 'date', 'before', 'after'].includes(m.when)
         || (m.pct != null ? !(typeof m.pct === 'number' && m.pct > 0 && m.pct <= 100) : (amount(m.amt, 'milestone'), false))
         || (m.when === 'date' && !validDate(m.date)) || (['before', 'after'].includes(m.when) && !(Number.isSafeInteger(m.days) && m.days >= 0))))) throw new Error('Invalid payment schedule');
@@ -532,7 +537,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
             const ref = (field, target, required = false) => {
               if ((required || row[field]) && !final[target].has(row[field])) throw new Error('Missing ' + target + ' reference in ' + store + ': ' + row.id);
             };
-            if (store === 'expenses') { ref('evId', 'events', !row.draft); ref('venId', 'vendors'); }
+            if (store === 'expenses') { ref('evId', 'events', !row.draft && !row.stock); ref('venId', 'vendors'); }
             if (store === 'cPays') ref('evId', 'events', true);
             if (store === 'vPays') { ref('venId', 'vendors', true); ref('evId', 'events'); }
             if (store === 'photos') { ref('eventId', 'events'); ref('expenseId', 'expenses'); }
@@ -549,7 +554,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.11.0';
+export const APP_VERSION = '4.12.0';
 const COUNT_METHOD_IDS = ['tokens', 'tally', 'gate', 'coupons', 'joint', 'other'];
 export async function checkAndMigrate() {
   await openDB();

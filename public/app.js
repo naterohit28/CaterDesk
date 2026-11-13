@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, STOCK, stockTotal, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.11.0';
+const APP_BUILD = '4.12.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -608,7 +608,7 @@ const FAB = {
   home:      { en: 'Add expense', mr: 'खर्च जोडा',      run: () => openExpModal() },
   events:    { en: 'New event',   mr: 'नवीन कार्यक्रम', run: () => openEvModal() },
   evdetail:  { en: 'Add expense', mr: 'खर्च जोडा',      run: () => openExpModal(curRef) },
-  expenses:  { en: 'Add expense', mr: 'खर्च जोडा',      run: () => openExpModal(F.expEv || undefined) },
+  expenses:  { en: 'Add expense', mr: 'खर्च जोडा',      run: () => openExpModal(F.expEv && F.expEv !== STOCK ? F.expEv : undefined) },
   vendors:   { en: 'Add vendor',  mr: 'विक्रेता जोडा',  run: () => openVenModal() },
   vendetail: { en: 'Pay vendor',  mr: 'देयक द्या',      run: () => openVPayModal(curRef) }
 };
@@ -851,7 +851,7 @@ function toPayCard(evId = '') {
         <div class="avatar" data-nl style="width:36px;height:36px;font-size:13px">${esc(initials(ven?.name))}</div>
         <div class="row-body">
           <div class="title-sm trunc" data-nl>${esc(ven?.name || '—')}</div>
-          <div class="meta trunc">${esc(x.head || x.cat)}${ev ? ` · <span data-nl>${esc(ev.name)}</span>` : ''} · ${fmtDate(x.date)}</div>
+          <div class="meta trunc">${esc(x.head || x.cat)}${ev ? ` · <span data-nl>${esc(ev.name)}</span>` : x.stock ? ` · ${tr('Common stock', 'साठा')}` : ''} · ${fmtDate(x.date)}</div>
         </div>
         <div class="row-end"><div class="amt-sm">${fmtCurrency(left)}</div>${creditChip(x)}</div>
         <button type="button" class="btn-sm" data-action="open-vpay" data-id="${esc(x.venId)}">${tr('Pay', 'द्या')}</button>
@@ -1957,12 +1957,12 @@ function openSplitModal() {
   const parts = ex.split ? splitParts(D.expenses, ex.split.id) : [ex];
   const anchor = parts.find(x => (x.billIds || []).length) || parts[0];
   splitDraft = { anchorId: anchor.id, total: ex.split ? ex.split.total : ex.amt,
-    rows: [anchor, ...parts.filter(x => x.id !== anchor.id)].map(x => ({ id: x.id, evId: x.evId, amt: x.amt })) };
+    rows: [anchor, ...parts.filter(x => x.id !== anchor.id)].map(x => ({ id: x.id, evId: x.stock ? STOCK : x.evId, amt: x.amt })) };
   if (splitDraft.rows.length === 1) splitDraft.rows.push({ evId: '', amt: '' });
   closeOverlay().then(() => { renderSplitRows(); openSheet('split-modal'); });
 }
 function renderSplitRows() {
-  const opts = eventOptions();
+  const opts = [...eventOptions(), { v: STOCK, l: 'Common stock (no event yet) – साठा' }];
   q('split-rows').innerHTML = splitDraft.rows.map((r, i) => `<div class="f2" data-sp="${i}" style="align-items:end;margin-bottom:var(--s2)">
     <div class="field" style="margin:0"><select data-k="evId" aria-label="Event">${[{ v: '', l: 'Choose event – कार्यक्रम' }, ...opts].map(o => `<option value="${esc(o.v)}"${o.v === r.evId ? ' selected' : ''}>${esc(o.l)}</option>`).join('')}</select></div>
     <div style="display:flex;gap:var(--s2);align-items:center"><div class="field" style="margin:0;flex:1;min-width:0"><input type="number" data-k="amt" aria-label="Amount for this event" min="0" inputmode="decimal" value="${r.amt === '' ? '' : r.amt}" placeholder="₹"></div>
@@ -1992,11 +1992,18 @@ async function saveSplit() {
   const shared = rows.length > 1;
   const strip = ({ _rev, ...r }) => r;
   const common = strip(anchor);
+  // Who got what, each time the bill is (re)divided: moving value out of common stock leaves a trail (spec I-01)
+  const dest = r => ({ evId: r.evId === STOCK ? '' : r.evId, amt: Number(r.amt) });
+  const prevLog = before.find(x => x.allocLog)?.allocLog || [];
+  const allocLog = [...prevLog, { at: new Date().toISOString(), from: before.map(x => ({ evId: x.evId || '', amt: x.amt })), parts: rows.map(dest) }].slice(-50);
   const changes = rows.map((r, i) => {
     const old = r.id ? before.find(x => x.id === r.id) : null;
-    const rec = old ? { ...strip(old), evId: r.evId, amt: Number(r.amt) } : { ...common, id: uid('EX'), evId: r.evId, amt: Number(r.amt), billIds: [] };
+    const { evId, amt } = dest(r);
+    const rec = old ? { ...strip(old), evId, amt } : { ...common, id: uid('EX'), evId, amt, billIds: [] };
     if (i !== 0) rec.billIds = old ? old.billIds || [] : [];   // the bill photo stays with the first part
     if (shared) rec.split = { id: groupId, total: Number(splitDraft.total) }; else delete rec.split;
+    if (r.evId === STOCK) rec.stock = true; else delete rec.stock;
+    if (i === 0 && (shared || prevLog.length || r.evId === STOCK)) rec.allocLog = allocLog; else delete rec.allocLog;
     delete rec.logi;
     return { store: 'expenses', record: rec, expected: old || null };
   });
@@ -2006,7 +2013,9 @@ async function saveSplit() {
   catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
   await loadAll(); changesChannel?.postMessage('changed');
   closeModals(); refreshCurrent();
-  showToast(shared ? `Bill shared across ${rows.length} events – बिल वाटले` : 'Bill is on one event again – एका कार्यक्रमावर');
+  const stockP = rows.filter(r => r.evId === STOCK).reduce((t, r) => t + toPaise(r.amt), 0);
+  showToast(stockP ? `${fmtCurrency(stockP / 100)} kept as common stock, on no event – साठ्यात ठेवले`
+    : shared ? `Bill shared across ${rows.length} events – बिल वाटले` : 'Bill is on one event again – एका कार्यक्रमावर');
 }
 
 /* ── RECONCILIATION (D-4) ── */
@@ -2155,7 +2164,7 @@ function expenseRow(x, { showEvent = true } = {}) {
   const ev  = D.events.find(e => e.id === x.evId);
   const ven = D.vendors.find(v => v.id === x.venId);
   const bits = [
-    showEvent ? `<span data-nl>${esc(ev?.name || '—')}</span>` : '',
+    showEvent ? (x.stock ? tr('Common stock', 'साठा') : `<span data-nl>${esc(ev?.name || '—')}</span>`) : '',
     fmtDate(x.date),
     ven ? `<span data-nl>${esc(ven.name)}</span>` : '',
     x.split ? tr(`shared · ${fmtCurrency(x.split.total)} bill`, `वाटलेले · ${fmtCurrency(x.split.total)}`) : '',
@@ -2202,11 +2211,12 @@ function rExp() {
     ...cats.map(c => `<button type="button" class="f-chip" data-action="exp-filter" data-id="${esc(c)}" aria-pressed="${F.exp === c}">${catIcon(c, 15)}${esc(c)}</button>`)
   ].join('') : '';
 
-  if (F.expEv && !D.events.some(e => e.id === F.expEv)) F.expEv = '';
-  populateSelect('exp-ev-filter', [{ v: '', l: 'All events – सर्व कार्यक्रम' }, ...eventOptions()], F.expEv);
+  const hasStock = D.expenses.some(x => x.stock);
+  if (F.expEv && !D.events.some(e => e.id === F.expEv) && !(F.expEv === STOCK && hasStock)) F.expEv = '';
+  populateSelect('exp-ev-filter', [{ v: '', l: 'All events – सर्व कार्यक्रम' }, ...eventOptions(), ...(hasStock ? [{ v: STOCK, l: 'Common stock – साठा' }] : [])], F.expEv);
   q('exp-ev-filter').parentElement.hidden = !D.events.length;
   const list = D.expenses
-    .filter(x => !F.expEv || x.evId === F.expEv)
+    .filter(x => !F.expEv || (F.expEv === STOCK ? x.stock : x.evId === F.expEv))
     .filter(x => F.exp === 'all' || (F.exp === 'credit' ? isOnCredit(x) : x.cat === F.exp))
     .filter(x => {
       if (!F.expQ) return true;
@@ -2471,6 +2481,7 @@ function rSummary() {
   const done      = reconciledIds(P.events, P.expenses);
   const noData    = t => `<div class="list-empty">${t}</div>`;
   const missing   = new Set(eventsMissingCosts(P.events, P.expenses).map(e => e.id));
+  const stock     = stockTotal(D.expenses);
 
   const byCat = {};
   P.expenses.forEach(x => { byCat[x.cat] = (byCat[x.cat] || 0) + x.amt; });
@@ -2521,6 +2532,8 @@ function rSummary() {
       <div>${tr(`${missing.size} event${missing.size > 1 ? 's have' : ' has'} no expenses, so contribution here is overstated.`, `${missing.size} कार्यक्रमांचा खर्च नोंदवलेला नाही, त्यामुळे नफा जास्त दिसतो.`)}</div></div></div>` : ''}
     ${P.events.length ? `<div class="card" style="margin-top:var(--s3)"><div class="note"><span class="note-ic">${icon('receipt', 16)}</span>
       <div>${tr(`${done.size} of ${P.events.length} event${P.events.length > 1 ? 's' : ''} reconciled; the rest are provisional. Contribution is bills minus each event's costs, before overheads, salaries and tax, so it is not company net profit.`, `${P.events.length} पैकी ${done.size} कार्यक्रम जुळवले; बाकी अंदाजे. योगदान = बिल − कार्यक्रमाचा खर्च (ओव्हरहेड, पगार, कर आधी), हा कंपनीचा निव्वळ नफा नव्हे.`)}</div></div></div>` : ''}
+    ${stock ? `<div class="card" style="margin-top:var(--s3)" id="stock-note"><div class="note"><span class="note-ic">${icon('receipt', 16)}</span>
+      <div>${tr(`Common stock: ${fmtCurrency(stock)} of supplier bills is on no event yet. It is owed to the vendors but is not in any event's costs or the contribution above.`, `साठा: ${fmtCurrency(stock)} चे सामान अजून कोणत्याही कार्यक्रमावर नाही; वरच्या योगदानात धरलेले नाही.`)}</div></div></div>` : ''}
     <div class="sec"></div>
     ${perPlateReport(P, missing)}
     ${costsHigherReport(P)}
@@ -3142,7 +3155,7 @@ function openExpModal(arg) {
 
   q('exp-id').value    = ex?.id || '';
   q('exp-amt').value   = ex?.amt || '';
-  populateSelect('exp-ev', eventOptions(), evId);
+  populateSelect('exp-ev', ex?.stock ? [{ v: '', l: 'Common stock (no event yet) – साठा' }] : eventOptions(), ex?.stock ? '' : evId);
   setExpCat(ex?.cat || pre?.cat || last.cat || Object.keys(EXPENSE_HEADS)[0], ex?.head || pre?.head || last.head || '');
   populateSelect('exp-mode', PAY_MODES, ex?.mode || pre?.mode || last.mode || '');
   populateVendorSelect(ex?.venId || pre?.venId || '');
@@ -3154,15 +3167,19 @@ function openExpModal(arg) {
   if (arg?.resume) { q('exp-amt').value = pre.amt || ''; }
   updateExpEvHint();
   q('exp-notes').value = ex?.notes || pre?.notes || '';
+  q('exp-billno').value = ex?.billNo || '';
   q('exp-mtitle').textContent = ex?.draft ? 'Fill in bill – बिल भरा'
                               : ex ? 'Edit expense – संपादित करा' : 'Record expense – खर्च नोंदवा';
   q('btn-del-exp').hidden       = !ex;
   // A part of a shared bill: its amount and event come from the split; change them with "Share bill"
   const part = ex?.split ? splitParts(D.expenses, ex.split.id) : null;
-  q('exp-amt').disabled = !!part; q('exp-ev').disabled = !!part;
-  q('exp-split-note').hidden = !part;
-  q('exp-split-note').innerHTML = part ? tr(`Shared bill: this event's part of ${fmtCurrency(ex.split.total)} across ${part.length} events. Changes to vendor, item, date or payment apply to every part.`,
-    `वाटलेले बिल: ${fmtCurrency(ex.split.total)} पैकी या कार्यक्रमाचा वाटा (${part.length} कार्यक्रम).`) : '';
+  q('exp-amt').disabled = !!part; q('exp-ev').disabled = !!part || !!ex?.stock;
+  q('exp-split-note').hidden = !part && !ex?.stock;
+  q('exp-split-note').innerHTML = part && ex.stock ? tr(`Shared bill: the common-stock part of ${fmtCurrency(ex.split.total)}, on no event yet. To use it for an event, move it with Share bill; the bill total stays the same.`,
+    `वाटलेले बिल: ${fmtCurrency(ex.split.total)} पैकी साठ्याचा भाग.`)
+    : part ? tr(`Shared bill: this event's part of ${fmtCurrency(ex.split.total)} across ${part.length} events. Changes to vendor, item, date or payment apply to every part.`,
+    `वाटलेले बिल: ${fmtCurrency(ex.split.total)} पैकी या कार्यक्रमाचा वाटा (${part.length} कार्यक्रम).`)
+    : ex?.stock ? tr('Common stock, on no event yet. To use it for an event, move it with Share bill.', 'साठा – अजून कोणत्याही कार्यक्रमावर नाही.') : '';
   q('btn-share-exp').hidden = !ex || !!ex.draft;
   q('btn-save-exp-next').hidden = !!ex;
   clearFieldErrors();
@@ -3286,18 +3303,30 @@ async function saveExpense({ next = false } = {}) {
   if (session.pending) { showToast('Please wait for the bill photo to finish saving.', 'error'); return; }
   const pay  = q('exp-pay').dataset.value || 'paid';
   const data = { evId: qv('exp-ev'), amt: qf('exp-amt'), date: qv('exp-date') };
-  const { valid, errors } = validate(EXPENSE_RULES, data);
+  const base = formBase.exp && formBase.exp.id === expWork.id ? formBase.exp : null;
+  if (base?.split) { data.amt = base.amt; data.evId = base.evId; }   // set by the split, not this form
+  if (base?.stock) data.evId = '';                                   // common stock moves to an event only through the split
+  const { errors } = validate(EXPENSE_RULES, data);
+  if (base?.stock) delete errors.evId;
   const venId = qv('exp-vendor').startsWith('__new') ? '' : qv('exp-vendor');
   if (pay === 'credit' && !venId) errors['exp-vendor'] = 'Choose who you owe – कोणाला देणे ते निवडा';
-  if (!valid || errors['exp-vendor']) {
+  if (Object.keys(errors).length) {
     // validate() keys errors by field name; map them onto this sheet's inputs
     const map = { evId: 'exp-ev', amt: 'exp-amt', date: 'exp-date' };
     showFieldErrors(Object.fromEntries(Object.entries(errors).map(([k, v]) => [map[k] || k, v])));
     return;
   }
 
-  const base = formBase.exp && formBase.exp.id === expWork.id ? formBase.exp : null;
-  if (base?.split) { data.amt = base.amt; data.evId = base.evId; }   // set by the split, not this form
+  // The same vendor's bill number already recorded: warn, never block (numbers can repeat across years)
+  const billNo = qv('exp-billno').trim().slice(0, 60);
+  const dup = billNo && billNo !== (base?.billNo || '') ? duplicateBill(D.expenses, { id: expWork.id, venId, billNo, date: data.date, splitId: base?.split?.id }) : null;
+  if (dup) {
+    const vn = D.vendors.find(v => v.id === venId)?.name || 'this vendor';
+    const again = await askSheet({ title: 'Same bill number – तोच बिल क्रमांक',
+      message: `${vn}: bill no. ${billNo} is already recorded on ${fmtDate(dup.date)} for ${fmtCurrency(dup.split?.total ?? dup.amt)}. If it is the same bill, saving it again counts it twice; to put it on more events, open that entry and use Share bill.`,
+      actions: [{ label: 'Different bill, save – वेगळे बिल', value: true, style: 'btn-secondary' }] });
+    if (!again) return;
+  }
   // The event's labour sheet already includes this item (G-14): only save it if it is on top of the sheet
   let additional = !!base?.additional;
   const sheetLine = labourCovers(D.events.find(e => e.id === data.evId), D.expenses, qv('exp-cat'), qv('exp-head'), expWork.id);
@@ -3322,14 +3351,15 @@ async function saveExpense({ next = false } = {}) {
     venId,
     dueDate: pay === 'credit' ? qv('exp-due') : '',
     notes: qv('exp-notes'),
+    ...(billNo ? { billNo } : {}),
     billIds: expWork.bills.map(b => b.id),
     ...(additional ? { additional: true } : {})
-  }, ['draft', ...(additional ? [] : ['additional'])]);   // a filled-in bill draft becomes a normal expense
+  }, ['draft', ...(additional ? [] : ['additional']), ...(billNo ? [] : ['billNo'])]);   // a filled-in bill draft becomes a normal expense
 
   // One shared bill: vendor, item, date and payment stay the same on every part
   const siblings = base?.split ? splitParts(D.expenses, base.split.id).filter(x => x.id !== record.id).map(s => {
-    const { _rev, ...r } = s;
-    return { store: 'expenses', record: { ...r, cat: record.cat, head: record.head, date: record.date, pay: record.pay, mode: record.mode, venId: record.venId, dueDate: record.dueDate, notes: record.notes }, expected: s };
+    const { _rev, billNo: _no, ...r } = s;
+    return { store: 'expenses', record: { ...r, cat: record.cat, head: record.head, date: record.date, pay: record.pay, mode: record.mode, venId: record.venId, dueDate: record.dueDate, notes: record.notes, ...(billNo ? { billNo } : {}) }, expected: s };
   }) : [];
   await commitChanges([{ store: 'expenses', record, expected: base }, ...siblings, ...expWork.removed.map(id => ({ store: 'photos', id, unchecked: true }))], { check: true, extraStores: ['events', 'vendors'] });
   for (const c of siblings) { const j = D.expenses.findIndex(x => x.id === c.record.id); if (j >= 0) D.expenses[j] = c.record; }
