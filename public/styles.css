@@ -342,6 +342,7 @@ html[data-lang="mr"] .chip .t-mr { margin: 0; opacity: 1; }
 /* ── DETAIL ── */
 .detail-name { font-size: var(--fs-xl); font-weight: 700; letter-spacing: -.01em; line-height: 1.25; }
 .facts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4); margin-top: var(--s2); font-size: var(--fs-sm); color: var(--text-2); }
+.facts .chip { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; } /* long free text never widens the page */
 .fact { display: inline-flex; align-items: center; gap: 6px; }
 .fact .ic { color: var(--text-3); }
 a.fact { color: var(--brand-text); font-weight: 600; min-height: 32px; }

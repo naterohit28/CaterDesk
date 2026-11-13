@@ -11,7 +11,7 @@ import {
 } from './db.js';
 
 import {
-  EXPENSE_HEADS, EVENT_TYPES, PAY_MODES, SEED_DATA, PERIODS, MENUS, menuById, menuRate, menuCostPerPlate, costChecklist,
+  EXPENSE_HEADS, EVENT_TYPES, PAY_MODES, PERIODS, MENUS, menuById, menuRate, menuCostPerPlate, costChecklist,
   uid, today, daysSince, fmtDate, fmtCurrency, esc,
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, daysUntil, addDays,
@@ -23,7 +23,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.0.2';
+const APP_BUILD = '4.0.3';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -204,7 +204,6 @@ async function boot() {
     clearTimeout(stuckTimer);
     window.removeEventListener('ffdb-blocked', explainStuck);
     await loadAll();
-    await seedIfEmpty();
     lastExport = await getMeta('last_export');
 
     const pin = await getMeta('pin_hash');
@@ -294,19 +293,6 @@ async function loadAll() {
 // Drafts are "expenses" in storage but a separate list in memory
 function storeOf(type) { return type === 'drafts' ? 'expenses' : type; }
 
-async function seedIfEmpty() {
-  if (D.events.length > 0) return;
-  const s = SEED_DATA;
-  await Promise.all([
-    ...s.events.map(r => putOne('events', r)),
-    ...s.cPays.map(r => putOne('cPays', r)),
-    ...s.expenses.map(r => putOne('expenses', r)),
-    ...s.vendors.map(r => putOne('vendors', r)),
-    ...s.vPays.map(r => putOne('vPays', r))
-  ]);
-  await loadAll();
-}
-
 /* Reopen the screen used last (within 12 hours) above Home, so Back still returns Home,
    and offer to continue an expense that was being typed when the app was closed. */
 function resumeWhereLeft(last) {
@@ -395,6 +381,8 @@ function syncSettingsUI() {
   const theme = document.documentElement.classList.contains('light') ? 'light' : 'dark';
   document.querySelectorAll('[data-theme-set]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.themeSet === theme)));
   document.querySelectorAll('[data-lang-set]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.langSet === getLang())));
+  const diag = readPref('ffv2_diagnostics', false) === true ? 'on' : 'off';   // error reports: off until the user turns them on
+  document.querySelectorAll('[data-diag-set]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.diagSet === diag)));
 }
 
 /* ── PIN LOCK ────────────────────────────────────── */
@@ -3271,6 +3259,7 @@ function bindAllEvents() {
   // Settings
   document.querySelectorAll('[data-theme-set]').forEach(b => b.addEventListener('click', () => setTheme(b.dataset.themeSet)));
   document.querySelectorAll('[data-lang-set]').forEach(b => b.addEventListener('click', () => { setLang(b.dataset.langSet); syncSettingsUI(); }));
+  document.querySelectorAll('[data-diag-set]').forEach(b => b.addEventListener('click', () => { writePref('ffv2_diagnostics', b.dataset.diagSet === 'on'); syncSettingsUI(); }));
   // Sharing must start within the tap, so begin the backup first, then close the panel
   q('btn-export').addEventListener('click', () => { exportData(); closeOverlay(); });
   // File picker must open inside the tap itself, so click first, then close the panel
