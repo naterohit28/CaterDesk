@@ -4,7 +4,7 @@
 
 An offline-first app for catering events, expenses, vendor credit, client collections, menus and vendor orders. Business records stay in the device's browser storage; the hosted app also sends limited error diagnostics to its server.
 
-**Current source and hosted web build: v4.10.0.** Documentation checked on **13 November 2026**.
+**Current source and hosted web build: v4.16.3.** Documentation checked on **13 November 2026**.
 
 [Open the app](https://expense-calculator-kohl.vercel.app/) · [Download published packages](https://github.com/naterohit28/CaterDesk/releases) · [Historical reliability report](docs/RELIABILITY.md) · [Competitor/name research and Claude evaluation notes](docs/research/README.md) · [Report an issue](https://github.com/naterohit28/CaterDesk/issues)
 
@@ -31,16 +31,16 @@ The **APK wrapper version, hosted web version and bundled desktop version are in
 
 | Component | Verified state on 3 November 2026 | Meaning |
 | --- | --- | --- |
-| Source and hosted web app | **4.10.0** | Current UI, data/export version, service worker and error reporter |
+| Source and hosted web app | **4.16.3** | Current UI, data/export version, service worker and error reporter |
 | Service-worker release cache | `flavor-fusion-v2-cache-v25` | Installed web assets; this number is not the database schema version |
-| Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** | APK package inspected locally; launches the hosted app, which can run 4.10.0 |
+| Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** | APK package inspected locally; launches the hosted app, which can run 4.16.3 |
 | Android requirements for that local wrapper | min API **24**, target API **36** | Android 7.0+ and a compatible browser provider |
 | Latest GitHub Release with downloadable binaries | **2.4.7** | APK and desktop ZIP; later source tags do not imply newer binaries were uploaded |
 | Desktop package currently in the owner's `Apps/Desktop` folder | **2.4.7** | A static older bundle, not the current source build |
-| Desktop launcher source/instructions | **4.10.0** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
+| Desktop launcher source/instructions | **4.16.3** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
 | IndexedDB schema | **4** | Kept separate from application version changes |
 
-Do not relabel an older package as 4.10.0. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
+Do not relabel an older package as 4.16.3. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
 
 ## Current features
 
@@ -147,17 +147,17 @@ The APK is a **Trusted Web Activity** wrapper around the hosted site. It does no
 1. Keep a business-data backup.
 2. Obtain the intended APK from its actual release assets or the owner's prepared local package. Install over the existing app with the same package/signing identity.
 3. Open online to download updates. Check the **web build in Settings**, not just Android App info.
-4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **4.10.0**.
+4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **4.16.3**.
 
 A newer web release may reload automatically during the first 20 seconds of startup when no active form/save/overlay prevents it, at most once per release per session. Otherwise it waits for a later start or explicit reload. Refresh can also switch versions when no form/save is open. Service-worker cache mappings preserve matching assets for older open pages until navigation.
 
 Do not uninstall or clear browser/site storage to force an update. If Android rejects an APK, check package, versionCode and signing certificate before proceeding. The public certificate association is [`public/.well-known/assetlinks.json`](public/.well-known/assetlinks.json).
 
-The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **4.10.0**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
+The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **4.16.3**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
 
 ## Windows desktop testing
 
-Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v4.10.0 package.
+Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v4.16.3 package.
 
 1. Extract the entire ZIP; keep `app/` beside `CaterDesk-Desktop.exe`.
 2. Run the EXE. Microsoft Edge opens an app window; a tray icon provides **Open CaterDesk**, storage information and **Exit test server**.
@@ -339,6 +339,15 @@ This is a short source-feature history, not a list of available binary downloads
 
 | Version | Main changes |
 | --- | --- |
+| 4.16.3 | **Payment and count fixes from the owner's audit:** with a payment plan, *Remind* asks only for what is due now (no reminder when nothing is due); *Pending* turns red only when something is overdue by the plan; % instalments add up to the bill to the paisa; changing an agreed counting term needs the client's agreement again; an extra-plate request is saved before WhatsApp opens; a failed bill change never shows a success message. |
+| 4.16.2 | **Alignment pass:** tab icons centred, even period switch (Month · 3 months · FY · All time), no floating button over Home's quick actions, captioned *collected* bar, tool buttons on one line. |
+| 4.16.1 | Long vendor and event names fit their pickers (full-width, text shrinks to no less than 13px). |
+| 4.16.0 | **UI polish (Phase 4, P4-E):** event tools in an even grid, clearer secondary buttons, simpler Reports, update notice with an *Update* button instead of a refresh button, paise shown as ₹x.50, *Split bill*. |
+| 4.15.0 | **Books check (P4-D):** bills = event costs + common stock, shared bills add up, vendor payables/advances, client receivables/disputes; a delivered order with no bill blocks reconciliation. |
+| 4.14.0 | **Final settlement (P4-C):** a short payment stays owed (optionally disputed) until the owner records a discount, waiver or write-off with a reason; flagged for tax review. |
+| 4.13.0 | **Bill payments (P4-B):** pay a chosen bill, credit notes, one *To pay* row per bill, delivered orders linked to their bill. |
+| 4.12.0 | **Supplier bills (P4-A):** common stock, bill numbers with duplicate warning, allocation history. |
+| 4.11.0 | **Function sheet and count method (P3-G):** team sheet without prices, count method agreed before the event, written/verbal approval evidence. |
 | 4.10.0 | **Guest count / extra plates (v5 Phase 3, P3-F):** one *Guest count / Extra plates* action on the event, per meal: **contracted** (the guarantee when counting began, kept), **counted** (every tally and correction kept, a correction needs a reason), **approved** (what the client accepted for each extra-plate request; the rest shown as disputed) and **billed** (approved plates added to the bill only when you tap *Add to the bill*, which logs the change and makes a reconciled event provisional again). An extra over the contract is a proposal, never an automatic charge. A request belongs to the count it was made for; after a new count it is marked as for an earlier count and a new extra needs a new request. Breakfast and dinner are counted and charged separately. |
 | 4.9.0 | **Vendor order message versions (v5 Phase 3, P3-E):** every different WhatsApp message sent for an order is kept as a version with its own status: *Not sent yet*, *WhatsApp opened*, *Sent* (you confirmed) or *Vendor confirmed*. Opening the same message again adds no version. A revised message (e.g. 250 → 280 plates) is a new version marked *WhatsApp opened* until you confirm it; the earlier version keeps its real status (e.g. *Vendor confirmed*). **Messages sent (n)** in the order's sheet shows them all, newest first. Orders from before 4.9.0 have no recorded messages, so resending one is treated as a new instruction. |
 | 4.8.1 | **Fix:** a labour-sheet entry shared with other events (Share bill) and then saved again from the labour sheet counted the shared part twice (e.g. ₹6,000 became ₹8,000 across two events). The sheet line is now the whole bill: other events keep their parts, this event takes the rest, and a sheet smaller than the other events' parts is refused with nothing changed. Share bill also keeps a labour-sheet entry on its own event. |
