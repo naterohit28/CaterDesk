@@ -112,6 +112,41 @@ export function menuChangeImpact(before = [], after = [], orders = []) {
   return orders.filter(o => ACTIVE_ORDER.includes(o.status) && sig(before, o.head) !== sig(after, o.head)).map(o => o.id);
 }
 
+/* ── GUEST COUNT / EXTRA PLATES (spec §6.7, G-31–G-34, G-37) ── */
+/* Per meal (or the whole event when it has no meals), four figures are kept apart and never merged into `guests`:
+   contracted (the guarantee when counting began, kept unchanged), counted (the latest on-site tally; every tally and
+   correction is appended, never overwritten), approved (what the client accepted for each extra-plate request; the
+   rest of that request is disputed) and billed (approved plates the owner explicitly added to the bill). An extra over
+   the contract is only a proposal until approved, and approved plates reach the bill only when the owner adds them.
+   A request belongs to the count it was made for; after a new count it is marked as made for an older count, and a
+   new extra needs a new request (G-37). Records are append-only. */
+export const COUNT_MEALS = ['breakfast', 'lunch', 'hightea', 'dinner'];
+export const countKey = (ev, meal) => (ev.meals?.length ? meal : 'all');
+export function contractedFor(ev, meal) {
+  const g = meal !== 'all' && Number(ev.mealPlan?.[meal]?.guests) || 0;
+  const rate = meal !== 'all' && Number(ev.mealPlan?.[meal]?.rate) || 0;
+  const guests = Number(ev.guests) || 0;
+  return { contracted: g || guests, rate: rate || (guests > 0 ? Math.round(toPaise(ev.billing) / guests) / 100 : 0) };
+}
+export function guestCountStatus(ev, key) {
+  const c = ev.guestCounts?.[key];
+  if (!c) { const d = contractedFor(ev, key); return { started: false, contracted: d.contracted, rate: d.rate, counted: null, counts: [], extra: 0, requests: [], requested: 0, accepted: 0, disputed: 0, billed: 0, unbilled: 0, unrequested: 0 }; }
+  const counts = c.counts || [], last = counts.at(-1) || null;
+  const counted = last ? last.n : null;
+  const extra = counted == null ? 0 : Math.max(0, counted - c.contracted);
+  const requests = (c.requests || []).map(r => {
+    const decided = r.status === 'approved';
+    const accepted = decided ? r.accepted : 0;
+    return { ...r, accepted, disputed: decided ? r.qty - r.accepted : 0, forOlderCount: !!last && r.countAt !== last.at, unbilled: decided && !r.billedAt ? r.accepted : 0 };
+  });
+  const sum = (k, f = () => true) => requests.filter(f).reduce((s, r) => s + (r[k] || 0), 0);
+  const current = requests.filter(r => !r.forOlderCount);
+  return { started: true, contracted: c.contracted, rate: c.rate, counted, last, counts, extra, requests,
+    requested: sum('qty', r => r.status === 'requested'), accepted: sum('accepted'), disputed: sum('disputed'),
+    billed: requests.filter(r => r.billedAt).reduce((s, r) => s + r.accepted, 0), unbilled: sum('unbilled'),
+    unrequested: Math.max(0, extra - current.reduce((s, r) => s + r.qty, 0)) };
+}
+
 /* ── LABOUR SHEET OVERLAP (spec §9.1, G-14) ── */
 /* A contractor's bill entered through the labour sheet already includes its staff and any travel/fee lines. An expense
    typed by hand for the same event and the same item (a labour role, or transport when the sheet has travel) would
