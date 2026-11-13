@@ -27,7 +27,7 @@ const DATA = { version: 'ffv2', photos: [], vPays: [], expenses: [], vendors: []
 
   await test('events without a schedule behave as before', async () => {
     await openEvent('Sample Past Party');
-    assert.match(await p.locator('[data-action="plan-edit"]').innerText(), /Payment schedule/);
+    assert.match(await p.locator('[data-action="plan-edit"]').innerText(), /Payment plan/);
     assert.match(await homeChip('Sample Past Party'), /Overdue 5d/);
     assert.equal('payPlan' in await ev('old'), false);
   });

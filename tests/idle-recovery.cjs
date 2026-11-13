@@ -36,7 +36,7 @@ const assert = require('node:assert/strict');
     await seed(); await newEvent('Close test');
     await p.evaluate(() => { window.originalBack = history.back.bind(history); history.back = () => {}; });
     await p.locator('#ev-modal [data-action="close-modal"]').click(); await p.waitForTimeout(750);
-    assert(await p.locator('#n-home').isEnabled()); await p.locator('#n-home').click(); await p.locator('#fab').click(); await p.locator('#exp-amt').fill('71'); await p.locator('#btn-save-exp').click(); await p.waitForTimeout(750);
+    assert(await p.locator('#n-home').isEnabled()); await p.locator('#n-home').click(); await p.locator('.qa[data-id="expense"]').click(); await p.locator('#exp-amt').fill('71'); await p.locator('#btn-save-exp').click(); await p.waitForTimeout(750);
     assert.equal(await p.evaluate(async () => (await (await import('./db.js')).getAll('expenses')).length), 1);
     await p.evaluate(() => { history.back = window.originalBack; });
   });
@@ -58,7 +58,7 @@ const assert = require('node:assert/strict');
   await test('simulated 30-minute background preserves open entry and unlocks normally', async () => {
     await seed(); await p.evaluate(async () => { const d = await import('./db.js'); const u = await import('./utils.js'); await d.setMeta('pin_hash', await u.hashPin('1234')); });
     await p.reload(); await p.locator('#pin-screen.active').waitFor(); for (const digit of '1234') await p.locator('.pin-key[data-val="' + digit + '"]').click(); await p.waitForTimeout(350);
-    await p.locator('#fab').click(); await p.locator('#exp-amt').fill('93');
+    await p.locator('.qa[data-id="expense"]').click(); await p.locator('#exp-amt').fill('93');
     await p.evaluate(() => { const native = Date.now; const now = native(); window.hiddenForTest = true; Object.defineProperty(document, 'hidden', { configurable: true, get: () => window.hiddenForTest }); document.dispatchEvent(new Event('visibilitychange')); Date.now = () => now + 1800000; window.hiddenForTest = false; document.dispatchEvent(new Event('visibilitychange')); Date.now = native; });
     await p.locator('#pin-screen.active').waitFor(); for (const digit of '1234') await p.locator('.pin-key[data-val="' + digit + '"]').click(); await p.waitForTimeout(350);
     assert.equal(await p.locator('#exp-amt').inputValue(), '93'); await p.locator('#btn-save-exp').click(); await p.waitForTimeout(250);
@@ -66,7 +66,7 @@ const assert = require('node:assert/strict');
   });
   await test('repeated tab switching and 30 saves stay usable', async () => {
     await seed();
-    for (let i = 0; i < 30; i++) { await p.locator('#n-home').click(); await p.locator('#fab').click(); await p.locator('#exp-amt').fill(String(100 + i)); await p.locator('#exp-vendor').selectOption('idle-vendor'); await p.locator('#btn-save-exp').click(); await p.waitForFunction(() => !document.querySelector('#btn-save-exp').disabled); await p.locator('#n-summary').click(); await p.locator('#n-vendors').click(); }
+    for (let i = 0; i < 30; i++) { await p.locator('#n-home').click(); await p.locator('.qa[data-id="expense"]').click(); await p.locator('#exp-amt').fill(String(100 + i)); await p.locator('#exp-vendor').selectOption('idle-vendor'); await p.locator('#btn-save-exp').click(); await p.waitForFunction(() => !document.querySelector('#btn-save-exp').disabled); await p.locator('#n-summary').click(); await p.locator('#n-vendors').click(); }
     assert.equal(await p.evaluate(async () => (await (await import('./db.js')).getAll('expenses')).length), 30);
   });
   results.push({ name: 'unexpected idle-test page errors', pass: !errors.length, errors }); fs.writeFileSync('test-artifacts/idle-recovery-results.json', JSON.stringify(results, null, 2));

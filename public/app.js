@@ -11,7 +11,7 @@ import {
 } from './db.js';
 
 import {
-  EXPENSE_HEADS, EVENT_TYPES, VENUE_TYPES, LOGISTICS, venueTypeLabel, logisticsPrompts, venueSuggestion, PAY_MODES, PERIODS, MENUS, menuById, menuRate, menuCostPerPlate, costChecklist,
+  EXPENSE_HEADS, EVENT_TYPES, VENUE_TYPES, LOGISTICS, venueTypeLabel, logisticsPrompts, venueSuggestion, PAY_MODES, PERIODS, PERIOD_SHORT, MENUS, menuById, menuRate, menuCostPerPlate, costChecklist,
   uid, today, daysSince, fmtDate, fmtCurrency, esc,
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.16.1';
+const APP_BUILD = '4.16.2';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -614,7 +614,6 @@ const PAGE_TITLE = {
 
 // The floating button: recording an expense is one tap from almost everywhere
 const FAB = {
-  home:      { en: 'Add expense', mr: 'खर्च जोडा',      run: () => openExpModal() },
   events:    { en: 'New event',   mr: 'नवीन कार्यक्रम', run: () => openEvModal() },
   evdetail:  { en: 'Add expense', mr: 'खर्च जोडा',      run: () => openExpModal(curRef) },
   expenses:  { en: 'Add expense', mr: 'खर्च जोडा',      run: () => openExpModal(F.expEv && F.expEv !== STOCK ? F.expEv : undefined) },
@@ -704,8 +703,8 @@ function refreshCurrent() {
 
 function renderPeriodSegs() {
   document.querySelectorAll('[data-period-seg]').forEach(seg => {
-    seg.innerHTML = Object.entries(PERIODS).map(([k, label]) =>
-      `<button type="button" data-action="period" data-id="${k}" aria-pressed="${k === period}">${trPair(label)}</button>`).join('');
+    seg.innerHTML = Object.entries(PERIOD_SHORT).map(([k, label]) =>
+      `<button type="button" data-action="period" data-id="${k}" aria-pressed="${k === period}" aria-label="${esc(PERIODS[k].split(' – ')[0])}">${trPair(label)}</button>`).join('');
   });
 }
 
@@ -888,7 +887,7 @@ function payVendorsCard() {
   const total = all.reduce((s, u) => s + u.left, 0);
   const more = all.length - due.length;
   const seeAll = more ? `<div class="row" role="button" tabindex="0" data-action="go" data-id="expenses" style="min-height:48px">
-      <div class="row-body title-sm">${tr(`See all ${all.length} to pay`, `सर्व ${all.length} देणी पाहा`)}</div>${icon('chevron', 18)}</div>` : '';
+      <div class="row-body title-sm">${all.length === 1 ? tr('See 1 bill to pay', '१ देणे पाहा') : tr(`See all ${all.length} to pay`, `सर्व ${all.length} देणी पाहा`)}</div>${icon('chevron', 18)}</div>` : '';
   return `
     <div class="sec"><span class="sec-title">Pay vendors – विक्रेत्यांना द्या</span><span class="meta">${fmtCurrency(total)}</span></div>
     <div class="card list">${due.map(({ x, left }) => {
@@ -1138,7 +1137,8 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
         <div class="metric"><div class="label">Received – मिळाले</div><div class="amt-md pos">${fmtCurrency(rec)}</div></div>
         <div class="metric"><div class="label">Pending – बाकी</div><div class="amt-md ${pend > 0 ? (isOverdue(ev) ? 'neg' : 'due') : 'muted'}">${fmtCurrency(Math.max(0, pend))}</div></div>
       </div>
-      <div class="prog" style="margin-top:var(--s3)"><span style="width:${pct}%"></span></div>
+      ${rec > 0 ? `<div class="prog" style="margin-top:var(--s3)" aria-label="Collected ${pct}%"><span style="width:${pct}%"></span></div>
+      <div class="meta" style="margin-top:6px" id="ev-collected">${tr(`${pct}% of the bill collected`, `बिलाच्या ${pct}% वसुली`)}</div>` : ''}
       ${mealPlanLine(ev)}
       ${scheduleBlock(ev)}
       ${settleLine(ev)}
@@ -1824,7 +1824,7 @@ const settleDue = ev => { const st = settlementStatus(ev, D.cPays); return (ev.d
 function eventTools(ev) {
   const b = (action, ic, en, mr) => `<button type="button" class="btn-sm" data-action="${action}">${icon(ic, 16)}${tr(en, mr)}</button>`;
   return `<div class="tool-row" id="ev-tools">
-    ${paymentSchedule(ev, D.cPays).scheduled ? '' : b('plan-edit', 'calendar', 'Payment schedule', 'हप्ते ठरवा')}
+    ${paymentSchedule(ev, D.cPays).scheduled ? '' : b('plan-edit', 'calendar', 'Payment plan', 'हप्ते ठरवा')}
     ${b('count-open', 'users', 'Guest count', 'पाहुणे मोजणी')}
     ${settleDue(ev) ? b('settle-open', 'check', 'Final settlement', 'अंतिम हिशोब') : ''}
     ${b('fs-open', 'clipboard', 'Function sheet', 'फंक्शन शीट')}

@@ -974,6 +974,8 @@ export const PERIODS = {
   fy:    'This FY – हे आर्थिक वर्ष',
   all:   'All time – सर्व'
 };
+// The period switch's button labels: short and similar in length so the four buttons look even
+export const PERIOD_SHORT = { month: 'Month – महिना', '3m': '3 months – ३ महिने', fy: 'FY – आर्थिक वर्ष', all: 'All time – सर्व' };
 
 // Start date (YYYY-MM-DD) of a period, or '' for all time. FY runs April–March.
 export function periodStart(period) {
