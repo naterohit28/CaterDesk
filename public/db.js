@@ -471,7 +471,10 @@ export async function prepareImport(payload) {
         || (row.countPolicy.method && !COUNT_METHOD_IDS.includes(row.countPolicy.method)))) throw new Error('Invalid count arrangement');
       if (row.functionSheet !== undefined && (typeof row.functionSheet !== 'object' || row.functionSheet === null || Array.isArray(row.functionSheet)
         || ['timings', 'setup'].some(k => row.functionSheet[k] !== undefined && (typeof row.functionSheet[k] !== 'string' || row.functionSheet[k].length > 4000)))) throw new Error('Invalid function sheet');
-      if (row.billChanges !== undefined && (!Array.isArray(row.billChanges) || row.billChanges.some(b => !b || typeof b.reason !== 'string' || (amount(b.from, 'bill'), amount(b.to, 'bill'), false)))) throw new Error('Invalid bill history');
+      if (row.billChanges !== undefined && (!Array.isArray(row.billChanges) || row.billChanges.some(b => !b || typeof b.reason !== 'string' || (amount(b.from, 'bill'), amount(b.to, 'bill'), false)
+        || (b.kind !== undefined && !['discount', 'waiver', 'writeoff'].includes(b.kind)) || (b.ack !== undefined && !['written', 'verbal', 'none'].includes(b.ack))
+        || (b.kind && !(b.to < b.from && b.reason.trim()))))) throw new Error('Invalid bill history');
+      if (row.dispute !== undefined && (!row.dispute || typeof row.dispute.reason !== 'string' || !row.dispute.reason.trim() || typeof row.dispute.at !== 'string' || (amount(row.dispute.amt, 'disputed amount'), false))) throw new Error('Invalid dispute');
       if (row.orders?.some(o => o?.messages !== undefined && (!Array.isArray(o.messages) || o.messages.some(m => !m || typeof m.text !== 'string' || !['prepared', 'opened', 'sent', 'confirmed'].includes(m.status))))) throw new Error('Invalid order messages');
       if (row.additional !== undefined && typeof row.additional !== 'boolean') throw new Error('Invalid extra flag');
       if (row.split !== undefined && (!row.split || typeof row.split.id !== 'string' || (amount(row.split.total, 'shared bill'), false))) throw new Error('Invalid shared bill');
@@ -554,7 +557,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.13.0';
+export const APP_VERSION = '4.14.0';
 const COUNT_METHOD_IDS = ['tokens', 'tally', 'gate', 'coupons', 'joint', 'other'];
 export async function checkAndMigrate() {
   await openDB();

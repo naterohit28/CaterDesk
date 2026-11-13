@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, STOCK, stockTotal, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, settlementStatus, SETTLE_KINDS, STOCK, stockTotal, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.13.0';
+const APP_BUILD = '4.14.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1133,6 +1133,7 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
       <div class="prog" style="margin-top:var(--s3)"><span style="width:${pct}%"></span></div>
       ${mealPlanLine(ev)}
       ${scheduleBlock(ev)}
+      ${settleLine(ev)}
       ${countLine(ev)}
       <div class="metrics">
         <div class="metric"><div class="label">Expenses – खर्च</div><div class="amt-md">${fmtCurrency(exTot)}</div></div>
@@ -1798,6 +1799,72 @@ function logisticsCard(ev) {
       ${p.recorded ? '' : `<button type="button" class="btn-sm" data-action="logi-add" data-id="${i}">${icon('plus', 16)}${tr('Cost', 'खर्च')}</button>`}
     </div>`).join('')}</div>`;
 }
+
+/* ── FINAL SETTLEMENT (spec §6.7, G-35) ── */
+// Event page: once the event is over, what is settled and what is still owed or disputed
+function settleLine(ev) {
+  const st = settlementStatus(ev, D.cPays);
+  if (ev.date > today() && !st.adjustments.length) return '';
+  if (!st.outstanding && !st.over && !st.adjustments.length) return '';
+  const lines = [
+    ...st.adjustments.map(c => `${SETTLE_KINDS[c.kind][0]} ${fmtCurrency(c.from - c.to)} · <span data-nl>${esc(c.reason)}</span>`),
+    ...(st.disputed ? [`<span class="due">${tr(`Disputed ${fmtCurrency(st.disputed)}`, `वादग्रस्त ${fmtCurrency(st.disputed)}`)}</span> · <span data-nl>${esc(ev.dispute.reason)}</span>`] : []),
+    ...(st.over ? [`<span class="due">${tr(`Received ${fmtCurrency(st.over)} more than the bill`, `बिलापेक्षा ${fmtCurrency(st.over)} जास्त मिळाले`)}</span>`] : []),
+    ...(st.taxReview ? [`<span class="due">${tr('Tax / invoice review needed (ask your accountant)', 'कर / बिल तपासणी आवश्यक')}</span>`] : [])];
+  return `<div style="margin-top:var(--s3)" id="settle-line">${lines.map(l => `<div class="meta">${l}</div>`).join('')}
+    <button type="button" class="btn-sm" style="margin-top:var(--s2)" data-action="settle-open">${icon('check', 16)}${tr('Final settlement', 'अंतिम हिशोब')}</button></div>`;
+}
+function openSettle() { renderSettle(); openSheet('settle-modal'); }
+function renderSettle() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const st = settlementStatus(ev, D.cPays);
+  const row = (l, v, cls = '') => `<div style="display:flex;justify-content:space-between;gap:var(--s2);margin-top:6px"><span class="meta">${l}</span><span class="amt-sm ${cls}">${v}</span></div>`;
+  q('settle-body').innerHTML = `
+    ${st.changes.length ? row(tr('Bill as agreed', 'मूळ बिल'), fmtCurrency(st.original)) : ''}
+    ${st.changes.map(c => row(`${c.kind ? SETTLE_KINDS[c.kind][0] : tr('Change', 'बदल')} · <span data-nl>${esc(c.reason)}</span> · ${fmtDate(String(c.at).slice(0, 10))}${c.ack ? ` · ${c.ack === 'none' ? tr('client not acknowledged', 'ग्राहकाची संमती नाही') : tr(`client ${c.ack}`, c.ack)}` : ''}`,
+      `${c.to >= c.from ? '+' : '−'}${fmtCurrency(Math.abs(c.to - c.from))}`)).join('')}
+    ${row(tr('Bill now', 'आताचे बिल'), fmtCurrency(st.billed))}
+    ${row(tr('Received', 'मिळाले'), fmtCurrency(st.received), 'pos')}
+    ${row(tr('Still owed', 'बाकी'), fmtCurrency(st.outstanding), st.outstanding ? 'due' : 'muted')}
+    ${st.over ? `<div class="meta due" style="margin-top:var(--s2)">${tr(`Received ${fmtCurrency(st.over)} more than the bill. Check for a refund due or a bill change.`, `बिलापेक्षा ${fmtCurrency(st.over)} जास्त मिळाले.`)}</div>` : ''}
+    ${st.outstanding ? `
+    <div class="ask-msg" style="margin:var(--s4) 0 var(--s2)">${tr('If the client paid less, the rest stays owed until you decide. Only an agreed discount, waiver or write-off lowers the bill; payments received are never changed.', 'ग्राहकाने कमी दिल्यास, तुम्ही ठरवेपर्यंत बाकी तशीच राहते.')}</div>
+    <div class="f2">
+      <div class="field"><label for="st-amt">Amount ₹ – रक्कम</label><input type="number" id="st-amt" min="0" inputmode="decimal" value="${st.outstanding}"></div>
+      <div class="field"><label for="st-kind">What was agreed – काय ठरले</label><select id="st-kind"><option value="">Choose – निवडा</option>${Object.entries(SETTLE_KINDS).map(([k, [en, mr]]) => `<option value="${k}">${en} – ${mr}</option>`).join('')}</select></div>
+    </div>
+    <div class="field"><label for="st-reason">Reason – कारण</label><input type="text" id="st-reason" maxlength="300" placeholder="e.g. client paid a round figure" value="${esc(ev.dispute?.reason || '')}"></div>
+    <div class="field"><label for="st-ack">Client agreed – ग्राहकाची संमती</label><select id="st-ack"><option value="written">In writing (message / signed)</option><option value="verbal">Verbally</option><option value="none">Not acknowledged</option></select></div>
+    <div class="btn-row">
+      <button type="button" class="btn btn-secondary" data-action="settle-dispute">${ev.dispute ? tr('Update dispute', 'वाद बदला') : tr('Mark disputed', 'वादग्रस्त')}</button>
+      <button type="button" class="btn btn-primary" data-action="settle-adjust">${tr('Lower the bill', 'बिल कमी करा')}</button>
+    </div>
+    ${ev.dispute ? `<button type="button" class="btn-sm" style="margin-top:var(--s2)" data-action="settle-undispute">${tr('Dispute resolved – clear it', 'वाद मिटला')}</button>` : ''}` : ''}`;
+}
+async function settleAction(action) {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const st = settlementStatus(ev, D.cPays), now = new Date().toISOString();
+  if (action === 'settle-undispute') { await patchEvent(ev.id, {}, ['dispute']); refreshCurrent(); renderSettle(); return; }
+  const amt = qf('st-amt'), reason = qv('st-reason').trim();
+  if (!(amt > 0) || toPaise(amt) > toPaise(st.outstanding)) { showFieldErrors({ 'st-amt': `Up to ${fmtCurrency(st.outstanding)} still owed – बाकीपर्यंत` }); return; }
+  if (!reason) { showFieldErrors({ 'st-reason': 'Write the reason – कारण लिहा' }); return; }
+  if (action === 'settle-dispute') {
+    await patchEvent(ev.id, { dispute: { amt, reason, at: now } }); refreshCurrent(); renderSettle();
+    showToast(`${fmtCurrency(amt)} marked disputed; still owed – वादग्रस्त`); return;
+  }
+  const kind = qv('st-kind'), ack = qv('st-ack');
+  if (!kind) { showFieldErrors({ 'st-kind': 'Choose what was agreed – निवडा' }); return; }
+  const to = fromPaiseLocal(toPaise(ev.billing) - toPaise(amt));
+  const ok = await askSheet({ title: 'Lower the bill? – बिल कमी करायचे?',
+    message: `${SETTLE_KINDS[kind][0]}: bill ${fmtCurrency(ev.billing)} → ${fmtCurrency(to)}. The event's contribution falls by ${fmtCurrency(amt)}; payments received stay as they are. A reconciled event becomes provisional again. GST / invoice treatment of this change needs your accountant's review.`,
+    actions: [{ label: `Lower by ${fmtCurrency(amt)} – कमी करा`, value: true, style: 'btn-primary' }] });
+  if (!ok) return;
+  const left = toPaise(st.outstanding) - toPaise(amt);
+  await patchEvent(ev.id, { billing: to, billChanges: [...(ev.billChanges || []), { at: now, from: ev.billing, to, reason, kind, ack, taxReview: true }],
+    ...(ev.dispute && left > 0 ? { dispute: { ...ev.dispute, amt: Math.min(ev.dispute.amt, left / 100) } } : {}) }, ev.dispute && left <= 0 ? ['dispute'] : []);
+  closeModals(); refreshCurrent(); showToast(`Bill is now ${fmtCurrency(to)} – बिल अद्ययावत`);
+}
+const fromPaiseLocal = p => p / 100;
 
 /* ── GUEST COUNT / EXTRA PLATES (spec §6.7) ── */
 const MEAL_NAME = k => k === 'all' ? 'Guests' : MEALS[k];
@@ -2528,6 +2595,8 @@ function rSummary() {
   const noData    = t => `<div class="list-empty">${t}</div>`;
   const missing   = new Set(eventsMissingCosts(P.events, P.expenses).map(e => e.id));
   const stock     = stockTotal(D.expenses);
+  const settled   = P.events.map(e => ({ e, st: settlementStatus(e, P.cPays) }));
+  const adjusted  = settled.reduce((t, r) => t + toPaise(r.st.adjusted), 0) / 100, disputed = settled.reduce((t, r) => t + toPaise(r.st.disputed), 0) / 100;
 
   const byCat = {};
   P.expenses.forEach(x => { byCat[x.cat] = (byCat[x.cat] || 0) + x.amt; });
@@ -2578,6 +2647,9 @@ function rSummary() {
       <div>${tr(`${missing.size} event${missing.size > 1 ? 's have' : ' has'} no expenses, so contribution here is overstated.`, `${missing.size} कार्यक्रमांचा खर्च नोंदवलेला नाही, त्यामुळे नफा जास्त दिसतो.`)}</div></div></div>` : ''}
     ${P.events.length ? `<div class="card" style="margin-top:var(--s3)"><div class="note"><span class="note-ic">${icon('receipt', 16)}</span>
       <div>${tr(`${done.size} of ${P.events.length} event${P.events.length > 1 ? 's' : ''} reconciled; the rest are provisional. Contribution is bills minus each event's costs, before overheads, salaries and tax, so it is not company net profit.`, `${P.events.length} पैकी ${done.size} कार्यक्रम जुळवले; बाकी अंदाजे. योगदान = बिल − कार्यक्रमाचा खर्च (ओव्हरहेड, पगार, कर आधी), हा कंपनीचा निव्वळ नफा नव्हे.`)}</div></div></div>` : ''}
+    ${adjusted || disputed ? `<div class="card" style="margin-top:var(--s3)" id="settle-note"><div class="note"><span class="note-ic">${icon('wallet', 16)}</span>
+      <div>${tr(`${adjusted ? `Discounts, waivers and write-offs agreed: ${fmtCurrency(adjusted)} (already taken off the bills above; tax review needed).` : ''}${adjusted && disputed ? ' ' : ''}${disputed ? `Disputed and still owed: ${fmtCurrency(disputed)}.` : ''}`,
+        `${adjusted ? `सवलत / माफी: ${fmtCurrency(adjusted)}.` : ''}${disputed ? ` वादग्रस्त बाकी: ${fmtCurrency(disputed)}.` : ''}`)}</div></div></div>` : ''}
     ${stock ? `<div class="card" style="margin-top:var(--s3)" id="stock-note"><div class="note"><span class="note-ic">${icon('receipt', 16)}</span>
       <div>${tr(`Common stock: ${fmtCurrency(stock)} of supplier bills is on no event yet. It is owed to the vendors but is not in any event's costs or the contribution above.`, `साठा: ${fmtCurrency(stock)} चे सामान अजून कोणत्याही कार्यक्रमावर नाही; वरच्या योगदानात धरलेले नाही.`)}</div></div></div>` : ''}
     <div class="sec"></div>
@@ -3968,6 +4040,8 @@ function bindAllEvents() {
       case 'count-open':   openCountModal(); break;
       case 'count-policy-save': saveCountPolicy(); break;
       case 'fs-open':  openFunctionSheet(); break;
+      case 'settle-open': openSettle(); break;
+      case 'settle-adjust': case 'settle-dispute': case 'settle-undispute': settleAction(action); break;
       case 'fs-save':  saveFunctionSheet(); break;
       case 'fs-share': shareFunctionSheet(); break;
       case 'fs-copy':  copyFunctionSheet(); break;
