@@ -95,6 +95,26 @@ export function menuChangeImpact(before = [], after = [], orders = []) {
   return orders.filter(o => ACTIVE_ORDER.includes(o.status) && sig(before, o.head) !== sig(after, o.head)).map(o => o.id);
 }
 
+/* ── SHARED BILLS (spec §6.2 shared resources, G-13) ── */
+/* One bill (e.g. transport ₹8,000 for two events) is entered once and split into parts, one per event. Each part is
+   an expense on its event carrying `split: { id, total }`; the parts always add up to the bill, so the cost is counted
+   once in every total and the vendor is owed it once. Vendor, item, date and payment are the same on every part. */
+export const splitParts = (expenses, splitId) => expenses.filter(x => x.split?.id === splitId);
+export function checkSplit(rows, totalRupees) {
+  const totalP = toPaise(totalRupees);
+  if (rows.length < 1) return 'Add at least one event';
+  if (new Set(rows.map(r => r.evId)).size !== rows.length || rows.some(r => !r.evId)) return 'Each event can appear only once';
+  if (rows.some(r => !(Number(r.amt) > 0) || Math.abs(Number(r.amt) * 100 - Math.round(Number(r.amt) * 100)) > .001)) return 'Each part needs an amount';
+  const sumP = rows.reduce((s, r) => s + toPaise(r.amt), 0);
+  if (sumP !== totalP) return `The parts add up to ${fromPaise(sumP)}, not the bill's ${fromPaise(totalP)}`;
+  return '';
+}
+// Equal parts in paise; the last part takes any leftover paise so the parts add up exactly
+export function equalSplit(totalRupees, n) {
+  const totalP = toPaise(totalRupees), each = Math.floor(totalP / n);
+  return Array.from({ length: n }, (_, i) => fromPaise(i === n - 1 ? totalP - each * (n - 1) : each));
+}
+
 /* ── CLIENT PAYMENT MILESTONES (spec §11.2, scenario P-01, G-09) ── */
 /* A schedule (`payPlan`) splits the bill into milestones: on booking, on a date, N days before the event or N days
    after it; each an amount or a % of the bill. Five figures are kept apart: billed, received, outstanding (billed −

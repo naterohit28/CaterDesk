@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
+  RECON_CHECKS, ACTIVE_ORDER, splitParts, checkSplit, equalSplit, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.6.0';
+const APP_BUILD = '4.7.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1709,6 +1709,57 @@ function logisticsCard(ev) {
     </div>`).join('')}</div>`;
 }
 
+/* ── SHARED BILL EDITOR (G-13) ── */
+let splitDraft = null;   // { anchor: the expense that holds the bill photo, total, rows: [{ id?, evId, amt }] }
+function openSplitModal() {
+  const id = qv('exp-id'); const ex = D.expenses.find(x => x.id === id); if (!ex) return;
+  const parts = ex.split ? splitParts(D.expenses, ex.split.id) : [ex];
+  const anchor = parts.find(x => (x.billIds || []).length) || parts[0];
+  splitDraft = { anchorId: anchor.id, total: ex.split ? ex.split.total : ex.amt,
+    rows: [anchor, ...parts.filter(x => x.id !== anchor.id)].map(x => ({ id: x.id, evId: x.evId, amt: x.amt })) };
+  if (splitDraft.rows.length === 1) splitDraft.rows.push({ evId: '', amt: '' });
+  closeOverlay().then(() => { renderSplitRows(); openSheet('split-modal'); });
+}
+function renderSplitRows() {
+  const opts = eventOptions();
+  q('split-rows').innerHTML = splitDraft.rows.map((r, i) => `<div class="f2" data-sp="${i}" style="align-items:end;margin-bottom:var(--s2)">
+    <div class="field" style="margin:0"><select data-k="evId" aria-label="Event">${[{ v: '', l: 'Choose event – कार्यक्रम' }, ...opts].map(o => `<option value="${esc(o.v)}"${o.v === r.evId ? ' selected' : ''}>${esc(o.l)}</option>`).join('')}</select></div>
+    <div style="display:flex;gap:var(--s2);align-items:center"><div class="field" style="margin:0;flex:1;min-width:0"><input type="number" data-k="amt" aria-label="Amount for this event" min="0" inputmode="decimal" value="${r.amt === '' ? '' : r.amt}" placeholder="₹"></div>
+      ${i ? `<button type="button" class="icon-btn" data-sp-del="${i}" aria-label="Remove event">${icon('x', 16)}</button>` : '<span style="width:var(--tap)"></span>'}</div></div>`).join('');
+  updateSplitSum();
+}
+function updateSplitSum() {
+  const sumP = splitDraft.rows.reduce((s, r) => s + toPaise(r.amt || 0), 0), totalP = toPaise(splitDraft.total);
+  const left = (totalP - sumP) / 100;
+  q('split-sum').textContent = `Bill ${fmtCurrency(splitDraft.total)} · split ${fmtCurrency(sumP / 100)}` + (left > 0 ? ` · ${fmtCurrency(left)} still to assign` : left < 0 ? ` · ${fmtCurrency(-left)} too much` : ' · all assigned');
+}
+async function saveSplit() {
+  const rows = splitDraft.rows.filter(r => r.evId || r.amt !== '');
+  const err = checkSplit(rows, splitDraft.total);
+  if (err) { showToast(err + ' – रक्कम तपासा', 'error'); return; }
+  const anchor = D.expenses.find(x => x.id === splitDraft.anchorId); if (!anchor) return;
+  const before = anchor.split ? splitParts(D.expenses, anchor.split.id) : [anchor];
+  const groupId = anchor.split?.id || uid('SP');
+  const shared = rows.length > 1;
+  const strip = ({ _rev, ...r }) => r;
+  const common = strip(anchor);
+  const changes = rows.map((r, i) => {
+    const old = r.id ? before.find(x => x.id === r.id) : null;
+    const rec = old ? { ...strip(old), evId: r.evId, amt: Number(r.amt) } : { ...common, id: uid('EX'), evId: r.evId, amt: Number(r.amt), billIds: [] };
+    if (i !== 0) rec.billIds = old ? old.billIds || [] : [];   // the bill photo stays with the first part
+    if (shared) rec.split = { id: groupId, total: Number(splitDraft.total) }; else delete rec.split;
+    delete rec.logi;
+    return { store: 'expenses', record: rec, expected: old || null };
+  });
+  const kept = new Set(changes.map(c => c.record.id));
+  const drops = before.filter(x => !kept.has(x.id)).map(x => ({ store: 'expenses', id: x.id, expected: x }));
+  try { await commitChanges([...changes, ...drops], { check: true, extraStores: ['events', 'vendors'] }); }
+  catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
+  await loadAll(); changesChannel?.postMessage('changed');
+  closeModals(); refreshCurrent();
+  showToast(shared ? `Bill shared across ${rows.length} events – बिल वाटले` : 'Bill is on one event again – एका कार्यक्रमावर');
+}
+
 /* ── RECONCILIATION (D-4) ── */
 // Event contribution = bill − this event's recorded costs, before overheads. Provisional until reconciled.
 function contributionLabel(ev, recon) {
@@ -1857,7 +1908,8 @@ function expenseRow(x, { showEvent = true } = {}) {
   const bits = [
     showEvent ? `<span data-nl>${esc(ev?.name || '—')}</span>` : '',
     fmtDate(x.date),
-    ven ? `<span data-nl>${esc(ven.name)}</span>` : ''
+    ven ? `<span data-nl>${esc(ven.name)}</span>` : '',
+    x.split ? tr(`shared · ${fmtCurrency(x.split.total)} bill`, `वाटलेले · ${fmtCurrency(x.split.total)}`) : ''
   ].filter(Boolean).join(' · ');
   return `<div class="row" role="button" tabindex="0" data-action="edit-exp" data-id="${esc(x.id)}">
     <div class="row-ic">${catIcon(x.cat)}</div>
@@ -2855,6 +2907,13 @@ function openExpModal(arg) {
   q('exp-mtitle').textContent = ex?.draft ? 'Fill in bill – बिल भरा'
                               : ex ? 'Edit expense – संपादित करा' : 'Record expense – खर्च नोंदवा';
   q('btn-del-exp').hidden       = !ex;
+  // A part of a shared bill: its amount and event come from the split; change them with "Share bill"
+  const part = ex?.split ? splitParts(D.expenses, ex.split.id) : null;
+  q('exp-amt').disabled = !!part; q('exp-ev').disabled = !!part;
+  q('exp-split-note').hidden = !part;
+  q('exp-split-note').innerHTML = part ? tr(`Shared bill: this event's part of ${fmtCurrency(ex.split.total)} across ${part.length} events. Changes to vendor, item, date or payment apply to every part.`,
+    `वाटलेले बिल: ${fmtCurrency(ex.split.total)} पैकी या कार्यक्रमाचा वाटा (${part.length} कार्यक्रम).`) : '';
+  q('btn-share-exp').hidden = !ex || !!ex.draft;
   q('btn-save-exp-next').hidden = !!ex;
   clearFieldErrors();
   startExpSession(ex);
@@ -2988,6 +3047,7 @@ async function saveExpense({ next = false } = {}) {
   }
 
   const base = formBase.exp && formBase.exp.id === expWork.id ? formBase.exp : null;
+  if (base?.split) { data.amt = base.amt; data.evId = base.evId; }   // set by the split, not this form
   const record = editedRecord(base, {
     ...(!base && expLogi ? { logi: expLogi } : {}),
     id:    expWork.id,
@@ -3004,7 +3064,13 @@ async function saveExpense({ next = false } = {}) {
     billIds: expWork.bills.map(b => b.id)
   }, ['draft']);   // a filled-in bill draft becomes a normal expense
 
-  await commitChanges([{ store: 'expenses', record, expected: base }, ...expWork.removed.map(id => ({ store: 'photos', id, unchecked: true }))], { check: true, extraStores: ['events', 'vendors'] });
+  // One shared bill: vendor, item, date and payment stay the same on every part
+  const siblings = base?.split ? splitParts(D.expenses, base.split.id).filter(x => x.id !== record.id).map(s => {
+    const { _rev, ...r } = s;
+    return { store: 'expenses', record: { ...r, cat: record.cat, head: record.head, date: record.date, pay: record.pay, mode: record.mode, venId: record.venId, dueDate: record.dueDate, notes: record.notes }, expected: s };
+  }) : [];
+  await commitChanges([{ store: 'expenses', record, expected: base }, ...siblings, ...expWork.removed.map(id => ({ store: 'photos', id, unchecked: true }))], { check: true, extraStores: ['events', 'vendors'] });
+  for (const c of siblings) { const j = D.expenses.findIndex(x => x.id === c.record.id); if (j >= 0) D.expenses[j] = c.record; }
   // A filled-in draft becomes a real expense
   D.drafts = D.drafts.filter(d => d.id !== record.id);
   const i = D.expenses.findIndex(x => x.id === record.id);
@@ -3188,6 +3254,16 @@ async function deleteRow(type, id) {
   }
   const removed = { [type]: [rec] };
   let photos = [];
+  if (type === 'expenses' && rec.split) {
+    const parts = splitParts(D.expenses, rec.split.id);
+    if (parts.length > 1) {
+      const ok = await askSheet({ title: 'Delete shared bill? – वाटलेले बिल हटवायचे?',
+        message: `This bill of ${fmtCurrency(rec.split.total)} is shared across ${parts.length} events. It is deleted from all of them (Undo brings it back).`,
+        actions: [{ label: 'Delete from all – सर्वांतून हटवा', value: true, style: 'btn-danger' }] });
+      if (!ok) return;
+      removed.expenses = parts;
+    }
+  }
 
   // Events and vendors own other records — say what goes with them, and take it too
   if (type === 'events') {
@@ -3763,6 +3839,14 @@ function bindAllEvents() {
   q('plan-rows').addEventListener('click', e => { const b = e.target.closest('[data-pm-del]'); if (!b) return; planDraft.splice(Number(b.dataset.pmDel), 1); renderPlanRows(); });
   q('btn-plan-add').addEventListener('click', () => { planDraft.push({ id: uid('PM'), label: '', when: 'date', amt: '' }); renderPlanRows(); });
   q('btn-save-plan').addEventListener('click', savePlan);
+  q('btn-share-exp').addEventListener('click', openSplitModal);
+  q('split-rows').addEventListener('input', e => { const row = e.target.closest('[data-sp]'), k = e.target.dataset.k; if (!row || !k) return;
+    splitDraft.rows[Number(row.dataset.sp)][k] = e.target.value; updateSplitSum(); });
+  q('split-rows').addEventListener('change', e => { const row = e.target.closest('[data-sp]'); if (row && e.target.dataset.k === 'evId') splitDraft.rows[Number(row.dataset.sp)].evId = e.target.value; });
+  q('split-rows').addEventListener('click', e => { const b = e.target.closest('[data-sp-del]'); if (!b) return; splitDraft.rows.splice(Number(b.dataset.spDel), 1); renderSplitRows(); });
+  q('btn-split-add').addEventListener('click', () => { splitDraft.rows.push({ evId: '', amt: '' }); renderSplitRows(); });
+  q('btn-split-equal').addEventListener('click', () => { const parts = equalSplit(splitDraft.total, splitDraft.rows.length); splitDraft.rows.forEach((r, i) => { r.amt = parts[i]; }); renderSplitRows(); });
+  q('btn-save-split').addEventListener('click', saveSplit);
   for (const id of ['ord-takeup', 'ord-min', 'ord-plates']) q(id).addEventListener('input', updateCounterPlan);
   q('ev-type').addEventListener('change', syncEvTypeFields);
   q('ev-vtype').addEventListener('change', () => { syncEvTypeFields(); updateVenueHint(); });

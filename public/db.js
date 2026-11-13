@@ -460,6 +460,7 @@ export async function prepareImport(payload) {
       if (row.meals !== undefined && (!Array.isArray(row.meals) || row.meals.some(m => !['breakfast', 'lunch', 'hightea', 'dinner'].includes(m)))) throw new Error('Invalid meals');
       if (row.labour !== undefined && (typeof row.labour !== 'object' || !Array.isArray(row.labour?.rows))) throw new Error('Invalid labour sheet');
       if (row.kind && !['vendor', 'person'].includes(row.kind)) throw new Error('Invalid vendor kind');
+      if (row.split !== undefined && (!row.split || typeof row.split.id !== 'string' || (amount(row.split.total, 'shared bill'), false))) throw new Error('Invalid shared bill');
       if (row.payPlan !== undefined && (!Array.isArray(row.payPlan) || row.payPlan.some(m => !m || typeof m.id !== 'string' || !['booking', 'date', 'before', 'after'].includes(m.when)
         || (m.pct != null ? !(typeof m.pct === 'number' && m.pct > 0 && m.pct <= 100) : (amount(m.amt, 'milestone'), false))
         || (m.when === 'date' && !validDate(m.date)) || (['before', 'after'].includes(m.when) && !(Number.isSafeInteger(m.days) && m.days >= 0))))) throw new Error('Invalid payment schedule');
@@ -534,7 +535,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.6.0';
+export const APP_VERSION = '4.7.0';
 export async function checkAndMigrate() {
   await openDB();
   const storedVer = await getMeta('app_version');
