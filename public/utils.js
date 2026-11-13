@@ -95,6 +95,42 @@ export function menuChangeImpact(before = [], after = [], orders = []) {
   return orders.filter(o => ACTIVE_ORDER.includes(o.status) && sig(before, o.head) !== sig(after, o.head)).map(o => o.id);
 }
 
+/* ── CLIENT PAYMENT MILESTONES (spec §11.2, scenario P-01, G-09) ── */
+/* A schedule (`payPlan`) splits the bill into milestones: on booking, on a date, N days before the event or N days
+   after it; each an amount or a % of the bill. Five figures are kept apart: billed, received, outstanding (billed −
+   received), due now (milestones whose time has come, less what is received) and overdue (milestones past their
+   date and still unpaid). Payments are applied to milestones in order. A part of the bill not on the schedule is due
+   after the event, as for events without a schedule. Outstanding is never shown as overdue just because it is unpaid. */
+export const PAY_WHEN = ['booking', 'date', 'before', 'after'];
+export function paymentSchedule(ev, cPays, now = today()) {
+  const billP = toPaise(ev.billing);
+  const recP = cPays.filter(p => p.evId === ev.id).reduce((s, p) => s + toPaise(p.amt), 0);
+  const outstandingP = Math.max(0, billP - recP);
+  const plan = Array.isArray(ev.payPlan) ? ev.payPlan : [];
+  const out = (o) => ({ ...o, billed: fromPaise(billP), received: fromPaise(recP), outstanding: fromPaise(outstandingP) });
+  if (!plan.length) {   // no schedule: everything is due once the event is over (as before)
+    const late = daysSince(ev.date) > 0;
+    return out({ scheduled: false, rows: [], dueNow: late ? fromPaise(outstandingP) : 0, overdue: late ? fromPaise(outstandingP) : 0, unscheduled: 0, overScheduled: 0 });
+  }
+  const dueDateOf = m => m.when === 'booking' ? '' : m.when === 'date' ? m.date : m.when === 'before' ? addDays(ev.date, -(m.days || 0)) : addDays(ev.date, m.days || 0);
+  let rows = plan.map(m => ({ id: m.id, label: m.label || '', when: m.when, pct: m.pct, amtP: m.pct != null ? Math.round(billP * m.pct / 100) : toPaise(m.amt), dueDate: dueDateOf(m) }));
+  const plannedP = rows.reduce((s, r) => s + r.amtP, 0);
+  if (plannedP < billP) rows.push({ id: '__rest', label: 'Balance (not on the schedule)', when: 'after', unscheduled: true, amtP: billP - plannedP, dueDate: addDays(ev.date, 1) });
+  rows.sort((a, b) => (a.dueDate === '' ? -1 : b.dueDate === '' ? 1 : a.dueDate.localeCompare(b.dueDate)));
+  let left = recP, dueP = 0, overP = 0;
+  rows = rows.map(r => {
+    const paidP = Math.min(left, r.amtP); left -= paidP;
+    const restP = r.amtP - paidP;
+    const reached = r.dueDate === '' || r.dueDate <= now, past = r.dueDate !== '' && r.dueDate < now;
+    if (reached) dueP += restP;
+    if (past) overP += restP;
+    const state = restP === 0 ? 'paid' : past ? 'overdue' : reached ? 'due' : 'upcoming';
+    return { id: r.id, label: r.label, when: r.when, pct: r.pct, unscheduled: !!r.unscheduled, amount: fromPaise(r.amtP), paid: fromPaise(paidP), rest: fromPaise(restP), dueDate: r.dueDate, state };
+  });
+  return out({ scheduled: true, rows, dueNow: fromPaise(Math.min(dueP, outstandingP)), overdue: fromPaise(Math.min(overP, outstandingP)),
+    unscheduled: fromPaise(Math.max(0, billP - plannedP)), overScheduled: fromPaise(Math.max(0, plannedP - billP)) });
+}
+
 /* ── COUNTER PLANNING (spec §5.4, scenarios C-01 / C-02, G-06) ── */
 /* Portions for one counter are planned from the guests of the meal it serves, not the event total, times the share
    of guests expected at that counter (take-up). Take-up is the owner's figure for this counter: nothing is assumed,
