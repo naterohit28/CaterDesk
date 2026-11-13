@@ -247,7 +247,14 @@ export function paymentSchedule(ev, cPays, now = today()) {
     return out({ scheduled: false, rows: [], dueNow: late ? fromPaise(outstandingP) : 0, overdue: late ? fromPaise(outstandingP) : 0, unscheduled: 0, overScheduled: 0 });
   }
   const dueDateOf = m => m.when === 'booking' ? '' : m.when === 'date' ? m.date : m.when === 'before' ? addDays(ev.date, -(m.days || 0)) : addDays(ev.date, m.days || 0);
-  let rows = plan.map(m => ({ id: m.id, label: m.label || '', when: m.when, pct: m.pct, amtP: m.pct != null ? Math.round(billP * m.pct / 100) : toPaise(m.amt), dueDate: dueDateOf(m) }));
+  // A % milestone gets round(bill × running %) minus the previous running total, so % milestones never gain or lose a paisa
+  let cumPct = 0;
+  let rows = plan.map(m => {
+    let amtP;
+    if (m.pct != null) { const before = Math.round(billP * cumPct / 100); cumPct += Number(m.pct); amtP = Math.round(billP * cumPct / 100) - before; }
+    else amtP = toPaise(m.amt);
+    return { id: m.id, label: m.label || '', when: m.when, pct: m.pct, amtP, dueDate: dueDateOf(m) };
+  });
   const plannedP = rows.reduce((s, r) => s + r.amtP, 0);
   if (plannedP < billP) rows.push({ id: '__rest', label: 'Balance', when: 'after', unscheduled: true, amtP: billP - plannedP, dueDate: addDays(ev.date, 1) });
   rows.sort((a, b) => (a.dueDate === '' ? -1 : b.dueDate === '' ? 1 : a.dueDate.localeCompare(b.dueDate)));

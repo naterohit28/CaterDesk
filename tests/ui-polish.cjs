@@ -102,6 +102,13 @@ const DATA = { version: 'ffv2', photos: [], vPays: [],
     await openEvent('B'); assert.equal(await p.locator('#tab-evdetail .prog').count(), 0); assert.equal(await p.locator('#ev-collected').count(), 0);
   });
 
+  await test('insight and note rows: icon and one-line text share the same centre line', async () => {
+    await p.reload(); await p.waitForSelector('#kpi .card'); await p.locator('#n-home').click();
+    const off = await p.locator('#insights-wrap .note').evaluateAll(ns => ns.map(n => { const i = n.querySelector('.note-ic').getBoundingClientRect(), t = n.querySelector(':scope > div').getBoundingClientRect();
+      return Math.abs(Math.round((i.top + i.height / 2) - (t.top + t.height / 2))); }));
+    assert(off.length > 0); assert(off.every(d => d <= 1), 'offsets ' + off);
+  });
+
   assert.deepEqual(errors, []);
   await browser.close();
   console.log(failed ? 'ui polish FAIL' : 'UI polish: money format, event tools row, split wording PASS');

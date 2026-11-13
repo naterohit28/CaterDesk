@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.16.2';
+const APP_BUILD = '4.16.3';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1086,10 +1086,14 @@ Thank you!
   return `https://wa.me/${phoneDigits(ev.mobile)}?text=${encodeURIComponent(msg)}`;
 }
 
+// Red (overdue) only when money is past its due date: by the payment plan if there is one, else after the event
+function pendingOverdue(ev) { const s = paymentSchedule(ev, D.cPays); return s.scheduled ? s.overdue > 0 : isOverdue(ev); }
+// What a reminder may ask for: with a payment plan, only what is due now; without one, the balance once the event is over
+function remindAmount(ev, pending) { const s = paymentSchedule(ev, D.cPays); return s.scheduled ? s.dueNow : pending; }
 function reminderLink(ev, pending) {
   // With a schedule, ask only for what is due now (never the whole outstanding as if it were overdue)
   const s = paymentSchedule(ev, D.cPays);
-  const msg = s.scheduled && s.dueNow > 0 && s.dueNow < s.outstanding
+  const msg = s.scheduled && s.dueNow > 0
     ? `Namaste! A gentle reminder from CaterDesk: ${fmtCurrency(s.dueNow)} is now due for ${ev.name} (${fmtDate(ev.date)}) as per the payment schedule (total balance ${fmtCurrency(s.outstanding)}). Kindly arrange the payment. Thank you!\n\n`
       + `नमस्कार! ${ev.name} साठी ठरलेल्या हप्त्यानुसार ${fmtCurrency(s.dueNow)} आता देय आहे (एकूण बाकी ${fmtCurrency(s.outstanding)}). धन्यवाद!`
     : `Namaste! A gentle reminder from CaterDesk: ${fmtCurrency(pending)} is pending for ${ev.name} (${fmtDate(ev.date)}). Kindly arrange the payment. Thank you!\n\n`
@@ -1135,7 +1139,7 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
       <div class="metrics" style="margin:0;padding:0;border:0">
         <div class="metric"><div class="label">Bill – बिल</div><div class="amt-md">${fmtCurrency(ev.billing)}</div></div>
         <div class="metric"><div class="label">Received – मिळाले</div><div class="amt-md pos">${fmtCurrency(rec)}</div></div>
-        <div class="metric"><div class="label">Pending – बाकी</div><div class="amt-md ${pend > 0 ? (isOverdue(ev) ? 'neg' : 'due') : 'muted'}">${fmtCurrency(Math.max(0, pend))}</div></div>
+        <div class="metric"><div class="label">Pending – बाकी</div><div class="amt-md ${pend > 0 ? (pendingOverdue(ev) ? 'neg' : 'due') : 'muted'}" id="ev-pending">${fmtCurrency(Math.max(0, pend))}</div></div>
       </div>
       ${rec > 0 ? `<div class="prog" style="margin-top:var(--s3)" aria-label="Collected ${pct}%"><span style="width:${pct}%"></span></div>
       <div class="meta" style="margin-top:6px" id="ev-collected">${tr(`${pct}% of the bill collected`, `बिलाच्या ${pct}% वसुली`)}</div>` : ''}
@@ -1152,7 +1156,7 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
       ${ev.outsourced ? '' : costingBlock(plFull, noCosts)}
       ${phone ? `<div class="btn-row" style="margin-top:var(--s4)" id="ev-contact">
         <a class="btn btn-secondary" href="tel:+${esc(phone)}">${icon('phone', 18)}${tr('Call', 'कॉल')}</a>
-        ${pend > 0
+        ${remindAmount(ev, pend) > 0
           ? `<a class="btn btn-wa" href="${esc(reminderLink(ev, pend))}" target="_blank" rel="noopener">${icon('message', 18)}${tr('Remind', 'आठवण')}</a>`
           : `<a class="btn btn-wa" href="https://wa.me/${esc(phone)}" target="_blank" rel="noopener">${icon('message', 18)}WhatsApp</a>`}
       </div>` : ''}
@@ -1922,7 +1926,7 @@ function renderCount() {
       <div class="f2"><div class="field"><label for="cp-rep">${tr('Client representative', 'ग्राहक प्रतिनिधी')}</label><input type="text" id="cp-rep" maxlength="100" value="${esc(cp.rep || '')}" placeholder="Name"></div>
         <div class="field"><label for="cp-rep-phone">${tr('Their phone', 'फोन')}</label><input type="tel" id="cp-rep-phone" maxlength="20" inputmode="tel" value="${esc(cp.repPhone || '')}" placeholder="Mobile"></div></div>
       <div class="field"><label for="cp-rules">${tr('Rules agreed', 'ठरलेले नियम')}</label><textarea id="cp-rules" rows="2" maxlength="1000" placeholder="Second servings, kids, staff and vendor meals, tolerance">${esc(cp.rules || '')}</textarea></div>
-      <label class="check-row"><input type="checkbox" id="cp-confirmed"${cp.confirmed ? ' checked' : ''}><span>${tr('The client agreed to this method', 'ग्राहकाने ही पद्धत मान्य केली')}</span></label>
+      <label class="check-row"><input type="checkbox" id="cp-confirmed"${cp.confirmed ? ' checked data-agreed="1"' : ''}><span>${tr('The client agreed to this method', 'ग्राहकाने ही पद्धत मान्य केली')}</span></label>
       <button type="button" class="btn btn-secondary" style="width:100%;margin-top:var(--s2)" data-action="count-policy-save">${tr('Save count method', 'पद्धत जतन')}</button>
     </details>
     <div class="card pad" style="margin:0 0 var(--s3)">
@@ -1961,10 +1965,15 @@ async function countAction(action, id) {
     const ev = D.events.find(e => e.id === curRef), s = guestCountStatus(ev, countMeal); if (!s.unrequested) return;
     const text = extraPlatesMessage(ev, countMeal, s, s.unrequested);
     const phone = phoneDigits(ev.countPolicy?.repPhone) || phoneDigits(ev.mobile);
-    if (phone) window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank', 'noopener');   // inside the tap
-    await saveGuestCounts(c => { c.requests.push({ id: uid('XR'), at: now, qty: s.unrequested, rate: c.rate, countAt: c.counts.at(-1).at, status: 'requested', text }); });
-    showToast(phone ? 'Request kept. Opening WhatsApp is not approval: record the client\'s reply when it comes. – विनंती नोंदवली'
-      : 'Approval request recorded. Nothing is billed until the client accepts and you add it. – विनंती नोंदवली');
+    // Saved first: a message is never sent for a request that wasn't recorded
+    const saved = await saveGuestCounts(c => { c.requests.push({ id: uid('XR'), at: now, qty: s.unrequested, rate: c.rate, countAt: c.counts.at(-1).at, status: 'requested', text }); });
+    if (!saved) return;
+    refreshCurrent(); renderCount();
+    if (phone) {
+      await askSheet({ title: 'Request saved – विनंती नोंदवली', message: 'Send it to the client on WhatsApp. Opening WhatsApp is not approval: record their reply when it comes.',
+        actions: [{ label: 'Open WhatsApp – पाठवा', style: 'btn-wa', run: () => window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank', 'noopener') }] });
+    } else showToast('Approval request recorded. Nothing is billed until the client accepts and you add it. – विनंती नोंदवली');
+    return;
   } else if (action === 'count-accept') {
     const input = document.querySelector(`[data-accept="${CSS.escape(id)}"]`); const n = Math.floor(Number(input?.value));
     const r = (D.events.find(e => e.id === curRef).guestCounts?.[countMeal]?.requests || []).find(x => x.id === id);
@@ -1982,8 +1991,9 @@ async function countAction(action, id) {
       message: `${s.unbilled} approved extra ${MEAL_NAME(countMeal).toLowerCase()} plates: bill ${fmtCurrency(ev.billing)} → ${fmtCurrency(to)}. A reconciled event becomes provisional again.`,
       actions: [{ label: `Add ${fmtCurrency(add / 100)} – जोडा`, value: true, style: 'btn-primary' }] });
     if (!ok) return;
-    await saveGuestCounts(c => { for (const r of c.requests) if (r.status === 'approved' && !r.billedAt && r.accepted > 0) r.billedAt = now; },
+    const saved = await saveGuestCounts(c => { for (const r of c.requests) if (r.status === 'approved' && !r.billedAt && r.accepted > 0) r.billedAt = now; },
       (c, e) => ({ billing: to, billChanges: [...(e.billChanges || []), { at: now, from: e.billing, to, reason: `${s.unbilled} approved extra ${MEAL_NAME(countMeal).toLowerCase()} plates` }] }));
+    if (!saved) return;   // saveGuestCounts already said why; the bill is unchanged
     closeModals(); refreshCurrent(); showToast(`Bill is now ${fmtCurrency(to)} – बिल अद्ययावत`); return;
   }
   refreshCurrent(); renderCount();
@@ -1996,7 +2006,9 @@ async function saveCountPolicy() {
   const confirmed = q('cp-confirmed').checked;
   if (confirmed && !p.method) { showFieldErrors({ 'cp-method': 'Choose the method the client agreed – पद्धत निवडा' }); return; }
   const old = ev.countPolicy || {};
-  if (confirmed) { p.confirmed = true; p.confirmedAt = old.confirmed && old.method === p.method ? old.confirmedAt : new Date().toISOString(); }
+  // The agreement covers the method, who counts and the rules; if any of them changed it is a new agreement
+  const sameTerms = ['method', 'counter', 'rules'].every(k => (old[k] || '') === (p[k] || ''));
+  if (confirmed) { p.confirmed = true; p.confirmedAt = old.confirmed && sameTerms ? old.confirmedAt : new Date().toISOString(); }
   try { await patchEvent(ev.id, Object.keys(p).length ? { countPolicy: p } : {}, Object.keys(p).length ? [] : ['countPolicy']); }
   catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
   refreshCurrent(); renderCount(); showToast('Count method saved – मोजणी पद्धत जतन');
@@ -2715,6 +2727,13 @@ function fitSelects(root = document) {
   }
 }
 document.addEventListener('change', e => { if (e.target.matches?.('.field select')) fitSelects(e.target.closest('.field')); });
+// Count method: editing an agreed term un-ticks "client agreed" – the client must agree to the changed terms again
+document.addEventListener('input', e => {
+  if (!e.target.matches?.('#cp-method, #cp-counter, #cp-rules')) return;
+  const box = q('cp-confirmed'); if (!box?.checked || !box.dataset.agreed) return;   // only terms the client had already agreed
+  box.checked = false; delete box.dataset.agreed;
+  showToast('Terms changed: tick "client agreed" again once they accept – पुन्हा संमती घ्या');
+});
 
 function closeModals() {
   return closeOverlay();

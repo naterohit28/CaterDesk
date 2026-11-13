@@ -52,7 +52,10 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
 
   await test('asking approval opens WhatsApp to the representative with the agreed figures, and stays "requested"', async () => {
     await openCounts(); await p.fill('#count-n', '560'); await p.locator('[data-action="count-save"]').click(); await p.waitForTimeout(400);
-    await p.locator('[data-action="count-request"]').click(); await p.waitForTimeout(400);
+    await p.locator('[data-action="count-request"]').click(); await p.waitForSelector('#ask-modal.active');
+    assert.deepEqual(await p.evaluate(() => window.__opens), [], 'nothing is opened before the request is saved');
+    assert.equal((await ev()).guestCounts.dinner.requests[0].status, 'requested', 'saved first');
+    await p.locator('#ask-actions button', { hasText: 'Open WhatsApp' }).click(); await p.waitForTimeout(300);
     const opens = await p.evaluate(() => window.__opens);
     assert.equal(opens.length, 1); assert.match(opens[0], /^https:\/\/wa\.me\/919000000002\?text=/);
     const r = (await ev()).guestCounts.dinner.requests[0];
