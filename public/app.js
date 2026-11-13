@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.8.0';
+const APP_BUILD = '4.8.1';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1382,6 +1382,21 @@ async function saveLabour() {
     big.amt = money(big.amt + billTotal - lines);
     big.notes += ` · bill adjustment ${billTotal > lines ? '+' : '−'}${fmtCurrency(Math.abs(billTotal - lines))} (bill ${fmtCurrency(billTotal)})`;
   }
+  // A sheet entry that was shared with other events (Share bill): the sheet line is the whole bill. The other events
+  // keep their parts and this event takes the rest, so the parts always add up to the bill and never exceed it.
+  for (const r of saved.slice()) {   // the sheet's own entries only (other events' parts are added below)
+    const old = D.expenses.find(x => x.id === r.id);
+    if (!old?.split) continue;
+    const others = splitParts(D.expenses, old.split.id).filter(x => x.id !== r.id);
+    const billP = toPaise(r.amt), othersP = others.reduce((s, x) => s + toPaise(x.amt), 0);
+    if (billP - othersP <= 0) {
+      showToast(`${short(r.head)} is shared with other events (${fmtCurrency(othersP / 100)} on them), more than this sheet's ${fmtCurrency(r.amt)}. Change the split first (Expenses → Share bill). Nothing was saved.`, 'error');
+      return;
+    }
+    r.split = { ...old.split, total: r.amt };
+    r.amt = (billP - othersP) / 100;
+    for (const o of others) { const { _rev, ...rec } = o; changes.push({ store: 'expenses', record: { ...rec, split: { ...o.split, total: r.split.total } }, expected: o }); saved.push({ ...rec, split: { ...o.split, total: r.split.total } }); }
+  }
   const removed = Object.entries(oldIds).filter(([key, id]) => !byKey.has(key) && D.expenses.some(x => x.id === id)).map(([, id]) => id);
   for (const id of removed) changes.push({ store: 'expenses', id, expected: D.expenses.find(x => x.id === id) });
   const evRecord = { ...ev, labour: { rows, pay, mode: pay === 'paid' ? qv('lab-mode') : '', venId, expIds, ...(billTotal && rows.length ? { billTotal } : {}) } };
@@ -1745,6 +1760,14 @@ function updateSplitSum() {
 }
 async function saveSplit() {
   const rows = splitDraft.rows.filter(r => r.evId || r.amt !== '');
+  // A labour-sheet entry stays on the event whose sheet made it (re-saving the sheet updates that entry)
+  const sheetOwner = id => D.events.find(e => Object.values(e.labour?.expIds || {}).includes(id));
+  for (const r of splitDraft.rows) {
+    const owner = r.id && sheetOwner(r.id);
+    if (owner && !rows.some(x => x.id === r.id && x.evId === owner.id)) {
+      showToast(`This entry comes from ${owner.name}'s labour sheet, so its part stays on that event – मजूर यादीचा भाग त्याच कार्यक्रमावर`, 'error'); return;
+    }
+  }
   const err = checkSplit(rows, splitDraft.total);
   if (err) { showToast(err + ' – रक्कम तपासा', 'error'); return; }
   const anchor = D.expenses.find(x => x.id === splitDraft.anchorId); if (!anchor) return;
