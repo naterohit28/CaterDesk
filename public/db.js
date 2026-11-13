@@ -460,6 +460,8 @@ export async function prepareImport(payload) {
       if (row.meals !== undefined && (!Array.isArray(row.meals) || row.meals.some(m => !['breakfast', 'lunch', 'hightea', 'dinner'].includes(m)))) throw new Error('Invalid meals');
       if (row.labour !== undefined && (typeof row.labour !== 'object' || !Array.isArray(row.labour?.rows))) throw new Error('Invalid labour sheet');
       if (row.kind && !['vendor', 'person'].includes(row.kind)) throw new Error('Invalid vendor kind');
+      if (row.recon != null && (typeof row.recon !== 'object' || Array.isArray(row.recon) || !Number.isSafeInteger(row.recon.costPaise) || !Number.isSafeInteger(row.recon.billPaise) || typeof row.recon.sig !== 'string')) throw new Error('Invalid reconciliation');
+      if (row.reconHistory !== undefined && (!Array.isArray(row.reconHistory) || row.reconHistory.some(h => !h || typeof h !== 'object' || !['reconciled', 'reopened'].includes(h.action)))) throw new Error('Invalid reconciliation history');
     }
   }
   for (const ev of copy.events) {
@@ -523,7 +525,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.1.1';
+export const APP_VERSION = '4.2.0';
 export async function checkAndMigrate() {
   await openDB();
   const storedVer = await getMeta('app_version');
