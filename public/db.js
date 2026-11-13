@@ -460,6 +460,12 @@ export async function prepareImport(payload) {
       if (row.meals !== undefined && (!Array.isArray(row.meals) || row.meals.some(m => !['breakfast', 'lunch', 'hightea', 'dinner'].includes(m)))) throw new Error('Invalid meals');
       if (row.labour !== undefined && (typeof row.labour !== 'object' || !Array.isArray(row.labour?.rows))) throw new Error('Invalid labour sheet');
       if (row.kind && !['vendor', 'person'].includes(row.kind)) throw new Error('Invalid vendor kind');
+      if (row.guestCounts !== undefined && (typeof row.guestCounts !== 'object' || row.guestCounts === null || Array.isArray(row.guestCounts) || Object.entries(row.guestCounts).some(([k, c]) =>
+        !['all', 'breakfast', 'lunch', 'hightea', 'dinner'].includes(k) || !c || !Number.isSafeInteger(c.contracted) || c.contracted < 0 || (amount(c.rate, 'plate rate'), false)
+        || !Array.isArray(c.counts) || c.counts.some(x => !x || !Number.isSafeInteger(x.n) || x.n < 0 || typeof x.at !== 'string')
+        || !Array.isArray(c.requests) || c.requests.some(r => !r || !Number.isSafeInteger(r.qty) || r.qty <= 0 || !['requested', 'approved'].includes(r.status)
+          || (r.status === 'approved' && !(Number.isSafeInteger(r.accepted) && r.accepted >= 0 && r.accepted <= r.qty)) || (amount(r.rate, 'extra plate rate'), false))))) throw new Error('Invalid guest count');
+      if (row.billChanges !== undefined && (!Array.isArray(row.billChanges) || row.billChanges.some(b => !b || typeof b.reason !== 'string' || (amount(b.from, 'bill'), amount(b.to, 'bill'), false)))) throw new Error('Invalid bill history');
       if (row.orders?.some(o => o?.messages !== undefined && (!Array.isArray(o.messages) || o.messages.some(m => !m || typeof m.text !== 'string' || !['prepared', 'opened', 'sent', 'confirmed'].includes(m.status))))) throw new Error('Invalid order messages');
       if (row.additional !== undefined && typeof row.additional !== 'boolean') throw new Error('Invalid extra flag');
       if (row.split !== undefined && (!row.split || typeof row.split.id !== 'string' || (amount(row.split.total, 'shared bill'), false))) throw new Error('Invalid shared bill');
@@ -537,7 +543,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.9.0';
+export const APP_VERSION = '4.10.0';
 export async function checkAndMigrate() {
   await openDB();
   const storedVer = await getMeta('app_version');

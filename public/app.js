@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.9.0';
+const APP_BUILD = '4.10.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1120,6 +1120,7 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
       <div class="prog" style="margin-top:var(--s3)"><span style="width:${pct}%"></span></div>
       ${mealPlanLine(ev)}
       ${scheduleBlock(ev)}
+      ${countLine(ev)}
       <div class="metrics">
         <div class="metric"><div class="label">Expenses – खर्च</div><div class="amt-md">${fmtCurrency(exTot)}</div></div>
         <div class="metric"><div class="label">${contributionLabel(ev, recon)}</div><div class="amt-md ${noCosts ? 'muted' : profit >= 0 ? 'pos' : 'neg'}">${fmtCurrency(profit)}</div></div>
@@ -1749,6 +1750,93 @@ function logisticsCard(ev) {
       <div class="row-body"><div class="title-sm">${tr(p.en, p.mr)}</div><div class="meta">${p.recorded ? tr('Recorded', 'नोंदवले') : tr('Not recorded yet', 'अजून नोंदवले नाही')}</div></div>
       ${p.recorded ? '' : `<button type="button" class="btn-sm" data-action="logi-add" data-id="${i}">${icon('plus', 16)}${tr('Cost', 'खर्च')}</button>`}
     </div>`).join('')}</div>`;
+}
+
+/* ── GUEST COUNT / EXTRA PLATES (spec §6.7) ── */
+const MEAL_NAME = k => k === 'all' ? 'Guests' : MEALS[k];
+const countKeys = ev => ev.meals?.length ? COUNT_MEALS.filter(m => ev.meals.includes(m)) : ['all'];
+// Event page: one concise line per counted meal, plus the action
+function countLine(ev) {
+  const lines = countKeys(ev).map(k => ({ k, s: guestCountStatus(ev, k) })).filter(x => x.s.started);
+  return `<div style="margin-top:var(--s3)" id="count-line">${lines.map(({ k, s }) => `<div class="meta" data-nl>${MEAL_NAME(k)}: ${tr(`contracted ${s.contracted} · counted ${s.counted ?? '—'}${s.extra ? ` · extra ${s.extra}` : ''}${s.accepted ? ` · approved ${s.accepted}` : ''}${s.disputed ? ` · disputed ${s.disputed}` : ''}${s.billed ? ` · billed ${s.billed}` : ''}`,
+    `करार ${s.contracted} · मोजले ${s.counted ?? '—'}${s.extra ? ` · जास्त ${s.extra}` : ''}`)}</div>`).join('')}
+    <button type="button" class="btn-sm" style="margin-top:var(--s2)" data-action="count-open">${icon('users', 16)}${tr('Guest count / Extra plates', 'पाहुणे / जास्त ताटे')}</button></div>`;
+}
+let countMeal = 'all';
+function openCountModal() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const keys = countKeys(ev);
+  if (!keys.includes(countMeal)) countMeal = keys.includes('dinner') ? 'dinner' : keys[0];
+  renderCount(); openSheet('count-modal');
+}
+function renderCount() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const keys = countKeys(ev), k = countMeal, s = guestCountStatus(ev, k);
+  q('count-meals').innerHTML = keys.length > 1 ? keys.map(m => `<button type="button" class="f-chip" data-count-meal="${m}" aria-pressed="${m === k}">${MEALS[m]}</button>`).join('') : '';
+  const fmtAt = at => `${fmtDate(at.slice(0, 10))} ${at.slice(11, 16)}`;
+  const reqRows = s.requests.map(r => `<div class="meta" style="margin-top:6px" data-req="${esc(r.id)}">
+    ${tr(`Asked ${r.qty} extra @ ${fmtCurrency(r.rate)} on ${fmtAt(r.at)}`, `${r.qty} जास्त @ ${fmtCurrency(r.rate)} विचारले`)}${r.forOlderCount ? ` · <span class="due">${tr('made for an earlier count', 'आधीच्या मोजणीसाठी')}</span>` : ''}
+    ${r.status === 'requested'
+      ? `<div style="display:flex;gap:var(--s2);align-items:center;margin-top:4px"><div class="field" style="margin:0;flex:1"><input type="number" data-accept="${esc(r.id)}" min="0" max="${r.qty}" inputmode="numeric" placeholder="Extra plates accepted" aria-label="Extra plates the client accepted"></div>
+         <button type="button" class="btn-sm" data-action="count-accept" data-id="${esc(r.id)}">${tr('Record', 'नोंदवा')}</button></div>`
+      : ` · <b>${tr(`accepted ${r.accepted}`, `मान्य ${r.accepted}`)}</b>${r.disputed ? ` · <span class="neg">${tr(`disputed ${r.disputed}`, `वाद ${r.disputed}`)}</span>` : ''}${r.billedAt ? ` · ${tr('added to bill', 'बिलात जोडले')}` : ''}`}
+  </div>`).join('');
+  q('count-body').innerHTML = `
+    <div class="card pad" style="margin:0 0 var(--s3)">
+      <div class="label">${tr(`${MEAL_NAME(k)} · contracted ${s.contracted} @ ${fmtCurrency(s.rate)}`, `करार ${s.contracted} @ ${fmtCurrency(s.rate)}`)}</div>
+      <div class="meta" style="margin-top:4px">${s.counted == null ? tr('Not counted yet', 'अजून मोजले नाही') : tr(`Counted ${s.counted} (${fmtAt(s.last.at)})`, `मोजले ${s.counted}`)}${s.extra ? ` · <b>${tr(`${s.extra} over the contract (proposed, not billed)`, `${s.extra} जास्त (प्रस्तावित)`)}</b>` : ''}</div>
+      ${s.counts.length > 1 ? `<details style="margin-top:6px"><summary class="meta" style="cursor:pointer">${tr(`Count history (${s.counts.length})`, `मोजणी इतिहास (${s.counts.length})`)}</summary>
+        ${[...s.counts].reverse().map(x => `<div class="meta" data-nl>${fmtAt(x.at)} · ${x.n}${x.reason ? ` · ${tr('correction', 'दुरुस्ती')}: ${esc(x.reason)}` : x.note ? ` · ${esc(x.note)}` : ''}</div>`).join('')}</details>` : ''}
+      ${reqRows}
+    </div>
+    <div class="f2"><div class="field"><label for="count-n">${tr('New count', 'नवीन मोजणी')}</label><input type="number" id="count-n" min="0" inputmode="numeric" placeholder="${s.counted ?? s.contracted}"></div>
+      <div class="field"><label for="count-note">${tr(s.counted == null ? 'Note (optional)' : 'Reason if correcting', 'कारण')}</label><input type="text" id="count-note" placeholder="${s.counted == null ? 'e.g. plates issued at 9 pm' : 'e.g. recount at the gate'}"></div></div>
+    <div class="btn-row">
+      <button type="button" class="btn btn-secondary" data-action="count-save">${tr('Save count', 'मोजणी जतन')}</button>
+      ${s.unrequested ? `<button type="button" class="btn btn-secondary" data-action="count-request">${tr(`Ask approval for ${s.unrequested} extra`, `${s.unrequested} जास्त मान्यता`)}</button>` : ''}
+    </div>
+    ${s.unbilled ? `<button type="button" class="btn btn-primary" style="width:100%;margin-top:var(--s3)" data-action="count-bill">${tr(`Add ${s.unbilled} approved plates to the bill (+${fmtCurrency(s.requests.filter(r => r.unbilled).reduce((t, r) => t + toPaise(r.rate) * r.unbilled, 0) / 100)})`, `${s.unbilled} मान्य ताटे बिलात जोडा`)}</button>` : ''}`;
+}
+async function saveGuestCounts(mutate, extra = {}) {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return null;
+  const k = countMeal, all = structuredClone(ev.guestCounts || {});
+  if (!all[k]) { const d = contractedFor(ev, k); all[k] = { contracted: d.contracted, rate: d.rate, counts: [], requests: [] }; }   // the guarantee as it stands now, kept from here on
+  const res = mutate(all[k], ev);
+  if (res === false) return null;
+  try { return await patchEvent(ev.id, { guestCounts: all, ...(typeof extra === 'function' ? extra(all[k], ev) : extra) }); }
+  catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return null; }
+}
+async function countAction(action, id) {
+  const now = new Date().toISOString();
+  if (action === 'count-save') {
+    const raw = qv('count-n'), n = Math.floor(Number(raw)), note = qv('count-note');
+    if (raw === '' || !(n >= 0)) { showFieldErrors({ 'count-n': 'Enter the count – संख्या लिहा' }); return; }
+    const had = guestCountStatus(D.events.find(e => e.id === curRef), countMeal).counted;
+    if (had != null && !note) { showFieldErrors({ 'count-note': 'Say why the count changed – कारण लिहा' }); return; }
+    await saveGuestCounts(c => { c.counts.push({ at: now, n, ...(had != null ? { reason: note, correctionOf: c.counts.at(-1).at } : note ? { note } : {}) }); });
+  } else if (action === 'count-request') {
+    const s = guestCountStatus(D.events.find(e => e.id === curRef), countMeal); if (!s.unrequested) return;
+    await saveGuestCounts(c => { c.requests.push({ id: uid('XR'), at: now, qty: s.unrequested, rate: c.rate, countAt: c.counts.at(-1).at, status: 'requested' }); });
+    showToast('Approval request recorded. Nothing is billed until the client accepts and you add it. – विनंती नोंदवली');
+  } else if (action === 'count-accept') {
+    const input = document.querySelector(`[data-accept="${CSS.escape(id)}"]`); const n = Math.floor(Number(input?.value));
+    const r = (D.events.find(e => e.id === curRef).guestCounts?.[countMeal]?.requests || []).find(x => x.id === id);
+    if (!r || input.value === '' || !(n >= 0) || n > r.qty) { showToast(`Enter 0 to ${r?.qty ?? ''} plates – संख्या तपासा`, 'error'); return; }
+    await saveGuestCounts(c => { const x = c.requests.find(y => y.id === id); x.status = 'approved'; x.accepted = n; x.acceptedAt = now; });
+  } else if (action === 'count-bill') {
+    const ev = D.events.find(e => e.id === curRef), s = guestCountStatus(ev, countMeal);
+    const add = s.requests.filter(r => r.unbilled).reduce((t, r) => t + toPaise(r.rate) * r.unbilled, 0);
+    if (!add) return;
+    const to = (toPaise(ev.billing) + add) / 100;
+    const ok = await askSheet({ title: 'Add to the bill? – बिलात जोडायचे?',
+      message: `${s.unbilled} approved extra ${MEAL_NAME(countMeal).toLowerCase()} plates: bill ${fmtCurrency(ev.billing)} → ${fmtCurrency(to)}. A reconciled event becomes provisional again.`,
+      actions: [{ label: `Add ${fmtCurrency(add / 100)} – जोडा`, value: true, style: 'btn-primary' }] });
+    if (!ok) return;
+    await saveGuestCounts(c => { for (const r of c.requests) if (r.status === 'approved' && !r.billedAt && r.accepted > 0) r.billedAt = now; },
+      (c, e) => ({ billing: to, billChanges: [...(e.billChanges || []), { at: now, from: e.billing, to, reason: `${s.unbilled} approved extra ${MEAL_NAME(countMeal).toLowerCase()} plates` }] }));
+    closeModals(); refreshCurrent(); showToast(`Bill is now ${fmtCurrency(to)} – बिल अद्ययावत`); return;
+  }
+  refreshCurrent(); renderCount();
 }
 
 /* ── SHARED BILL EDITOR (G-13) ── */
@@ -3668,6 +3756,8 @@ function bindAllEvents() {
       case 'order-status': orderAction(id); break;
       case 'recon-open':   openReconModal(); break;
       case 'plan-edit':    openPlanModal(); break;
+      case 'count-open':   openCountModal(); break;
+      case 'count-save': case 'count-request': case 'count-accept': case 'count-bill': countAction(action, id); break;
       case 'venue-fill':   useVenueOffer(); break;
       case 'logi-add': {
         const ev = D.events.find(e => e.id === curRef), p = ev && logisticsPrompts(ev, D.expenses)[Number(id)];
@@ -3903,6 +3993,7 @@ function bindAllEvents() {
   q('btn-plan-add').addEventListener('click', () => { planDraft.push({ id: uid('PM'), label: '', when: 'date', amt: '' }); renderPlanRows(); });
   q('btn-save-plan').addEventListener('click', savePlan);
   q('btn-share-exp').addEventListener('click', openSplitModal);
+  q('count-meals').addEventListener('click', e => { const b = e.target.closest('[data-count-meal]'); if (!b) return; countMeal = b.dataset.countMeal; renderCount(); });
   q('split-rows').addEventListener('input', e => { const row = e.target.closest('[data-sp]'), k = e.target.dataset.k; if (!row || !k) return;
     splitDraft.rows[Number(row.dataset.sp)][k] = e.target.value; updateSplitSum(); });
   q('split-rows').addEventListener('change', e => { const row = e.target.closest('[data-sp]'); if (row && e.target.dataset.k === 'evId') splitDraft.rows[Number(row.dataset.sp)].evId = e.target.value; });
