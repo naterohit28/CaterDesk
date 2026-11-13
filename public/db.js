@@ -443,7 +443,7 @@ export async function prepareImport(payload) {
         throw new Error('Missing or duplicate ID in ' + name);
       seen.add(row.id);
       if (row._rev !== undefined && (!Number.isSafeInteger(row._rev) || row._rev < 0)) throw new Error('Invalid record revision');
-      for (const field of ['venue', 'mobile', 'type', 'notes', 'cat', 'head', 'mode', 'phone', 'specialty', 'dueDate', 'evId', 'venId', 'eventId', 'expenseId', 'createdAt', 'kind', 'menu', 'outVenId', 'logi', 'venueType', 'venueTypeOther', 'locality', 'typeOther']) {
+      for (const field of ['venue', 'mobile', 'type', 'notes', 'cat', 'head', 'mode', 'phone', 'specialty', 'dueDate', 'evId', 'venId', 'eventId', 'expenseId', 'createdAt', 'kind', 'menu', 'outVenId', 'logi', 'venueType', 'venueTypeOther', 'locality', 'typeOther', 'billKey', 'order']) {
         if (row[field] === null) row[field] = '';
         if (row[field] !== undefined && typeof row[field] !== 'string') throw new Error('Invalid text field: ' + field);
       }
@@ -459,7 +459,7 @@ export async function prepareImport(payload) {
       if (row.outsourced !== undefined && typeof row.outsourced !== 'boolean') throw new Error('Invalid outsourced flag');
       if (row.meals !== undefined && (!Array.isArray(row.meals) || row.meals.some(m => !['breakfast', 'lunch', 'hightea', 'dinner'].includes(m)))) throw new Error('Invalid meals');
       if (row.labour !== undefined && (typeof row.labour !== 'object' || !Array.isArray(row.labour?.rows))) throw new Error('Invalid labour sheet');
-      if (row.kind && !['vendor', 'person'].includes(row.kind)) throw new Error('Invalid vendor kind');
+      if (row.kind && !(name === 'vPays' ? ['credit'] : ['vendor', 'person']).includes(row.kind)) throw new Error(name === 'vPays' ? 'Invalid payment kind' : 'Invalid vendor kind');
       if (row.guestCounts !== undefined && (typeof row.guestCounts !== 'object' || row.guestCounts === null || Array.isArray(row.guestCounts) || Object.entries(row.guestCounts).some(([k, c]) =>
         !['all', 'breakfast', 'lunch', 'hightea', 'dinner'].includes(k) || !c || !Number.isSafeInteger(c.contracted) || c.contracted < 0 || (amount(c.rate, 'plate rate'), false)
         || !Array.isArray(c.counts) || c.counts.some(x => !x || !Number.isSafeInteger(x.n) || x.n < 0 || typeof x.at !== 'string')
@@ -554,7 +554,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.12.0';
+export const APP_VERSION = '4.13.0';
 const COUNT_METHOD_IDS = ['tokens', 'tally', 'gate', 'coupons', 'joint', 'other'];
 export async function checkAndMigrate() {
   await openDB();

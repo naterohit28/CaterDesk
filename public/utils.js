@@ -761,26 +761,52 @@ export function costChecklist(ev, events, expenses) {
   return { ref, list, missing: list.filter(i => !i.done).length };
 }
 
-/* Credit purchases still unpaid, each with what's left on it. Vendor payments aren't
-   tied to a particular purchase, so they settle that vendor's oldest credit first. */
-export function unpaidCredit(expenses, vPays) {
+/* ── WHAT IS STILL OWED, BILL BY BILL (spec §10.3, G-08) ── */
+/* A bill is one credit purchase, or every part of one shared bill (same `split.id`), owed once. A vendor payment
+   marked for a bill (`billKey`) settles that bill first; anything over it, and every unmarked payment or credit
+   note, settles that vendor's oldest bills first. Overpaying leaves an advance (balance below zero), never a
+   hidden negative bill. */
+export const billKeyOf = x => x.split?.id || x.id;
+function settle(expenses, vPays) {
   const byVendor = new Map();
   for (const x of expenses) {
     if (!isOnCredit(x) || !x.venId) continue;
-    const vId = String(x.venId).trim();
-    if (!byVendor.has(vId)) byVendor.set(vId, []);
-    byVendor.get(vId).push(x);
+    const vId = String(x.venId).trim(), k = billKeyOf(x);
+    if (!byVendor.has(vId)) byVendor.set(vId, new Map());
+    const bills = byVendor.get(vId);
+    if (!bills.has(k)) bills.set(k, { key: k, venId: vId, parts: [], owedP: 0, date: x.date || '' });
+    const b = bills.get(k); b.parts.push(x); b.owedP += toPaise(x.amt || 0); if ((x.date || '') < b.date) b.date = x.date || '';
   }
   const out = [];
-  for (const [venId, xs] of byVendor) {
-    let pool = vPays.filter(p => String(p.venId ?? '').trim() === venId).reduce((s, p) => s + (Number(p.amt) || 0), 0);
-    xs.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-    for (const x of xs) {
-      const covered = Math.min(pool, x.amt || 0);
-      pool -= covered;
-      const left = (Number(x.amt) || 0) - covered;
-      if (left > 0) out.push({ x, left });
+  for (const [venId, bills] of byVendor) {
+    const list = [...bills.values()].sort((a, b) => a.date.localeCompare(b.date) || a.key.localeCompare(b.key));
+    for (const b of list) b.leftP = b.owedP;
+    let pool = 0;
+    for (const p of vPays) {
+      if (String(p.venId ?? '').trim() !== venId) continue;
+      let amtP = toPaise(Number(p.amt) || 0);
+      const target = p.billKey && bills.get(p.billKey);
+      if (target) { const use = Math.min(amtP, target.leftP); target.leftP -= use; amtP -= use; }
+      pool += amtP;
     }
+    for (const b of list) { const use = Math.min(pool, b.leftP); b.leftP -= use; pool -= use; }
+    out.push(...list);
+  }
+  return out;
+}
+// One row per bill still (partly) unpaid: { key, venId, x: first part, parts, owed, left }
+export function unpaidBills(expenses, vPays) {
+  return settle(expenses, vPays).filter(b => b.leftP > 0).map(b => {
+    const parts = [...b.parts].sort((a, c) => (c.billIds || []).length - (a.billIds || []).length);
+    return { key: b.key, venId: b.venId, x: parts[0], parts, owed: fromPaise(b.owedP), left: fromPaise(b.leftP) };
+  });
+}
+// Each credit part with what is left on it (a bill's unpaid amount is spread over its parts in order)
+export function unpaidCredit(expenses, vPays) {
+  const out = [];
+  for (const b of settle(expenses, vPays)) {
+    let paidP = b.owedP - b.leftP;
+    for (const x of b.parts) { const xp = toPaise(x.amt || 0), cover = Math.min(paidP, xp); paidP -= cover; if (xp - cover > 0) out.push({ x, left: fromPaise(xp - cover) }); }
   }
   return out;
 }
@@ -871,14 +897,16 @@ export function calcVendorBalance(vendorId, expenses, vPays) {
   const vIdStr   = String(vendorId ?? '').trim();
   const mine     = expenses.filter(x => String(x.venId ?? '').trim() === vIdStr);
   const pays     = vPays.filter(p => String(p.venId ?? '').trim() === vIdStr);
-  const supplied = mine.reduce((s, x) => s + (Number(x.amt) || 0), 0);
-  const credit   = mine.filter(isOnCredit).reduce((s, x) => s + (Number(x.amt) || 0), 0);
-  const paidNow  = supplied - credit;
-  const paid     = paidNow + pays.reduce((s, p) => s + (Number(p.amt) || 0), 0);
+  const supplied = sumRupees(mine);
+  const credit   = sumRupees(mine.filter(isOnCredit));
+  const paidNow  = fromPaise(toPaise(supplied) - toPaise(credit));
+  // A credit note (`kind: 'credit'`) lowers what is owed, but no money was paid
+  const credits  = sumRupees(pays.filter(p => p.kind === 'credit'));
+  const paid     = fromPaise(toPaise(paidNow) + toPaise(sumRupees(pays.filter(p => p.kind !== 'credit'))));
   return {
-    supplied, credit, paid,
+    supplied, credit, paid, credits,
     credited: supplied,              // kept for older callers
-    balance: credit - (paid - paidNow),
+    balance: fromPaise(toPaise(credit) - (toPaise(paid) - toPaise(paidNow)) - toPaise(credits)),
     entries: mine.length + pays.length
   };
 }
