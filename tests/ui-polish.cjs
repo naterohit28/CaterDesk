@@ -72,6 +72,17 @@ const DATA = { version: 'ffv2', photos: [], vPays: [],
     assert.match(await p.locator('#toast-action').innerText(), /Update/);
   });
 
+  await test('long vendor and event names: full-width pickers, text shrinks (not below 13px) so the chosen name reads in full', async () => {
+    await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); const { _rev, ...v } = d.vendors[0]; await db.putOne('vendors', { ...v, name: 'Sample Shree Ganesh Grocery Suppliers' }); });
+    await p.reload(); await p.waitForSelector('#kpi .card'); await p.locator('#n-expenses:visible').click();
+    await p.locator('#exp-list [data-action="edit-exp"][data-id="x1"]:visible').first().click(); await p.waitForSelector('#exp-modal.active'); await p.waitForTimeout(400);
+    const r = await p.evaluate(() => ['#exp-vendor', '#exp-ev'].map(id => { const s = document.querySelector(id), cs = getComputedStyle(s);
+      const c = document.createElement('canvas').getContext('2d'); c.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+      return { w: Math.round(s.getBoundingClientRect().width), size: parseFloat(cs.fontSize), fits: c.measureText(s.selectedOptions[0].text).width <= s.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) }; }));
+    assert.equal(r[0].w, r[1].w, 'vendor picker as wide as the event picker');
+    for (const x of r) { assert.equal(x.fits, true); assert(x.size >= 13); }
+  });
+
   assert.deepEqual(errors, []);
   await browser.close();
   console.log(failed ? 'ui polish FAIL' : 'UI polish: money format, event tools row, split wording PASS');

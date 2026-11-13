@@ -430,6 +430,10 @@ html.modal-open, html.modal-open body { overflow: hidden; }
 .field input.error, .field select.error { border-color: var(--neg); }
 .field-error { font-size: var(--fs-xs); color: var(--neg); font-weight: 600; margin-top: 6px; }
 .f2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
+/* A list of names (vendor, event) gets the whole row so the chosen name reads in full */
+.f2 > .f-wide { grid-column: 1 / -1; }
+/* Split bill rows: the event / stock picker takes most of the row, the amount the rest */
+#split-rows [data-sp] { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); }
 .check-row { display: flex; align-items: flex-start; gap: var(--s3); padding: var(--s3) 0; border-bottom: 1px solid var(--line); cursor: pointer; }
 .check-row input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--brand); flex-shrink: 0; }
 
