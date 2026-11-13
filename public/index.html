@@ -432,6 +432,12 @@
     <input type="hidden" id="ord-head"><input type="hidden" id="ord-id">
     <div class="meta" id="ord-items" data-nl style="margin-bottom:var(--s3)"></div>
     <div class="field"><label for="ord-ven">Vendor – विक्रेता <span class="req">*</span></label><select id="ord-ven"></select></div>
+    <!-- Counter plan (optional): share of guests expected at this counter and the vendor's minimum; plates stay yours -->
+    <div class="f2" id="ord-plan-fields">
+      <div class="field"><label for="ord-takeup">Take-up % – किती टक्के</label><input type="number" id="ord-takeup" min="1" max="100" inputmode="decimal" placeholder="e.g. 75"></div>
+      <div class="field"><label for="ord-min">Vendor minimum – किमान</label><input type="number" id="ord-min" min="0" inputmode="numeric" placeholder="optional"></div>
+    </div>
+    <div class="meta" id="ord-plan" data-nl hidden style="margin:-6px 0 var(--s3)"></div>
     <div class="f2">
       <div class="field"><label for="ord-plates">Plates – ताट</label><input type="number" id="ord-plates" min="1" inputmode="numeric"></div>
       <div class="field"><label for="ord-time">Time – वेळ</label><input type="time" id="ord-time"></div>

@@ -95,6 +95,29 @@ export function menuChangeImpact(before = [], after = [], orders = []) {
   return orders.filter(o => ACTIVE_ORDER.includes(o.status) && sig(before, o.head) !== sig(after, o.head)).map(o => o.id);
 }
 
+/* ── COUNTER PLANNING (spec §5.4, scenarios C-01 / C-02, G-06) ── */
+/* Portions for one counter are planned from the guests of the meal it serves, not the event total, times the share
+   of guests expected at that counter (take-up). Take-up is the owner's figure for this counter: nothing is assumed,
+   and counters' take-ups need not add up to 100% (one guest may visit both chaat and dosa). A vendor minimum lifts the
+   proposal (C-02). The ordered quantity stays the owner's choice; what was actually served stays unknown until
+   recorded, and is never taken from the order. */
+export function counterGuests(ev, head) {
+  const meals = [...new Set((ev.dishes || []).filter(d => (d.head || '') === head && d.meal).map(d => d.meal))];
+  const g = meals.length === 1 ? Number(ev.mealPlan?.[meals[0]]?.guests) || 0 : 0;
+  return g > 0 ? { guests: g, meal: meals[0] } : { guests: Number(ev.guests) || 0, meal: '' };
+}
+export function counterSuggestion(guests, takeUpPct, minimum = 0) {
+  const g = Number(guests) || 0, t = Number(takeUpPct), m = Math.max(0, Math.floor(Number(minimum) || 0));
+  if (!(g > 0) || !(t > 0) || t > 100) return null;
+  const forecast = Math.ceil(g * t / 100 - 1e-9);
+  return { forecast, proposed: Math.max(forecast, m), minimumApplied: m > forecast };
+}
+// The plan used for this counter at the latest other event, offered as a starting point only
+export function lastCounterPlan(events, head, excludeId = '') {
+  const e = events.filter(x => x.id !== excludeId && x.counterPlan?.[head]).sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
+  return e ? { ...e.counterPlan[head], from: e.id } : null;
+}
+
 /* ── VENUE DETAILS (CD5-VEN-01) ──────────────────── */
 /* The occasion (event `type`) and the physical venue (`venueType`) are separate. Venue type and logistics are
    stored as fixed ids, independent of the English/Marathi labels, and only when the user picks them. Nothing
