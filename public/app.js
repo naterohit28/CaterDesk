@@ -7,7 +7,7 @@
 import {
   getAll, putOne, putChecked, commitChanges, deleteOne, getMeta, setMeta,
   savePhoto, saveEventPhotos, getPhotosForEvent, deletePhoto, saveBill, getBillsForExpense,
-  exportAllData, importAllData, checkAndMigrate
+  exportAllData, importAllData, inspectBackup, checkAndMigrate
 } from './db.js';
 
 import {
@@ -23,7 +23,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.0.3';
+const APP_BUILD = '4.1.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -2936,19 +2936,41 @@ async function saveLinkExpenses() {
 /* ── EXPORT / IMPORT ─────────────────────────────── */
 // Opens the phone's share sheet (WhatsApp, Drive, email…) so the backup leaves the
 // phone; where sharing files isn't supported (most desktops) it downloads instead.
+const MAX_BACKUP_BYTES = 300 * 1024 * 1024;
+// Settings that travel with a backup (G-15). Per-device choices (error-report consent, PIN, drafts) do not.
+const BACKUP_PREFS = ['ffv2_theme', 'ffv2_lang', 'ffv2_period', 'ffv2_lastexp'];
+function backupPrefs() {
+  const prefs = {};
+  for (const k of BACKUP_PREFS) { try { const v = localStorage.getItem(k); if (v !== null) prefs[k] = v; } catch {} }
+  return prefs;
+}
+function restorePrefs(prefs) {
+  if (!prefs || typeof prefs !== 'object') return;
+  for (const k of BACKUP_PREFS) if (typeof prefs[k] === 'string' && prefs[k].length < 2000) { try { localStorage.setItem(k, prefs[k]); } catch {} }
+  if (['light', 'dark'].includes(prefs.ffv2_theme)) applyTheme(prefs.ffv2_theme);
+  if (typeof prefs.ffv2_lang === 'string') { try { setLang(prefs.ffv2_lang); } catch {} }
+  period = readPref('ffv2_period', period);
+  syncSettingsUI();
+}
+
 async function exportData() {
   if (!launched || q('pin-screen').classList.contains('active')) { showToast('Unlock the app before exporting.', 'error'); return; }
-  let file;
+  let file, text;
   showLoading(true);
   try {
-    const payload = await exportAllData();
-    file = new File([JSON.stringify(payload)], `caterdesk-backup-${today()}.json`, { type: 'application/json' });
+    const payload = { ...await exportAllData(), prefs: backupPrefs() };
+    text = JSON.stringify(payload);
+    file = new File([text], `caterdesk-backup-${today()}.json`, { type: 'application/json' });
   } finally { showLoading(false); }
 
+  // Android does not offer .json files to the share sheet, so the same backup is also offered as a
+  // .txt file (CaterDesk imports both). The share sheet lists Drive, Files, WhatsApp and email.
   let how = 'download';
-  if (navigator.canShare?.({ files: [file] })) {
+  const asText = new File([text], `caterdesk-backup-${today()}.txt`, { type: 'text/plain' });
+  const shareable = [file, asText].find(f => navigator.canShare?.({ files: [f] }));
+  if (shareable) {
     try {
-      await navigator.share({ files: [file], title: 'CaterDesk backup', text: `CaterDesk backup ${fmtDate(today())}` });
+      await navigator.share({ files: [shareable], title: 'CaterDesk backup', text: `CaterDesk backup ${fmtDate(today())}` });
       how = 'shared';
     } catch (e) {
       if (e.name === 'AbortError') return;   // closed the share sheet: nothing was saved
@@ -2972,18 +2994,22 @@ async function exportData() {
 async function handleImport(file) {
   if (!launched || q('pin-screen').classList.contains('active')) return;
   if (!file) return;
+  // Bounded read (G-28): a backup with many bill photos is a few hundred MB at most
+  if (file.size > MAX_BACKUP_BYTES) { showToast('This file is too large to be a CaterDesk backup. Your data was not changed.', 'error'); q('import-input').value = ''; return; }
   const reader = new FileReader();
   reader.onload = async e => {
     try {
-      const payload = JSON.parse(e.target.result);
-
-      if (!payload.version || !['ffv5', 'ffv2'].includes(payload.version)) {
-        showToast('Invalid backup file – चुकीची फाईल', 'error'); return;
-      }
-      const counts = `This backup has ${(payload.events||[]).length} events, ${(payload.expenses||[]).length} expenses, ${(payload.cPays||[]).length} payments and ${(payload.vendors||[]).length} vendors.`;
+      let payload;
+      try { payload = JSON.parse(e.target.result); }
+      catch { throw new Error('This file is not a CaterDesk backup, or it is cut off. Your data was not changed.'); }
+      const info = await inspectBackup(payload);   // throws a plain-language reason; nothing is changed
+      const c = info.counts;
+      const made = info.exportedAt ? `Made ${fmtDate(info.exportedAt.slice(0, 10))}${info.appVersion ? ` · CaterDesk v${info.appVersion}` : ''}` : 'Older backup';
+      const counts = `${c.events} events · ${c.expenses} expenses · ${c.cPays} client payments · ${c.vendors} vendors · ${c.vPays} vendor payments · ${c.photos} photos`;
+      const check = info.verified ? '✓ Checked: complete and undamaged' : 'Made by an older version: it cannot be checked for damage, but every record is still validated before import.';
       const mode = await askSheet({
         title: 'Import backup – आयात',
-        message: `${counts}\n\nMerge keeps your current data. Replace deletes it first.`,
+        message: `${made}\n${counts}\n${check}\n\nMerge keeps your current data. Replace deletes it first.`,
         actions: [
           { label: 'Merge – जोडा', value: 'merge', style: 'btn-primary' },
           { label: 'Replace all data – सर्व बदला', value: 'replace', style: 'btn-danger' }
@@ -2993,6 +3019,7 @@ async function handleImport(file) {
 
       showLoading(true);
       await importAllData(payload, mode);
+      if (mode === 'replace') restorePrefs(payload.prefs);   // merge keeps this phone's settings
       await loadAll();
       changesChannel?.postMessage('changed');
       go('home');

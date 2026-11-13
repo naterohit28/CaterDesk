@@ -380,16 +380,49 @@ export async function migrateFromLocalStorage() {
 /* ── FULL EXPORT (all stores) ────────────────────── */
 export async function exportAllData() {
   const names = STORES.filter(s => s !== 'meta');
-  return withTx(db => new Promise((resolve, reject) => {
+  const result = await withTx(db => new Promise((resolve, reject) => {
     const tx = transaction(db, names, 'readonly');
     const result = { version: 'ffv2', exportedAt: new Date().toISOString(), appVersion: APP_VERSION };
     names.forEach(name => { const req = tx.objectStore(name).getAll(); req.onsuccess = () => { result[name] = req.result; }; });
     tx.oncomplete = () => resolve(result);
     tx.onerror = tx.onabort = () => reject(tx.ffError || tx.error || new Error('Backup read aborted'));
   }));
+  result.manifest = await backupManifest(result);
+  return result;
 }
 
 const DATA_STORES = ['events', 'expenses', 'vendors', 'cPays', 'vPays', 'photos'];
+
+/* Backup manifest (v5 backup format, manifest 1). The file keeps the legacy `version: 'ffv2'` layout so
+   older app versions can still read it; the manifest adds a record count per store and a SHA-256 of
+   all records, so a damaged, cut-off or edited file is caught before anything is imported. */
+const MANIFEST_FORMAT = 'caterdesk-backup', MANIFEST_VERSION = 1;
+async function digest(payload) {
+  const bytes = new TextEncoder().encode(JSON.stringify(DATA_STORES.map(name => payload[name] || [])));
+  return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+async function backupManifest(payload) {
+  return { format: MANIFEST_FORMAT, formatVersion: MANIFEST_VERSION,
+    counts: Object.fromEntries(DATA_STORES.map(name => [name, (payload[name] || []).length])), sha256: await digest(payload) };
+}
+
+/* What a backup holds, checked before the user chooses to import it. Throws a plain-language error
+   (nothing is changed) for a file from a newer app, a damaged or incomplete file, or not a backup. */
+export async function inspectBackup(payload) {
+  if (!payload || typeof payload !== 'object' || !['ffv2', 'ffv5'].includes(payload.version))
+    throw new Error('This file is not a CaterDesk backup. Your data was not changed.');
+  const m = payload.manifest;
+  const counts = Object.fromEntries(DATA_STORES.map(name => [name, Array.isArray(payload[name]) ? payload[name].length : 0]));
+  const info = { counts, exportedAt: typeof payload.exportedAt === 'string' ? payload.exportedAt : '', appVersion: typeof payload.appVersion === 'string' ? payload.appVersion : '', verified: false };
+  if (m === undefined) return info;   // made before backups carried a manifest: readable, but cannot be checked
+  if (!m || m.format !== MANIFEST_FORMAT || !Number.isSafeInteger(m.formatVersion))
+    throw new Error('This backup is damaged (its check information is unreadable). Your data was not changed. Try another copy.');
+  if (m.formatVersion > MANIFEST_VERSION)
+    throw new Error('This backup was made by a newer CaterDesk. Update the app (Settings → Check for app updates), then import it again. Your data was not changed.');
+  const damaged = DATA_STORES.some(name => !Array.isArray(payload[name]) || m.counts?.[name] !== payload[name].length) || m.sha256 !== await digest(payload);
+  if (damaged) throw new Error('This backup is damaged or incomplete: it does not match its own check. Your data was not changed. Try another copy of the backup.');
+  return { ...info, verified: true };
+}
 function validDate(value) {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
     !isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
@@ -444,6 +477,7 @@ export async function prepareImport(payload) {
 }
 export async function importAllData(payload, mode = 'replace', { migration = false } = {}) {
   if (!['replace', 'merge'].includes(mode)) throw new Error('Invalid import mode');
+  await inspectBackup(payload);   // a damaged or newer-format file never reaches the database
   const data = await prepareImport(payload);
   return withTx(db => new Promise((resolve, reject) => {
     const tx = transaction(db, [...DATA_STORES, 'meta'], 'readwrite');
@@ -489,7 +523,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.0.3';
+export const APP_VERSION = '4.1.0';
 export async function checkAndMigrate() {
   await openDB();
   const storedVer = await getMeta('app_version');

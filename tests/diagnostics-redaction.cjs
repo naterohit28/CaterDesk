@@ -32,14 +32,14 @@ async function serverSide() {
       source: 'https://app.test/app.js', line: 12, column: 5, path: '/CanaryVenue', release: '4.0.2', userAgent: 'Mozilla/5.0 Canary Client Name', at: '2026-11-12' }), 204);
     // A forged report: every field abused, plus unknown fields
     assert.equal(await call(JSON.stringify({ kind: 'Canary Client Name', code: 'Canary Client Name 9000099999', file: '../secret-note-xyz.js', line: '987654', column: -1,
-      release: '4.0.3 CanaryVenue', browser: 'secret-note-xyz', name: 'Canary Client Name', phone: '9000099999', events: [{ amt: 987654 }] })), 204);
+      release: '4.1.0 CanaryVenue', browser: 'secret-note-xyz', name: 'Canary Client Name', phone: '9000099999', events: [{ amt: 987654 }] })), 204);
     // A customer name that is a single alphabetic word must not pass as an error type
-    assert.equal(await call({ kind: 'error', code: 'CanaryClient', file: 'app.js', line: 1, column: 1, release: '4.0.3', browser: 'chrome' }), 204);
+    assert.equal(await call({ kind: 'error', code: 'CanaryClient', file: 'app.js', line: 1, column: 1, release: '4.1.0', browser: 'chrome' }), 204);
     // A current-format report keeps its fields
-    assert.equal(await call({ kind: 'unhandledrejection', code: 'TypeError', file: 'db.js', line: 40, column: 7, release: '4.0.3', browser: 'android-webview' }), 204);
+    assert.equal(await call({ kind: 'unhandledrejection', code: 'TypeError', file: 'db.js', line: 40, column: 7, release: '4.1.0', browser: 'android-webview' }), 204);
     // The alert webhook fails with an error whose name and text carry free text
     hookFails = true;
-    assert.equal(await call({ kind: 'error', code: 'RangeError', file: 'utils.js', line: 9, column: 2, release: '4.0.3', browser: 'edge' }), 204);
+    assert.equal(await call({ kind: 'error', code: 'RangeError', file: 'utils.js', line: 9, column: 2, release: '4.1.0', browser: 'edge' }), 204);
     assert.equal(await call('not json'), 400);
     assert.equal(await call([1, 2]), 400);
     assert.equal(await call({ code: 'Error' }, { origin: 'https://evil.example' }), 403);
@@ -50,7 +50,7 @@ async function serverSide() {
   assert.deepEqual(reports[0], { kind: 'error', code: 'Other', file: 'app.js', line: 12, column: 5, release: '4.0.2', browser: 'other' });
   assert.deepEqual(reports[1], { kind: 'error', code: 'Other', file: 'other', line: null, column: null, release: 'unknown', browser: 'other' });
   assert.equal(reports[2].code, 'Other', 'a name is never an error code');
-  assert.deepEqual(reports[3], { kind: 'unhandledrejection', code: 'TypeError', file: 'db.js', line: 40, column: 7, release: '4.0.3', browser: 'android-webview' });
+  assert.deepEqual(reports[3], { kind: 'unhandledrejection', code: 'TypeError', file: 'db.js', line: 40, column: 7, release: '4.1.0', browser: 'android-webview' });
   assert(logs.includes('Alert webhook failed'), 'webhook failure is logged without its error name or text');
   assert.equal(hooks.length, 4, 'one alert per distinct error');
   for (const l of logs) { clean('server log', l); assert(!l.includes('hooks.example.invalid'), 'webhook URL logged'); }
@@ -104,7 +104,7 @@ async function clientSide() {
     assert(parsed.some(r => r.code === 'NonError'));
     assert(parsed.some(r => r.code === 'Other'), 'an unrecognised error type is sent as Other');
     assert(parsed.some(r => r.kind === 'handled'));
-    assert(parsed.every(r => r.release === '4.0.3' && typeof r.browser === 'string'));
+    assert(parsed.every(r => r.release === '4.1.0' && typeof r.browser === 'string'));
 
     // Turning it off again stops reports at once
     const count = sent.length;
