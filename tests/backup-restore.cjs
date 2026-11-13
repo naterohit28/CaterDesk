@@ -54,13 +54,18 @@ const noRev = rows => rows.map(({ _rev, ...r }) => r).sort((a, b) => a.id.locale
   await A.p.reload(); await A.p.waitForSelector('#kpi .card');
   let shared;
   await step('backup saves through the share sheet (offered as .txt when .json is not shareable, as on Android)', async () => {
-    shared = await A.p.evaluate(async () => {
-      let got = null;
+    // The share sheet opens only from a tap made after the backup is ready (Android requires a recent tap)
+    await A.p.evaluate(() => {
+      window.__got = null;
       navigator.canShare = ({ files }) => files[0].type === 'text/plain';
-      navigator.share = async ({ files }) => { got = { name: files[0].name, type: files[0].type, text: await files[0].text() }; };
-      await window.FF.exportData();
-      return got;
+      navigator.share = async ({ files }) => { if (!navigator.userActivation.isActive) throw new DOMException('no tap', 'NotAllowedError'); window.__got = { name: files[0].name, type: files[0].type, text: await files[0].text() }; };
+      window.__done = window.FF.exportData();
     });
+    await A.p.waitForSelector('#ask-modal.active #ask-actions button');
+    assert.match(await A.p.locator('#ask-title').textContent(), /Backup ready|बॅकअप तयार/);
+    await A.p.locator('#ask-actions button').first().click();
+    shared = await A.p.evaluate(async () => { await window.__done; return window.__got; });
+    assert(shared, 'share sheet opened from the tap');
     assert.match(shared.name, /^caterdesk-backup-\d{4}-\d{2}-\d{2}\.txt$/); assert.equal(shared.type, 'text/plain');
     assert.match(await toast(A.p), /Backup shared|बॅकअप पाठवला/);
     const b = JSON.parse(shared.text);
@@ -73,6 +78,30 @@ const noRev = rows => rows.map(({ _rev, ...r }) => r).sort((a, b) => a.id.locale
   const good = path.join(tmp, 'caterdesk-backup.txt'); fs.writeFileSync(good, shared.text);
   const before = await dump(A.p);
 
+  await step('"Save to phone" downloads the .json backup', async () => {
+    await A.p.locator('#toast').evaluate(t => t.className = '');
+    const wait = A.p.waitForEvent('download');
+    await A.p.evaluate(() => { window.__done = window.FF.exportData(); });
+    await A.p.waitForSelector('#ask-modal.active #ask-actions button');
+    await A.p.locator('#ask-actions button').nth(1).click();
+    const dl = await wait; assert.match(dl.suggestedFilename(), /^caterdesk-backup-\d{4}-\d{2}-\d{2}\.json$/);
+    await A.p.evaluate(() => window.__done); assert.match(await toast(A.p), /Downloads|जतन/);
+  });
+  await step('if the phone refuses to share, the backup is still saved to Downloads', async () => {
+    const wait = A.p.waitForEvent('download');
+    await A.p.evaluate(() => { navigator.share = async () => { throw new DOMException('refused', 'NotAllowedError'); }; window.__done = window.FF.exportData(); });
+    await A.p.waitForSelector('#ask-modal.active #ask-actions button');
+    await A.p.locator('#ask-actions button').first().click();
+    const dl = await wait; assert.match(dl.suggestedFilename(), /\.json$/); await A.p.evaluate(() => window.__done);
+  });
+  await step('cancelling the choice saves nothing', async () => {
+    let downloads = 0; const count = () => downloads++; A.p.on('download', count);
+    await A.p.evaluate(() => { window.__done = window.FF.exportData(); });
+    await A.p.waitForSelector('#ask-modal.active #ask-actions button');
+    await A.p.locator('#ask-actions button').last().click();
+    await A.p.evaluate(() => window.__done); await A.p.waitForTimeout(300); A.p.off('download', count);
+    assert.equal(downloads, 0);
+  });
   await step('without a share sheet the backup downloads as .json', async () => {
     const wait = A.p.waitForEvent('download');
     await A.p.evaluate(() => { navigator.canShare = () => false; return window.FF.exportData(); });
