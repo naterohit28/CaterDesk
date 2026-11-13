@@ -6,7 +6,7 @@ An offline-first app for catering events, expenses, vendor credit, client collec
 
 **Current source and hosted web build: v4.4.0.** Documentation checked on **13 November 2026**.
 
-[Open the app](https://expense-calculator-kohl.vercel.app/) · [Download published packages](https://github.com/naterohit28/Expense-Calculator/releases) · [Historical reliability report](docs/RELIABILITY.md) · [Competitor/name research and Claude evaluation notes](docs/research/README.md) · [Report an issue](https://github.com/naterohit28/Expense-Calculator/issues)
+[Open the app](https://expense-calculator-kohl.vercel.app/) · [Download published packages](https://github.com/naterohit28/CaterDesk/releases) · [Historical reliability report](docs/RELIABILITY.md) · [Competitor/name research and Claude evaluation notes](docs/research/README.md) · [Report an issue](https://github.com/naterohit28/CaterDesk/issues)
 
 CaterDesk was previously called Flavor Fusion. The existing Android package (`com.flavorfusion.expenses`), signing identity, database and desktop profile are retained for continuity. The cloche-and-ledger icon uses teal, ivory and copper; its editable master is [`public/icons/caterdesk.svg`](public/icons/caterdesk.svg). Naming research found existing CaterDesk use in this industry; the app has not been renamed again.
 
@@ -40,7 +40,7 @@ The **APK wrapper version, hosted web version and bundled desktop version are in
 | Desktop launcher source/instructions | **4.4.0** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
 | IndexedDB schema | **4** | Kept separate from application version changes |
 
-Do not relabel an older package as 4.4.0. Use the [release assets](https://github.com/naterohit28/Expense-Calculator/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
+Do not relabel an older package as 4.4.0. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
 
 ## Current features
 
@@ -177,8 +177,8 @@ See [`desktop/README.txt`](desktop/README.txt) for packaging caveats and recover
 The browser app is plain HTML, CSS and JavaScript modules, with no frontend bundler or business-data backend credentials required.
 
 ```sh
-git clone https://github.com/naterohit28/Expense-Calculator.git
-cd Expense-Calculator
+git clone https://github.com/naterohit28/CaterDesk.git
+cd CaterDesk
 python -m http.server 8790 --bind 127.0.0.1 --directory public
 ```
 
@@ -253,6 +253,8 @@ A fresh clone does not include this generated project, keystore or credentials. 
 
 ## Deployment, diagnostics and maintenance
 
+The repository was renamed from `Expense-Calculator` to `CaterDesk` on 13 November 2026 (GitHub redirects old links). The web address `expense-calculator-kohl.vercel.app` deliberately keeps the original name: records are stored per web address, so a new address would open an empty app and the Android wrapper is built for this one.
+
 Vercel deploys the repository with `public/` as its output directory and the root `vercel.json` for security/cache headers. The separate `api/client-error.js` is a Vercel function; a plain static host needs an equivalent endpoint or a deliberate reporting change. Documentation, tests, private build material and business backups do not belong in `public/`.
 
 ### Release process
@@ -280,7 +282,7 @@ Keep error/log retention and webhook recipients appropriate for any sensitive te
 ## Repository and local workspace
 
 ```text
-Expense-Calculator/
+CaterDesk/
 ├── README.md
 ├── package.json / package-lock.json
 ├── vercel.json
