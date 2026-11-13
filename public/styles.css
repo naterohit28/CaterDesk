@@ -298,7 +298,7 @@ html[data-lang="mr"] .chip .t-mr { margin: 0; opacity: 1; }
 .metric-tiles .card { padding: var(--s3) var(--s4); margin: 0; }
 
 /* ── NOTES (insights / hints) ── */
-.note { display: flex; gap: var(--s3); align-items: flex-start; padding: var(--s3) var(--s4); font-size: var(--fs-sm); line-height: 1.45; }
+.note { display: flex; gap: var(--s3); align-items: center; padding: var(--s3) var(--s4); font-size: var(--fs-sm); line-height: 1.45; }
 .note + .note { border-top: 1px solid var(--line); }
 .note-ic { width: 28px; height: 28px; border-radius: var(--r-sm); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .note.success .note-ic { background: var(--pos-soft); color: var(--pos); }
