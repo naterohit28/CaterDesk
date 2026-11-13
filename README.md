@@ -4,7 +4,7 @@
 
 An offline-first app for catering events, expenses, vendor credit, client collections, menus and vendor orders. Business records stay in the device's browser storage; the hosted app also sends limited error diagnostics to its server.
 
-**Current source and hosted web build: v4.0.3.** Documentation checked on **13 November 2026**.
+**Current source and hosted web build: v4.1.0.** Documentation checked on **13 November 2026**.
 
 [Open the app](https://expense-calculator-kohl.vercel.app/) · [Download published packages](https://github.com/naterohit28/Expense-Calculator/releases) · [Historical reliability report](docs/RELIABILITY.md) · [Competitor/name research and Claude evaluation notes](docs/research/README.md) · [Report an issue](https://github.com/naterohit28/Expense-Calculator/issues)
 
@@ -31,16 +31,16 @@ The **APK wrapper version, hosted web version and bundled desktop version are in
 
 | Component | Verified state on 3 November 2026 | Meaning |
 | --- | --- | --- |
-| Source and hosted web app | **4.0.3** | Current UI, data/export version, service worker and error reporter |
+| Source and hosted web app | **4.1.0** | Current UI, data/export version, service worker and error reporter |
 | Service-worker release cache | `flavor-fusion-v2-cache-v25` | Installed web assets; this number is not the database schema version |
-| Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** | APK package inspected locally; launches the hosted app, which can run 4.0.3 |
+| Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** | APK package inspected locally; launches the hosted app, which can run 4.1.0 |
 | Android requirements for that local wrapper | min API **24**, target API **36** | Android 7.0+ and a compatible browser provider |
 | Latest GitHub Release with downloadable binaries | **2.4.7** | APK and desktop ZIP; later source tags do not imply newer binaries were uploaded |
 | Desktop package currently in the owner's `Apps/Desktop` folder | **2.4.7** | A static older bundle, not the current source build |
-| Desktop launcher source/instructions | **4.0.3** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
+| Desktop launcher source/instructions | **4.1.0** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
 | IndexedDB schema | **4** | Kept separate from application version changes |
 
-Do not relabel an older package as 4.0.3. Use the [release assets](https://github.com/naterohit28/Expense-Calculator/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
+Do not relabel an older package as 4.1.0. Use the [release assets](https://github.com/naterohit28/Expense-Calculator/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
 
 ## Current features
 
@@ -107,16 +107,16 @@ Browser IndexedDB **`FlavorFusionDB`**, schema **4**, contains:
 | `photos` | Event and bill images |
 | `meta` | App metadata, PIN hash and backup timestamps |
 
-Preferences, resume snapshots and remembered choices also use localStorage. JSON export contains the six business stores, not the `meta` store or all browser preferences. Do not rely on restoring a backup to reproduce every UI setting or remembered choice.
+Preferences, resume snapshots and remembered choices also use localStorage. A backup contains the six business stores plus the settings that travel with your data (theme, language, Home period and the last-used expense category). It never contains the PIN, the `meta` store, error-report consent or unsaved drafts, which stay with the device.
 
-**There is no account-based business-data cloud sync or automatic off-device backup.** GitHub/Vercel hosting does not back up event records. Phone, desktop and ordinary browser profiles can have separate data. Changing domain, scheme, port, browser provider or profile can show another database. Preserve an export before moving to a custom domain or another device.
+**There is no account-based business-data cloud sync or automatic off-device backup.** Saving to Google Drive is manual: **Share / save backup → Drive** in the share menu. Automatic, encrypted Drive backup is a later v5 step (P1-E) and is not implemented. GitHub/Vercel hosting does not back up event records. Phone, desktop and ordinary browser profiles can have separate data. Changing domain, scheme, port, browser provider or profile can show another database. Preserve an export before moving to a custom domain or another device.
 
 The app requests persistent storage where supported, but storage can still be lost through clearing data, device loss or profile changes. The PIN hides the UI; it does **not encrypt** the database or exported files. Export is blocked while the app is locked.
 
 ### Back up
 
 1. Unlock the app and choose **Settings → Share / save backup**.
-2. Save/share the JSON outside the device, retaining more than one dated copy.
+2. The phone's share menu opens: choose **Drive**, **Files**, WhatsApp or email. Android does not offer `.json` files to the share menu, so the backup is shared as `caterdesk-backup-YYYY-MM-DD.txt` (same content; CaterDesk imports `.txt` and `.json`). Where no share menu exists the file downloads as `.json`. Keep more than one dated copy outside the device.
 3. Before updates, migration or imports, confirm that the file is actually saved and keep the previous backup.
 
 Backups contain business records and images. Protect them as private documents. Sending a file to a share sheet does not prove a chosen destination retained it.
@@ -124,9 +124,11 @@ Backups contain business records and images. Protect them as private documents. 
 ### Restore
 
 1. Export current records first. For testing, import a copy into a separate profile.
-2. Choose **Settings → Import backup** and select the JSON.
+2. Choose **Settings → Import backup** and select the backup (`.txt` or `.json`). Before anything changes, CaterDesk shows the backup's date, app version and record counts, and whether it passed its integrity check.
 3. **Merge** retains current records and rejects conflicts for the same ID. **Replace** validates first, then replaces business records atomically; a failed replacement preserves the old database.
 4. Reconcile totals, client/vendor balances, drafts and images after restoration.
+
+**Backup format v5 (manifest 1, from 4.1.0).** The file keeps the `ffv2` layout, so 4.0.x can still read it, and adds a `manifest` with a record count per store and a SHA-256 of all records. A file that was edited, cut off or damaged, a file from a newer CaterDesk, a non-backup file or a file over 300 MB is refused with a plain message, and existing data is not changed. Backups made before 4.1.0 have no manifest; they still import after the usual record validation, marked as not checkable. Restore (Replace) also restores the backed-up settings; Merge keeps this phone's settings. [`tests/backup-restore.cjs`](tests/backup-restore.cjs) runs the restore drill on a second simulated device.
 
 Compatible `ffv2` and legacy `ffv5` payloads are supported subject to validation. Invalid IDs, duplicate IDs, amounts, dates or missing references can cause rejection. Never delete your only backup to work around a validation error.
 
@@ -145,17 +147,17 @@ The APK is a **Trusted Web Activity** wrapper around the hosted site. It does no
 1. Keep a business-data backup.
 2. Obtain the intended APK from its actual release assets or the owner's prepared local package. Install over the existing app with the same package/signing identity.
 3. Open online to download updates. Check the **web build in Settings**, not just Android App info.
-4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **4.0.3**.
+4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **4.1.0**.
 
 A newer web release may reload automatically during the first 20 seconds of startup when no active form/save/overlay prevents it, at most once per release per session. Otherwise it waits for a later start or explicit reload. Refresh can also switch versions when no form/save is open. Service-worker cache mappings preserve matching assets for older open pages until navigation.
 
 Do not uninstall or clear browser/site storage to force an update. If Android rejects an APK, check package, versionCode and signing certificate before proceeding. The public certificate association is [`public/.well-known/assetlinks.json`](public/.well-known/assetlinks.json).
 
-The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **4.0.3**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
+The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **4.1.0**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
 
 ## Windows desktop testing
 
-Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v4.0.3 package.
+Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v4.1.0 package.
 
 1. Extract the entire ZIP; keep `app/` beside `CaterDesk-Desktop.exe`.
 2. Run the EXE. Microsoft Edge opens an app window; a tray icon provides **Open CaterDesk**, storage information and **Exit test server**.
@@ -205,6 +207,9 @@ Playwright uses the installed **Microsoft Edge** channel. The runner starts an i
 | [`tests/security-smoke.cjs`](tests/security-smoke.cjs) | Configured hosting CSP and basic save/theme/language flows |
 | [`tests/release-update.cjs`](tests/release-update.cjs) | Upgrade from actual v2.4.4 files with old tabs/forms open, record preservation and offline reopening |
 | [`tests/labour-audit.cjs`](tests/labour-audit.cjs) | Read-only labour audit tool finds orphaned/duplicated labour-sheet expenses, ignores hand-entered ones, leaves the backup file unchanged |
+| [`tests/xss-canary.cjs`](tests/xss-canary.cjs) | User text containing HTML/script stays inert on 18 screens and forms and never widens the page; a fresh install has no records (G-19) |
+| [`tests/diagnostics-redaction.cjs`](tests/diagnostics-redaction.cjs) | Error reports: off until consent, allow-listed fields and error types only, canary names never logged or forwarded |
+| [`tests/backup-restore.cjs`](tests/backup-restore.cjs) | Backup v5: share-sheet save, restore drill on a second device with identical records and settings, damaged/cut-off/newer/foreign/oversized files refused with data intact, older backups still import (G-15, G-16, G-28) |
 | [`tests/ui-audit.cjs`](tests/ui-audit.cjs) | Touch-phone audit in light and dark at 360px: aligned card edges and equal margins, equal-size buttons/segments/tiles, centred labels, aligned list icons and amounts; every tab, quick action, event/vendor action and dropdown option; sheets close by ✕, Back and outside tap; background stays still under sheets; pull-to-refresh; layout shift; console errors |
 
 Use a normal Git clone with history: the upgrade test reads commit `bdb6a5a`. A source ZIP or shallow clone missing that commit is insufficient. Evidence/screenshots go into ignored `test-artifacts/`.
@@ -320,6 +325,7 @@ This is a short source-feature history, not a list of available binary downloads
 
 | Version | Main changes |
 | --- | --- |
+| 4.1.0 | **Backup format v5 (v5 P1-C):** Share / save backup opens the phone's share menu (Drive, Files, WhatsApp, email) on Android by offering the backup as `.txt`; backups carry a manifest (counts + SHA-256) and the settings that travel with your data; import shows date, version, counts and an integrity check before anything changes; damaged, cut-off, newer-format, foreign and oversized files are refused with existing data intact; older backups still import. New restore-drill test. |
 | 4.0.3 | **Security hygiene (v5 P1-D):** error reports are off until turned on in Settings, and strictly redacted to a recognised error type, app file, line, column, release and browser family; no error text, stack, page path, full browser string or business data is sent, logged or forwarded (older clients' reports are reduced the same way on the server). Long free text (event type, vendor speciality) no longer widens the page and hides header buttons. Unused demo-seeding code removed. New tests: XSS canaries on 18 screens and forms, and diagnostics redaction. |
 | 4.0.2 | **Hotfix:** editing an event no longer drops its menu, vendor orders, labour sheet or any other stored field (versions 3.3.0–4.0.1 did, which could also duplicate labour-sheet expenses on re-entry). All edit forms save onto the record they opened with and refuse to overwrite a record changed elsewhere. Read-only `tools/audit-labour.cjs` reports orphaned or duplicated labour-sheet expenses in a backup without changing it |
 | 4.0.1 | Labour sheet: headcount per shift for each worker type, as on contractors' bills (not every worker does every shift); bill adjustment shown as its own line so the total adds up; margin targets — own events at least 30%, commission work 10–20% |
