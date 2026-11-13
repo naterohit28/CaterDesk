@@ -241,6 +241,7 @@
       <div class="field"><label for="ev-date">Date – दिनांक <span class="req">*</span></label><input type="date" id="ev-date"></div>
       <div class="field"><label for="ev-type">Type – प्रकार</label><select id="ev-type"></select></div>
     </div>
+    <div class="field" id="ev-type-other-field" hidden><label for="ev-type-other">Which occasion? – कोणता प्रसंग?</label><input type="text" id="ev-type-other" placeholder="e.g. Naming ceremony" autocapitalize="sentences" enterkeyhint="next"></div>
     <!-- Meals served — any mix. Lunch at a banquet comes with breakfast, so ticking Lunch ticks Breakfast too (untick if not). -->
     <div class="field">
       <label>Meals – जेवण</label>
@@ -252,6 +253,16 @@
       </div>
     </div>
     <div class="field"><label for="ev-venue">Venue – ठिकाण <span class="req">*</span></label><input type="text" id="ev-venue" placeholder="Hall / location" autocapitalize="words" enterkeyhint="next"></div>
+    <!-- Repeat venue: details from the last event there are offered, never filled in by themselves -->
+    <div class="meta" id="ev-venue-hint" data-nl hidden style="margin:-6px 0 var(--s3);display:flex;align-items:center;justify-content:space-between;gap:var(--s2)"></div>
+    <!-- Venue type is the physical place, separate from the occasion; both optional -->
+    <div class="f2">
+      <div class="field"><label for="ev-vtype">Venue type – ठिकाणाचा प्रकार</label><select id="ev-vtype"></select></div>
+      <div class="field"><label for="ev-locality">Area – परिसर</label><input type="text" id="ev-locality" placeholder="e.g. Vile Parle" autocapitalize="words" enterkeyhint="next"></div>
+    </div>
+    <div class="field" id="ev-vtype-other-field" hidden><label for="ev-vtype-other">Which kind of place? – कोणती जागा?</label><input type="text" id="ev-vtype-other" placeholder="e.g. Farmhouse" autocapitalize="sentences" enterkeyhint="next"></div>
+    <details class="field" id="ev-logi"><summary class="label" style="cursor:pointer">Venue logistics (optional) – ठिकाणाची सोय</summary>
+      <div class="f2" id="ev-logi-fields" style="margin-top:var(--s2);flex-wrap:wrap"></div></details>
     <!-- Menu + guests fill the bill from the rate card and the expected cost from what that menu
          has cost before. Both stay editable. -->
     <div class="f2">

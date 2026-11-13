@@ -11,7 +11,7 @@ import {
 } from './db.js';
 
 import {
-  EXPENSE_HEADS, EVENT_TYPES, PAY_MODES, PERIODS, MENUS, menuById, menuRate, menuCostPerPlate, costChecklist,
+  EXPENSE_HEADS, EVENT_TYPES, VENUE_TYPES, LOGISTICS, venueTypeLabel, logisticsPrompts, venueSuggestion, PAY_MODES, PERIODS, MENUS, menuById, menuRate, menuCostPerPlate, costChecklist,
   uid, today, daysSince, fmtDate, fmtCurrency, esc,
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, daysUntil, addDays,
@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.2.2';
+const APP_BUILD = '4.3.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1083,8 +1083,9 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
       <div class="detail-name" data-nl>${esc(ev.name)}</div>
       <div class="facts">
         <span class="fact">${icon('calendar', 16)}${fmtDate(ev.date)}</span>
-        <span class="fact" data-nl>${icon('pin', 16)}${esc(ev.venue)}</span>
-        <span class="chip">${esc(ev.type)}</span>
+        <span class="fact" data-nl>${icon('pin', 16)}${esc(ev.venue)}${ev.locality ? `, ${esc(ev.locality)}` : ''}</span>
+        <span class="chip" data-nl>${esc(ev.typeOther || ev.type)}</span>
+        ${ev.venueType ? `<span class="chip" data-nl>${esc(venueTypeLabel(ev))}</span>` : ''}
         ${ev.meals?.length ? `<span class="chip">${esc(mealLabel(ev))}</span>` : ''}
         ${menu ? `<span class="chip info">${esc(menu.name)}</span>` : ''}
         ${ev.outsourced ? `<span class="chip info">${tr('Outsourced', 'आउटसोर्स')}${outVen ? ` · <span data-nl>${esc(outVen.name)}</span>` : ''}</span>` : ''}
@@ -1119,6 +1120,8 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
     </div>
 
     ${reconCard(ev, recon)}
+
+    ${logisticsCard(ev)}
 
     ${ev.notes ? `<div class="card pad"><div class="label">Notes – नोंदी</div><div class="notes-text" data-nl>${esc(ev.notes)}</div></div>` : ''}
 
@@ -1568,6 +1571,18 @@ function deliveriesCard() {
 }
 
 // Quiet comparison, per category, of this event's cost per plate with the usual for its menu/type
+// Costing reminders from the venue logistics (prompts only; nothing is added by itself)
+function logisticsCard(ev) {
+  const list = logisticsPrompts(ev, D.expenses);
+  if (!list.length) return '';
+  return `<div class="sec"><span class="sec-title">Venue costs to check – ठिकाणाचा खर्च</span></div>
+    <div class="card list" id="logi-card">${list.map((p, i) => `<div class="row" style="min-height:52px">
+      <div class="row-ic">${icon(p.recorded ? 'check' : 'alert', 18)}</div>
+      <div class="row-body"><div class="title-sm">${tr(p.en, p.mr)}</div><div class="meta">${p.recorded ? tr('Recorded', 'नोंदवले') : tr('Not recorded yet', 'अजून नोंदवले नाही')}</div></div>
+      ${p.recorded ? '' : `<button type="button" class="btn-sm" data-action="logi-add" data-id="${i}">${icon('plus', 16)}${tr('Cost', 'खर्च')}</button>`}
+    </div>`).join('')}</div>`;
+}
+
 /* ── RECONCILIATION (D-4) ── */
 // Event contribution = bill − this event's recorded costs, before overheads. Provisional until reconciled.
 function contributionLabel(ev, recon) {
@@ -2002,7 +2017,8 @@ function perPlateReport(P, missing) {
     </div>`).join('');
   };
   const menuRows = menuRanking(finals);
-  const typeRows = group(ev => (ev.type || 'Other').split(' – ')[0]);
+  const typeRows = group(ev => (ev.typeOther || ev.type || 'Other').split(' – ')[0]);
+  const venueRows = group(ev => venueTypeLabel(ev));   // only events with a venue type, reconciled only
   const noFinal = finals.length ? '' : `<div class="meta">${tr('Menu and type averages use reconciled events only. Reconcile finished events to see them.', 'मेनू व प्रकार सरासरी फक्त जुळवलेल्या कार्यक्रमांवरून.')}</div>`;
   const eventRows = rows.sort((a, b) => b.profitPerPlate - a.profitPerPlate).map(r => `
     <div class="row" role="button" tabindex="0" data-action="evdetail" data-id="${esc(r.ev.id)}" style="min-height:52px">
@@ -2012,6 +2028,7 @@ function perPlateReport(P, missing) {
   return `<div class="card pad" style="padding-bottom:var(--s2)">
     ${menuRows ? `<div class="chart-title">${icon('utensils', 18)}Menu contribution ranking – मेनू योगदान क्रम</div>${menuRows}
     <div class="chart-title" style="margin-top:var(--s4)">` : '<div class="chart-title">'}${icon('utensils', 18)}Per plate by type – प्रकारानुसार प्रति ताट</div>${typeRows || noFinal}
+    ${venueRows ? `<div class="chart-title" style="margin-top:var(--s4)">${icon('pin', 18)}Per plate by venue type – ठिकाणानुसार प्रति ताट</div>${venueRows}` : ''}
     <div class="chart-title" style="margin-top:var(--s4)">${icon('calendar', 18)}Per plate by event – कार्यक्रमनिहाय</div>${eventRows}
   </div>`;
 }
@@ -2167,7 +2184,15 @@ function openEvModal(id) {
   q('ev-guests').value  = ev?.guests  || '';
   q('ev-budget').value  = ev?.budget  || '';
   q('ev-notes').value   = ev?.notes   || '';
-  populateSelect('ev-type', EVENT_TYPES, ev?.type || '');
+  // A type not in today's list (older or custom) stays selectable, so editing never changes it
+  populateSelect('ev-type', ev?.type && !EVENT_TYPES.includes(ev.type) ? [...EVENT_TYPES, ev.type] : EVENT_TYPES, ev?.type || '');
+  q('ev-type-other').value = ev?.typeOther || '';
+  populateSelect('ev-vtype', [{ v: '', l: 'Not set – निवडलेले नाही' }, ...VENUE_TYPES.map(t => ({ v: t.id, l: `${t.en} – ${t.mr}` }))], ev?.venueType || '');
+  q('ev-vtype-other').value = ev?.venueTypeOther || '';
+  q('ev-locality').value = ev?.locality || '';
+  fillLogistics(ev?.logistics || {});
+  q('ev-logi').open = !!(ev?.logistics && Object.keys(ev.logistics).length);
+  syncEvTypeFields(); updateVenueHint();
   setEvMeals(ev?.meals || []);
   const menuOpts = leaf => MENUS.filter(m => !!m.leaf === leaf).map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('');
   q('ev-menu').innerHTML = '<option value="">No package – पॅकेज नाही</option>'
@@ -2186,6 +2211,54 @@ function openEvModal(id) {
   q('ev-mtitle').textContent = ev ? 'Edit event – संपादित करा' : 'New event – नवीन कार्यक्रम';
   clearFieldErrors();
   openSheet('ev-modal');
+}
+
+/* ── Venue details in the event form (CD5-VEN-01) ── */
+function fillLogistics(values) {
+  q('ev-logi-fields').innerHTML = LOGISTICS.map(g => `<div class="field" style="flex:1 1 45%"><label for="ev-logi-${g.id}">${g.en} – ${g.mr}</label>
+    <select id="ev-logi-${g.id}" data-logi="${g.id}"><option value="">Unknown – माहीत नाही</option>${g.opts.map(([v, en, mr]) => `<option value="${v}"${values[g.id] === v ? ' selected' : ''}>${en} – ${mr}</option>`).join('')}</select></div>`).join('');
+}
+function readLogistics() {
+  const out = {};
+  document.querySelectorAll('#ev-logi-fields [data-logi]').forEach(s => { if (s.value) out[s.dataset.logi] = s.value; });
+  return out;
+}
+function syncEvTypeFields() {
+  q('ev-type-other-field').hidden = qv('ev-type') !== 'Other – इतर';
+  q('ev-vtype-other-field').hidden = qv('ev-vtype') !== 'other';
+}
+// Only what the user chose is stored; blanks are left out so older events are not given empty fields
+function venueFields() {
+  const f = {}, vt = qv('ev-vtype'), logi = readLogistics();
+  if (vt) f.venueType = vt;
+  if (vt === 'other' && qv('ev-vtype-other')) f.venueTypeOther = qv('ev-vtype-other');
+  if (qv('ev-locality')) f.locality = qv('ev-locality');
+  if (qv('ev-type') === 'Other – इतर' && qv('ev-type-other')) f.typeOther = qv('ev-type-other');
+  if (Object.keys(logi).length) f.logistics = logi;
+  return f;
+}
+function emptyVenueFields() {
+  const f = venueFields();
+  return ['venueType', 'venueTypeOther', 'locality', 'typeOther', 'logistics'].filter(k => !(k in f));
+}
+// Repeat venue: offer the last event's details there; the user decides, and past events are never changed
+let venueOffer = null;
+function updateVenueHint() {
+  const hint = q('ev-venue-hint');
+  const filled = qv('ev-vtype') || qv('ev-locality') || Object.keys(readLogistics()).length;
+  venueOffer = filled ? null : venueSuggestion(D.events, qv('ev-venue'), qv('ev-id'));
+  hint.hidden = !venueOffer;
+  if (!venueOffer) { hint.innerHTML = ''; return; }
+  const what = [venueTypeLabel(venueOffer), venueOffer.locality, Object.keys(venueOffer.logistics).length ? `${Object.keys(venueOffer.logistics).length} logistics` : ''].filter(Boolean).join(' · ');
+  hint.innerHTML = `<span>${tr(`Used before (${fmtDate(venueOffer.date)}): ${esc(what)}`, `आधी वापरले (${fmtDate(venueOffer.date)}): ${esc(what)}`)}</span>
+    <button type="button" class="btn-sm" data-action="venue-fill">${tr('Use', 'वापरा')}</button>`;
+}
+function useVenueOffer() {
+  if (!venueOffer) return;
+  q('ev-vtype').value = venueOffer.venueType; q('ev-vtype-other').value = venueOffer.venueTypeOther;
+  q('ev-locality').value = venueOffer.locality; fillLogistics(venueOffer.logistics);
+  q('ev-logi').open = !!Object.keys(venueOffer.logistics).length;
+  syncEvTypeFields(); venueOffer = null; q('ev-venue-hint').hidden = true;
 }
 
 // Values the menu last filled in, so a changed menu or guest count updates them
@@ -2335,6 +2408,7 @@ async function saveEvent() {
     type:     qv('ev-type'),
     ...(meals.length ? { meals } : {}),
     venue:    data.venue,
+    ...venueFields(),
     billing:  data.billing,
     mobile:   data.mobile,
     guests:   data.guests,
@@ -2344,7 +2418,10 @@ async function saveEvent() {
     notes:    qv('ev-notes'),
     photoIds: base?.photoIds || [],
     _v: 2
-  }, [...(meals.length ? [] : ['meals']), ...(out ? [] : ['outsourced', 'outVenId'])]);
+  }, [...(meals.length ? [] : ['meals']), ...(out ? [] : ['outsourced', 'outVenId']), ...emptyVenueFields(),
+      // Older events keep their shape: an empty mobile or budget, or the format marker, is not added to them
+      ...(!data.mobile && !(base && 'mobile' in base) ? ['mobile'] : []), ...(!(Number(data.budget) > 0) && !(base && 'budget' in base) ? ['budget'] : []),
+      ...(base && !('_v' in base) ? ['_v'] : [])]);
 
   // The advance is saved with the event in one go, as its first payment received
   const advance = adv !== '' ? { id: uid('CP'), evId: record.id, amt: adv, date: today(), mode: qv('ev-adv-mode'), notes: 'Advance – अॅडव्हान्स' } : null;
@@ -3195,6 +3272,12 @@ function bindAllEvents() {
       case 'order-new':    openOrderModal({ head: id }); break;
       case 'order-status': orderAction(id); break;
       case 'recon-open':   openReconModal(); break;
+      case 'venue-fill':   useVenueOffer(); break;
+      case 'logi-add': {
+        const ev = D.events.find(e => e.id === curRef), p = ev && logisticsPrompts(ev, D.expenses)[Number(id)];
+        if (p) openExpModal({ prefill: { evId: ev.id, cat: p.cat, head: p.head } });
+        break;
+      }
       case 'recon-reopen': reopenRecon(); break;
       case 'check-add': {
         const it = CHECKLIST[Number(id)];
@@ -3408,6 +3491,10 @@ function bindAllEvents() {
   // Sharing must start within the tap, so begin the backup first, then close the panel
   q('btn-export').addEventListener('click', () => { exportData(); closeOverlay(); });
   q('recon-checks').addEventListener('change', updateReconSave);
+  q('ev-type').addEventListener('change', syncEvTypeFields);
+  q('ev-vtype').addEventListener('change', () => { syncEvTypeFields(); updateVenueHint(); });
+  q('ev-venue').addEventListener('change', updateVenueHint);
+  q('ev-locality').addEventListener('input', updateVenueHint);
   q('btn-save-recon').addEventListener('click', saveRecon);
   // File picker must open inside the tap itself, so click first, then close the panel
   q('btn-import').addEventListener('click', () => { q('import-input').click(); closeOverlay(); });
