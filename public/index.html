@@ -315,6 +315,7 @@
     <input type="hidden" id="exp-id">
     <!-- Ordered for speed: amount (keyboard opens on it), how it was paid, what for. Event, date and
          payment mode come pre-filled; most entries need only the first three. -->
+    <div class="meta" id="exp-split-note" data-nl hidden style="margin-bottom:var(--s2)"></div>
     <div class="field"><label for="exp-amt">Amount ₹ – रक्कम <span class="req">*</span></label><input type="number" id="exp-amt" class="amt-input" placeholder="0" min="1" inputmode="decimal" enterkeyhint="done"></div>
     <div class="field">
       <div class="seg" role="group" aria-label="Payment" id="exp-pay">
@@ -357,6 +358,7 @@
     </div>
     <div class="s-foot"><div class="btn-row">
       <button type="button" class="btn btn-ghost danger" id="btn-del-exp" hidden>Delete – हटवा</button>
+      <button type="button" class="btn btn-secondary" id="btn-share-exp" hidden>Share bill – वाटा</button>
       <button type="button" class="btn btn-secondary" id="btn-save-exp-next">+ Next – पुढील</button>
       <button type="button" class="btn btn-primary" id="btn-save-exp">Save – जतन</button>
     </div></div>
@@ -513,6 +515,21 @@
     <input type="hidden" id="link-ven-id">
     <div id="link-exp-list"></div>
     <div class="s-foot"><button type="button" class="btn btn-primary" id="btn-save-link">Link selected – जोडा</button></div>
+  </div>
+</div>
+
+<!-- SHARED BILL: one bill split across events, counted once (G-13) -->
+<div class="modal-ov" id="split-modal">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="split-mtitle">
+    <div class="s-handle"></div>
+    <div class="s-head"><div class="s-title" id="split-mtitle">Share bill across events – बिल वाटा</div><button type="button" class="icon-btn" data-action="close-modal" aria-label="Close"><i data-ic="x"></i></button></div>
+    <div class="ask-msg" id="split-sum"></div>
+    <div id="split-rows"></div>
+    <div class="btn-row" style="margin:var(--s2) 0 var(--s4)">
+      <button type="button" class="btn-sm" id="btn-split-add">+ Add event – कार्यक्रम</button>
+      <button type="button" class="btn-sm" id="btn-split-equal">Split equally – समान</button>
+    </div>
+    <div class="s-foot"><button type="button" class="btn btn-primary" id="btn-save-split">Save split – जतन करा</button></div>
   </div>
 </div>
 
