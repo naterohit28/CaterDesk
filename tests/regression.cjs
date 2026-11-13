@@ -207,7 +207,7 @@ await test('event menu becomes counter orders sent on WhatsApp, tracked to deliv
  assert.equal(await p.locator('#ord-ven').inputValue(),'rajiv');assert.equal(await p.locator('#ord-plates').inputValue(),'300');
  await p.locator('#ord-time').fill('19:00');await p.locator('#btn-send-ord').click();await p.waitForTimeout(300);
  const url=decodeURIComponent((await p.evaluate(()=>window.__opened))[0]);assert.match(url,/^https:\/\/wa\.me\/919876543210\?text=Namaste Rajiv Chaat! Order for Wedding:[\s\S]*19:00[\s\S]*Venue: Lawn[\s\S]*Chaat for 300 plates[\s\S]*Items: Pani Puri, Sev Puri/);
- assert.match(await p.locator('#menu-orders').innerText(),/Sent\s*· 300/);assert.match(await p.locator('#menu-orders').innerText(),/Dessert Counter\n/,'no guessed vendor for an unknown counter');
+ assert.match(await p.locator('#menu-orders').innerText(),/WhatsApp opened\s*· 300/,'opening WhatsApp is not marked as sent (v4.4.1)');assert.match(await p.locator('#menu-orders').innerText(),/Dessert Counter\n/,'no guessed vendor for an unknown counter');
  // Home shows tomorrow's delivery
  await p.locator('#n-home').click();assert.match(await p.locator('#deliveries').innerText(),/Tomorrow 19:00 · Rajiv Chaat[\s\S]*Chaat · 300 plates/);
  // Delivered opens the expense form for that counter and vendor
@@ -219,6 +219,7 @@ await test('event menu becomes counter orders sent on WhatsApp, tracked to deliv
  // Murugan has no phone: the order is saved and the app says why WhatsApp did not open
  await p.locator('[data-action="order-new"][data-id^="Dosa"]').click();await p.waitForSelector('#ord-modal.active');await p.locator('#btn-send-ord').click();await p.waitForTimeout(300);
  assert.match(await p.locator('#toast').innerText(),/no phone number/);assert.equal((await p.evaluate(()=>window.__opened)).length,1);
+ assert.equal((await db(async d=>d.getOne('events','e'))).orders.find(o=>/^Dosa/.test(o.head)).status,'prepared','saved but not sent: no phone');
 });
 await test('v3.3.1: new caterer on the go, outsourced menu, expenses by event, refresh',async()=>{
  await seed({...empty(),events:[{...ev,id:'own',name:'Own Wedding',date:'2026-12-01'},{...ev,id:'out',name:'Small Birthday',date:'2026-12-05',outsourced:true,outVenId:'kaka',guests:80}],
