@@ -104,7 +104,7 @@ async function clientSide() {
     assert(parsed.some(r => r.code === 'NonError'));
     assert(parsed.some(r => r.code === 'Other'), 'an unrecognised error type is sent as Other');
     assert(parsed.some(r => r.kind === 'handled'));
-    assert(parsed.every(r => r.release === '4.2.1' && typeof r.browser === 'string'));
+    assert(parsed.every(r => r.release === '4.2.2' && typeof r.browser === 'string'));
 
     // Turning it off again stops reports at once
     const count = sent.length;

@@ -53,12 +53,14 @@ const noRev = rows => rows.map(({ _rev, ...r }) => r).sort((a, b) => a.id.locale
   await A.p.evaluate(async ({ d, prefs }) => { const db = await import('./db.js'); await db.importAllData(d); for (const [k, v] of Object.entries(prefs)) localStorage.setItem(k, v); }, { d: DATA, prefs: PREFS });
   await A.p.reload(); await A.p.waitForSelector('#kpi .card');
   let shared;
-  await step('backup saves through the share sheet (offered as .txt when .json is not shareable, as on Android)', async () => {
+  await step('backup saves through the share menu as .txt (Android refuses .json even when canShare says yes)', async () => {
     // The share sheet opens only from a tap made after the backup is ready (Android requires a recent tap)
     await A.p.evaluate(() => {
       window.__got = null;
-      navigator.canShare = ({ files }) => files[0].type === 'text/plain';
-      navigator.share = async ({ files }) => { if (window.event?.type !== 'click') throw new DOMException('Must be handling a user gesture to perform a share request.', 'NotAllowedError'); window.__got = { name: files[0].name, type: files[0].type, text: await files[0].text() }; };
+      // As Android Chrome: canShare says yes to any file, share refuses types not on its list (.json), and only from a tap
+      navigator.canShare = ({ files }) => files.length > 0;
+      navigator.share = async ({ files }) => { if (window.event?.type !== 'click') throw new DOMException('Must be handling a user gesture to perform a share request.', 'NotAllowedError');
+        if (!/\.txt$/.test(files[0].name) || files[0].type !== 'text/plain') throw new DOMException('Permission denied', 'NotAllowedError'); window.__got = { name: files[0].name, type: files[0].type, text: await files[0].text() }; };
       window.__done = window.FF.exportData();
     });
     await A.p.waitForSelector('#ask-modal.active #ask-actions button');

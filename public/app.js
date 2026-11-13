@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.2.1';
+const APP_BUILD = '4.2.2';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -3063,12 +3063,13 @@ async function exportData() {
     file = new File([text], `caterdesk-backup-${today()}.json`, { type: 'application/json' });
   } finally { showLoading(false); }
 
-  // Android does not offer .json files to the share sheet, so the same backup is also offered as a
-  // .txt file (CaterDesk imports both). Building a backup with photos takes longer than Android allows
+  // The share menu always gets the .txt copy (same content; CaterDesk imports both). Android Chrome says it
+  // can share a .json file (canShare is true) but then refuses it with "Permission denied", because .json is
+  // not on its list of shareable file types; .txt is. Building a backup with photos takes longer than Android allows
   // between a tap and opening the share sheet, so the user picks where it goes with a fresh tap here.
   let how = 'download', refused = '';
   const asText = new File([text], `caterdesk-backup-${today()}.txt`, { type: 'text/plain' });
-  const shareable = [file, asText].find(f => navigator.canShare?.({ files: [f] }));
+  const shareable = navigator.canShare?.({ files: [asText] }) ? asText : null;
   if (shareable) {
     const size = file.size > 1048576 ? `${(file.size / 1048576).toFixed(1)} MB` : `${Math.ceil(file.size / 1024)} KB`;
     // The share menu is opened inside the Share tap itself; opening it after the sheet closes is refused on Android
