@@ -11,7 +11,7 @@ import {
 } from './db.js';
 
 import {
-  EXPENSE_HEADS, EVENT_TYPES, VENUE_TYPES, LOGISTICS, venueTypeLabel, logisticsPrompts, venueSuggestion, PAY_MODES, PERIODS, PERIOD_SHORT, MENUS, menuById, menuRate, menuCostPerPlate, costChecklist,
+  EXPENSE_HEADS, EVENT_TYPES, VENUE_TYPES, LOGISTICS, venueTypeLabel, logisticsPrompts, venueSuggestion, PAY_MODES, PERIODS, PERIOD_SHORT, MENUS, allMenus, setSavedMenus, menusForMeal, cleanSlabs, isEditedStarter, menuById, menuRate, menuCostPerPlate, costChecklist,
   uid, today, daysSince, fmtDate, fmtCurrency, esc,
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.17.1';
+const APP_BUILD = '4.18.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -290,13 +290,14 @@ function initPullToRefresh() {
 }
 
 async function loadAll() {
-  const [events, allExpenses, vendors, cPays, vPays] = await Promise.all([
+  const [events, allExpenses, vendors, cPays, vPays, menus] = await Promise.all([
     getAll('events'), getAll('expenses'), getAll('vendors'),
-    getAll('cPays'), getAll('vPays')
+    getAll('cPays'), getAll('vPays'), getAll('menus')
   ]);
+  setSavedMenus(menus);
   const expenses = allExpenses.filter(x => !x.draft);
   const drafts   = allExpenses.filter(x => x.draft).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-  D = { events, expenses, drafts, vendors, cPays, vPays };
+  D = { events, expenses, drafts, vendors, cPays, vPays, menus };
   if (typeof window !== 'undefined') window.D = D;
 }
 
@@ -1175,7 +1176,8 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
 
     ${ev.notes ? `<div class="card pad"><div class="label">Notes – नोंदी</div><div class="notes-text" data-nl>${esc(ev.notes)}</div></div>` : ''}
 
-    ${menu ? `<details class="card pad"><summary class="label" style="cursor:pointer">${tr(`${menu.name} menu · ${menu.items.length} items`, `${menu.name} मेनू · ${menu.items.length}`)}</summary>
+    ${mealMenusBlock(ev)}
+    ${menu && !MEAL_ORDER.some(m => ev.mealPlan?.[m]?.menu) ? `<details class="card pad"><summary class="label" style="cursor:pointer">${tr(`${menu.name} menu · ${menu.items.length} items`, `${menu.name} मेनू · ${menu.items.length}`)}</summary>
       <ul class="notes-text" data-nl style="margin:var(--s2) 0 0;padding-left:1.2em">${menu.items.map(i => `<li>${esc(i)}</li>`).join('')}</ul></details>` : ''}
 
     ${menuOrdersCard(ev)}
@@ -1872,9 +1874,11 @@ function quoteText(ev, q) {
   for (const l of t.lines) {
     // Rates hidden: each line shows its amount only (no guest count or per-plate rate)
     const mealName = l.kind === 'meal' ? MEALS[l.meal] + (l.menu && menuById(l.menu) ? ` (${menuById(l.menu).name} menu)` : '') : '';
+    const dishes = l.kind === 'meal' && q.showItems && l.menu ? (menuById(l.menu)?.items || []) : [];
     if (l.kind === 'meal') L.push(q.showRates !== false ? `${mealName}: ${l.guests} guests × ${fmtCurrency(l.rate)} = ${fmtCurrency(l.total)}` : `${mealName}: ${fmtCurrency(l.total)}`);
     else if (l.kind === 'item') L.push(`${l.label}: ${fmtCurrency(l.amt)}`);
     else L.push(`${l.label}: −${fmtCurrency(l.amt)}`);
+    for (const d of dishes) L.push(`  • ${d}`);
   }
   if (t.gstP) L.push('', `Subtotal: ${fmtCurrency(t.total)}`, `GST @ ${q.gst.rate}% on ${fmtCurrency(q.gst.taxable)}: ${fmtCurrency(t.gst)}`, `Total: ${fmtCurrency(t.grand)}`);
   else L.push('', `Total: ${fmtCurrency(t.total)} (before any applicable GST)`);
@@ -1918,6 +1922,7 @@ function renderQuote() {
         ${cur.gst ? '' : `<button type="button" class="btn-sm" data-gst-add>+ ${tr('GST', 'जीएसटी')}</button>`}
       </div>
       <label class="check-row"><input type="checkbox" id="quote-rates"${cur.showRates !== false ? ' checked' : ''}><span>${tr('Show per-plate rates to the client', 'ग्राहकाला प्रति ताट दर दाखवा')}</span></label>
+      ${cur.lines.some(l => l.kind === 'meal' && l.menu) ? `<label class="check-row"><input type="checkbox" id="quote-items"${cur.showItems ? ' checked' : ''}><span>${tr('List each menu\'s dishes for the client', 'मेनूचे पदार्थ दाखवा')}</span></label>` : ''}
       <div class="field"><label for="quote-terms">${tr('Terms / note for the client', 'अटी / टीप')}</label><textarea id="quote-terms" maxlength="2000" placeholder="e.g. 50% advance to confirm; valid for 15 days">${esc(cur.terms || '')}</textarea></div>
       <div id="quote-total">${quoteTotalsHtml(cur)}</div>
       <div class="btn-row" style="margin-top:var(--s3)">
@@ -1955,6 +1960,7 @@ function quoteTotalsHtml(qt) {
 function readQuoteForm() {
   if (!quoteDraft) return;
   quoteDraft.showRates = q('quote-rates')?.checked !== false;
+  if (q('quote-items')) quoteDraft.showItems = q('quote-items').checked;
   quoteDraft.terms = q('quote-terms')?.value || '';
 }
 async function saveQuotes(mutate, extra = {}) {
@@ -2021,6 +2027,86 @@ async function quoteAction(action) {
     if (!t.gstP && ev.gst) await patchEvent(ev.id, {}, ['gst']);
     closeModals(); refreshCurrent(); showToast(`Quote v${cur.v} accepted · bill ${fmtCurrency(to)} – मान्य`);
   }
+}
+
+
+/* ── MENU LIBRARY ── */
+/* Your menus: start from the starter menus, change any of them, add your own, hide what you don't use. Each menu
+   says which meals it suits, its price per plate by guest count, and its dishes. */
+let menuEditBase = null, menuEditMeals = [], menuEditSlabs = [];
+function openMenus() { renderMenus(); openSheet('menus-modal'); }
+const slabText = m => (m.slabs || []).map(s => `${fmtCurrency(s.rate)}${s.min > 1 ? ` (${s.min}+)` : ''}`).join(' · ');
+function renderMenus() {
+  const list = allMenus({ hidden: true }), shown = list.filter(m => !m.hidden), hidden = list.filter(m => m.hidden);
+  const row = m => `<div class="row" role="button" tabindex="0" data-menu-edit="${esc(m.id)}">
+      <div class="row-ic">${icon('clipboard', 18)}</div>
+      <div class="row-body"><div class="title-sm trunc" data-nl>${esc(m.name)}</div>
+        <div class="meta trunc">${(m.items || []).length} ${tr('dishes', 'पदार्थ')}${(m.meals || []).length ? ' · ' + (m.meals || []).map(x => MEALS[x]).join(', ') : ''}${m.leaf ? ' · ' + tr('banana leaf', 'केळीचे पान') : ''}</div>
+        ${(m.slabs || []).length > 1 ? `<div class="meta trunc">${esc(slabText(m))}</div>` : ''}</div>
+      <div class="row-end"><div class="amt-sm">${(m.slabs || []).length > 1 ? tr('from ', 'पासून ') : ''}${fmtCurrency(Math.min(...(m.slabs || [{ rate: 0 }]).map(x => x.rate)))}</div><div class="meta">${tr('per plate', 'प्रति ताट')}</div></div></div>`;
+  q('menus-body').innerHTML = `<div class="card list">${shown.map(row).join('') || `<div class="list-empty">${tr('No menus', 'मेनू नाहीत')}</div>`}</div>
+    ${hidden.length ? `<div class="sec"><span class="sec-title">${tr('Hidden', 'लपवलेले')}</span></div><div class="card list">${hidden.map(row).join('')}</div>` : ''}`;
+}
+function openMenuEdit(id, { copyOf = null } = {}) {
+  const src = copyOf ? menuById(copyOf) : id ? menuById(id) : null;
+  menuEditBase = id ? (D.menus || []).find(m => m.id === id) || null : null;
+  q('me-id').value = copyOf ? '' : id || '';
+  q('me-name').value = src ? (copyOf ? `${src.name} (copy)` : src.name) : '';
+  menuEditMeals = [...(src?.meals || [])];
+  menuEditSlabs = src ? src.slabs.map(s => ({ min: s.min, rate: s.rate })) : [{ min: 1, rate: '' }];
+  q('me-leaf').checked = !!src?.leaf;
+  q('me-items').value = (src?.items || []).join('\n');
+  q('me-mtitle').textContent = copyOf ? 'Copy menu – मेनू प्रत' : id ? 'Edit menu – मेनू बदला' : 'New menu – नवीन मेनू';
+  const editing = !!id && !copyOf, starter = editing && allMenus({ hidden: true }).find(m => m.id === id)?.starter;
+  q('btn-me-copy').hidden = !editing;
+  q('btn-me-hide').hidden = !editing; q('btn-me-hide').textContent = menuById(id)?.hidden ? 'Show again – पुन्हा दाखवा' : 'Hide – लपवा';
+  q('btn-me-reset').hidden = !(editing && starter && isEditedStarter(id));
+  renderMenuEdit(); clearFieldErrors();
+  closeOverlay().then(() => openSheet('menu-edit-modal'));
+}
+function renderMenuEdit() {
+  q('me-meals').innerHTML = Object.entries(MEALS).map(([k, v]) => `<button type="button" class="f-chip" data-me-meal="${k}" aria-pressed="${menuEditMeals.includes(k)}">${v}</button>`).join('');
+  q('me-slabs').innerHTML = `<div class="q-head me-head" aria-hidden="true"><span>${tr('From guests', 'पाहुण्यांपासून')}</span><span>${tr('₹ / plate', '₹ / ताट')}</span><span></span></div>`
+    + menuEditSlabs.map((s, i) => `<div class="me-slab" data-ms="${i}">
+      <div class="field" style="margin:0"><input type="number" data-k="min" min="0" inputmode="numeric" aria-label="From guests" value="${s.min ?? ''}"></div>
+      <div class="field" style="margin:0"><input type="number" data-k="rate" min="0" inputmode="decimal" aria-label="Rate per plate" placeholder="₹" value="${s.rate ?? ''}"></div>
+      ${menuEditSlabs.length > 1 ? `<button type="button" class="icon-btn" data-ms-del="${i}" aria-label="Remove price">${icon('x', 16)}</button>` : '<span></span>'}</div>`).join('');
+}
+async function saveMenuEdit() {
+  const id = qv('me-id'), name = qv('me-name').trim(), slabs = cleanSlabs(menuEditSlabs);
+  const items = qv('me-items').split('\n').map(s => s.trim()).filter(Boolean).slice(0, 120);
+  const errs = {};
+  if (!name) errs['me-name'] = 'Give the menu a name – नाव लिहा';
+  if (!slabs.length) errs['me-slabs-err'] = 'Add a price per plate – दर लिहा';
+  if (allMenus({ hidden: true }).some(m => m.id !== id && m.name.trim().toLowerCase() === name.toLowerCase())) errs['me-name'] = 'Another menu has this name – हे नाव आधीच आहे';
+  if (Object.keys(errs).length) { showFieldErrors(errs); return; }
+  const prev = id ? menuById(id) : null;
+  const rec = { id: id || uid('MN'), name: name.slice(0, 80), meals: MEAL_ORDER.filter(m => menuEditMeals.includes(m)), slabs, items, ...(q('me-leaf').checked ? { leaf: true } : {}), ...(prev?.hidden ? { hidden: true } : {}) };
+  try { await putChecked('menus', rec, menuEditBase); } catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
+  await loadAll(); closeModals(); showToast(`${rec.name} saved – मेनू जतन`); refreshCurrent();
+  openMenus();
+}
+async function menuHide() {
+  const id = qv('me-id'), cur = menuById(id); if (!cur) return;
+  const { starter, ...base } = cur;
+  const rec = { ...base, id }; delete rec._rev;
+  if (cur.hidden) delete rec.hidden; else rec.hidden = true;
+  try { await putChecked('menus', rec, menuEditBase); } catch (e) { showToast(e.message || 'Could not save.', 'error'); return; }
+  await loadAll(); closeModals(); showToast(rec.hidden ? `${rec.name} hidden; events that use it keep it – लपवले` : `${rec.name} shown again – पुन्हा दाखवले`); refreshCurrent(); openMenus();
+}
+async function menuReset() {
+  const id = qv('me-id'); if (!menuEditBase) return;
+  const ok = await askSheet({ title: 'Back to the starter menu? – मूळ मेनू?', message: 'Your changes to this starter menu (name, prices, dishes) are removed; events that use it keep their own prices.', actions: [{ label: 'Reset – मूळ करा', value: true, style: 'btn-primary' }] });
+  if (!ok) return;
+  try { await commitChanges([{ store: 'menus', id, expected: menuEditBase }], {}); } catch (e) { showToast(e.message || 'Could not reset.', 'error'); return; }
+  await loadAll(); closeModals(); refreshCurrent(); openMenus();
+}
+// The dishes of each meal's menu, folded under the meal table on the event page
+function mealMenusBlock(ev) {
+  const rows = MEAL_ORDER.filter(m => ev.mealPlan?.[m]?.menu && menuById(ev.mealPlan[m].menu)?.items?.length);
+  return rows.map(m => { const mn = menuById(ev.mealPlan[m].menu);
+    return `<details class="card pad meal-menu" data-meal-menu="${m}"><summary class="label" style="cursor:pointer">${tr(`${MEALS[m]} · ${mn.name} menu · ${mn.items.length} dishes`, `${MEALS[m]} · ${mn.name} · ${mn.items.length} पदार्थ`)}</summary>
+      <ul class="notes-text" data-nl style="margin:var(--s2) 0 0;padding-left:1.2em">${mn.items.map(i => `<li>${esc(i)}</li>`).join('')}</ul></details>`; }).join('');
 }
 
 function openSettle() { renderSettle(); openSheet('settle-modal'); }
@@ -3033,7 +3119,7 @@ function openEvModal(id) {
   mpAuto = '';
   renderMealPlan(ev?.mealPlan || {});
   q('ev-mp').open = !!(ev?.mealPlan && Object.keys(ev.mealPlan).length);
-  const menuOpts = leaf => MENUS.filter(m => !!m.leaf === leaf).map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('');
+  const menuOpts = leaf => allMenus().filter(m => !!m.leaf === leaf || m.id === ev?.menu && !!m.leaf === leaf).map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('');
   q('ev-menu').innerHTML = '<option value="">No package – पॅकेज नाही</option>'
     + `<optgroup label="Buffet – बुफे">${menuOpts(false)}</optgroup><optgroup label="Banana leaf – केळीचे पान">${menuOpts(true)}</optgroup>`;
   q('ev-menu').value = menuById(ev?.menu) ? ev.menu : '';
@@ -3148,16 +3234,32 @@ function readMealPlan() {
   });
   return plan;
 }
+// A meal's menu choices: menus marked for that meal first, then general ones, then the rest (a hidden menu already chosen stays)
+function mealMenuOptions(meal, sel) {
+  const g = menusForMeal(meal), opt = x => `<option value="${esc(x.id)}"${x.id === sel ? ' selected' : ''}>${esc(x.name)}</option>`;
+  const kept = sel && !allMenus().some(x => x.id === sel) && menuById(sel) ? opt(menuById(sel)) : '';
+  return kept + (g.suited.length ? `<optgroup label="For ${MEALS[meal]}">${g.suited.map(opt).join('')}</optgroup>` : '')
+    + (g.general.length ? `<optgroup label="${g.suited.length ? 'Any meal' : 'Menus'}">${g.general.map(opt).join('')}</optgroup>` : '')
+    + (g.other.length ? `<optgroup label="Other meals">${g.other.map(opt).join('')}</optgroup>` : '');
+}
 function renderMealPlan(values) {
   const meals = MEAL_ORDER.filter(m => evMeals().includes(m));
   q('ev-mp').hidden = !meals.length;
+  q('ev-menu').closest('.field').hidden = !!meals.length;   // with meals, each meal has its own menu
+  if (meals.length) q('ev-menu-hint').hidden = true;
   // One row per meal: its own menu, guests and rate (a day can have breakfast, lunch, high tea, dinner, late night)
   q('ev-mp-rows').innerHTML = `<div class="q-head mp-head" aria-hidden="true"><span>${tr('Meal · menu', 'जेवण · मेनू')}</span><span>${tr('Guests', 'पाहुणे')}</span><span>${tr('₹ / plate', '₹ / ताट')}</span></div>`
     + meals.map(m => `<div class="mp-row" data-mp="${m}"><div class="mp-name">${MEALS[m]}</div>
-    <div class="field" style="margin:0"><select id="ev-mp-${m}-m" data-k="menu" aria-label="${MEALS[m]} menu"><option value="">No menu – मेनू नाही</option>${MENUS.map(x => `<option value="${x.id}"${values[m]?.menu === x.id ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select></div>
+    <div class="field" style="margin:0"><select id="ev-mp-${m}-m" data-k="menu" aria-label="${MEALS[m]} menu"><option value="">No menu – मेनू नाही</option>${mealMenuOptions(m, values[m]?.menu)}</select></div>
     <div class="field" style="margin:0"><input type="number" id="ev-mp-${m}-g" data-k="guests" min="0" inputmode="numeric" aria-label="${MEALS[m]} guests" placeholder="${esc(qv('ev-guests') || '0')}" value="${values[m]?.guests || ''}"></div>
     <div class="field" style="margin:0"><input type="number" id="ev-mp-${m}-r" data-k="rate" min="0" inputmode="decimal" aria-label="${MEALS[m]} rate per plate" placeholder="0" value="${values[m]?.rate || ''}"></div></div>`).join('');
   updateMealPlan();
+}
+// The event's main menu (used for costing comparisons): the menu of its biggest priced meal
+function mainMealMenu() {
+  const plan = mealPlanFields(MEAL_ORDER.filter(m => evMeals().includes(m)));
+  const best = Object.entries(plan).filter(([, v]) => v.menu).sort((a, b) => b[1].guests * b[1].rate - a[1].guests * a[1].rate)[0];
+  return best ? best[1].menu : '';
 }
 // Only meals still ticked, with both guests and a rate, are kept
 function mealPlanFields(meals) {
@@ -3383,14 +3485,14 @@ async function saveEvent() {
     mobile:   data.mobile,
     guests:   data.guests,
     budget:   data.budget,
-    menu:     qv('ev-menu'),
+    menu:     mainMealMenu() || qv('ev-menu'),
     ...(out ? { outsourced: true, outVenId } : {}),
     notes:    qv('ev-notes'),
     photoIds: base?.photoIds || [],
     _v: 2
   }, [...(meals.length ? [] : ['meals']), ...(out ? [] : ['outsourced', 'outVenId']), ...emptyVenueFields(), ...(Object.keys(mealPlanFields(meals)).length ? [] : ['mealPlan']),
       // Older events keep their shape: an empty mobile or budget, or the format marker, is not added to them
-      ...['mobile', 'notes', 'menu'].filter(k => !(base && k in base) && !{ mobile: data.mobile, notes: qv('ev-notes'), menu: qv('ev-menu') }[k]),
+      ...['mobile', 'notes', 'menu'].filter(k => !(base && k in base) && !{ mobile: data.mobile, notes: qv('ev-notes'), menu: mainMealMenu() || qv('ev-menu') }[k]),
       ...(!(Number(data.budget) > 0) && !(base && 'budget' in base) ? ['budget'] : []),
       ...(base && !('_v' in base) ? ['_v'] : [])]);
 
@@ -4505,6 +4607,18 @@ function bindAllEvents() {
   q('btn-save-vpay').addEventListener('click', () => runSave('vpay', saveVPay));
   q('btn-del-vpay').addEventListener('click', () => deleteFromSheet('vPays', 'vpay-id'));
   q('vpay-kind').addEventListener('click', e => { const b = e.target.closest('[data-kind]'); if (b) setVPayKind(b.dataset.kind); });
+  q('open-menus').addEventListener('click', () => closeOverlay().then(openMenus));
+  q('btn-menu-new').addEventListener('click', () => openMenuEdit(null));
+  q('menus-body').addEventListener('click', e => { const r = e.target.closest('[data-menu-edit]'); if (r) openMenuEdit(r.dataset.menuEdit); });
+  q('me-meals').addEventListener('click', e => { const b = e.target.closest('[data-me-meal]'); if (!b) return; const k = b.dataset.meMeal;
+    menuEditMeals = menuEditMeals.includes(k) ? menuEditMeals.filter(x => x !== k) : [...menuEditMeals, k]; b.setAttribute('aria-pressed', String(menuEditMeals.includes(k))); });
+  q('me-slabs').addEventListener('input', e => { const r = e.target.closest('[data-ms]'); if (r) menuEditSlabs[Number(r.dataset.ms)][e.target.dataset.k] = e.target.value; });
+  q('me-slabs').addEventListener('click', e => { const d = e.target.closest('[data-ms-del]'); if (d) { menuEditSlabs.splice(Number(d.dataset.msDel), 1); renderMenuEdit(); } });
+  q('btn-me-slab').addEventListener('click', () => { const last = menuEditSlabs.at(-1); menuEditSlabs.push({ min: (Number(last?.min) || 0) + 100, rate: '' }); renderMenuEdit(); });
+  q('btn-me-save').addEventListener('click', () => runSave('menuedit', saveMenuEdit));
+  q('btn-me-copy').addEventListener('click', () => openMenuEdit(null, { copyOf: qv('me-id') }));
+  q('btn-me-hide').addEventListener('click', menuHide);
+  q('btn-me-reset').addEventListener('click', menuReset);
   q('btn-save-link').addEventListener('click', () => runSave('link', saveLinkExpenses));
 
   // Settings panel / FAB

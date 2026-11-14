@@ -104,6 +104,10 @@
     </div>
 
     <div class="d-group">
+      <button type="button" class="d-item" id="open-menus"><i data-ic="clipboard"></i>Menus – मेनू</button>
+    </div>
+
+    <div class="d-group">
       <p class="meta">Records are saved on this device. Keep a backup outside your phone; clearing browser data can remove records.</p><span class="label">Backup – बॅकअप <span class="meta" id="backup-meta" data-nl></span></span>
       <button type="button" class="d-item" id="btn-export"><i data-ic="upload"></i>Share / save backup – बॅकअप पाठवा</button>
       <button type="button" class="d-item" id="btn-import"><i data-ic="download"></i>Import backup – आयात</button>
@@ -533,6 +537,36 @@
     <div class="s-head"><div class="s-title" id="count-mtitle">Guest count – पाहुणे मोजणी</div><button type="button" class="icon-btn" data-action="close-modal" aria-label="Close"><i data-ic="x"></i></button></div>
     <div class="chips-row" id="count-meals" role="group" aria-label="Meal" style="margin:0 0 var(--s3);padding:0;flex-wrap:wrap"></div>
     <div id="count-body"></div>
+  </div>
+</div>
+
+<!-- MENU LIBRARY: your menus (starter menus, your edits, your own) -->
+<div class="modal-ov" id="menus-modal">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="menus-mtitle">
+    <div class="s-handle"></div>
+    <div class="s-head"><div class="s-title" id="menus-mtitle">Menus – मेनू</div><button type="button" class="icon-btn" data-action="close-modal" aria-label="Close"><i data-ic="x"></i></button></div>
+    <div id="menus-body"></div>
+    <div class="s-foot"><button type="button" class="btn btn-primary" id="btn-menu-new">+ New menu – नवीन मेनू</button></div>
+  </div>
+</div>
+<div class="modal-ov" id="menu-edit-modal">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="me-mtitle">
+    <div class="s-handle"></div>
+    <div class="s-head"><div class="s-title" id="me-mtitle">Menu – मेनू</div><button type="button" class="icon-btn" data-action="close-modal" aria-label="Close"><i data-ic="x"></i></button></div>
+    <input type="hidden" id="me-id">
+    <div class="field"><label for="me-name">Menu name – नाव <span class="req">*</span></label><input type="text" id="me-name" maxlength="80" placeholder="e.g. Wedding Gold" autocomplete="off"></div>
+    <div class="field"><label>For meals – कोणत्या जेवणासाठी</label><div class="chips-row" id="me-meals" style="margin:0;padding:0;flex-wrap:wrap"></div>
+      <div class="meta" style="margin-top:6px">Leave all off if it suits any meal.</div></div>
+    <div class="field"><label>Price per plate – प्रति ताट दर <span class="req">*</span></label><div id="me-slabs"></div><div class="field-error" id="me-slabs-err" hidden></div>
+      <button type="button" class="btn-sm" id="btn-me-slab" style="margin-top:4px">+ Price for more guests – जास्त पाहुण्यांचा दर</button></div>
+    <label class="check-row"><input type="checkbox" id="me-leaf"><span>Banana leaf service – केळीचे पान</span></label>
+    <div class="field"><label for="me-items">Dishes – पदार्थ (one per line)</label><textarea id="me-items" rows="8" maxlength="12000" placeholder="Welcome drink&#10;2 Starters&#10;Paneer Butter Masala&#10;Jeera Rice, Dal&#10;Gulab Jamun"></textarea></div>
+    <div class="btn-row" style="margin-bottom:var(--s2)">
+      <button type="button" class="btn btn-secondary" id="btn-me-copy" hidden>Make a copy – प्रत</button>
+      <button type="button" class="btn btn-secondary" id="btn-me-hide" hidden>Hide – लपवा</button>
+    </div>
+    <button type="button" class="btn-sm" id="btn-me-reset" hidden style="margin-bottom:var(--s3)">Back to the starter menu – मूळ मेनू</button>
+    <div class="s-foot"><button type="button" class="btn btn-primary" id="btn-me-save">Save menu – जतन करा</button></div>
   </div>
 </div>
 

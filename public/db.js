@@ -6,8 +6,8 @@
  */
 
 const DB_NAME    = 'FlavorFusionDB';
-const DB_VERSION = 4;   // v3: photos indexed by eventId · v4: bill photos indexed by expenseId
-const STORES     = ['events','expenses','vendors','cPays','vPays','photos','meta'];
+const DB_VERSION = 5;   // v3: photos indexed by eventId · v4: bill photos indexed by expenseId · v5: menu library
+const STORES     = ['events','expenses','vendors','cPays','vPays','photos','menus','meta'];
 
 let _db = null;
 let _opening = null;
@@ -391,14 +391,17 @@ export async function exportAllData() {
   return result;
 }
 
-const DATA_STORES = ['events', 'expenses', 'vendors', 'cPays', 'vPays', 'photos'];
+const DATA_STORES = ['events', 'expenses', 'vendors', 'cPays', 'vPays', 'photos', 'menus'];
+// Backups made before the menu library have no `menus`; their check covers the six original stores
+const BASE_STORES = DATA_STORES.filter(s => s !== 'menus');
+const checkedStores = m => m?.counts && 'menus' in m.counts ? DATA_STORES : BASE_STORES;
 
 /* Backup manifest (v5 backup format, manifest 1). The file keeps the legacy `version: 'ffv2'` layout so
    older app versions can still read it; the manifest adds a record count per store and a SHA-256 of
    all records, so a damaged, cut-off or edited file is caught before anything is imported. */
-const MANIFEST_FORMAT = 'caterdesk-backup', MANIFEST_VERSION = 1;
-async function digest(payload) {
-  const bytes = new TextEncoder().encode(JSON.stringify(DATA_STORES.map(name => payload[name] || [])));
+const MANIFEST_FORMAT = 'caterdesk-backup', MANIFEST_VERSION = 2;   // 2: menus included
+async function digest(payload, stores = DATA_STORES) {
+  const bytes = new TextEncoder().encode(JSON.stringify(stores.map(name => payload[name] || [])));
   return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(b => b.toString(16).padStart(2, '0')).join('');
 }
 async function backupManifest(payload) {
@@ -419,7 +422,8 @@ export async function inspectBackup(payload) {
     throw new Error('This backup is damaged (its check information is unreadable). Your data was not changed. Try another copy.');
   if (m.formatVersion > MANIFEST_VERSION)
     throw new Error('This backup was made by a newer CaterDesk. Update the app (Settings → Check for app updates), then import it again. Your data was not changed.');
-  const damaged = DATA_STORES.some(name => !Array.isArray(payload[name]) || m.counts?.[name] !== payload[name].length) || m.sha256 !== await digest(payload);
+  const stores = checkedStores(m);
+  const damaged = stores.some(name => !Array.isArray(payload[name]) || m.counts?.[name] !== payload[name].length) || m.sha256 !== await digest(payload, stores);
   if (damaged) throw new Error('This backup is damaged or incomplete: it does not match its own check. Your data was not changed. Try another copy of the backup.');
   return { ...info, verified: true };
 }
@@ -435,7 +439,7 @@ export async function prepareImport(payload) {
   if (!payload || !['ffv2', 'ffv5'].includes(payload.version)) throw new Error('Unsupported backup version');
   const copy = structuredClone(payload);
   for (const name of DATA_STORES) {
-    if (name === 'photos' && copy[name] === undefined) copy[name] = [];
+    if (['photos', 'menus'].includes(name) && copy[name] === undefined) copy[name] = [];
     if (!Array.isArray(copy[name])) throw new Error('Missing or invalid field: ' + name);
     const seen = new Set();
     for (const row of copy[name]) {
@@ -481,6 +485,11 @@ export async function prepareImport(payload) {
         || [qt.terms, qt.text, qt.by].some(x => x !== undefined && (typeof x !== 'string' || x.length > 5000))
         || (qt.evidence !== undefined && !['written', 'verbal'].includes(qt.evidence)) || (qt.option !== undefined && !/^[A-H]$/.test(qt.option)))
         || new Set(row.quotes.map(qt => qt.v)).size !== row.quotes.length)) throw new Error('Invalid quote');
+      if (name === 'menus' && (typeof row.name !== 'string' || !row.name.trim() || row.name.length > 80
+        || (row.meals !== undefined && (!Array.isArray(row.meals) || row.meals.some(m => !['breakfast', 'lunch', 'hightea', 'dinner', 'latenight'].includes(m))))
+        || !Array.isArray(row.slabs) || !row.slabs.length || row.slabs.length > 10 || row.slabs.some(s => !s || !Number.isSafeInteger(s.min) || s.min < 0 || (amount(s.rate, 'menu rate'), false))
+        || !Array.isArray(row.items) || row.items.length > 120 || row.items.some(i => typeof i !== 'string' || i.length > 200)
+        || (row.hidden !== undefined && typeof row.hidden !== 'boolean') || (row.leaf !== undefined && typeof row.leaf !== 'boolean'))) throw new Error('Invalid menu');
       if (row.gst !== undefined && (!row.gst || !(Number(row.gst.rate) > 0 && Number(row.gst.rate) <= 100) || (amount(row.gst.taxable, 'GST taxable amount'), amount(row.gst.amount, 'GST'), false)
         || (row.gst.from !== undefined && typeof row.gst.from !== 'string'))) throw new Error('Invalid GST');
       if (row.quotes?.some(qt => qt.gst !== undefined && (!qt.gst || !(Number(qt.gst.rate) > 0 && Number(qt.gst.rate) <= 100) || (amount(qt.gst.taxable, 'GST taxable amount'), false)))) throw new Error('Invalid quote');
@@ -567,7 +576,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.17.1';
+export const APP_VERSION = '4.18.0';
 const COUNT_METHOD_IDS = ['tokens', 'tally', 'gate', 'coupons', 'joint', 'other'];
 export async function checkAndMigrate() {
   await openDB();
