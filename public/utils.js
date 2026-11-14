@@ -772,6 +772,66 @@ export function deliveredWithoutBill(ev, expenses) {
     && !expenses.some(x => !x.draft && (x.order === o.id || (x.evId === ev.id && x.venId === o.venId))));
 }
 
+
+/* ── LEARNING FROM YOUR PAST EVENTS (spec §12.1, G-22) ── */
+/* Suggestions for an event, worked out each time from your own records – nothing is stored but the "Ignore" choices.
+   Only reconciled events count (their costs are known to be complete); each suggestion carries its sources (which
+   events, how many, the date range). With fewer than 2 comparable events it says so instead of guessing. */
+const median = xs => { const s = [...xs].sort((a, b) => a - b), m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const normVenue = v => String(v || '').toLowerCase().replace(/[^a-z0-9ऀ-ॿ]+/g, ' ').trim();
+export const eventGuests = ev => Number(ev.guests) || Math.max(0, ...Object.values(ev.mealPlan || {}).map(m => Number(m.guests) || 0));
+function sources(list) {
+  const ds = list.map(e => e.date).filter(Boolean).sort();
+  return { n: list.length, from: ds[0] || '', to: ds.at(-1) || '', ids: list.map(e => e.id), names: [...list].sort((a, b) => (b.date || '').localeCompare(a.date || '')).map(e => e.name) };
+}
+export function pastSuggestions(ev, events, expenses) {
+  const done = reconciledIds(events, expenses);
+  const pool = events.filter(e => e.id !== ev.id && done.has(e.id) && !e.outsourced);
+  const costOf = id => expenses.filter(x => x.evId === id && !x.draft).reduce((s, x) => s + toPaise(x.amt), 0) / 100;
+  const out = [], guests = eventGuests(ev);
+  // 1–2: comparable events – same menu, else same type; a similar size (half to double the guests)
+  const sized = e => { const g = eventGuests(e); return g > 0 && (!guests || (g >= guests / 2 && g <= guests * 2)); };
+  let basis = 'menu', comps = ev.menu ? pool.filter(e => e.menu === ev.menu && sized(e)) : [];
+  if (comps.length < 2) { basis = 'type'; comps = pool.filter(e => e.type === ev.type && sized(e)); }
+  if (comps.length >= 2) {
+    const cpp = comps.map(e => costOf(e.id) / eventGuests(e)), bpp = comps.map(e => Number(e.billing) / eventGuests(e));
+    const margins = comps.filter(e => e.billing > 0).map(e => (e.billing - costOf(e.id)) / e.billing * 100);
+    const perPlate = Math.round(median(cpp));
+    out.push({ key: 'cost', kind: 'cost', basis, perPlate, total: guests ? perPlate * guests : 0, src: sources(comps) });
+    out.push({ key: 'price', kind: 'price', basis, perPlate: Math.round(median(bpp)), margin: margins.length ? Math.round(median(margins)) : null, src: sources(comps) });
+  } else out.push({ key: 'cost', kind: 'insufficient', basis: ev.menu ? 'menu' : 'type', n: comps.length });
+  // 3: who usually does each counter on this event, and what they charged per plate ordered
+  const heads = [...new Set([...(ev.dishes || []).map(d => d.head), ...(ev.orders || []).map(o => o.head)].filter(Boolean))];
+  for (const h of heads) {
+    const uses = new Map();
+    for (const e of pool) for (const x of expenses) {
+      if (x.evId !== e.id || x.head !== h || !x.venId || x.draft) continue;
+      const plates = (e.orders || []).filter(o => o.head === h && o.venId === x.venId && o.status !== 'cancelled').reduce((s, o) => s + (Number(o.plates) || 0), 0);
+      const u = uses.get(x.venId) || { venId: x.venId, events: new Map(), rates: [] };
+      u.events.set(e.id, e); if (plates > 0) u.rates.push(Number(x.amt) / plates); uses.set(x.venId, u);
+    }
+    const best = [...uses.values()].sort((a, b) => b.events.size - a.events.size || [...b.events.values()].map(e => e.date).sort().at(-1).localeCompare([...a.events.values()].map(e => e.date).sort().at(-1)))[0];
+    if (best) out.push({ key: 'counter:' + h, kind: 'counter', head: h, venId: best.venId, perPlate: best.rates.length ? Math.round(median(best.rates)) : null, src: sources([...best.events.values()]) });
+  }
+  // 4: labour rates by role, the most recent reconciled rate (with how many events used that role)
+  const roles = new Map();
+  for (const e of [...pool].sort((a, b) => (a.date || '').localeCompare(b.date || ''))) for (const r of e.labour?.rows || []) {
+    if (!r.role || !(Number(r.rate) > 0)) continue;
+    const x = roles.get(r.role) || { role: r.role, events: [] }; x.rate = Number(r.rate); x.events.push(e); roles.set(r.role, x);
+  }
+  if (roles.size) out.push({ key: 'labour', kind: 'labour', roles: [...roles.values()].map(x => ({ role: x.role, rate: x.rate, n: x.events.length, last: x.events.at(-1).date })), src: sources([...new Map([...roles.values()].flatMap(x => x.events).map(e => [e.id, e])).values()]) });
+  // 5: charges at the same venue before (generator, cleaning, royalty…)
+  const v = normVenue(ev.venue), same = v ? pool.filter(e => normVenue(e.venue) === v) : [];
+  if (same.length) {
+    const byHead = new Map();
+    for (const e of same) for (const x of expenses) if (x.evId === e.id && !x.draft && (x.logi || x.cat === 'Operations')) {
+      const k = x.head || x.cat, a = byHead.get(k) || { head: k, amts: [], events: new Set() }; a.amts.push(Number(x.amt)); a.events.add(e.id); byHead.set(k, a); }
+    if (byHead.size) out.push({ key: 'venue', kind: 'venue', charges: [...byHead.values()].map(a => ({ head: a.head, amt: Math.round(median(a.amts)), n: a.events.size })), src: sources(same) });
+  }
+  const hidden = new Set(ev.hiddenTips || []);
+  return out.filter(s => !hidden.has(s.key));
+}
+
 /* ── BOOKS CHECK (spec §10, Phase 4 exit gate) ── */
 /* The owner's one-look check that the money adds up, all time: every bill rupee sits on exactly one event or in
    common stock; every shared bill's parts add up to it; what vendors are owed and what clients owe, with
