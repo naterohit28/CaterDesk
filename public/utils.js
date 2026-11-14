@@ -1077,17 +1077,41 @@ export function dishCounter(name, learned) {
   return '';
 }
 
-// Pasted menu text (WhatsApp message, Google Lens copy, a typed list) → dish names
+// A meal heading in pasted text ("Lunch", "Dinner menu:", "Hi-tea –") → its meal key, else ''
+const MEAL_WORDS = [['breakfast', /^(breakfast|nashta|नाश्ता)$/], ['lunch', /^lunch$/], ['hightea', /^(high|hi)[ -]?tea$/],
+  ['dinner', /^dinner$/], ['latenight', /^(late[ -]?night|midnight)( snacks?)?$/]];
+export function mealHeading(text) {
+  const t = String(text || '').toLowerCase().replace(/[\s:\-–—]+$/, '').replace(/\s+menu$/, '').replace(/\s+/g, ' ').trim();
+  return (MEAL_WORDS.find(([, re]) => re.test(t)) || [''])[0];
+}
+/* Pasted menu text (WhatsApp message, Google Lens copy, a typed list) → dishes, each with the meal whose heading it
+   follows ('' before any heading). The same dish may be served at two meals, so a repeat is dropped only within the
+   same meal. "Lunch: Jeera Rice, Dal" and a "Dinner" line on its own both count as headings. */
 export function parseMenu(text) {
   const seen = new Set(), out = [];
+  let meal = '';
   for (let line of String(text || '').split(/\n|,|;|•|·|\|/)) {
     line = line.replace(/^\s*(\d+[.)]|[-*–>]+)\s*/, '').replace(/\s+/g, ' ').trim();
-    if (/:./.test(line)) line = line.slice(line.lastIndexOf(':') + 1).trim();   // "Welcome drink: Mango mojito
+    const m = mealHeading(line);
+    if (m) { meal = m; continue; }
+    if (/:./.test(line)) {
+      const lead = mealHeading(line.slice(0, line.indexOf(':')));
+      if (lead) meal = lead;
+      line = line.slice(line.lastIndexOf(':') + 1).trim();   // "Welcome drink: Mango mojito"
+    }
     if (line.length < 2 || line.length > 60 || line.endsWith(':')) continue;
-    const k = dishKey(line);
-    if (!seen.has(k)) { seen.add(k); out.push(line); }
+    const k = meal + '|' + dishKey(line);
+    if (!seen.has(k)) { seen.add(k); out.push({ name: line, meal }); }
   }
   return out;
+}
+// Dishes back to editable text: dishes for every meal first, then each meal's dishes under its own heading
+export function menuText(dishes, meals, names) {
+  // A dish for a meal the event no longer has is listed with the dishes for every meal, never left out
+  const own = m => dishes.filter(d => (meals.includes(d.meal) ? d.meal : '') === m).map(d => d.name);
+  const parts = [own('')];
+  for (const m of meals) if (own(m).length) parts.push([`${names[m] || m}:`, ...own(m)]);
+  return parts.filter(p => p.length).map(p => p.join('\n')).join('\n\n');
 }
 
 /* The vendors store also holds people who aren't suppliers — a friend, relative or

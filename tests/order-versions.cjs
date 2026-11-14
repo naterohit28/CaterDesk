@@ -54,7 +54,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     await statusSheet('Dosa'); await pick('I have sent it');
     o = await order('Dosa'); assert.deepEqual(o.messages.map(m => m.status), ['confirmed', 'sent']); assert.equal(o.status, 'sent');
     // History shows both, newest first, with their own status
-    await openEvent(); await statusSheet('Dosa'); await pick('Messages sent (2)'); await p.waitForSelector('#ask-modal.active');
+    await openEvent(); await statusSheet('Dosa'); await pick('Message history (2)'); await p.waitForSelector('#ask-modal.active');
     const h = await p.locator('#ask-msg').innerText();
     assert.match(h, /Version 2 · .* · Sent \(you confirmed\)[\s\S]*280 plates[\s\S]*Version 1 · .* · Vendor confirmed[\s\S]*250 plates/);
     await p.locator('#ask-actions button').last().click(); await p.waitForTimeout(250);

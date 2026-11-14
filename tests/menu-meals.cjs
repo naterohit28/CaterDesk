@@ -130,6 +130,42 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     assert.equal(o.menuChanged, undefined, 'cleared once the vendor confirmed the new menu'); assert.equal(o.status, 'confirmed'); assert.equal(o.ref, 'vendor-ref-1');
   });
 
+  await test('menu paste by meal: headings set the meal, a dish can repeat at another meal, choices stay per meal', async () => {
+    const parsed = await p.evaluate(async () => { const u = await import('./utils.js');
+      return [u.parseMenu('Lunch: Jeera Rice, Dal Tadka, Gulab Jamun\nDinner: Jeera Rice, Paneer Tikka, Gulab Jamun, jeera rice'),
+        u.parseMenu('Welcome drink\nHi-Tea –\n1. Samosa\nLATE NIGHT MENU:\nMaggi\nStarters: Paneer Tikka'), u.parseMenu('Paneer, paneer, Dal')]; });
+    assert.deepEqual(parsed[0].map(d => `${d.meal}:${d.name}`), ['lunch:Jeera Rice', 'lunch:Dal Tadka', 'lunch:Gulab Jamun', 'dinner:Jeera Rice', 'dinner:Paneer Tikka', 'dinner:Gulab Jamun'],
+      'repeats kept across meals, dropped within one');
+    assert.deepEqual(parsed[1].map(d => `${d.meal}:${d.name}`), [':Welcome drink', 'hightea:Samosa', 'latenight:Maggi', 'latenight:Paneer Tikka']);
+    assert.deepEqual(parsed[2].map(d => d.name), ['Paneer', 'Dal']);
+    assert.equal(await p.evaluate(async () => (await import('./utils.js')).menuText([{ name: 'Idli', meal: 'breakfast' }, { name: 'Dal', meal: 'dinner' }], ['dinner'], { dinner: 'Dinner' })),
+      'Idli\n\nDinner:\nDal', 'a dish for a meal the event no longer has is still listed');
+    // Through the menu sheet (event has breakfast and dinner)
+    await openEvent('Sample Reception'); await p.locator('[data-action="menu-edit"]').first().click(); await p.waitForSelector('#menu-modal.active');
+    assert.match(await p.inputValue('#menu-text'), /^Dinner:\nPani Puri\nMasala Dosa\nGulab Jamun$/, 'current dishes listed under their meal heading');
+    await p.fill('#menu-text', 'Breakfast:\nUpma\nMasala Chai\n\nDinner:\nPani Puri\nMasala Chai\nLunch: Veg Biryani');
+    await p.waitForTimeout(500);
+    const rows = p.locator('#menu-review .check-row');
+    assert.equal(await rows.count(), 5, 'Masala Chai listed for both meals; lunch is not one of this event\'s meals');
+    const chai = rows.filter({ hasText: 'Masala Chai' });
+    assert.deepEqual([await chai.nth(0).locator('[data-k="meal"]').inputValue(), await chai.nth(1).locator('[data-k="meal"]').inputValue()], ['breakfast', 'dinner']);
+    assert.equal(await rows.filter({ hasText: 'Veg Biryani' }).locator('[data-k="meal"]').inputValue(), '', 'a heading for a meal the event lacks means all meals');
+    await chai.nth(1).locator('[data-k="head"]').selectOption({ index: 1 });   // dinner chai from a counter; breakfast chai stays in our kitchen
+    const counter = await chai.nth(1).locator('[data-k="head"]').inputValue();
+    await p.locator('#btn-save-menu').click(); await p.waitForTimeout(500);
+    const e = await ev('e1');
+    const chais = e.dishes.filter(d => d.name === 'Masala Chai');
+    assert.deepEqual(chais.map(d => [d.meal, d.head]), [['breakfast', ''], ['dinner', counter]], 'each meal keeps its own choice');
+    assert.equal(e.dishes.find(d => d.name === 'Pani Puri').head, 'Chaat – चाट', 'unchanged dish keeps its counter');
+    // Opening and saving again without edits changes nothing
+    const versions = e.menuVersions.length;
+    await openEvent('Sample Reception'); await p.locator('[data-action="menu-edit"]').first().click(); await p.waitForSelector('#menu-modal.active');
+    assert.match(await p.inputValue('#menu-text'), /^Veg Biryani\n\nBreakfast:\nUpma\nMasala Chai\n\nDinner:\nPani Puri\nMasala Chai$/);
+    await p.locator('#btn-save-menu').click(); await p.waitForTimeout(500);
+    const again = await ev('e1');
+    assert.equal(again.menuVersions.length, versions, 'no new menu version'); assert.deepEqual(again.dishes, e.dishes);
+  });
+
   await test('import refuses malformed meal prices and menus', async () => {
     const r = await p.evaluate(async () => { const db = await import('./db.js'); const out = [];
       for (const bad of [{ mealPlan: { supper: { guests: 1, rate: 1 } } }, { mealPlan: { dinner: { guests: 1.5, rate: 1 } } }, { mealPlan: { dinner: { guests: 1, rate: 1.234 } } }, { dishes: [{ name: 'x', meal: 'midnight' }] }, { menuVersions: [{}] }]) {
