@@ -72,8 +72,8 @@ const noRev = rows => rows.map(({ _rev, ...r }) => r).sort((a, b) => a.id.locale
     assert.match(await toast(A.p), /Backup shared|बॅकअप पाठवला/);
     const b = JSON.parse(shared.text);
     assert.equal(b.version, 'ffv2', 'older app versions can still read it');
-    assert.equal(b.manifest.format, 'caterdesk-backup'); assert.equal(b.manifest.formatVersion, 1); assert.match(b.manifest.sha256, /^[0-9a-f]{64}$/);
-    assert.deepEqual(b.manifest.counts, { events: 2, expenses: 3, vendors: 2, cPays: 2, vPays: 2, photos: 2 });
+    assert.equal(b.manifest.format, 'caterdesk-backup'); assert.equal(b.manifest.formatVersion, 2); assert.match(b.manifest.sha256, /^[0-9a-f]{64}$/);
+    assert.deepEqual(b.manifest.counts, { events: 2, expenses: 3, vendors: 2, cPays: 2, vPays: 2, photos: 2, menus: 0 });
     assert.deepEqual(b.prefs, PREFS);
     assert(!JSON.stringify(b).includes('pin_hash') && !('ffv2_diagnostics' in b.prefs), 'PIN and error-report consent stay on the device');
   });

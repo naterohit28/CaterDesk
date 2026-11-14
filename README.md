@@ -4,7 +4,7 @@
 
 An offline-first app for catering events, expenses, vendor credit, client collections, menus and vendor orders. Business records stay in the device's browser storage; the hosted app also sends limited error diagnostics to its server.
 
-**Current source and hosted web build: v4.17.0.** Documentation checked on **14 November 2026**.
+**Current source and hosted web build: v4.18.0.** Documentation checked on **14 November 2026**.
 
 [Open the app](https://expense-calculator-kohl.vercel.app/) · [Download published packages](https://github.com/naterohit28/CaterDesk/releases) · [Historical reliability report](docs/RELIABILITY.md) · [Competitor/name research and Claude evaluation notes](docs/research/README.md) · [Report an issue](https://github.com/naterohit28/CaterDesk/issues)
 
@@ -31,16 +31,16 @@ The **APK wrapper version, hosted web version and bundled desktop version are in
 
 | Component | Verified state on 3 November 2026 | Meaning |
 | --- | --- | --- |
-| Source and hosted web app | **4.17.0** | Current UI, data/export version, service worker and error reporter |
+| Source and hosted web app | **4.18.0** | Current UI, data/export version, service worker and error reporter |
 | Service-worker release cache | `flavor-fusion-v2-cache-v25` | Installed web assets; this number is not the database schema version |
-| Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** | APK package inspected locally; launches the hosted app, which can run 4.17.0 |
+| Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** | APK package inspected locally; launches the hosted app, which can run 4.18.0 |
 | Android requirements for that local wrapper | min API **24**, target API **36** | Android 7.0+ and a compatible browser provider |
 | Latest GitHub Release with downloadable binaries | **2.4.7** | APK and desktop ZIP; later source tags do not imply newer binaries were uploaded |
 | Desktop package currently in the owner's `Apps/Desktop` folder | **2.4.7** | A static older bundle, not the current source build |
-| Desktop launcher source/instructions | **4.17.0** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
+| Desktop launcher source/instructions | **4.18.0** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
 | IndexedDB schema | **4** | Kept separate from application version changes |
 
-Do not relabel an older package as 4.17.0. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
+Do not relabel an older package as 4.18.0. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
 
 ## Current features
 
@@ -147,17 +147,17 @@ The APK is a **Trusted Web Activity** wrapper around the hosted site. It does no
 1. Keep a business-data backup.
 2. Obtain the intended APK from its actual release assets or the owner's prepared local package. Install over the existing app with the same package/signing identity.
 3. Open online to download updates. Check the **web build in Settings**, not just Android App info.
-4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **4.17.0**.
+4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **4.18.0**.
 
 A newer web release may reload automatically during the first 20 seconds of startup when no active form/save/overlay prevents it, at most once per release per session. Otherwise it waits for a later start or explicit reload. Refresh can also switch versions when no form/save is open. Service-worker cache mappings preserve matching assets for older open pages until navigation.
 
 Do not uninstall or clear browser/site storage to force an update. If Android rejects an APK, check package, versionCode and signing certificate before proceeding. The public certificate association is [`public/.well-known/assetlinks.json`](public/.well-known/assetlinks.json).
 
-The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **4.17.0**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
+The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **4.18.0**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
 
 ## Windows desktop testing
 
-Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v4.17.0 package.
+Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v4.18.0 package.
 
 1. Extract the entire ZIP; keep `app/` beside `CaterDesk-Desktop.exe`.
 2. Run the EXE. Microsoft Edge opens an app window; a tray icon provides **Open CaterDesk**, storage information and **Exit test server**.
@@ -339,6 +339,8 @@ This is a short source-feature history, not a list of available binary downloads
 
 | Version | Main changes |
 | --- | --- |
+| 4.18.0 | **Menu library:** ☰ → *Menus* lists your menus – the starter menus (editable; *Back to the starter menu* undoes edits), your own new menus and copies – each with the meals it suits, price per plate by guest count, banana-leaf flag and dishes. Hide a menu you don't use (events that use it keep it). In the event form each meal picks from menus suited to it first and the rate fills from its price; with meals ticked there is one menu per meal instead of a second event-wide picker. The event page folds each meal's dishes; a quote can list them for the client. Menus are stored in their own place and included in backups (backup check v2; older backups still verify). |
+| 4.17.1 | **Quote options:** *+ Another option* sends Option A, B… side by side (one doesn't replace another); accepting one marks the rest *Not chosen*. |
 | 4.17.0 | **Quotations with optional GST (v5 Phase 2):** a *Quote* on each event – meal lines (guests × rate, each meal with its own menu), items such as counter setup, clearly marked discounts, and optional **GST** (your rate % on the amount you choose, with Subtotal · GST · **Total incl. GST**). Drafts are editable; *I have sent it* locks a version and changes make a new one. The client gets WhatsApp text without costs (per-plate rates optional; when hidden, each line shows its amount). *Client accepted* needs written/verbal evidence and a confirm: the bill becomes the quote total **before GST** (your income); GST is recorded on the event and added to what the client owes. Also: **Late night** as a fifth meal, a **menu per meal** in the event form (rate filled from the menu's slab), meals shown as a **table**, events without a bill show *Quote sent* / *No bill yet* (never *Paid*), bold section totals, 4–5 digit number boxes. No client PDF yet (D-3). |
 | 4.16.3 | **Payment and count fixes from the owner's audit:** with a payment plan, *Remind* asks only for what is due now (no reminder when nothing is due); *Pending* turns red only when something is overdue by the plan; % instalments add up to the bill to the paisa; changing an agreed counting term needs the client's agreement again; an extra-plate request is saved before WhatsApp opens; a failed bill change never shows a success message. |
 | 4.16.2 | **Alignment pass:** tab icons centred, even period switch (Month · 3 months · FY · All time), no floating button over Home's quick actions, captioned *collected* bar, tool buttons on one line. |

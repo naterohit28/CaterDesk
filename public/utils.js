@@ -488,8 +488,29 @@ export const MENUS = [
     'Masale Bhaat / Pulav', 'Tomato Saar / Kadhi', '2 Sweet (Basic, Milk)', 'Chaas or Mattha or Solkadhi', 'Water Bottles'] }
 ];
 
+/* The menu library: the starter menus above, overridden by your own saved copy of any of them (same id), plus menus
+   you created. `hidden` menus drop out of pickers but still resolve for events that use them. */
+let SAVED_MENUS = [];
+export function setSavedMenus(list) { SAVED_MENUS = Array.isArray(list) ? list : []; }
+export function allMenus({ hidden = false } = {}) {
+  const saved = new Map(SAVED_MENUS.map(m => [m.id, m]));
+  const list = [...MENUS.map(m => saved.has(m.id) ? { ...saved.get(m.id), starter: true } : { ...m, starter: true }), ...SAVED_MENUS.filter(m => !MENUS.some(b => b.id === m.id))];
+  return hidden ? list : list.filter(m => !m.hidden);
+}
+export const isEditedStarter = id => MENUS.some(m => m.id === id) && SAVED_MENUS.some(m => m.id === id);
 export function menuById(id) {
-  return MENUS.find(m => m.id === id) || null;
+  if (!id) return null;
+  return SAVED_MENUS.find(m => m.id === id) || MENUS.find(m => m.id === id) || null;
+}
+// Which menus suit a meal: those marked for it first, then menus not marked for any meal, then the rest
+export function menusForMeal(meal) {
+  const list = allMenus(), fits = m => (m.meals || []).includes(meal), open = m => !(m.meals || []).length;
+  return { suited: list.filter(fits), general: list.filter(m => !fits(m) && open(m)), other: list.filter(m => !fits(m) && !open(m)) };
+}
+// Turn the slab rows of the editor into clean slabs, lowest guest count first
+export function cleanSlabs(rows) {
+  return rows.filter(r => r.rate !== '' && r.rate != null).map(r => ({ min: Math.max(0, Math.floor(Number(r.min) || 0)), rate: Math.round(Number(r.rate) * 100) / 100 }))
+    .filter(r => r.rate > 0).sort((a, b) => a.min - b.min);
 }
 
 // Per-plate rate of a menu for a guest count

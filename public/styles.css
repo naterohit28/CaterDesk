@@ -268,6 +268,11 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .mp-name { grid-column: 1 / -1; font-size: var(--fs-xs); font-weight: 650; color: var(--text); margin: 2px 0 -2px 2px; }
 .mp-row select { padding-left: 10px; padding-right: 24px; background-position: right 6px center; }
 .mp-row input[type="number"] { padding-left: 10px; padding-right: 8px; font-variant-numeric: tabular-nums; }
+/* Menu editor price rows: from guests | rate | remove */
+.me-head, .me-slab { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 32px; gap: 6px; align-items: center; margin-bottom: var(--s2); }
+.me-head { margin-bottom: 4px; }
+.me-slab input[type="number"] { padding-left: 10px; padding-right: 8px; font-variant-numeric: tabular-nums; }
+.meal-menu summary { list-style-position: inside; }
 .q-gst-amt { font-weight: 650; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 .q-sum { display: flex; justify-content: space-between; gap: var(--s3); font-size: var(--fs-sm); color: var(--text-2); padding: 4px 2px; font-variant-numeric: tabular-nums; }
 .q-sum span:last-child { color: var(--text); font-weight: 600; white-space: nowrap; }
