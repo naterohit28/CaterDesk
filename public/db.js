@@ -508,6 +508,7 @@ export async function prepareImport(payload) {
         || qt.lines.some(l => !l || (l.menu !== undefined && (typeof l.menu !== 'string' || l.menu.length > 64)) || (l.kind === 'meal' ? !['breakfast', 'lunch', 'hightea', 'dinner', 'latenight'].includes(l.meal) || !Number.isSafeInteger(l.guests) || l.guests < 0 || (amount(l.rate, 'quote rate'), false)
           : !['item', 'discount'].includes(l.kind) || typeof l.label !== 'string' || l.label.length > 200 || (amount(l.amt, 'quote amount'), false)))
         || [qt.terms, qt.text, qt.by].some(x => x !== undefined && (typeof x !== 'string' || x.length > 5000))
+        || (qt.profile !== undefined && (typeof qt.profile !== 'object' || qt.profile === null || Object.values(qt.profile).some(v => typeof v !== 'string' || v.length > 1000)))
         || (qt.evidence !== undefined && !['written', 'verbal'].includes(qt.evidence)) || (qt.option !== undefined && !/^[A-H]$/.test(qt.option)))
         || new Set(row.quotes.map(qt => qt.v)).size !== row.quotes.length)) throw new Error('Invalid quote');
       if (name === 'menus' && (typeof row.name !== 'string' || !row.name.trim() || row.name.length > 80
@@ -607,7 +608,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.19.0';
+export const APP_VERSION = '4.20.0';
 const COUNT_METHOD_IDS = ['tokens', 'tally', 'gate', 'coupons', 'joint', 'other'];
 // v4.18.0 kept menus in their own store (database version 5): copy them into meta once and empty that store
 export async function migrateLegacyMenus() {

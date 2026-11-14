@@ -278,6 +278,30 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .tip:last-child { border-bottom: 0; }
 .tip-body { flex: 1; min-width: 0; }
 .tip-act { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+/* Printable quote: hidden on screen; when printing, only the document shows (A4, light, no app chrome) */
+#print-doc { display: none; }
+@media print {
+  @page { size: A4; margin: 14mm; }
+  body.printing > *:not(#print-doc) { display: none !important; }
+  html, body.printing { background: #fff !important; background-image: none !important; }
+  body.printing::before, body.printing::after, html::before, html::after { display: none !important; }
+  body.printing #print-doc { display: block; color: #111; font: 11pt/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+}
+.pd-head { display: flex; justify-content: space-between; gap: 16px; border-bottom: 2px solid #0D2425; padding-bottom: 10px; }
+.pd-biz { font-size: 18pt; font-weight: 700; color: #0D2425; }
+.pd-contact { text-align: right; font-size: 9.5pt; color: #333; }
+.pd-title { font-size: 15pt; letter-spacing: .06em; text-transform: uppercase; margin: 16px 0 8px; color: #0D2425; }
+.pd-meta { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.pd-table { width: 100%; border-collapse: collapse; }
+.pd-table th { text-align: left; font-size: 9pt; text-transform: uppercase; color: #555; border-bottom: 1px solid #999; padding: 6px 4px; }
+.pd-table td { padding: 7px 4px; border-bottom: 1px solid #e3e3e3; vertical-align: top; }
+.pd-table .n { text-align: right; white-space: nowrap; }
+.pd-table tfoot td { border-bottom: 0; padding-top: 6px; }
+.pd-table .pd-total td { border-top: 2px solid #0D2425; font-size: 12pt; }
+.pd-dishes { font-size: 9pt; color: #444; margin-top: 3px; }
+.pd-muted { color: #666; font-size: 9.5pt; }
+.pd-block { margin-top: 14px; font-size: 10pt; }
+.pd-foot { margin-top: 24px; padding-top: 8px; border-top: 1px solid #ccc; text-align: center; font-size: 9pt; color: #555; }
 .q-gst-amt { font-weight: 650; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 .q-sum { display: flex; justify-content: space-between; gap: var(--s3); font-size: var(--fs-sm); color: var(--text-2); padding: 4px 2px; font-variant-numeric: tabular-nums; }
 .q-sum span:last-child { color: var(--text); font-weight: 600; white-space: nowrap; }

@@ -22,6 +22,7 @@
 <body>
 
 <!-- ── TOAST ── -->
+<div id="print-doc" aria-hidden="true"></div>
 <div id="toast" role="status" aria-live="polite"><span id="toast-ic"></span><span id="toast-msg"></span><button type="button" id="toast-action"></button></div>
 
 <!-- ── LOADING OVERLAY ── -->
@@ -105,6 +106,7 @@
 
     <div class="d-group">
       <button type="button" class="d-item" id="open-menus"><i data-ic="clipboard"></i>Menus – मेनू</button>
+      <button type="button" class="d-item" id="open-profile"><i data-ic="store"></i>Business details – व्यवसाय तपशील</button>
     </div>
 
     <div class="d-group">
@@ -567,6 +569,26 @@
     </div>
     <button type="button" class="btn-sm" id="btn-me-reset" hidden style="margin-bottom:var(--s3)">Back to the starter menu – मूळ मेनू</button>
     <div class="s-foot"><button type="button" class="btn btn-primary" id="btn-me-save">Save menu – जतन करा</button></div>
+  </div>
+</div>
+
+<!-- BUSINESS DETAILS: heads printed quotes (only what the owner enters) -->
+<div class="modal-ov" id="profile-modal">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="pf-mtitle">
+    <div class="s-handle"></div>
+    <div class="s-head"><div class="s-title" id="pf-mtitle">Business details – व्यवसाय तपशील</div><button type="button" class="icon-btn" data-action="close-modal" aria-label="Close"><i data-ic="x"></i></button></div>
+    <p class="meta" style="margin:0 0 var(--s3)">Shown on printed quotes. Only what you enter here is used.</p>
+    <div class="field"><label for="pf-name">Business name – नाव <span class="req">*</span></label><input type="text" id="pf-name" maxlength="120" autocomplete="organization"></div>
+    <div class="field"><label for="pf-tagline">Tagline – ओळ</label><input type="text" id="pf-tagline" maxlength="160" placeholder="e.g. Pure veg catering since 2005"></div>
+    <div class="field"><label for="pf-address">Address – पत्ता</label><textarea id="pf-address" rows="2" maxlength="400"></textarea></div>
+    <div class="f2">
+      <div class="field"><label for="pf-phone">Phone – फोन</label><input type="tel" id="pf-phone" maxlength="40" inputmode="tel"></div>
+      <div class="field"><label for="pf-email">Email – ईमेल</label><input type="email" id="pf-email" maxlength="120"></div>
+    </div>
+    <div class="field"><label for="pf-gstin">GSTIN (if registered)</label><input type="text" id="pf-gstin" maxlength="15" autocomplete="off" style="text-transform:uppercase"></div>
+    <div class="field"><label for="pf-pay">Payment details – देयक तपशील</label><textarea id="pf-pay" rows="2" maxlength="600" placeholder="UPI ID / bank account for advances"></textarea></div>
+    <div class="field"><label for="pf-footer">Footer note – तळटीप</label><input type="text" id="pf-footer" maxlength="200" placeholder="e.g. Thank you for choosing us"></div>
+    <div class="s-foot"><button type="button" class="btn btn-primary" id="btn-save-profile">Save – जतन करा</button></div>
   </div>
 </div>
 
