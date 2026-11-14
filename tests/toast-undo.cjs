@@ -30,6 +30,13 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], vendors: [],
     assert.match(await p.locator('#toast-msg').innerText(), /Deleted/); assert.deepEqual(await ids(), ['x2']);
     await p.locator('#toast-action').click(); await p.waitForTimeout(500);
     assert.deepEqual(await ids(), ['x1', 'x2'], 'Undo restored the expense');
+    // A routine notice arriving while Undo is on offer keeps the Undo button under the new message
+    await remove('x1');
+    await p.locator('#exp-list [data-action="edit-exp"][data-id="x2"]:visible').click(); await p.waitForSelector('#exp-modal.active');
+    await p.fill('#exp-notes', 'note'); await p.locator('#btn-save-exp').click(); await p.waitForTimeout(400);
+    assert.equal(await p.locator('#toast.show.has-action').count(), 1, 'Undo still offered after the "saved" notice');
+    await p.locator('#toast-action').click(); await p.waitForTimeout(500);
+    assert.deepEqual(await ids(), ['x1', 'x2'], 'Undo still restores');
     // Left alone, the message closes by itself and the deletion stays
     await remove('x2');
     await p.waitForTimeout(8600);

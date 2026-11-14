@@ -287,6 +287,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
   body.printing::before, body.printing::after, html::before, html::after { display: none !important; }
   body.printing #print-doc { display: block; color: #111; font: 11pt/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
 }
+.pd-draft { border: 1.5px dashed #b45309; color: #b45309; font-weight: 700; text-align: center; padding: 6px; margin-bottom: 10px; letter-spacing: .04em; font-size: 10pt; }
 .pd-head { display: flex; justify-content: space-between; gap: 16px; border-bottom: 2px solid #0D2425; padding-bottom: 10px; }
 .pd-biz { font-size: 18pt; font-weight: 700; color: #0D2425; }
 .pd-contact { text-align: right; font-size: 9.5pt; color: #333; }
