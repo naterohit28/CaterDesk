@@ -202,7 +202,7 @@ async function boot() {
   showLoading(true);
   try {
     await checkAndMigrate();
-    try { await migrateLegacyMenus(); } catch {}   // menus made in v4.18.1 move into the settings store once
+    try { await migrateLegacyMenus(); } catch {}   // menus made in v4.18.0 move into the settings store once
     clearTimeout(stuckTimer);
     window.removeEventListener('ffdb-blocked', explainStuck);
     await loadAll();

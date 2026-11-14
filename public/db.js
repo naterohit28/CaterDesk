@@ -9,7 +9,7 @@ const DB_NAME    = 'FlavorFusionDB';
 /* Version 4 is kept on purpose: raising it breaks an older app version still open in another tab or window (its save
    would be refused by the browser). New kinds of records go into existing stores instead – the menu library lives in
    `meta` under the `menu:` prefix and is read and written as a `menus` "store" through the functions below.
-   v4.18.1 briefly created a real `menus` store (database version 5); such databases still open, and their menus are
+   v4.18.0 briefly created a real `menus` store (database version 5); such databases still open, and their menus are
    moved into `meta` once (migrateLegacyMenus). */
 const DB_VERSION = 4;   // v3: photos indexed by eventId · v4: bill photos indexed by expenseId
 const STORES     = ['events','expenses','vendors','cPays','vPays','photos','meta'];
@@ -69,7 +69,7 @@ export function openDB(force = false) {
     }
     req.onerror = e => {
       if (settled) return;
-      // Already at a higher version (v4.18.1 made it 5): open it as it is; no upgrade is needed
+      // Already at a higher version (v4.18.0 made it 5): open it as it is; no upgrade is needed
       if (req.error?.name === 'VersionError') {
         e.preventDefault?.();
         const again = indexedDB.open(DB_NAME);
@@ -608,7 +608,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
 }
 export const APP_VERSION = '4.18.1';
 const COUNT_METHOD_IDS = ['tokens', 'tally', 'gate', 'coupons', 'joint', 'other'];
-// v4.18.1 kept menus in their own store (database version 5): copy them into meta once and empty that store
+// v4.18.0 kept menus in their own store (database version 5): copy them into meta once and empty that store
 export async function migrateLegacyMenus() {
   return withTx(db => new Promise((resolve, reject) => {
     if (!db.objectStoreNames.contains('menus')) { resolve(0); return; }
