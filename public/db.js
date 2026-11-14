@@ -6,8 +6,17 @@
  */
 
 const DB_NAME    = 'FlavorFusionDB';
-const DB_VERSION = 5;   // v3: photos indexed by eventId · v4: bill photos indexed by expenseId · v5: menu library
-const STORES     = ['events','expenses','vendors','cPays','vPays','photos','menus','meta'];
+/* Version 4 is kept on purpose: raising it breaks an older app version still open in another tab or window (its save
+   would be refused by the browser). New kinds of records go into existing stores instead – the menu library lives in
+   `meta` under the `menu:` prefix and is read and written as a `menus` "store" through the functions below.
+   v4.18.0 briefly created a real `menus` store (database version 5); such databases still open, and their menus are
+   moved into `meta` once (migrateLegacyMenus). */
+const DB_VERSION = 4;   // v3: photos indexed by eventId · v4: bill photos indexed by expenseId
+const STORES     = ['events','expenses','vendors','cPays','vPays','photos','meta'];
+const MENU_PREFIX = 'menu:';
+const phys = name => name === 'menus' ? 'meta' : name;
+const toMenu = r => r && String(r.id).startsWith(MENU_PREFIX) ? { ...r, id: r.id.slice(MENU_PREFIX.length) } : null;
+const fromMenu = r => r && { ...r, id: MENU_PREFIX + r.id };
 
 let _db = null;
 let _opening = null;
@@ -29,7 +38,7 @@ export function openDB(force = false) {
   if (_opening) return _opening;
   const generation = ++_openGeneration;
   _opening = new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    let req = indexedDB.open(DB_NAME, DB_VERSION);
     let settled = false;
     const timer = setTimeout(() => {
       if (settled) return;
@@ -45,8 +54,9 @@ export function openDB(force = false) {
       if (!photos.indexNames.contains('eventId')) photos.createIndex('eventId', 'eventId');
       if (!photos.indexNames.contains('expenseId')) photos.createIndex('expenseId', 'expenseId');
     };
-    req.onsuccess = () => {
-      const connection = req.result;
+    req.onsuccess = () => onOpened(req);
+    function onOpened(r) {
+      const connection = r.result;
       if (settled || generation !== _openGeneration) { connection.close(); return; }
       settled = true; clearTimeout(timer);
       _db = connection; _opening = null;
@@ -56,9 +66,17 @@ export function openDB(force = false) {
         window.dispatchEvent(new CustomEvent('ffdb-update-needed'));
       };
       resolve(connection);
-    };
-    req.onerror = () => {
+    }
+    req.onerror = e => {
       if (settled) return;
+      // Already at a higher version (v4.18.0 made it 5): open it as it is; no upgrade is needed
+      if (req.error?.name === 'VersionError') {
+        e.preventDefault?.();
+        const again = indexedDB.open(DB_NAME);
+        again.onblocked = req.onblocked; again.onsuccess = () => { req = again; again.onsuccess = null; onOpened(again); };
+        again.onerror = () => { if (settled) return; settled = true; clearTimeout(timer); if (generation === _openGeneration) _opening = null; reject(again.error || new Error('Failed to open storage')); };
+        return;
+      }
       settled = true; clearTimeout(timer);
       if (generation === _openGeneration) _opening = null;
       reject(req.error || new Error('Failed to open storage'));
@@ -103,9 +121,9 @@ async function withTx(run) {
 /* ── GENERIC CRUD ────────────────────────────────── */
 export async function getAll(store) {
   return withTx(db => new Promise((resolve, reject) => {
-    const tx  = transaction(db, store, 'readonly');
-    const req = tx.objectStore(store).getAll();
-    req.onsuccess = () => resolve(req.result || []);
+    const tx  = transaction(db, phys(store), 'readonly');
+    const req = tx.objectStore(phys(store)).getAll();
+    req.onsuccess = () => resolve(store === 'menus' ? (req.result || []).map(toMenu).filter(Boolean) : req.result || []);
     req.onerror   = () => reject(tx.ffError || req.error);
     tx.onabort = () => reject(tx.ffError || tx.error || new Error('Storage read aborted'));
   }));
@@ -113,16 +131,22 @@ export async function getAll(store) {
 
 export async function getOne(store, id) {
   return withTx(db => new Promise((resolve, reject) => {
-    const tx  = transaction(db, store, 'readonly');
-    const req = tx.objectStore(store).get(id);
-    req.onsuccess = () => resolve(req.result || null);
+    const tx  = transaction(db, phys(store), 'readonly');
+    const req = tx.objectStore(phys(store)).get(store === 'menus' ? MENU_PREFIX + id : id);
+    req.onsuccess = () => resolve(store === 'menus' ? toMenu(req.result) : req.result || null);
     req.onerror   = () => reject(tx.ffError || req.error);
     tx.onabort = () => reject(tx.ffError || tx.error || new Error('Storage read aborted'));
   }));
 }
 
 // Every write resolves only after the entire transaction commits.
-export async function commitChanges(changes, { clear = [], check = false, extraStores = [] } = {}) {
+export async function commitChanges(changes, opts = {}) {
+  if (!changes.some(c => c.store === 'menus') && !(opts.extraStores || []).includes('menus')) return commitPhysical(changes, opts);
+  const mapped = changes.map(c => c.store !== 'menus' ? c : { ...c, store: 'meta', record: c.record && fromMenu(c.record), id: c.id != null ? MENU_PREFIX + c.id : c.id, expected: c.expected && fromMenu(c.expected) });
+  await commitPhysical(mapped, { ...opts, extraStores: (opts.extraStores || []).map(phys) });
+  mapped.forEach((m, i) => { if (changes[i].record && m.record && m.record._rev) changes[i].record._rev = m.record._rev; });
+}
+async function commitPhysical(changes, { clear = [], check = false, extraStores = [] } = {}) {
   const guardedDelete = check && changes.some(c => !c.record && ['events', 'vendors'].includes(c.store));
   const names = [...new Set([...clear, ...extraStores, ...(guardedDelete ? STORES : []), ...changes.map(c => c.store)])];
   if (!names.length) return;
@@ -381,9 +405,10 @@ export async function migrateFromLocalStorage() {
 export async function exportAllData() {
   const names = STORES.filter(s => s !== 'meta');
   const result = await withTx(db => new Promise((resolve, reject) => {
-    const tx = transaction(db, names, 'readonly');
+    const tx = transaction(db, [...names, 'meta'], 'readonly');
     const result = { version: 'ffv2', exportedAt: new Date().toISOString(), appVersion: APP_VERSION };
     names.forEach(name => { const req = tx.objectStore(name).getAll(); req.onsuccess = () => { result[name] = req.result; }; });
+    const mreq = tx.objectStore('meta').getAll(); mreq.onsuccess = () => { result.menus = (mreq.result || []).map(toMenu).filter(Boolean); };
     tx.oncomplete = () => resolve(result);
     tx.onerror = tx.onabort = () => reject(tx.ffError || tx.error || new Error('Backup read aborted'));
   }));
@@ -533,15 +558,15 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
   await inspectBackup(payload);   // a damaged or newer-format file never reaches the database
   const data = await prepareImport(payload);
   return withTx(db => new Promise((resolve, reject) => {
-    const tx = transaction(db, [...DATA_STORES, 'meta'], 'readwrite');
+    const tx = transaction(db, [...BASE_STORES, 'meta'], 'readwrite');
     let failure;
     const current = {}; let pending = DATA_STORES.length;
     tx.oncomplete = () => resolve();
     tx.onerror = tx.onabort = () => reject(failure || tx.ffError || tx.error || new Error('Import aborted; previous data retained'));
     DATA_STORES.forEach(name => {
-      const req = tx.objectStore(name).getAll();
+      const req = tx.objectStore(phys(name)).getAll();
       req.onsuccess = () => {
-        current[name] = req.result;
+        current[name] = name === 'menus' ? (req.result || []).map(toMenu).filter(Boolean) : req.result;
         if (--pending) return;
         try {
           const final = {};
@@ -566,7 +591,12 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
             for (const id of [...(row.photoIds || []), ...(row.billIds || [])]) if (!final.photos.has(id)) throw new Error('Missing attachment: ' + id);
           }
           for (const store of DATA_STORES) {
-            const os = tx.objectStore(store);
+            const os = tx.objectStore(phys(store));
+            if (store === 'menus') {
+              if (mode === 'replace') for (const r of current.menus) os.delete(MENU_PREFIX + r.id);
+              for (const row of final.menus.values()) os.put(fromMenu(row));
+              continue;
+            }
             if (mode === 'replace') os.clear();
             for (const row of final[store].values()) os.put(row);
           }
@@ -576,8 +606,24 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.18.0';
+export const APP_VERSION = '4.18.1';
 const COUNT_METHOD_IDS = ['tokens', 'tally', 'gate', 'coupons', 'joint', 'other'];
+// v4.18.0 kept menus in their own store (database version 5): copy them into meta once and empty that store
+export async function migrateLegacyMenus() {
+  return withTx(db => new Promise((resolve, reject) => {
+    if (!db.objectStoreNames.contains('menus')) { resolve(0); return; }
+    const tx = transaction(db, ['menus', 'meta'], 'readwrite'), legacy = tx.objectStore('menus'), meta = tx.objectStore('meta');
+    let moved = 0;
+    const req = legacy.getAll();
+    req.onsuccess = () => {
+      for (const r of req.result || []) { const key = MENU_PREFIX + r.id; const has = meta.get(key);
+        has.onsuccess = () => { if (!has.result) { meta.put({ ...r, id: key }); moved++; } }; }
+      legacy.clear();
+    };
+    tx.oncomplete = () => resolve(moved);
+    tx.onerror = tx.onabort = () => reject(tx.ffError || tx.error || new Error('Menu move aborted'));
+  }));
+}
 export async function checkAndMigrate() {
   await openDB();
   const storedVer = await getMeta('app_version');
