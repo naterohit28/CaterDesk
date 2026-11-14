@@ -7,7 +7,7 @@
 import {
   getAll, putOne, putChecked, commitChanges, deleteOne, getMeta, setMeta,
   savePhoto, saveEventPhotos, getPhotosForEvent, deletePhoto, saveBill, getBillsForExpense,
-  exportAllData, importAllData, inspectBackup, checkAndMigrate
+  exportAllData, importAllData, inspectBackup, checkAndMigrate, migrateLegacyMenus
 } from './db.js';
 
 import {
@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.18.0';
+const APP_BUILD = '4.18.1';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -202,6 +202,7 @@ async function boot() {
   showLoading(true);
   try {
     await checkAndMigrate();
+    try { await migrateLegacyMenus(); } catch {}   // menus made in v4.18.1 move into the settings store once
     clearTimeout(stuckTimer);
     window.removeEventListener('ffdb-blocked', explainStuck);
     await loadAll();
