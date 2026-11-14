@@ -325,7 +325,8 @@ export function paymentSchedule(ev, cPays, now = today()) {
   rows = rows.map(r => {
     const paidP = Math.min(left, r.amtP); left -= paidP;
     const restP = r.amtP - paidP;
-    const reached = r.dueDate === '' || r.dueDate <= now, past = r.dueDate !== '' && r.dueDate < now;
+    // A booking advance is due from booking, but only overdue once the event date has passed (owner's rule, F4)
+    const reached = r.dueDate === '' || r.dueDate <= now, past = r.dueDate !== '' ? r.dueDate < now : (ev.date || '') < now;
     if (reached) dueP += restP;
     if (past) overP += restP;
     const state = restP === 0 ? 'paid' : past ? 'overdue' : reached ? 'due' : 'upcoming';
