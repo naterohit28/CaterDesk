@@ -1932,6 +1932,7 @@ function renderQuote() {
         <button type="button" class="btn btn-secondary" data-action="quote-save">${tr('Save draft', 'मसुदा जतन')}</button>
         <button type="button" class="btn btn-wa" data-action="quote-share">${icon('message', 18)}${tr('Share', 'पाठवा')}</button>
       </div>
+      <button type="button" class="btn btn-secondary" style="width:100%;margin-top:var(--s2)" data-action="quote-print">${icon('download', 18)}${tr('Print / Save as PDF', 'प्रिंट / PDF')}</button>
       <button type="button" class="btn btn-primary" style="width:100%;margin-top:var(--s2)" data-action="quote-sent">${tr('I have sent it – lock this version', 'पाठवले – ही आवृत्ती पक्की')}</button>`;
     return;
   }
@@ -1942,6 +1943,7 @@ function renderQuote() {
     <div class="list" style="padding:0">${t.lines.map(l => `<div class="row" style="min-height:44px"><div class="row-body"><div class="title-sm">${l.kind === 'meal' ? MEALS[l.meal] : esc(l.label)}</div>
       ${l.kind === 'meal' ? `<div class="meta">${l.guests} × ${fmtCurrency(l.rate)}</div>` : ''}</div><div class="amt-sm">${l.kind === 'discount' ? '−' : ''}${fmtCurrency(Math.abs(l.total))}</div></div>`).join('')}</div>
     <div style="margin-top:var(--s2)">${quoteTotalsHtml(cur)}</div>
+    <button type="button" class="btn btn-secondary" style="width:100%;margin-top:var(--s3)" data-action="quote-print">${icon('download', 18)}${tr('Print / Save as PDF', 'प्रिंट / PDF')}</button>
     <div class="meta" id="quote-status">${tr(`Sent ${when(cur.sentAt)}`, `पाठवले ${when(cur.sentAt)}`)}${cur.status === 'accepted' ? ` · ${tr(`accepted ${when(cur.acceptedAt)} · ${cur.evidence}${cur.by ? ` (${esc(cur.by)})` : ''}`, `मान्य ${when(cur.acceptedAt)}`)}` : cur.status === 'declined' ? ` · ${tr('declined', 'नाकारले')}` : ''}${sup === 'notchosen' ? ` · ${tr(`not chosen (client accepted Option ${quoteOption(acceptedOther)})`, 'निवडले नाही')}` : sup ? ` · ${tr('replaced by a later version', 'नंतरच्या आवृत्तीने बदलले')}` : ''}</div>
     ${cur.status === 'sent' && !sup ? `
       <div class="f2" style="margin-top:var(--s3)">
@@ -2002,7 +2004,8 @@ async function quoteAction(action) {
   if (action === 'quote-sent') {
     const d = await saveQuoteDraft(); if (!d) return;
     const text = quoteText(D.events.find(e => e.id === ev.id), d);
-    const ok = await saveQuotes(qs => { const x = qs.find(y => y.v === d.v); Object.assign(x, { status: 'sent', sentAt: now, text }); });
+    const prof = getProfile();
+    const ok = await saveQuotes(qs => { const x = qs.find(y => y.v === d.v); Object.assign(x, { status: 'sent', sentAt: now, text, ...(Object.keys(prof).length ? { profile: prof } : {}) }); });
     if (!ok) return;
     quoteDraft = null; refreshCurrent(); renderQuote(); showToast(`Quote v${d.v} locked as sent. Changes now make a new version. – पक्की`); return;
   }
@@ -2148,6 +2151,63 @@ async function tipAction(el) {
     const s = pastSuggestions(ev, D.events, D.expenses).find(x => x.kind === 'cost'); if (!s?.total) return;
     await patchEvent(ev.id, { budget: s.total }); refreshCurrent(); showToast(`Budget set to ${fmtCurrency(s.total)} – बजेट ठरवले`);
   }
+}
+
+/* ── BUSINESS DETAILS + QUOTE DOCUMENT (spec §6.5, D-3, G-27) ── */
+/* Your business details as you enter them (nothing is invented). They head the printable quote; a sent quote keeps a
+   copy of the details it went out with, so changing them later never changes an old quote. */
+const PROFILE_FIELDS = ['name', 'tagline', 'address', 'phone', 'email', 'gstin', 'pay', 'footer'];
+function getProfile() { const p = readPref('ffv2_profile', {}); return p && typeof p === 'object' ? Object.fromEntries(PROFILE_FIELDS.filter(k => typeof p[k] === 'string' && p[k]).map(k => [k, p[k]])) : {}; }
+function openProfile() {
+  const p = getProfile();
+  for (const k of PROFILE_FIELDS) q('pf-' + k).value = p[k] || '';
+  clearFieldErrors(); openSheet('profile-modal');
+}
+function saveProfile() {
+  const p = Object.fromEntries(PROFILE_FIELDS.map(k => [k, qv('pf-' + k).trim()]).filter(([, v]) => v));
+  if (p.gstin) p.gstin = p.gstin.toUpperCase();
+  if (p.gstin && !/^[0-9]{2}[A-Z0-9]{13}$/.test(p.gstin)) { showFieldErrors({ 'pf-gstin': 'A GSTIN has 15 letters and numbers, starting with the 2-digit state code – तपासा' }); return; }
+  if (!p.name) { showFieldErrors({ 'pf-name': 'Write your business name – व्यवसायाचे नाव' }); return; }
+  writePref('ffv2_profile', p); closeModals(); showToast('Business details saved – जतन');
+}
+// The quote as a printable A4 document: no costs, margins or internal notes
+function quoteDocHtml(ev, qt, profile) {
+  const t = quoteTotal(qt), p = profile || {}, many = quoteOptions({ quotes: [...(ev.quotes || []), qt] }).length > 1;
+  const line = (a, b, c, cls = '') => `<tr class="${cls}"><td>${a}</td><td class="n">${b}</td><td class="n">${c}</td></tr>`;
+  const rows = t.lines.map(l => {
+    if (l.kind === 'meal') { const mn = l.menu && menuById(l.menu), dishes = qt.showItems && mn ? mn.items || [] : [];
+      return line(`<b>${MEALS[l.meal]}</b>${mn ? ` – ${esc(mn.name)} menu` : ''}${dishes.length ? `<div class="pd-dishes">${dishes.map(esc).join(' · ')}</div>` : ''}`,
+        qt.showRates !== false ? `${l.guests} × ${fmtCurrency(l.rate)}` : '', fmtCurrency(l.total)); }
+    if (l.kind === 'item') return line(esc(l.label), '', fmtCurrency(l.amt));
+    return line(`${esc(l.label)} <span class="pd-muted">(discount)</span>`, '', `−${fmtCurrency(l.amt)}`);
+  }).join('');
+  const totals = t.gstP
+    ? line('Subtotal', '', fmtCurrency(t.total), 'pd-sub') + line(`GST @ ${qt.gst.rate}% on ${fmtCurrency(qt.gst.taxable)}`, '', fmtCurrency(t.gst), 'pd-sub') + line('<b>Total</b>', '', `<b>${fmtCurrency(t.grand)}</b>`, 'pd-total')
+    : line('<b>Total</b> <span class="pd-muted">(before any applicable GST)</span>', '', `<b>${fmtCurrency(t.total)}</b>`, 'pd-total');
+  const when = String(qt.sentAt || qt.at || new Date().toISOString()).slice(0, 10);
+  return `<div class="pd">
+    <header class="pd-head"><div><div class="pd-biz">${esc(p.name || 'Your business name')}</div>${p.tagline ? `<div class="pd-muted">${esc(p.tagline)}</div>` : ''}</div>
+      <div class="pd-contact">${[p.address, p.phone, p.email].filter(Boolean).map(esc).join('<br>')}${p.gstin ? `<br>GSTIN ${esc(p.gstin)}` : ''}</div></header>
+    <h1 class="pd-title">Quotation</h1>
+    <div class="pd-meta"><div><b>${esc(ev.name)}</b><br>${fmtDate(ev.date)}${ev.venue ? ` · ${esc(ev.venue)}` : ''}</div>
+      <div class="n">${many ? `Option ${quoteOption(qt)} · ` : ''}Version ${qt.v}<br>Date ${fmtDate(when)}</div></div>
+    <table class="pd-table"><thead><tr><th>Item</th><th class="n">${qt.showRates !== false ? 'Guests × rate' : ''}</th><th class="n">Amount</th></tr></thead><tbody>${rows}</tbody><tfoot>${totals}</tfoot></table>
+    ${qt.terms?.trim() ? `<div class="pd-block"><b>Terms</b><div>${esc(qt.terms.trim()).replace(/\n/g, '<br>')}</div></div>` : ''}
+    ${p.pay ? `<div class="pd-block"><b>Payment details</b><div>${esc(p.pay).replace(/\n/g, '<br>')}</div></div>` : ''}
+    ${p.footer ? `<footer class="pd-foot">${esc(p.footer)}</footer>` : ''}
+  </div>`;
+}
+// Print it (Android: the print screen offers "Save as PDF"); a sent quote prints with the details it was sent with
+function printQuote() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const cur = quoteDraft && quoteDraft.v === quoteView ? (readQuoteForm(), quoteDraft) : (ev.quotes || []).find(x => x.v === quoteView); if (!cur) return;
+  const profile = cur.status !== 'draft' && cur.profile ? cur.profile : getProfile();
+  if (!profile.name) showToast('Add your business details (☰ → Business details) so the quote shows your name – तपशील भरा', 'error');
+  q('print-doc').innerHTML = quoteDocHtml(ev, cur, profile);
+  document.body.classList.add('printing');
+  const done = () => { document.body.classList.remove('printing'); window.removeEventListener('afterprint', done); };
+  window.addEventListener('afterprint', done);
+  try { window.print(); } finally { setTimeout(done, 1500); }
 }
 
 function openSettle() { renderSettle(); openSheet('settle-modal'); }
@@ -4307,7 +4367,7 @@ async function saveLinkExpenses() {
 // phone; where sharing files isn't supported (most desktops) it downloads instead.
 const MAX_BACKUP_BYTES = 300 * 1024 * 1024;
 // Settings that travel with a backup (G-15). Per-device choices (error-report consent, PIN, drafts) do not.
-const BACKUP_PREFS = ['ffv2_theme', 'ffv2_lang', 'ffv2_period', 'ffv2_lastexp'];
+const BACKUP_PREFS = ['ffv2_theme', 'ffv2_lang', 'ffv2_period', 'ffv2_lastexp', 'ffv2_profile'];
 function backupPrefs() {
   const prefs = {};
   for (const k of BACKUP_PREFS) { try { const v = localStorage.getItem(k); if (v !== null) prefs[k] = v; } catch {} }
@@ -4315,7 +4375,7 @@ function backupPrefs() {
 }
 function restorePrefs(prefs) {
   if (!prefs || typeof prefs !== 'object') return;
-  for (const k of BACKUP_PREFS) if (typeof prefs[k] === 'string' && prefs[k].length < 2000) { try { localStorage.setItem(k, prefs[k]); } catch {} }
+  for (const k of BACKUP_PREFS) if (typeof prefs[k] === 'string' && prefs[k].length < (k === 'ffv2_profile' ? 6000 : 2000)) { try { localStorage.setItem(k, prefs[k]); } catch {} }
   if (['light', 'dark'].includes(prefs.ffv2_theme)) applyTheme(prefs.ffv2_theme);
   if (typeof prefs.ffv2_lang === 'string') { try { setLang(prefs.ffv2_lang); } catch {} }
   period = readPref('ffv2_period', period);
@@ -4470,6 +4530,7 @@ function bindAllEvents() {
       case 'fs-open':  openFunctionSheet(); break;
       case 'settle-open': openSettle(); break;
       case 'quote-open': openQuote(); break;
+      case 'quote-print': printQuote(); break;
       case 'quote-new': case 'quote-option': case 'quote-save': case 'quote-share': case 'quote-sent': case 'quote-accept': case 'quote-decline': quoteAction(action); break;
       case 'settle-adjust': case 'settle-dispute': case 'settle-undispute': settleAction(action); break;
       case 'fs-save':  saveFunctionSheet(); break;
@@ -4649,6 +4710,8 @@ function bindAllEvents() {
   q('btn-del-vpay').addEventListener('click', () => deleteFromSheet('vPays', 'vpay-id'));
   q('vpay-kind').addEventListener('click', e => { const b = e.target.closest('[data-kind]'); if (b) setVPayKind(b.dataset.kind); });
   q('tab-evdetail').addEventListener('click', e => { const b = e.target.closest('[data-tip-ignore], [data-tip-use]'); if (b) tipAction(b); });
+  q('open-profile').addEventListener('click', () => closeOverlay().then(openProfile));
+  q('btn-save-profile').addEventListener('click', saveProfile);
   q('open-menus').addEventListener('click', () => closeOverlay().then(openMenus));
   q('btn-menu-new').addEventListener('click', () => openMenuEdit(null));
   q('menus-body').addEventListener('click', e => { const r = e.target.closest('[data-menu-edit]'); if (r) openMenuEdit(r.dataset.menuEdit); });
