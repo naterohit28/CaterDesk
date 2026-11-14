@@ -433,6 +433,25 @@
   </div>
 </div>
 
+<!-- ONE MEAL'S MENU: date and time, library menu, and each dish's course, food type, diet marks and who prepares it -->
+<div class="modal-ov" id="svc-modal">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="svc-mtitle">
+    <div class="s-handle"></div>
+    <div class="s-head"><div class="s-title" id="svc-mtitle">Meal menu – मेनू</div><button type="button" class="icon-btn" data-action="close-modal" aria-label="Close"><i data-ic="x"></i></button></div>
+    <div class="f2">
+      <div class="field"><label for="svc-date">Date – तारीख</label><input type="date" id="svc-date"></div>
+      <div class="field"><label for="svc-time">Time – वेळ</label><input type="time" id="svc-time"></div>
+    </div>
+    <div class="field"><label for="svc-tpl">Library menu – मेनू</label><select id="svc-tpl"></select></div>
+    <div id="svc-tpl-note"></div>
+    <div id="svc-dishes"></div>
+    <div class="field" style="margin-top:var(--s3)"><label for="svc-add">Add dishes – पदार्थ जोडा</label>
+      <textarea id="svc-add" rows="2" placeholder="One per line or separated by commas"></textarea>
+      <button type="button" class="btn-sm" id="btn-svc-add" style="margin-top:var(--s2)">Add – जोडा</button></div>
+    <div class="s-foot"><button type="button" class="btn btn-primary" id="btn-save-svc">Save menu – जतन करा</button></div>
+  </div>
+</div>
+
 <!-- VENDOR ORDER for one counter of an event, sent on WhatsApp -->
 <div class="modal-ov" id="ord-modal">
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="ord-mtitle">

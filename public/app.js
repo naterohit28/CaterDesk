@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, learnedDishes, syncServices, isUnassigned,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, learnedDishes, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.22.1';
+const APP_BUILD = '4.23.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1189,7 +1189,7 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
 
     ${ev.notes ? `<div class="card pad"><div class="label">Notes – नोंदी</div><div class="notes-text" data-nl>${esc(ev.notes)}</div></div>` : ''}
 
-    ${mealMenusBlock(ev)}
+    ${mealMenuCard(ev)}
     ${menu && !MEAL_ORDER.some(m => ev.mealPlan?.[m]?.menu) ? `<details class="card pad"><summary class="label" style="cursor:pointer">${tr(`${menu.name} menu · ${menu.items.length} items`, `${menu.name} मेनू · ${menu.items.length}`)}</summary>
       <ul class="notes-text" data-nl style="margin:var(--s2) 0 0;padding-left:1.2em">${menu.items.map(i => `<li>${esc(i)}</li>`).join('')}</ul></details>` : ''}
 
@@ -2141,12 +2141,149 @@ async function menuReset() {
   try { await commitChanges([{ store: 'menus', id, expected: menuEditBase }], {}); } catch (e) { showToast(e.message || 'Could not reset.', 'error'); return; }
   await loadAll(); closeModals(); refreshCurrent(); openMenus();
 }
-// The dishes of each meal's menu, folded under the meal table on the event page
-function mealMenusBlock(ev) {
-  const rows = MEAL_ORDER.filter(m => ev.mealPlan?.[m]?.menu && menuById(ev.mealPlan[m].menu)?.items?.length);
-  return rows.map(m => { const mn = menuById(ev.mealPlan[m].menu);
-    return `<details class="card pad meal-menu" data-meal-menu="${m}"><summary class="label" style="cursor:pointer">${tr(`${MEALS[m]} · ${mn.name} menu · ${mn.items.length} dishes`, `${MEALS[m]} · ${mn.name} · ${mn.items.length} पदार्थ`)}</summary>
-      <ul class="notes-text" data-nl style="margin:var(--s2) 0 0;padding-left:1.2em">${mn.items.map(i => `<li>${esc(i)}</li>`).join('')}</ul></details>`; }).join('');
+/* ── MENU BY MEAL (event page) ── */
+/* Each meal of the event with its own dishes, grouped by course. A library menu chosen for a meal that has no dishes
+   of its own yet is shown as "not confirmed": one tap makes those its dishes, so counters and vendor orders see them.
+   Food type is shown as a mark with its name for screen readers; diet marks as text. Nothing is guessed. */
+const CAT_NAME = Object.fromEntries(DISH_CATS);
+const TYPE_NAME = Object.fromEntries(FOOD_TYPES), DIET_NAME = Object.fromEntries(DIET_TAGS);
+const svcTitle = (s, services) => {
+  const same = services.filter(x => x.meal === s.meal);
+  return (MEALS[s.meal] || 'Menu') + (same.length > 1 ? ` ${same.findIndex(x => x.id === s.id) + 1}` : '');   // by id: the lists are rebuilt
+};
+function dishPill(d) {
+  const diet = (d.diet || []).map(x => DIET_NAME[x]).join(', ');
+  return `<span class="dish-pill${d.preview ? ' preview' : ''}" data-nl>${d.type ? `<i class="ft ft-${d.type}" aria-hidden="true"></i><span class="sr">${TYPE_NAME[d.type]}: </span>` : ''}${esc(d.name)}${diet ? ` <small>${esc(diet)}</small>` : ''}${d.head ? ` <small class="by">· ${esc(short(d.head))}</small>` : ''}</span>`;
+}
+function dishCourses(dishes) {
+  const groups = new Map();
+  for (const d of dishes) { const k = d.cat || ''; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(d); }
+  const order = [...DISH_CATS.map(([k]) => k).filter(k => groups.has(k)), ...[...groups.keys()].filter(k => k && !CAT_NAME[k]), ...(groups.has('') ? [''] : [])];
+  const single = order.length === 1 && order[0] === '';
+  return order.map(k => `<div class="svc-cat">${single ? '' : `<div class="cat-l">${esc(k ? CAT_NAME[k] || k : 'Other dishes')}</div>`}
+    <div class="dish-pills">${groups.get(k).map(dishPill).join('')}</div></div>`).join('');
+}
+function mealMenuCard(ev) {
+  if (!(ev.meals || []).length) return '';
+  const { services, unassigned, changedElsewhere } = eventServices(ev);
+  const shared = (services[0]?.dishes || []).filter(d => d.shared);
+  const cards = services.map(s => {
+    const own = s.dishes.filter(d => !d.shared);
+    const facts = [s.date ? fmtDate(s.date) : '', s.time || '', s.guests ? `${s.guests} guests` : '', s.rate ? `${fmtCurrency(s.rate)} / plate` : ''].filter(Boolean).join(' · ');
+    const tplLine = s.fromTemplate
+      ? `<div class="svc-from"><div class="meta">${tr(`From ${s.template.name} menu · ${own.length} dishes · not confirmed yet`, `${s.template.name} मेनू · ${own.length} पदार्थ · अजून पक्के नाही`)}</div>
+          <button type="button" class="btn-sm" data-action="svc-use" data-id="${esc(s.id)}">${icon('check', 16)}${tr('Use these dishes', 'हे पदार्थ घ्या')}</button></div>`
+      : s.template ? `<div class="meta svc-tpl">${tr(`Started from ${s.template.name} menu`, `${s.template.name} मेनूवरून`)}</div>` : '';
+    return `<div class="card pad svc-card" data-svc="${esc(s.id)}" data-meal-menu="${esc(s.meal)}">
+      <div class="svc-h"><div class="svc-t"><div class="title-sm">${esc(svcTitle(s, services))}</div>${facts ? `<div class="meta" data-nl>${esc(facts)}</div>` : ''}</div>
+        <button type="button" class="btn-sm" data-action="svc-edit" data-id="${esc(s.id)}" aria-label="Edit ${esc(svcTitle(s, services))} menu">${icon('pencil', 16)}${tr('Edit', 'बदला')}</button></div>
+      ${own.length ? dishCourses(own) : `<div class="meta">${tr('No dishes yet', 'अजून पदार्थ नाहीत')}</div>`}
+      ${tplLine}
+    </div>`;
+  }).join('');
+  return `<div class="sec"><span class="sec-title">Menu by meal – जेवणानुसार मेनू</span></div>
+    ${changedElsewhere ? `<div class="card pad due-note" role="status">${tr('This menu was changed in an older version of the app. Check each meal before sending it to the client or vendors.', 'हा मेनू जुन्या आवृत्तीत बदलला. पाठवण्याआधी प्रत्येक जेवण तपासा.')}</div>` : ''}
+    <div class="svc-list" id="meal-menus">${cards}
+      ${shared.length ? `<div class="meta svc-shared" data-nl>${tr('Every meal', 'सर्व जेवण')}: ${esc(shared.map(d => d.name).join(', '))}</div>` : ''}
+      ${unassigned.length ? `<div class="card pad due-note" id="svc-unassigned"><div class="title-sm">${tr('Not in any meal', 'कोणत्याही जेवणात नाही')}</div>
+        <div class="meta" data-nl>${esc(unassigned.map(d => `${d.name} (${MEALS[d.meal] || d.meal})`).join(', '))}</div>
+        <div class="meta">${tr('Their meal is no longer in this event. They are kept, but not served or ordered. Choose a meal for them in Event menu.', 'त्यांचे जेवण आता कार्यक्रमात नाही. ठेवले आहेत, पण वाढले/ऑर्डर होत नाहीत.')}</div></div>` : ''}
+    </div>`;
+}
+
+/* ── EDIT ONE MEAL'S MENU ── */
+let svcDraft = null;
+const LIVE_HEADS = () => EXPENSE_HEADS['Live Counter'].filter(h => !/counter setup/i.test(h));
+function openServiceSheet(id) {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const s = eventServices(ev).services.find(x => x.id === id); if (!s) return;
+  svcDraft = { ...structuredClone(s), dishes: s.dishes.filter(d => !d.shared && !d.preview).map(({ ref, ...d }) => d), shared: s.dishes.filter(d => d.shared) };
+  // Which meal is being edited, with its date when the event has more than one of that meal
+  const many = eventServices(ev).services.filter(x => x.meal === s.meal).length > 1;
+  q('svc-mtitle').textContent = `${svcTitle(s, eventServices(ev).services)} menu${many ? ` · ${fmtDate(s.date || ev.date)}` : ''} – मेनू`;
+  q('svc-date').value = s.date || ev.date || ''; q('svc-time').value = s.time || '';
+  q('svc-tpl').innerHTML = `<option value="">No library menu – मेनू नाही</option>${mealMenuOptions(s.meal || 'dinner', s.template?.id || '')}`;
+  q('svc-add').value = '';
+  renderServiceSheet();
+  openSheet('svc-modal');
+}
+function renderServiceSheet() {
+  if (!svcDraft) return;
+  const outsourced = !!D.events.find(e => e.id === curRef)?.outsourced;
+  const tpl = q('svc-tpl').value ? menuById(q('svc-tpl').value) : null;
+  // Choosing a library menu never replaces dishes already chosen: its dishes are added only on a tap
+  const missing = tpl?.items?.filter(n => !svcDraft.dishes.some(d => d.name.toLowerCase() === n.toLowerCase())) || [];
+  q('svc-tpl-note').innerHTML = !missing.length ? ''
+    : !svcDraft.dishes.length
+    ? `<div class="svc-from"><div class="meta">${tr(`${tpl.name} menu has ${tpl.items.length} dishes. They are not this meal's dishes until you use them.`, `${tpl.name} मेनूत ${tpl.items.length} पदार्थ.`)}</div>
+        <button type="button" class="btn-sm" id="btn-svc-use">${icon('check', 16)}${tr('Use these dishes', 'हे पदार्थ घ्या')}</button></div>`
+    : `<div class="svc-from"><div class="meta">${tr(`Your ${svcDraft.dishes.length} dishes stay as they are. ${tpl.name} menu has ${missing.length} more.`, `तुमचे ${svcDraft.dishes.length} पदार्थ तसेच राहतील.`)}</div>
+        <button type="button" class="btn-sm" id="btn-svc-use">${icon('plus', 16)}${tr(`Add ${missing.length} dishes`, `${missing.length} पदार्थ जोडा`)}</button></div>`;
+  const opt = (list, v) => list.map(([k, label]) => `<option value="${esc(k)}"${k === v ? ' selected' : ''}>${esc(label)}</option>`).join('');
+  const cats = [...DISH_CATS, ...[...new Set(svcDraft.dishes.map(d => d.cat).filter(c => c && !CAT_NAME[c]))].map(c => [c, c])];
+  q('svc-dishes').innerHTML = (svcDraft.dishes.length ? `<div class="label" style="margin:var(--s2) 0">${tr(`${svcDraft.dishes.length} dish${svcDraft.dishes.length > 1 ? 'es' : ''}`, `${svcDraft.dishes.length} पदार्थ`)}</div>` : '')
+    + svcDraft.dishes.map((d, i) => `<div class="svc-dish field" data-sd="${i}">
+      <div class="svc-dish-h"><input type="text" data-k="name" value="${esc(d.name)}" maxlength="200" aria-label="Dish name"><button type="button" class="icon-btn" data-sd-del="${i}" aria-label="Remove ${esc(d.name)}">${icon('x', 16)}</button></div>
+      <div class="svc-dish-sel">
+        <select data-k="cat" aria-label="Course"><option value="">Course – प्रकार</option>${opt(cats, d.cat || '')}</select>
+        <select data-k="type" aria-label="Food type"><option value="">Type – शाकाहारी?</option>${opt(FOOD_TYPES, d.type || '')}</select>
+      </div>
+      ${outsourced ? '' : `<select data-k="head" aria-label="Prepared by"><option value="">Our kitchen – आपले किचन</option>${opt(LIVE_HEADS().map(h => [h, h]), d.head || '')}${d.head && !LIVE_HEADS().includes(d.head) ? opt([[d.head, d.head]], d.head) : ''}</select>`}
+      <div class="chips-row svc-diet" role="group" aria-label="Diet marks">${DIET_TAGS.map(([k, label]) => {
+        const on = (d.diet || []).includes(k), needsVeg = ['jain', 'no_onion_garlic', 'vegan'].includes(k) && d.type !== 'veg';
+        return `<button type="button" class="f-chip" data-diet="${k}" aria-pressed="${on}"${needsVeg && !on ? ' disabled title="Only for a veg dish"' : ''}>${esc(label)}</button>`; }).join('')}</div>
+    </div>`).join('')
+    + (svcDraft.shared.length ? `<div class="meta" style="margin-top:var(--s2)" data-nl>${tr(`Also served: ${svcDraft.shared.map(d => d.name).join(', ')} (every meal; change in Event menu)`, `सर्व जेवणात: ${svcDraft.shared.map(d => d.name).join(', ')}`)}</div>` : '');
+}
+function addServiceDishes(names) {
+  const learned = learnedDishes(D.events), have = new Set(svcDraft.dishes.map(d => d.name.toLowerCase()));
+  for (const name of names) if (!have.has(name.toLowerCase())) { have.add(name.toLowerCase()); svcDraft.dishes.push({ name, head: dishCounter(name, learned) }); }
+  renderServiceSheet();
+}
+async function saveServiceSheet() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev || !svcDraft) return;
+  const errs = {};
+  svcDraft.dishes = svcDraft.dishes.map(d => ({ ...d, name: String(d.name).replace(/\s+/g, ' ').trim() }));
+  svcDraft.dishes.forEach((d, i) => { const why = !d.name ? 'Write the dish name' : dishProblem(d); if (why && !errs.first) errs.first = [i, why]; });
+  if (errs.first) { showToast(`${svcDraft.dishes[errs.first[0]].name || 'A dish'}: ${errs.first[1]} – तपासा`, 'error'); return; }
+  const date = q('svc-date').value, time = q('svc-time').value, tplId = q('svc-tpl').value;
+  const all = eventServices(ev).services.map(s => {
+    if (s.id !== svcDraft.id) return { ...s, dishes: s.dishes.filter(d => !d.preview) };
+    const clean = svcDraft.dishes.map(d => { const x = { ...d, head: d.head || '' }; if (!x.cat) delete x.cat; if (!x.type) delete x.type; if (!x.diet?.length) delete x.diet; return x; });
+    return { ...s, ...(date && date !== ev.date ? { date } : { date: undefined }), time: time || undefined, template: tplId ? { id: tplId, name: menuById(tplId)?.name || tplId } : null,
+      dishes: [...clean, ...svcDraft.shared] };
+  });
+  const patch = applyServices(ev, all);
+  const before = ev.dishes || [], sig = list => list.map(d => JSON.stringify([d.name, d.meal || '', d.svc || '', d.head || '', d.cat || '', d.type || '', d.diet || []])).sort().join('\n');
+  if (sig(before) === sig(patch.dishes)) patch.dishes = before;   // same dishes: kept in their order, no new menu version
+  else if (before.length) {
+    // Keep the previous menu and mark sent orders whose counter's dishes changed; nothing is re-sent
+    patch.menuVersions = [...(ev.menuVersions || []), { at: new Date().toISOString(), dishes: before }].slice(-20);
+    const hit = new Set(menuChangeImpact(before, patch.dishes, ev.orders || []));
+    if (hit.size) patch.orders = ev.orders.map(o => hit.has(o.id) ? { ...o, menuChanged: true } : o);
+  }
+  const btn = q('btn-save-svc'), label = btn.innerHTML;
+  btn.disabled = true; btn.textContent = 'Saving… – जतन होत आहे';
+  try { await patchEvent(ev.id, patch); }
+  catch (e) { btn.disabled = false; btn.innerHTML = label; showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
+  btn.disabled = false; btn.innerHTML = label;
+  const name = q('svc-mtitle').textContent.split(' menu')[0];
+  closeModals(); svcDraft = null;
+  const flagged = (patch.orders || []).filter(o => o.menuChanged).length;
+  showToast(flagged ? `${name} menu saved · ${flagged} order${flagged > 1 ? 's' : ''} sent earlier may need updating – ऑर्डर तपासा` : `${name} menu saved – जतन झाले`, flagged ? 'error' : 'success');
+  refreshCurrent();
+}
+// "Use these dishes" on the event page: the library menu's dishes become the meal's own dishes
+async function useServiceTemplate(id) {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const all = eventServices(ev).services, s = all.find(x => x.id === id); if (!s?.fromTemplate) return;
+  const learned = learnedDishes(D.events);
+  const next = all.map(x => x.id !== id ? { ...x, dishes: x.dishes.filter(d => !d.preview) }
+    : { ...x, dishes: x.dishes.map(d => d.preview ? { name: d.name, head: dishCounter(d.name, learned) } : d) });
+  const patch = applyServices(ev, next);
+  try { await patchEvent(ev.id, patch); } catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
+  showToast(`${svcTitle(s, all)}: ${s.dishes.filter(d => d.preview).length} dishes added from ${s.template.name} – पदार्थ जोडले`, 'success');
+  refreshCurrent();
 }
 
 
@@ -4574,6 +4711,8 @@ function bindAllEvents() {
       case 'open-exp':     openExpModal(id); break;
       case 'open-vpay':    openVPayModal(id, null, el.dataset.bill || ''); break;
       case 'menu-edit':    openMenuModal(); break;
+      case 'svc-edit':     openServiceSheet(id); break;
+      case 'svc-use':      useServiceTemplate(id); break;
       case 'lab-edit':     openLabModal(); break;
       case 'dish-assign':  assignDish(Number(id)); break;
       case 'order-new':    openOrderModal({ head: id }); break;
@@ -4836,6 +4975,20 @@ function bindAllEvents() {
     if (s.dataset.k === 'meal') { if (!s.value) delete d.meal; const ev = D.events.find(x => x.id === curRef); if (ev) syncMenuText(ev); } });
   q('menu-review').addEventListener('click', e => { const b = e.target.closest('[data-md-del]'); if (!b) return;
     menuDraft.splice(Number(b.dataset.mdDel), 1); const ev = D.events.find(x => x.id === curRef); if (ev) syncMenuText(ev); renderMenuReview(); });
+  // One meal's menu sheet
+  q('svc-tpl').addEventListener('change', renderServiceSheet);
+  q('btn-save-svc').addEventListener('click', saveServiceSheet);
+  q('btn-svc-add').addEventListener('click', () => { const names = parseMenu(q('svc-add').value).map(d => d.name); if (!names.length) return; q('svc-add').value = ''; addServiceDishes(names); });
+  q('svc-tpl-note').addEventListener('click', e => { if (!e.target.closest('#btn-svc-use')) return; const t = menuById(q('svc-tpl').value); if (t) addServiceDishes(t.items || []); });
+  q('svc-dishes').addEventListener('input', e => { const row = e.target.closest('[data-sd]'); if (!row || e.target.dataset.k !== 'name' || !svcDraft) return; svcDraft.dishes[Number(row.dataset.sd)].name = e.target.value; });
+  q('svc-dishes').addEventListener('change', e => { const row = e.target.closest('[data-sd]'), k = e.target.dataset.k; if (!row || !k || k === 'name' || !svcDraft) return;
+    const d = svcDraft.dishes[Number(row.dataset.sd)]; d[k] = e.target.value; if (k === 'head') d.manual = true; if (k === 'type') renderServiceSheet(); });
+  q('svc-dishes').addEventListener('click', e => { if (!svcDraft) return;
+    const del = e.target.closest('[data-sd-del]'); if (del) { svcDraft.dishes.splice(Number(del.dataset.sdDel), 1); renderServiceSheet(); return; }
+    const chip = e.target.closest('[data-diet]'); if (!chip || chip.disabled) return;
+    const d = svcDraft.dishes[Number(chip.closest('[data-sd]').dataset.sd)], k = chip.dataset.diet, set = new Set(d.diet || []);
+    if (set.has(k)) set.delete(k); else set.add(k);
+    d.diet = DIET_TAGS.map(([x]) => x).filter(x => set.has(x)); renderServiceSheet(); });
   q('ev-mp-rows').addEventListener('input', updateMealPlan);
   q('ev-mp-rows').addEventListener('change', e => {
     if (e.target.dataset.k !== 'menu') return;
