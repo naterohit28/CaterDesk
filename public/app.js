@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.18.1';
+const APP_BUILD = '4.19.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1173,6 +1173,8 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
 
     ${reconCard(ev, recon)}
 
+    ${pastCard(ev)}
+
     ${logisticsCard(ev)}
 
     ${ev.notes ? `<div class="card pad"><div class="label">Notes – नोंदी</div><div class="notes-text" data-nl>${esc(ev.notes)}</div></div>` : ''}
@@ -2108,6 +2110,44 @@ function mealMenusBlock(ev) {
   return rows.map(m => { const mn = menuById(ev.mealPlan[m].menu);
     return `<details class="card pad meal-menu" data-meal-menu="${m}"><summary class="label" style="cursor:pointer">${tr(`${MEALS[m]} · ${mn.name} menu · ${mn.items.length} dishes`, `${MEALS[m]} · ${mn.name} · ${mn.items.length} पदार्थ`)}</summary>
       <ul class="notes-text" data-nl style="margin:var(--s2) 0 0;padding-left:1.2em">${mn.items.map(i => `<li>${esc(i)}</li>`).join('')}</ul></details>`; }).join('');
+}
+
+
+/* ── FROM YOUR PAST EVENTS (Phase 5) ── */
+const monthYear = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : '';
+function srcLine(src) {
+  const span = src.from && src.to && monthYear(src.from) !== monthYear(src.to) ? `${monthYear(src.from)} – ${monthYear(src.to)}` : monthYear(src.to);
+  return `${src.n} reconciled event${src.n === 1 ? '' : 's'} · ${span} · ${src.names.slice(0, 2).map(esc).join(', ')}${src.names.length > 2 ? ` +${src.names.length - 2}` : ''}`;
+}
+function pastCard(ev) {
+  if (reconStatus(ev, D.expenses).state === 'reconciled') return '';
+  const list = pastSuggestions(ev, D.events, D.expenses); if (!list.length) return '';
+  const g = eventGuests(ev), basisText = s => s.basis === 'menu' ? `on the ${menuById(ev.menu)?.name || 'same'} menu` : `of this type (${esc(short(ev.type))})`;
+  const row = (s, body, action = '') => `<div class="tip" data-tip="${esc(s.key)}"><div class="tip-body">${body}${s.src ? `<div class="meta">${srcLine(s.src)}</div>` : ''}</div>
+    <div class="tip-act">${action}<button type="button" class="icon-btn" data-tip-ignore="${esc(s.key)}" aria-label="Ignore this suggestion">${icon('x', 16)}</button></div></div>`;
+  const rows = list.map(s => {
+    if (s.kind === 'insufficient') return row(s, `<div class="title-sm">${tr('Expected cost: not enough history yet', 'अंदाजे खर्च: पुरेसा इतिहास नाही')}</div><div class="meta">${tr(`Needs 2 reconciled events ${s.basis === 'menu' ? 'on this menu or ' : ''}of this type with a similar guest count (found ${s.n}).`, `२ जुळवलेले कार्यक्रम हवेत (${s.n})`)}</div>`);
+    if (s.kind === 'cost') return row(s, `<div class="title-sm">${tr(`Expected cost ${fmtCurrency(s.perPlate)}/plate`, `अंदाजे खर्च ${fmtCurrency(s.perPlate)}/ताट`)}${g ? ` · ${fmtCurrency(s.total)} ${tr(`for ${g}`, `${g} साठी`)}` : ''}</div><div class="meta">${tr(`Middle value of events ${basisText(s)}`, 'तुलनात्मक कार्यक्रमांचे मधले मूल्य')}</div>`,
+      g && Number(ev.budget) !== s.total ? `<button type="button" class="btn-sm" data-tip-use="cost">${tr('Use as budget', 'बजेट म्हणून')}</button>` : '');
+    if (s.kind === 'price') return row(s, `<div class="title-sm">${tr(`Similar events billed ${fmtCurrency(s.perPlate)}/plate${s.margin != null ? ` · ${s.margin}% contribution` : ''}`, `तत्सम कार्यक्रम ${fmtCurrency(s.perPlate)}/ताट`)}</div><div class="meta">${tr('Before overheads; for your pricing, not a rule', 'ओव्हरहेडपूर्वी')}</div>`);
+    if (s.kind === 'counter') { const v = D.vendors.find(x => x.id === s.venId);
+      return row(s, `<div class="title-sm">${esc(short(s.head))}: <span data-nl>${esc(v?.name || 'vendor')}</span>${s.perPlate ? ` · ${fmtCurrency(s.perPlate)}/plate ordered` : ''}</div>`); }
+    if (s.kind === 'labour') return row(s, `<div class="title-sm">${tr('Labour rates last paid', 'शेवटचे मजुरी दर')}</div><div class="meta" style="color:var(--text)">${s.roles.slice(0, 5).map(r => `${esc(short(r.role))} ${fmtCurrency(r.rate)}`).join(' · ')}</div>`);
+    if (s.kind === 'venue') return row(s, `<div class="title-sm">${tr(`Charges at ${esc(ev.venue)} before`, 'या ठिकाणचे खर्च')}</div><div class="meta" style="color:var(--text)">${s.charges.slice(0, 5).map(c => `${esc(short(c.head))} ${fmtCurrency(c.amt)}${c.n > 1 ? ` (${c.n}×)` : ''}`).join(' · ')}</div>`);
+    return '';
+  }).join('');
+  return `<div class="sec"><span class="sec-title">From your past events – मागील अनुभव</span></div><div class="card list" id="past-card">${rows}</div>`;
+}
+async function tipAction(el) {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  if (el.dataset.tipIgnore) {
+    await patchEvent(ev.id, { hiddenTips: [...new Set([...(ev.hiddenTips || []), el.dataset.tipIgnore])] });
+    refreshCurrent(); showToast('Hidden for this event – या कार्यक्रमासाठी लपवले'); return;
+  }
+  if (el.dataset.tipUse === 'cost') {
+    const s = pastSuggestions(ev, D.events, D.expenses).find(x => x.kind === 'cost'); if (!s?.total) return;
+    await patchEvent(ev.id, { budget: s.total }); refreshCurrent(); showToast(`Budget set to ${fmtCurrency(s.total)} – बजेट ठरवले`);
+  }
 }
 
 function openSettle() { renderSettle(); openSheet('settle-modal'); }
@@ -4608,6 +4648,7 @@ function bindAllEvents() {
   q('btn-save-vpay').addEventListener('click', () => runSave('vpay', saveVPay));
   q('btn-del-vpay').addEventListener('click', () => deleteFromSheet('vPays', 'vpay-id'));
   q('vpay-kind').addEventListener('click', e => { const b = e.target.closest('[data-kind]'); if (b) setVPayKind(b.dataset.kind); });
+  q('tab-evdetail').addEventListener('click', e => { const b = e.target.closest('[data-tip-ignore], [data-tip-use]'); if (b) tipAction(b); });
   q('open-menus').addEventListener('click', () => closeOverlay().then(openMenus));
   q('btn-menu-new').addEventListener('click', () => openMenuEdit(null));
   q('menus-body').addEventListener('click', e => { const r = e.target.closest('[data-menu-edit]'); if (r) openMenuEdit(r.dataset.menuEdit); });

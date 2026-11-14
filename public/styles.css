@@ -273,6 +273,11 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .me-head { margin-bottom: 4px; }
 .me-slab input[type="number"] { padding-left: 10px; padding-right: 8px; font-variant-numeric: tabular-nums; }
 .meal-menu summary { list-style-position: inside; }
+/* Suggestions from past events: text left, actions right */
+.tip { display: flex; gap: var(--s3); align-items: center; padding: var(--s3) 0; border-bottom: 1px solid var(--line); }
+.tip:last-child { border-bottom: 0; }
+.tip-body { flex: 1; min-width: 0; }
+.tip-act { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .q-gst-amt { font-weight: 650; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 .q-sum { display: flex; justify-content: space-between; gap: var(--s3); font-size: var(--fs-sm); color: var(--text-2); padding: 4px 2px; font-variant-numeric: tabular-nums; }
 .q-sum span:last-child { color: var(--text); font-weight: 600; white-space: nowrap; }

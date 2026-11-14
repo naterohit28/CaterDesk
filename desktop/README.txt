@@ -1,6 +1,6 @@
-CATERDESK DESKTOP TEST v4.18.1
+CATERDESK DESKTOP TEST v4.19.0
 
-Current source/package-template version: 4.18.1. Checked 14 November 2026.
+Current source/package-template version: 4.19.0. Checked 14 November 2026.
 This header is not proof that an older downloaded ZIP includes the same build.
 The latest GitHub binary release verified on that date is v2.4.7; the owner's
 existing Apps/Desktop bundle also contains v2.4.7. Build current source for the
@@ -55,7 +55,7 @@ above: otherwise a missing-script response can prevent offline precaching.
 This is a documented workaround; the helper is unchanged by this README update.
 
 Distribute the complete output folder (EXE, README.txt and app/) as one ZIP.
-Inspect the actual bundled version; do not relabel an old package as 4.18.1.
+Inspect the actual bundled version; do not relabel an old package as 4.19.0.
 Never distribute the Edge profile, customer backups or signing credentials.
 
 LOCAL LIMITS

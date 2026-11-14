@@ -515,6 +515,7 @@ export async function prepareImport(payload) {
         || !Array.isArray(row.slabs) || !row.slabs.length || row.slabs.length > 10 || row.slabs.some(s => !s || !Number.isSafeInteger(s.min) || s.min < 0 || (amount(s.rate, 'menu rate'), false))
         || !Array.isArray(row.items) || row.items.length > 120 || row.items.some(i => typeof i !== 'string' || i.length > 200)
         || (row.hidden !== undefined && typeof row.hidden !== 'boolean') || (row.leaf !== undefined && typeof row.leaf !== 'boolean'))) throw new Error('Invalid menu');
+      if (row.hiddenTips !== undefined && (!Array.isArray(row.hiddenTips) || row.hiddenTips.length > 100 || row.hiddenTips.some(k => typeof k !== 'string' || k.length > 120))) throw new Error('Invalid suggestion settings');
       if (row.gst !== undefined && (!row.gst || !(Number(row.gst.rate) > 0 && Number(row.gst.rate) <= 100) || (amount(row.gst.taxable, 'GST taxable amount'), amount(row.gst.amount, 'GST'), false)
         || (row.gst.from !== undefined && typeof row.gst.from !== 'string'))) throw new Error('Invalid GST');
       if (row.quotes?.some(qt => qt.gst !== undefined && (!qt.gst || !(Number(qt.gst.rate) > 0 && Number(qt.gst.rate) <= 100) || (amount(qt.gst.taxable, 'GST taxable amount'), false)))) throw new Error('Invalid quote');
@@ -606,7 +607,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.18.1';
+export const APP_VERSION = '4.19.0';
 const COUNT_METHOD_IDS = ['tokens', 'tally', 'gate', 'coupons', 'joint', 'other'];
 // v4.18.0 kept menus in their own store (database version 5): copy them into meta once and empty that store
 export async function migrateLegacyMenus() {
