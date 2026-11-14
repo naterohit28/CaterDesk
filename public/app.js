@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.20.1';
+const APP_BUILD = '4.21.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -356,18 +356,25 @@ function showToast(msg, type = 'success', action = null) {
   const btn = q('toast-action');
   q('toast-ic').innerHTML = icon(type === 'error' ? 'alert' : 'check', 18);
   q('toast-msg').textContent = msg;
-  t.className = 'show ' + type + (action ? ' has-action' : '');
-  btn.textContent = action ? action.label : '';
-  btn.onclick = action ? () => { hideToast(); action.run(); } : null;
-  clearTimeout(t._t);
+  // A later notice without its own button must not take away an Undo that is still on offer: the button stays,
+  // for the time it had left, under the new message.
+  const now = Date.now(), kept = !action && t._action && t._actionUntil > now ? t._action : null;
+  const act = action || kept;
+  if (action) { t._action = action; t._actionUntil = now + TOAST_ACTION_MS; }
+  t.className = 'show ' + type + (act ? ' has-action' : '');
+  btn.textContent = act ? act.label : '';
+  btn.onclick = act ? () => { hideToast(); act.run(); } : null;
+  clearTimeout(t._t); clearTimeout(t._a);
   // A message with a button (e.g. Undo) stays a little longer, then closes by itself. The change it offers to undo
   // is already saved, so closing it only ends the chance to undo; it never loses or changes data.
-  t._t = setTimeout(hideToast, action ? TOAST_ACTION_MS : type === 'error' ? 10000 : 4000);
+  const own = action ? TOAST_ACTION_MS : type === 'error' ? 10000 : 4000, left = act ? t._actionUntil - now : 0;
+  t._t = setTimeout(hideToast, Math.max(own, left));
+  if (kept && left < own) t._a = setTimeout(() => { t.classList.remove('has-action'); btn.textContent = ''; btn.onclick = null; t._action = null; }, left);
 }
 
 function hideToast() {
-  clearTimeout(q('toast')._t);
-  q('toast').className = '';
+  const t = q('toast'); clearTimeout(t._t); clearTimeout(t._a); t._action = null;
+  t.className = '';
   q('toast-action').onclick = null;
 }
 
@@ -1873,11 +1880,11 @@ const renderQuoteFit = () => { renderQuote(); requestAnimationFrame(() => fitSel
 // What the client sees: no costs or margins; per-plate rates only if chosen
 function quoteText(ev, q) {
   const opt = quoteOptions({ quotes: [...(ev.quotes || []), q] }).length > 1 ? `Option ${quoteOption(q)}, ` : '';
-  const t = quoteTotal(q), L = [`Quotation (${opt}version ${q.v}) – ${ev.name}`, `${fmtDate(ev.date)}${ev.venue ? ' · ' + ev.venue : ''}`, ''];
+  const t = quoteTotal(q), L = [`Quotation (${opt}version ${q.v}) – ${quoteEvent(ev, q).name}`, `${fmtDate(quoteEvent(ev, q).date)}${quoteEvent(ev, q).venue ? ' · ' + quoteEvent(ev, q).venue : ''}`, ''];
   for (const l of t.lines) {
     // Rates hidden: each line shows its amount only (no guest count or per-plate rate)
-    const mealName = l.kind === 'meal' ? MEALS[l.meal] + (l.menu && menuById(l.menu) ? ` (${menuById(l.menu).name} menu)` : '') : '';
-    const dishes = l.kind === 'meal' && q.showItems && l.menu ? (menuById(l.menu)?.items || []) : [];
+    const mealName = l.kind === 'meal' ? MEALS[l.meal] + (l.menu && quoteMenu(q, l.menu) ? ` (${quoteMenu(q, l.menu).name} menu)` : '') : '';
+    const dishes = l.kind === 'meal' && q.showItems && l.menu ? (quoteMenu(q, l.menu)?.items || []) : [];
     if (l.kind === 'meal') L.push(q.showRates !== false ? `${mealName}: ${l.guests} guests × ${fmtCurrency(l.rate)} = ${fmtCurrency(l.total)}` : `${mealName}: ${fmtCurrency(l.total)}`);
     else if (l.kind === 'item') L.push(`${l.label}: ${fmtCurrency(l.amt)}`);
     else L.push(`${l.label}: −${fmtCurrency(l.amt)}`);
@@ -2005,7 +2012,7 @@ async function quoteAction(action) {
     const d = await saveQuoteDraft(); if (!d) return;
     const text = quoteText(D.events.find(e => e.id === ev.id), d);
     const prof = getProfile();
-    const ok = await saveQuotes(qs => { const x = qs.find(y => y.v === d.v); Object.assign(x, { status: 'sent', sentAt: now, text, ...(Object.keys(prof).length ? { profile: prof } : {}) }); });
+    const ok = await saveQuotes(qs => { const x = qs.find(y => y.v === d.v); Object.assign(x, { status: 'sent', sentAt: now, text, snap: quoteSnapshot(ev, d), ...(Object.keys(prof).length ? { profile: prof } : {}) }); });
     if (!ok) return;
     quoteDraft = null; refreshCurrent(); renderQuote(); showToast(`Quote v${d.v} locked as sent. Changes now make a new version. – पक्की`); return;
   }
@@ -2170,12 +2177,23 @@ function saveProfile() {
   if (!p.name) { showFieldErrors({ 'pf-name': 'Write your business name – व्यवसायाचे नाव' }); return; }
   writePref('ffv2_profile', p); closeModals(); showToast('Business details saved – जतन');
 }
+/* An issued (sent) quote carries a frozen copy of what it said: the event's name, date and venue and each menu's name
+   and dishes at that moment (`snap`), beside the business details (`profile`). Reprinting it uses the copy, so later
+   changes to the event, menus or business details never alter an issued quote. Quotes sent before this existed have
+   no copy and print from current data (nothing is invented for them). */
+function quoteSnapshot(ev, qt) {
+  const menus = {};
+  for (const l of qt.lines) if (l.kind === 'meal' && l.menu && menuById(l.menu)) { const m = menuById(l.menu); menus[l.menu] = { name: m.name, items: [...(m.items || [])] }; }
+  return { event: { name: ev.name, date: ev.date, venue: ev.venue || '' }, menus };
+}
+const quoteEvent = (ev, qt) => qt.snap?.event || ev;
+const quoteMenu = (qt, id) => qt.snap ? qt.snap.menus?.[id] || null : menuById(id);
 // The quote as a printable A4 document: no costs, margins or internal notes
 function quoteDocHtml(ev, qt, profile) {
-  const t = quoteTotal(qt), p = profile || {}, many = quoteOptions({ quotes: [...(ev.quotes || []), qt] }).length > 1;
+  const t = quoteTotal(qt), p = profile || {}, many = quoteOptions({ quotes: [...(ev.quotes || []), qt] }).length > 1, E = quoteEvent(ev, qt);
   const line = (a, b, c, cls = '') => `<tr class="${cls}"><td>${a}</td><td class="n">${b}</td><td class="n">${c}</td></tr>`;
   const rows = t.lines.map(l => {
-    if (l.kind === 'meal') { const mn = l.menu && menuById(l.menu), dishes = qt.showItems && mn ? mn.items || [] : [];
+    if (l.kind === 'meal') { const mn = l.menu && quoteMenu(qt, l.menu), dishes = qt.showItems && mn ? mn.items || [] : [];
       return line(`<b>${MEALS[l.meal]}</b>${mn ? ` – ${esc(mn.name)} menu` : ''}${dishes.length ? `<div class="pd-dishes">${dishes.map(esc).join(' · ')}</div>` : ''}`,
         qt.showRates !== false ? `${l.guests} × ${fmtCurrency(l.rate)}` : '', fmtCurrency(l.total)); }
     if (l.kind === 'item') return line(esc(l.label), '', fmtCurrency(l.amt));
@@ -2186,10 +2204,11 @@ function quoteDocHtml(ev, qt, profile) {
     : line('<b>Total</b> <span class="pd-muted">(before any applicable GST)</span>', '', `<b>${fmtCurrency(t.total)}</b>`, 'pd-total');
   const when = String(qt.sentAt || qt.at || new Date().toISOString()).slice(0, 10);
   return `<div class="pd">
+    ${qt.status === 'draft' ? '<div class="pd-draft">DRAFT – not yet sent to the client</div>' : ''}
     <header class="pd-head"><div><div class="pd-biz">${esc(p.name || 'Your business name')}</div>${p.tagline ? `<div class="pd-muted">${esc(p.tagline)}</div>` : ''}</div>
       <div class="pd-contact">${[p.address, p.phone, p.email].filter(Boolean).map(esc).join('<br>')}${p.gstin ? `<br>GSTIN ${esc(p.gstin)}` : ''}</div></header>
     <h1 class="pd-title">Quotation</h1>
-    <div class="pd-meta"><div><b>${esc(ev.name)}</b><br>${fmtDate(ev.date)}${ev.venue ? ` · ${esc(ev.venue)}` : ''}</div>
+    <div class="pd-meta"><div><b>${esc(E.name)}</b><br>${fmtDate(E.date)}${E.venue ? ` · ${esc(E.venue)}` : ''}</div>
       <div class="n">${many ? `Option ${quoteOption(qt)} · ` : ''}Version ${qt.v}<br>Date ${fmtDate(when)}</div></div>
     <table class="pd-table"><thead><tr><th>Item</th><th class="n">${qt.showRates !== false ? 'Guests × rate' : ''}</th><th class="n">Amount</th></tr></thead><tbody>${rows}</tbody><tfoot>${totals}</tfoot></table>
     ${qt.terms?.trim() ? `<div class="pd-block"><b>Terms</b><div>${esc(qt.terms.trim()).replace(/\n/g, '<br>')}</div></div>` : ''}
@@ -2202,7 +2221,12 @@ function printQuote() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const cur = quoteDraft && quoteDraft.v === quoteView ? (readQuoteForm(), quoteDraft) : (ev.quotes || []).find(x => x.v === quoteView); if (!cur) return;
   const profile = cur.status !== 'draft' && cur.profile ? cur.profile : getProfile();
-  if (!profile.name) showToast('Add your business details (☰ → Business details) so the quote shows your name – तपशील भरा', 'error');
+  // No business details yet: the quotation would go out with no name on it. Ask for them first.
+  if (!profile.name) {
+    askSheet({ title: 'Add your business details first – आधी व्यवसाय तपशील', message: 'The quotation shows your business name, address, phone and GSTIN at the top. None are saved yet, so the PDF would have no name on it. It takes a minute and is asked only once.',
+      actions: [{ label: 'Add business details – तपशील भरा', value: true, style: 'btn-primary' }] }).then(ok => { if (ok) closeOverlay().then(openProfile); });
+    return;
+  }
   q('print-doc').innerHTML = quoteDocHtml(ev, cur, profile);
   document.body.classList.add('printing');
   const done = () => { document.body.classList.remove('printing'); window.removeEventListener('afterprint', done); };
@@ -4409,7 +4433,7 @@ async function exportData() {
     };
     const where = await askSheet({
       title: 'Backup ready – बॅकअप तयार',
-      message: `${size}. Save it outside this phone too, e.g. in Google Drive.`,
+      message: `${size}. Share sends it to another app (Drive, WhatsApp, Files); Save to phone downloads it here. A copy outside this phone is what protects you.`,
       actions: [
         { label: 'Share – Drive, Files, WhatsApp – पाठवा', run: share, style: 'btn-primary' },
         { label: 'Save to phone (Downloads) – फोनवर जतन', value: 'download', style: 'btn-secondary' }
@@ -4431,8 +4455,12 @@ async function exportData() {
   lastExport = new Date().toISOString();
   await setMeta('last_export', lastExport);
   const size = file.size > 1048576 ? `${(file.size / 1048576).toFixed(1)} MB` : `${Math.ceil(file.size / 1024)} KB`;
-  showToast(how === 'shared' ? `Backup shared (${size}) – बॅकअप पाठवला`
-    : refused ? `The phone did not open the share menu (${refused}). Backup saved to Downloads (${size}).` : `Backup saved to Downloads (${size}) – बॅकअप जतन`, refused ? 'error' : 'success');
+  await setMeta('last_export_how', how);
+  // Three different facts: the file was handed to another app (we can't see whether that app stored it), or a
+  // download was started (the browser saves it; we can't see the file). Neither is a confirmed copy outside the phone.
+  showToast(how === 'shared' ? `Backup handed to the app you chose (${size}). Check it arrived there, e.g. in Drive. – बॅकअप पाठवला`
+    : refused ? `The phone did not open the share menu (${refused}). A download to this phone's Downloads was started instead (${size}).`
+    : `Backup download started (${size}). It goes to this phone's Downloads; copy it outside the phone too. – डाउनलोड सुरू`, refused ? 'error' : 'success');
   if (CT === 'home') rHome();
 }
 

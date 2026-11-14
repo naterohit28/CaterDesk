@@ -24,6 +24,14 @@ const DATA = { version: 'ffv2', photos: [], vendors: [], vPays: [], cPays: [],
   await p.goto(BASE_URL); await p.waitForSelector('#kpi .card');
   await p.evaluate(async d => { const db = await import('./db.js'); await db.importAllData(d); }, DATA);
 
+  await test('no business details yet: nothing is printed; it asks for them and opens Business details', async () => {
+    await openQuote(); await p.locator('[data-action="quote-print"]').click(); await p.waitForSelector('#ask-modal.active');
+    assert.deepEqual(await p.evaluate(() => window.__printed), [], 'no nameless PDF');
+    assert.match(await p.locator('#ask-msg').innerText(), /would have no name on it/);
+    await p.locator('#ask-actions button').first().click(); await p.waitForSelector('#profile-modal.active');
+    await p.locator('#profile-modal [data-action="close-modal"]').click(); await p.reload(); await p.waitForSelector('#kpi .card');
+  });
+
   await test('business details: name required, GSTIN format checked, saved only as entered', async () => {
     await fillProfile({ name: '', gstin: '' });
     assert.equal(await p.locator('#profile-modal.active').count(), 1, 'refused without a name');
@@ -58,6 +66,30 @@ const DATA = { version: 'ffv2', photos: [], vendors: [], vPays: [], cPays: [],
     await p.locator('[data-action="quote-new"]').click(); await p.locator('[data-action="quote-print"]').click(); await p.waitForTimeout(300);
     [, doc] = await p.evaluate(() => window.__printed);
     assert.match(doc, /Sample Caterers & Events/); assert.doesNotMatch(doc, /GSTIN/);
+  });
+
+  await test('an issued quote reprints exactly as issued after the event, venue and menu change; a draft says DRAFT; a new version uses current data', async () => {
+    const first = await p.evaluate(() => window.__printed[0]);
+    assert.doesNotMatch(first, /DRAFT/, 'a sent quote is the final document');
+    const sent = (await p.evaluate(async () => (await import('./db.js')).exportAllData())).events[0].quotes[0];
+    assert.deepEqual(sent.snap.event, { name: 'Sample Wedding', date: sent.snap.event.date, venue: 'Sample Lawn' }); assert.equal(sent.snap.menus.golden.name, 'Golden');
+    await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); const { _rev, ...e } = d.events[0];
+      await db.putOne('events', { ...e, name: 'Sample Renamed Event', venue: 'Another Venue' });
+      await db.putOne('menus', { id: 'golden', name: 'Golden Plus', slabs: [{ min: 1, rate: 999 }], items: ['Changed Dish'] }); });
+    await openQuote(); await p.locator('#quote-versions [data-qv="1"]').click(); await p.locator('[data-action="quote-print"]').click(); await p.waitForTimeout(300);
+    let docs = await p.evaluate(() => window.__printed);
+    assert.match(docs[0], /Sample Wedding/); assert.match(docs[0], /Sample Lawn/); assert.match(docs[0], /Dinner – Golden menu/);
+    assert.doesNotMatch(docs[0], /Renamed|Another Venue|Golden Plus|DRAFT/);
+    await p.locator('[data-action="quote-new"]').click(); await p.locator('[data-action="quote-print"]').click(); await p.waitForTimeout(300);
+    docs = await p.evaluate(() => window.__printed);
+    assert.match(docs[1], /DRAFT – not yet sent to the client/); assert.match(docs[1], /Sample Renamed Event/); assert.match(docs[1], /Golden Plus menu/);
+    // a quote sent before frozen copies existed prints from current data; nothing is invented
+    await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); const { _rev, ...e } = d.events[0]; const qs = structuredClone(e.quotes); delete qs[0].snap; await db.putOne('events', { ...e, quotes: qs }); });
+    await openQuote(); await p.locator('#quote-versions [data-qv="1"]').click(); await p.locator('[data-action="quote-print"]').click(); await p.waitForTimeout(300);
+    assert.match((await p.evaluate(() => window.__printed))[0], /Sample Renamed Event/);
+    const bad = await p.evaluate(async () => { const db = await import('./db.js'); const c = await db.exportAllData(); delete c.manifest; c.events[0].quotes[0].snap = { event: { name: 5 }, menus: {} };
+      try { await db.importAllData(c, 'replace'); return 'accepted'; } catch (e) { return e.message; } });
+    assert.match(bad, /Invalid quote/);
   });
 
   await test('business details travel with backups; a bad saved copy on a quote is refused', async () => {

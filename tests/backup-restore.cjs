@@ -69,7 +69,7 @@ const noRev = rows => rows.map(({ _rev, ...r }) => r).sort((a, b) => a.id.locale
     shared = await A.p.evaluate(async () => { await window.__done; return window.__got; });
     assert(shared, 'share sheet opened from the tap');
     assert.match(shared.name, /^caterdesk-backup-\d{4}-\d{2}-\d{2}\.txt$/); assert.equal(shared.type, 'text/plain');
-    assert.match(await toast(A.p), /Backup shared|बॅकअप पाठवला/);
+    assert.match(await toast(A.p), /Backup handed to the app you chose .* Check it arrived there|बॅकअप पाठवला/);
     const b = JSON.parse(shared.text);
     assert.equal(b.version, 'ffv2', 'older app versions can still read it');
     assert.equal(b.manifest.format, 'caterdesk-backup'); assert.equal(b.manifest.formatVersion, 2); assert.match(b.manifest.sha256, /^[0-9a-f]{64}$/);
@@ -87,7 +87,7 @@ const noRev = rows => rows.map(({ _rev, ...r }) => r).sort((a, b) => a.id.locale
     await A.p.waitForSelector('#ask-modal.active #ask-actions button');
     await A.p.locator('#ask-actions button').nth(1).click();
     const dl = await wait; assert.match(dl.suggestedFilename(), /^caterdesk-backup-\d{4}-\d{2}-\d{2}\.json$/);
-    await A.p.evaluate(() => window.__done); assert.match(await toast(A.p), /Downloads|जतन/);
+    await A.p.evaluate(() => window.__done); assert.match(await toast(A.p), /Backup download started .* copy it outside the phone too|डाउनलोड सुरू/);
   });
   await step('if the phone refuses to share, the backup is still saved to Downloads and the reason is shown', async () => {
     await A.p.locator('#toast').evaluate(t => t.className = '');
@@ -96,7 +96,7 @@ const noRev = rows => rows.map(({ _rev, ...r }) => r).sort((a, b) => a.id.locale
     await A.p.waitForSelector('#ask-modal.active #ask-actions button');
     await A.p.locator('#ask-actions button').first().click();
     const dl = await wait; assert.match(dl.suggestedFilename(), /\.json$/); await A.p.evaluate(() => window.__done);
-    const msg = await toast(A.p); assert.match(msg, /did not open the share menu \(NotAllowedError: refused\)/); assert.match(msg, /saved to Downloads/);
+    const msg = await toast(A.p); assert.match(msg, /did not open the share menu \(NotAllowedError: refused\)/); assert.match(msg, /A download to this phone's Downloads was started instead/);
   });
   await step('cancelling the choice saves nothing', async () => {
     let downloads = 0; const count = () => downloads++; A.p.on('download', count);
