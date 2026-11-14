@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, learnedDishes,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.21.0';
+const APP_BUILD = '4.21.1';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1570,19 +1570,37 @@ let menuDraft = [];
 function openMenuModal() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   menuDraft = (ev.dishes || []).map(d => ({ ...d }));
-  q('menu-text').value = menuDraft.map(d => d.name).join('\n');
+  syncMenuText(ev);
   renderMenuReview();
   openSheet('menu-modal');
   q('menu-text').focus({ preventScroll: true });
 }
+// The text box lists each meal's dishes under its heading, so the same dish can be listed for two meals
+function syncMenuText(ev) {
+  q('menu-text').value = menuText(menuDraft, MEAL_ORDER.filter(m => (ev.meals || []).includes(m)), MEALS);
+}
+const draftKey = (name, meal) => `${meal || ''}|${String(name).toLowerCase()}`;
+// Parsed dishes for this event: a heading for a meal the event doesn't have counts as no heading
+function parsedDishes(ev) {
+  const meals = MEAL_ORDER.filter(m => (ev.meals || []).includes(m)), seen = new Set();
+  return parseMenu(qv('menu-text')).map(p => ({ name: p.name, meal: meals.includes(p.meal) ? p.meal : '' }))
+    .filter(p => { const k = draftKey(p.name, p.meal); if (seen.has(k)) return false; seen.add(k); return true; });
+}
 function readMenuText() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const learned = learnedDishes(D.events);
-  const known = new Map([...(ev.dishes || []), ...menuDraft].map(d => [d.name.toLowerCase(), d]));
+  const prior = [...(ev.dishes || []), ...menuDraft];
+  // Earlier choices belong to a dish at its meal; the same dish at another meal only borrows its counter as a start
+  const exact = new Map(prior.map(d => [draftKey(d.name, d.meal), d]));
+  const byName = new Map(prior.map(d => [d.name.toLowerCase(), d]));
   const meals = MEAL_ORDER.filter(m => (ev.meals || []).includes(m));
-  menuDraft = parseMenu(qv('menu-text')).map(name => {
-    const d = known.get(name.toLowerCase());
-    return d ? { ...d, name } : { name, head: dishCounter(name, learned), ...(meals.length === 1 ? { meal: meals[0] } : {}) };
+  menuDraft = parsedDishes(ev).map(({ name, meal }) => {
+    const d = exact.get(draftKey(name, meal));
+    if (d) return { ...d, name };
+    const same = byName.get(name.toLowerCase());
+    if (!meal && same) return { ...same, name };   // listed without a heading: keep the dish as it was
+    const m = meal || (meals.length === 1 ? meals[0] : '');
+    return { name, head: same ? same.head || '' : dishCounter(name, learned), ...(same?.manual ? { manual: true } : {}), ...(m ? { meal: m } : {}) };
   });
   renderMenuReview();
 }
@@ -1603,7 +1621,9 @@ function renderMenuReview() {
 
 async function saveMenu() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
-  if (parseMenu(qv('menu-text')).join('\n').toLowerCase() !== menuDraft.map(d => d.name).join('\n').toLowerCase()) readMenuText();
+  // Re-read only if the text lists different dishes (the text groups dishes by meal, so its order can differ)
+  const keys = list => list.map(d => draftKey(d.name, d.meal)).sort().join('\n');
+  if (keys(parsedDishes(ev)) !== keys(menuDraft)) readMenuText();
   const meals = MEAL_ORDER.filter(m => (ev.meals || []).includes(m));
   const dishes = menuDraft.map(d => { const x = { ...d }; if (!x.meal || !meals.includes(x.meal)) delete x.meal; return x; });
   const before = ev.dishes || [];
@@ -1743,7 +1763,7 @@ async function orderAction(orderId) {
       ...(['prepared', 'opened', 'sent'].includes(o.status) || o.menuChanged ? [{ label: 'Vendor confirmed – पक्के', value: 'confirmed', style: 'btn-secondary' }] : []),
       ...(o.status !== 'delivered' ? [{ label: 'Delivered · record bill – आले, बिल नोंदवा', value: 'delivered', style: 'btn-primary' }] : []),
       { label: 'Edit / send again – बदला', value: 'edit', style: 'btn-secondary' },
-      ...((o.messages || []).length ? [{ label: `Messages sent (${o.messages.length}) – पाठवलेले संदेश`, value: 'history', style: 'btn-secondary' }] : []),
+      ...((o.messages || []).length ? [{ label: `Message history (${o.messages.length}) – संदेशांचा इतिहास`, value: 'history', style: 'btn-secondary' }] : []),
       ...(o.status === 'delivered' && !orderBillOf(o) ? [{ label: 'Record / link its bill – बिल नोंदवा', value: 'bill', style: 'btn-primary' }] : []),
       ...(o.status !== 'delivered' ? [{ label: 'Cancel order – रद्द', value: 'cancelled', style: 'btn-danger' }] : [])
     ]
@@ -4804,9 +4824,11 @@ function bindAllEvents() {
   let menuTimer;
   q('menu-text').addEventListener('input', () => { clearTimeout(menuTimer); menuTimer = setTimeout(readMenuText, 300); });
   q('menu-review').addEventListener('change', e => { const s = e.target.closest('[data-md]'); if (!s) return;
-    const d = menuDraft[Number(s.dataset.md)]; if (!d) return; d[s.dataset.k] = s.value; if (s.dataset.k === 'head') d.manual = true; });
+    const d = menuDraft[Number(s.dataset.md)]; if (!d) return; d[s.dataset.k] = s.value; if (s.dataset.k === 'head') d.manual = true;
+    // A dish moved to another meal moves under that meal's heading in the text box too
+    if (s.dataset.k === 'meal') { if (!s.value) delete d.meal; const ev = D.events.find(x => x.id === curRef); if (ev) syncMenuText(ev); } });
   q('menu-review').addEventListener('click', e => { const b = e.target.closest('[data-md-del]'); if (!b) return;
-    menuDraft.splice(Number(b.dataset.mdDel), 1); q('menu-text').value = menuDraft.map(d => d.name).join('\n'); renderMenuReview(); });
+    menuDraft.splice(Number(b.dataset.mdDel), 1); const ev = D.events.find(x => x.id === curRef); if (ev) syncMenuText(ev); renderMenuReview(); });
   q('ev-mp-rows').addEventListener('input', updateMealPlan);
   q('ev-mp-rows').addEventListener('change', e => {
     if (e.target.dataset.k !== 'menu') return;
