@@ -89,6 +89,15 @@ const DATA = { version: 'ffv2', photos: [], vendors: [], vPays: [], expenses: []
     assert.equal(e.billing, 400000); assert.equal(e.billChanges, undefined);
   });
 
+  await test('F4: an unpaid booking advance is due before the event, never overdue; after the event date it is overdue', async () => {
+    const r = await p.evaluate(async () => { const u = await import('./utils.js');
+      const plan = [{ id: 'b', when: 'booking', amt: 50000 }];
+      const before = u.paymentSchedule({ id: 'f', date: u.addDays(u.today(), 10), billing: 200000, payPlan: plan }, []);
+      const after = u.paymentSchedule({ id: 'f', date: u.addDays(u.today(), -1), billing: 200000, payPlan: plan }, []);
+      return { before: [before.rows.find(x => x.id === 'b').state, before.dueNow, before.overdue], after: [after.rows.find(x => x.id === 'b').state, after.overdue > 0] }; });
+    assert.deepEqual(r.before, ['due', 50000, 0]); assert.deepEqual(r.after, ['overdue', true]);
+  });
+
   assert.deepEqual(errors, []);
   await browser.close();
   console.log(failed ? 'money fixes FAIL' : 'audit findings F1–F3, F5–F7 fixed PASS');
