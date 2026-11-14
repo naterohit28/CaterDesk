@@ -479,7 +479,7 @@ export async function prepareImport(payload) {
         || qt.lines.some(l => !l || (l.menu !== undefined && (typeof l.menu !== 'string' || l.menu.length > 64)) || (l.kind === 'meal' ? !['breakfast', 'lunch', 'hightea', 'dinner', 'latenight'].includes(l.meal) || !Number.isSafeInteger(l.guests) || l.guests < 0 || (amount(l.rate, 'quote rate'), false)
           : !['item', 'discount'].includes(l.kind) || typeof l.label !== 'string' || l.label.length > 200 || (amount(l.amt, 'quote amount'), false)))
         || [qt.terms, qt.text, qt.by].some(x => x !== undefined && (typeof x !== 'string' || x.length > 5000))
-        || (qt.evidence !== undefined && !['written', 'verbal'].includes(qt.evidence)))
+        || (qt.evidence !== undefined && !['written', 'verbal'].includes(qt.evidence)) || (qt.option !== undefined && !/^[A-H]$/.test(qt.option)))
         || new Set(row.quotes.map(qt => qt.v)).size !== row.quotes.length)) throw new Error('Invalid quote');
       if (row.gst !== undefined && (!row.gst || !(Number(row.gst.rate) > 0 && Number(row.gst.rate) <= 100) || (amount(row.gst.taxable, 'GST taxable amount'), amount(row.gst.amount, 'GST'), false)
         || (row.gst.from !== undefined && typeof row.gst.from !== 'string'))) throw new Error('Invalid GST');
@@ -567,7 +567,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.17.0';
+export const APP_VERSION = '4.17.1';
 const COUNT_METHOD_IDS = ['tokens', 'tally', 'gate', 'coupons', 'joint', 'other'];
 export async function checkAndMigrate() {
   await openDB();

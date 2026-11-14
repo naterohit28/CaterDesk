@@ -245,16 +245,27 @@ export function checkQuote(q) {
   }
   return '';
 }
-// The next draft: a copy of the latest version, or the event's meal plan when there is no quote yet
-export function nextQuoteDraft(ev) {
-  const last = (ev.quotes || []).at(-1);
+// Quotes can offer the client several options side by side (A, B, C…); each option has its own versions
+export const quoteOption = q => q?.option || 'A';
+export const quoteOptions = ev => [...new Set((ev.quotes || []).map(quoteOption))].sort();
+// The next draft: a revision of the given version (default: the latest), or a new option copied from it,
+// or the event's meal plan when there is no quote yet
+export function nextQuoteDraft(ev, { from = null, newOption = false } = {}) {
+  const qs = ev.quotes || [];
+  const last = from || qs.at(-1);
+  const option = newOption ? 'ABCDEFGH'.split('').find(l => !quoteOptions(ev).includes(l)) || 'H' : quoteOption(last);
   const lines = last ? structuredClone(last.lines)
     : MEAL_ORDER.filter(m => ev.mealPlan?.[m]?.guests > 0).map(m => ({ kind: 'meal', meal: m, guests: ev.mealPlan[m].guests, rate: ev.mealPlan[m].rate, ...(ev.mealPlan[m].menu ? { menu: ev.mealPlan[m].menu } : {}) }));
-  return { v: (last?.v || 0) + 1, status: 'draft', lines: lines.length ? lines : [{ kind: 'meal', meal: 'dinner', guests: Number(ev.guests) || '', rate: '' }],
+  return { v: Math.max(0, ...qs.map(x => x.v)) + 1, status: 'draft', ...(option !== 'A' || newOption ? { option } : {}), lines: lines.length ? lines : [{ kind: 'meal', meal: 'dinner', guests: Number(ev.guests) || '', rate: '' }],
     showRates: last ? last.showRates !== false : true, terms: last?.terms || '', ...(last?.gst ? { gst: { ...last.gst } } : {}) };
 }
-// A version is superseded when a later one was sent or accepted
-export const quoteSuperseded = (ev, q) => (ev.quotes || []).some(o => o.v > q.v && ['sent', 'accepted'].includes(o.status));
+// A sent version is 'replaced' by a later sent/accepted version of the same option, and 'notchosen' once the client
+// accepted another option; '' while it is still open
+export function quoteSuperseded(ev, q) {
+  const qs = ev.quotes || [];
+  if (qs.some(o => o.status === 'accepted' && o.v !== q.v && quoteOption(o) !== quoteOption(q))) return 'notchosen';
+  return qs.some(o => o.v > q.v && quoteOption(o) === quoteOption(q) && ['sent', 'accepted'].includes(o.status)) ? 'replaced' : '';
+}
 
 /* ── GST ON THE EVENT ── */
 /* The event's bill is the business's income before GST. GST (from an accepted quote) is added to what the client owes,

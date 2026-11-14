@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, gstPaise, clientDue, clientDueP, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, dishCounter, learnedDishes,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.17.0';
+const APP_BUILD = '4.17.1';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -953,8 +953,10 @@ function eventCard(ev) {
       </div>
     </div>
     <div class="item-foot">
-      ${st.noBill ? (sentQ => sentQ ? `<div><div class="label">${tr(`Quote v${sentQ.v}`, `दरपत्रक v${sentQ.v}`)}</div><div class="amt-md">${fmtCurrency(quoteTotal(sentQ).grand)}</div></div>`
-          : `<div class="meta">${tr('Bill not set yet', 'बिल ठरले नाही')}</div>`)((ev.quotes || []).filter(q => q.status === 'sent').at(-1))
+      ${st.noBill ? (open => open.length > 1
+          ? (t => `<div><div class="label">${tr(`${open.length} quote options`, `${open.length} पर्याय`)}</div><div class="amt-md">${fmtCurrency(Math.min(...t))} – ${fmtCurrency(Math.max(...t))}</div></div>`)(open.map(q => quoteTotal(q).grand))
+          : open.length ? `<div><div class="label">${tr(`Quote v${open[0].v}`, `दरपत्रक v${open[0].v}`)}</div><div class="amt-md">${fmtCurrency(quoteTotal(open[0]).grand)}</div></div>`
+          : `<div class="meta">${tr('Bill not set yet', 'बिल ठरले नाही')}</div>`)((ev.quotes || []).filter(q => q.status === 'sent' && !quoteSuperseded(ev, q)))
         : pend > 0
         ? `<div><div class="label">To collect – बाकी</div><div class="amt-md ${st.overdue ? 'neg' : 'due'}">${fmtCurrency(pend)}</div></div>`
         : `<div><div class="label">Collected – मिळाले</div><div class="amt-md pos">${fmtCurrency(rec)}</div></div>`}
@@ -1845,9 +1847,12 @@ function eventTools(ev) {
 /* ── QUOTATIONS (spec §6.1, §6.5–6.6) ── */
 // Event page: one line on where the quote stands
 function quoteLine(ev) {
-  const q = (ev.quotes || []).filter(x => x.status !== 'draft').at(-1); if (!q) return '';
-  const st = QUOTE_STATUS[q.status];
-  return `<div class="meta" style="margin-top:var(--s2)" id="quote-line">${tr(`Quote v${q.v} · ${st[0]} · ${fmtCurrency(quoteTotal(q).total)} before tax`, `दरपत्रक v${q.v} · ${st[1]} · ${fmtCurrency(quoteTotal(q).total)}`)}</div>`;
+  const sent = (ev.quotes || []).filter(x => x.status !== 'draft'); if (!sent.length) return '';
+  const accepted = sent.find(x => x.status === 'accepted');
+  const latest = accepted ? [accepted] : quoteOptions(ev).map(o => sent.filter(x => quoteOption(x) === o).at(-1)).filter(Boolean);
+  const many = quoteOptions(ev).length > 1;
+  return `<div class="meta" style="margin-top:var(--s2)" id="quote-line">${latest.map(q => { const st = QUOTE_STATUS[q.status], name = `${many ? `Option ${quoteOption(q)} ` : ''}v${q.v}`;
+    return tr(`Quote ${name} · ${st[0]} · ${fmtCurrency(quoteTotal(q).total)} before tax`, `दरपत्रक ${name} · ${st[1]} · ${fmtCurrency(quoteTotal(q).total)}`); }).join('<br>')}</div>`;
 }
 let quoteView = null, quoteDraft = null;   // the version on screen; the working copy of a draft
 function openQuote() {
@@ -1862,7 +1867,8 @@ function openQuote() {
 const renderQuoteFit = () => { renderQuote(); requestAnimationFrame(() => fitSelects(q('quote-modal'))); };
 // What the client sees: no costs or margins; per-plate rates only if chosen
 function quoteText(ev, q) {
-  const t = quoteTotal(q), L = [`Quotation (version ${q.v}) – ${ev.name}`, `${fmtDate(ev.date)}${ev.venue ? ' · ' + ev.venue : ''}`, ''];
+  const opt = quoteOptions({ quotes: [...(ev.quotes || []), q] }).length > 1 ? `Option ${quoteOption(q)}, ` : '';
+  const t = quoteTotal(q), L = [`Quotation (${opt}version ${q.v}) – ${ev.name}`, `${fmtDate(ev.date)}${ev.venue ? ' · ' + ev.venue : ''}`, ''];
   for (const l of t.lines) {
     // Rates hidden: each line shows its amount only (no guest count or per-plate rate)
     const mealName = l.kind === 'meal' ? MEALS[l.meal] + (l.menu && menuById(l.menu) ? ` (${menuById(l.menu).name} menu)` : '') : '';
@@ -1879,9 +1885,10 @@ function renderQuote() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const qs = ev.quotes || [];
   const all = quoteDraft && !qs.some(q => q.v === quoteDraft.v) ? [...qs, quoteDraft] : qs;
-  q('quote-versions').innerHTML = all.map(x => { const st = QUOTE_STATUS[x.status], sup = x.status === 'sent' && quoteSuperseded(ev, x);
-    return `<button type="button" class="f-chip" data-qv="${x.v}" aria-pressed="${x.v === quoteView}">v${x.v} · ${sup ? tr('Replaced', 'बदलले') : tr(st[0], st[1])}</button>`; }).join('')
-    + (all.some(x => x.status === 'draft') ? '' : `<button type="button" class="f-chip" data-action="quote-new">+ ${tr('New version', 'नवीन आवृत्ती')}</button>`);
+  const many = quoteOptions({ quotes: all }).length > 1;
+  q('quote-versions').innerHTML = all.map(x => { const st = QUOTE_STATUS[x.status], sup = x.status === 'sent' && quoteSuperseded({ quotes: all }, x);
+    return `<button type="button" class="f-chip" data-qv="${x.v}" aria-pressed="${x.v === quoteView}">${many ? quoteOption(x) + ' · ' : ''}v${x.v} · ${sup === 'notchosen' ? tr('Not chosen', 'निवडले नाही') : sup ? tr('Replaced', 'बदलले') : tr(st[0], st[1])}</button>`; }).join('')
+    + (all.some(x => x.status === 'draft') || all.some(x => x.status === 'accepted') ? '' : `<button type="button" class="f-chip" data-action="quote-new">+ ${tr('New version', 'नवीन आवृत्ती')}</button><button type="button" class="f-chip" data-action="quote-option">+ ${tr('Another option', 'दुसरा पर्याय')}</button>`);
   const cur = quoteDraft && quoteDraft.v === quoteView ? quoteDraft : qs.find(x => x.v === quoteView);
   if (!cur) { q('quote-body').innerHTML = ''; return; }
   const t = quoteTotal(cur);
@@ -1921,12 +1928,13 @@ function renderQuote() {
     return;
   }
   const sup = cur.status === 'sent' && quoteSuperseded(ev, cur);
+  const acceptedOther = sup === 'notchosen' ? (ev.quotes || []).find(o => o.status === 'accepted') : null;
   const when = at => at ? fmtDate(String(at).slice(0, 10)) : '';
   q('quote-body').innerHTML = `
     <div class="list" style="padding:0">${t.lines.map(l => `<div class="row" style="min-height:44px"><div class="row-body"><div class="title-sm">${l.kind === 'meal' ? MEALS[l.meal] : esc(l.label)}</div>
       ${l.kind === 'meal' ? `<div class="meta">${l.guests} × ${fmtCurrency(l.rate)}</div>` : ''}</div><div class="amt-sm">${l.kind === 'discount' ? '−' : ''}${fmtCurrency(Math.abs(l.total))}</div></div>`).join('')}</div>
     <div style="margin-top:var(--s2)">${quoteTotalsHtml(cur)}</div>
-    <div class="meta" id="quote-status">${tr(`Sent ${when(cur.sentAt)}`, `पाठवले ${when(cur.sentAt)}`)}${cur.status === 'accepted' ? ` · ${tr(`accepted ${when(cur.acceptedAt)} · ${cur.evidence}${cur.by ? ` (${esc(cur.by)})` : ''}`, `मान्य ${when(cur.acceptedAt)}`)}` : cur.status === 'declined' ? ` · ${tr('declined', 'नाकारले')}` : ''}${sup ? ` · ${tr('replaced by a later version', 'नंतरच्या आवृत्तीने बदलले')}` : ''}</div>
+    <div class="meta" id="quote-status">${tr(`Sent ${when(cur.sentAt)}`, `पाठवले ${when(cur.sentAt)}`)}${cur.status === 'accepted' ? ` · ${tr(`accepted ${when(cur.acceptedAt)} · ${cur.evidence}${cur.by ? ` (${esc(cur.by)})` : ''}`, `मान्य ${when(cur.acceptedAt)}`)}` : cur.status === 'declined' ? ` · ${tr('declined', 'नाकारले')}` : ''}${sup === 'notchosen' ? ` · ${tr(`not chosen (client accepted Option ${quoteOption(acceptedOther)})`, 'निवडले नाही')}` : sup ? ` · ${tr('replaced by a later version', 'नंतरच्या आवृत्तीने बदलले')}` : ''}</div>
     ${cur.status === 'sent' && !sup ? `
       <div class="f2" style="margin-top:var(--s3)">
         <div class="field" style="margin:0"><select id="quote-evidence" aria-label="How the client accepted"><option value="">Written / verbal?</option><option value="written">Written reply / signed</option><option value="verbal">Verbal (in person or call)</option></select></div>
@@ -1969,7 +1977,10 @@ async function saveQuoteDraft() {
 async function quoteAction(action) {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const now = new Date().toISOString();
-  if (action === 'quote-new') { quoteDraft = nextQuoteDraft(ev); quoteView = quoteDraft.v; renderQuote(); return; }
+  if (action === 'quote-new' || action === 'quote-option') {
+    const from = (ev.quotes || []).find(x => x.v === quoteView) || null;
+    quoteDraft = nextQuoteDraft(ev, { from, newOption: action === 'quote-option' }); quoteView = quoteDraft.v; renderQuoteFit(); return;
+  }
   if (action === 'quote-save') { if (await saveQuoteDraft()) { refreshCurrent(); renderQuote(); showToast('Draft saved – मसुदा जतन'); } return; }
   if (action === 'quote-share') {
     const d = await saveQuoteDraft(); if (!d) return;
@@ -4316,7 +4327,7 @@ function bindAllEvents() {
       case 'fs-open':  openFunctionSheet(); break;
       case 'settle-open': openSettle(); break;
       case 'quote-open': openQuote(); break;
-      case 'quote-new': case 'quote-save': case 'quote-share': case 'quote-sent': case 'quote-accept': case 'quote-decline': quoteAction(action); break;
+      case 'quote-new': case 'quote-option': case 'quote-save': case 'quote-share': case 'quote-sent': case 'quote-accept': case 'quote-decline': quoteAction(action); break;
       case 'settle-adjust': case 'settle-dispute': case 'settle-undispute': settleAction(action); break;
       case 'fs-save':  saveFunctionSheet(); break;
       case 'fs-share': shareFunctionSheet(); break;

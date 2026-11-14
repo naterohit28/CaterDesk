@@ -176,6 +176,34 @@ const DATA = { version: 'ffv2', photos: [], vendors: [], vPays: [], cPays: [],
     assert.equal(await card.locator('.prog').count(), 0);
   });
 
+  await test('several options side by side: B does not replace A; accepting one marks the other "Not chosen"', async () => {
+    await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); const { _rev, ...e } = d.events[0];
+      await db.putOne('events', { ...e, id: 'O', name: 'Sample Options', quotes: [], billChanges: [], recon: null, reconHistory: [], billing: 0, gst: undefined, meals: ['dinner'], mealPlan: { dinner: { guests: 300, rate: 800, menu: 'golden' } } }); });
+    const open = async () => { await p.reload(); await p.waitForSelector('#kpi .card'); await p.locator('#n-events:visible').click();
+      await p.locator('#ev-list [data-action="evdetail"][data-id="O"]:visible').click(); await p.locator('[data-action="quote-open"]').click(); await p.waitForSelector('#quote-modal.active'); };
+    await open(); await p.locator('[data-action="quote-sent"]').click(); await p.waitForTimeout(400);           // Option A v1 sent
+    await p.locator('[data-action="quote-option"]').click();                                                      // Option B from it
+    await line(0, 'rate').fill('650'); await p.locator('#quote-lines [data-k="meal"]').first().evaluate(s => s);
+    await p.evaluate(() => { window.open = () => null; });
+    await p.locator('[data-action="quote-share"]').click(); await p.waitForSelector('#ask-modal.active');
+    assert.match(await p.locator('#ask-msg').innerText(), /^Quotation \(Option B, version 2\) – Sample Options/);
+    await p.locator('#ask-actions button').first().click(); await p.waitForTimeout(300);
+    await p.locator('[data-action="quote-sent"]').click(); await p.waitForTimeout(400);
+    let qs = (await p.evaluate(async () => (await import('./db.js')).exportAllData())).events.find(e => e.id === 'O').quotes;
+    assert.deepEqual(qs.map(x => [x.v, x.option || 'A', x.status]), [[1, 'A', 'sent'], [2, 'B', 'sent']]);
+    assert.match(await p.locator('#quote-versions').innerText(), /A · v1 ·\s*Sent[\s\S]*B · v2 ·\s*Sent/, 'B does not replace A');
+    await p.locator('#modal-close, #quote-modal [data-action="close-modal"]').first().click(); await p.waitForTimeout(300);
+    const card = await (async () => { await p.locator('#n-events:visible').click(); return p.locator('#ev-list [data-action="evdetail"][data-id="O"]').innerText(); })();
+    assert.match(card, /2 quote options\s*₹1,95,000 – ₹2,40,000/);
+    await open(); await p.locator('#quote-versions [data-qv="2"]').click(); await p.selectOption('#quote-evidence', 'written');
+    await p.locator('[data-action="quote-accept"]').click(); await p.waitForSelector('#ask-modal.active'); await p.locator('#ask-actions button').first().click(); await p.waitForTimeout(500);
+    await open(); assert.match(await p.locator('#quote-versions').innerText(), /A · v1 ·\s*Not chosen[\s\S]*B · v2 ·\s*Accepted/);
+    await p.locator('#quote-versions [data-qv="1"]').click();
+    assert.match(await p.locator('#quote-status').innerText(), /not chosen \(client accepted Option B\)/); assert.equal(await p.locator('[data-action="quote-accept"]').count(), 0);
+    assert.equal(await p.locator('[data-action="quote-new"], [data-action="quote-option"]').count(), 0, 'no new versions once a quote is accepted');
+    assert.equal((await p.evaluate(async () => (await import('./db.js')).exportAllData())).events.find(e => e.id === 'O').billing, 195000);
+  });
+
   assert.deepEqual(errors, []);
   await browser.close();
   console.log(failed ? 'quotes FAIL' : 'quotations: versions, client text, acceptance (G-03, Q-01) PASS');
