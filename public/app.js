@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, learnedDishes,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, learnedDishes, syncServices, isUnassigned,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.21.1';
+const APP_BUILD = '4.22.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1480,6 +1480,7 @@ function dishGroups(ev) {
   if (ev.outsourced) return new Map((ev.dishes || []).length ? [[OUT_HEAD, ev.dishes.map(d => d.name)]] : []);
   const groups = new Map();
   for (const d of ev.dishes || []) {
+    if (isUnassigned(ev, d)) continue;   // its meal is no longer in the event: nothing is ordered for it
     if (!groups.has(d.head || '')) groups.set(d.head || '', []);
     groups.get(d.head || '').push(d.name);
   }
@@ -1548,7 +1549,8 @@ function menuOrdersCard(ev) {
       ${ev.outsourced ? `<div class="meta" style="padding:var(--s3) var(--s4)">${tr('Outsourced event: the full menu goes to the caterer doing the event.', 'आउटसोर्स कार्यक्रम: संपूर्ण मेनू त्या केटररला जातो.')}</div>` : `<div style="padding:var(--s3) var(--s4)">
         <div class="meta" style="margin-bottom:var(--s2)">${tr('Tap a dish to change where it comes from', 'पदार्थ कुठून येतो ते बदलण्यासाठी टॅप करा')}</div>
         <div class="chips-row" style="margin:0;padding:0;flex-wrap:wrap">${dishes.map((d, i) =>
-          `<button type="button" class="f-chip" data-action="dish-assign" data-id="${i}" data-nl style="max-width:100%;overflow:hidden;text-overflow:ellipsis">${esc(d.name)}${d.head ? ` · ${esc(short(d.head))}` : ''}${d.meal ? ` · ${esc(MEALS[d.meal] || '')}` : ''}</button>`).join('')}</div>
+          `<button type="button" class="f-chip" data-action="dish-assign" data-id="${i}" data-nl style="max-width:100%;overflow:hidden;text-overflow:ellipsis">${esc(d.name)}${d.head ? ` · ${esc(short(d.head))}` : ''}${d.meal ? ` · ${esc(MEALS[d.meal] || '')}${isUnassigned(ev, d) ? ' (not in this event)' : ''}` : ''}</button>`).join('')}</div>
+        ${dishes.some(d => isUnassigned(ev, d)) ? `<div class="meta" style="margin-top:var(--s2);color:var(--due)">${tr('Some dishes are for a meal no longer in this event. They are kept but not ordered: edit the menu to choose a meal for them.', 'काही पदार्थ आता नसलेल्या जेवणाचे आहेत. मेनू बदलून जेवण निवडा.')}</div>` : ''}
       </div>`}
       ${offMenuOrders(ev)}
     </div>`;
@@ -1557,8 +1559,9 @@ function menuOrdersCard(ev) {
 // Save changed menu/orders on the event currently open
 async function patchEvent(id, patch, drop = []) {
   const ev = D.events.find(e => e.id === id); if (!ev) return null;
-  const record = { ...ev, ...patch };
+  let record = { ...ev, ...patch };
   for (const k of drop) delete record[k];
+  record = syncServices(record);   // meal-by-meal menus follow a menu edited here
   await putChecked('events', record, ev);
   D.events = D.events.map(e => e.id === id ? record : e);
   return record;
@@ -1580,11 +1583,11 @@ function syncMenuText(ev) {
   q('menu-text').value = menuText(menuDraft, MEAL_ORDER.filter(m => (ev.meals || []).includes(m)), MEALS);
 }
 const draftKey = (name, meal) => `${meal || ''}|${String(name).toLowerCase()}`;
-// Parsed dishes for this event: a heading for a meal the event doesn't have counts as no heading
+// Parsed dishes for this event. A heading for a meal the event doesn't have keeps that meal: those dishes are not
+// served at any meal until you choose one (never quietly moved to every meal)
 function parsedDishes(ev) {
-  const meals = MEAL_ORDER.filter(m => (ev.meals || []).includes(m)), seen = new Set();
-  return parseMenu(qv('menu-text')).map(p => ({ name: p.name, meal: meals.includes(p.meal) ? p.meal : '' }))
-    .filter(p => { const k = draftKey(p.name, p.meal); if (seen.has(k)) return false; seen.add(k); return true; });
+  const seen = new Set();
+  return parseMenu(qv('menu-text')).filter(p => { const k = draftKey(p.name, p.meal); if (seen.has(k)) return false; seen.add(k); return true; });
 }
 function readMenuText() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
@@ -1615,7 +1618,7 @@ function renderMenuReview() {
         <button type="button" class="icon-btn" data-md-del="${i}" aria-label="Remove dish">${icon('x', 16)}</button></div>
       <div style="display:flex;gap:var(--s2)">
         ${ev.outsourced ? '' : sel(i, 'head', [['', 'Our kitchen – आपले किचन'], ...heads.map(h => [h, h])], d.head || '')}
-        ${meals.length > 1 ? sel(i, 'meal', [['', 'All meals – सर्व जेवण'], ...meals.map(m => [m, MEALS[m]])], d.meal || '') : ''}
+        ${meals.length > 1 || isUnassigned(ev, d) ? sel(i, 'meal', [...(isUnassigned(ev, d) ? [[d.meal, `${MEALS[d.meal]} (not in this event) – choose`]] : []), ['', 'All meals – सर्व जेवण'], ...meals.map(m => [m, MEALS[m]])], d.meal || '') : ''}
       </div></div>`).join('') : '';
 }
 
@@ -1625,7 +1628,8 @@ async function saveMenu() {
   const keys = list => list.map(d => draftKey(d.name, d.meal)).sort().join('\n');
   if (keys(parsedDishes(ev)) !== keys(menuDraft)) readMenuText();
   const meals = MEAL_ORDER.filter(m => (ev.meals || []).includes(m));
-  const dishes = menuDraft.map(d => { const x = { ...d }; if (!x.meal || !meals.includes(x.meal)) delete x.meal; return x; });
+  // A dish for a meal the event no longer has keeps that meal until you choose another (it is not served meanwhile)
+  const dishes = menuDraft.map(d => { const x = { ...d }; if (!x.meal) delete x.meal; return x; });
   const before = ev.dishes || [];
   const changed = JSON.stringify(before) !== JSON.stringify(dishes);
   const patch = { dishes };
@@ -2183,7 +2187,7 @@ async function tipAction(el) {
 /* ── BUSINESS DETAILS + QUOTE DOCUMENT (spec §6.5, D-3, G-27) ── */
 /* Your business details as you enter them (nothing is invented). They head the printable quote; a sent quote keeps a
    copy of the details it went out with, so changing them later never changes an old quote. */
-const PROFILE_FIELDS = ['name', 'tagline', 'address', 'phone', 'email', 'gstin', 'pay', 'footer'];
+const PROFILE_FIELDS = ['name', 'tagline', 'contact', 'address', 'phone', 'email', 'gstin', 'pay', 'footer'];
 function getProfile() { const p = readPref('ffv2_profile', {}); return p && typeof p === 'object' ? Object.fromEntries(PROFILE_FIELDS.filter(k => typeof p[k] === 'string' && p[k]).map(k => [k, p[k]])) : {}; }
 function openProfile() {
   const p = getProfile();
@@ -2226,7 +2230,7 @@ function quoteDocHtml(ev, qt, profile) {
   return `<div class="pd">
     ${qt.status === 'draft' ? '<div class="pd-draft">DRAFT – not yet sent to the client</div>' : ''}
     <header class="pd-head"><div><div class="pd-biz">${esc(p.name || 'Your business name')}</div>${p.tagline ? `<div class="pd-muted">${esc(p.tagline)}</div>` : ''}</div>
-      <div class="pd-contact">${[p.address, p.phone, p.email].filter(Boolean).map(esc).join('<br>')}${p.gstin ? `<br>GSTIN ${esc(p.gstin)}` : ''}</div></header>
+      <div class="pd-contact">${[p.contact && `Contact: ${p.contact}`, p.address, p.phone, p.email].filter(Boolean).map(esc).join('<br>')}${p.gstin ? `<br>GSTIN ${esc(p.gstin)}` : ''}</div></header>
     <h1 class="pd-title">Quotation</h1>
     <div class="pd-meta"><div><b>${esc(E.name)}</b><br>${fmtDate(E.date)}${E.venue ? ` · ${esc(E.venue)}` : ''}</div>
       <div class="n">${many ? `Option ${quoteOption(qt)} · ` : ''}Version ${qt.v}<br>Date ${fmtDate(when)}</div></div>
@@ -3617,7 +3621,7 @@ async function saveEvent() {
 
   const base = id ? formBase.ev : null;
   const meals = Object.keys(MEALS).filter(m => evMeals().includes(m));
-  const record = editedRecord(base, {
+  const record = syncServices(editedRecord(base, {
     id:       id || uid('EV'),
     name:     data.name,
     date:     data.date,
@@ -3639,7 +3643,7 @@ async function saveEvent() {
       // Older events keep their shape: an empty mobile or budget, or the format marker, is not added to them
       ...['mobile', 'notes', 'menu'].filter(k => !(base && k in base) && !{ mobile: data.mobile, notes: qv('ev-notes'), menu: mainMealMenu() || qv('ev-menu') }[k]),
       ...(!(Number(data.budget) > 0) && !(base && 'budget' in base) ? ['budget'] : []),
-      ...(base && !('_v' in base) ? ['_v'] : [])]);
+      ...(base && !('_v' in base) ? ['_v'] : [])]));
 
   // The advance is saved with the event in one go, as its first payment received
   const advance = adv !== '' ? { id: uid('CP'), evId: record.id, amt: adv, date: today(), mode: qv('ev-adv-mode'), notes: 'Advance – अॅडव्हान्स' } : null;

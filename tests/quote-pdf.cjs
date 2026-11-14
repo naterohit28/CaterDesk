@@ -37,10 +37,10 @@ const DATA = { version: 'ffv2', photos: [], vendors: [], vPays: [], cPays: [],
     assert.equal(await p.locator('#profile-modal.active').count(), 1, 'refused without a name');
     await p.fill('#pf-name', 'Sample Caterers'); await p.fill('#pf-gstin', '27ABC'); await p.locator('#btn-save-profile').click(); await p.waitForTimeout(300);
     assert.equal(await p.locator('#profile-modal.active').count(), 1, 'a short GSTIN is refused');
-    await p.fill('#pf-gstin', '27abcde1234f1z5'); await p.fill('#pf-phone', '9000000009'); await p.fill('#pf-address', 'Sample Road, Pune');
+    await p.fill('#pf-gstin', '27abcde1234f1z5'); await p.fill('#pf-phone', '9000000009'); await p.fill('#pf-address', 'Sample Road, Pune'); await p.fill('#pf-contact', 'Sample Owner');
     await p.fill('#pf-pay', 'UPI sample@upi'); await p.fill('#pf-footer', 'Thank you'); await p.locator('#btn-save-profile').click(); await p.waitForTimeout(400);
     const prof = await p.evaluate(() => JSON.parse(localStorage.getItem('ffv2_profile')));
-    assert.deepEqual(prof, { name: 'Sample Caterers', address: 'Sample Road, Pune', phone: '9000000009', gstin: '27ABCDE1234F1Z5', pay: 'UPI sample@upi', footer: 'Thank you' });
+    assert.deepEqual(prof, { name: 'Sample Caterers', contact: 'Sample Owner', address: 'Sample Road, Pune', phone: '9000000009', gstin: '27ABCDE1234F1Z5', pay: 'UPI sample@upi', footer: 'Thank you' });
   });
 
   await test('Print / Save as PDF: an A4 quotation with your details, lines and totals – and no costs', async () => {
@@ -49,7 +49,7 @@ const DATA = { version: 'ffv2', photos: [], vendors: [], vPays: [], cPays: [],
     await p.locator('[data-gst-add]').click(); await p.fill('[data-g="rate"]', '5'); await p.fill('#quote-terms', '50% advance to confirm');
     await p.locator('[data-action="quote-print"]').click(); await p.waitForTimeout(300);
     const [doc] = await p.evaluate(() => window.__printed);
-    for (const re of [/Sample Caterers/, /Sample Road, Pune/, /GSTIN 27ABCDE1234F1Z5/, /QUOTATION|Quotation/i, /Sample Wedding/, /Version 1/,
+    for (const re of [/Sample Caterers/, /Contact: Sample Owner/, /Sample Road, Pune/, /GSTIN 27ABCDE1234F1Z5/, /QUOTATION|Quotation/i, /Sample Wedding/, /Version 1/,
       /Dinner – Golden menu\s*300 × ₹800\s*₹2,40,000/, /Counter setup\s*₹15,000/, /Subtotal\s*₹2,55,000/, /GST @ 5% on ₹2,55,000\s*₹12,750/, /Total\s*₹2,67,750/, /50% advance to confirm/, /UPI sample@upi/, /Thank you/]) assert.match(doc, re);
     assert.doesNotMatch(doc, /1,23,456|cost|margin|contribution|profit/i, 'no internal figures');
     assert.equal(await p.evaluate(() => document.body.classList.contains('printing')), true, 'only the document prints');
@@ -58,14 +58,17 @@ const DATA = { version: 'ffv2', photos: [], vendors: [], vPays: [], cPays: [],
   await test('G-27: a sent quote keeps the business details it went out with; new quotes use the updated details', async () => {
     await p.locator('[data-action="quote-sent"]').click(); await p.waitForTimeout(400);
     const sent = (await p.evaluate(async () => (await import('./db.js')).exportAllData())).events[0].quotes[0];
-    assert.equal(sent.profile.name, 'Sample Caterers');
-    await p.reload(); await p.waitForSelector('#kpi .card'); await fillProfile({ name: 'Sample Caterers & Events', gstin: '' });
+    assert.equal(sent.profile.name, 'Sample Caterers'); assert.equal(sent.profile.contact, 'Sample Owner', 'contact person frozen with the sent quote');
+    // Contact person is optional: cleared here, along with the GSTIN
+    await p.reload(); await p.waitForSelector('#kpi .card'); await fillProfile({ name: 'Sample Caterers & Events', gstin: '', contact: '' });
+    assert.equal(await p.evaluate(() => 'contact' in JSON.parse(localStorage.getItem('ffv2_profile'))), false, 'an empty contact is not saved');
     await openQuote(); await p.locator('[data-action="quote-print"]').click(); await p.waitForTimeout(300);
     let [doc] = await p.evaluate(() => window.__printed);
     assert.match(doc, /Sample Caterers/); assert.doesNotMatch(doc, /& Events/); assert.match(doc, /GSTIN 27ABCDE1234F1Z5/, 'old document unchanged');
+    assert.match(doc, /Contact: Sample Owner/, 'the issued quote still shows the contact it went out with');
     await p.locator('[data-action="quote-new"]').click(); await p.locator('[data-action="quote-print"]').click(); await p.waitForTimeout(300);
     [, doc] = await p.evaluate(() => window.__printed);
-    assert.match(doc, /Sample Caterers & Events/); assert.doesNotMatch(doc, /GSTIN/);
+    assert.match(doc, /Sample Caterers & Events/); assert.doesNotMatch(doc, /GSTIN/); assert.doesNotMatch(doc, /Contact:/, 'no contact line when none is set');
   });
 
   await test('an issued quote reprints exactly as issued after the event, venue and menu change; a draft says DRAFT; a new version uses current data', async () => {
@@ -102,6 +105,15 @@ const DATA = { version: 'ffv2', photos: [], vendors: [], vPays: [], cPays: [],
       const b = document.querySelector('#ask-actions button'); if (!got && b) b.click(); for (let i = 0; i < 40 && !got; i++) await new Promise(r => setTimeout(r, 100));
       return got ? JSON.parse(await got.files[0].text()).prefs : null; });
     assert.equal(JSON.parse(shared.ffv2_profile).name, 'Sample Caterers & Events');
+  });
+
+  await test('contact person is printed as text, never as markup', async () => {
+    await p.reload(); await p.waitForSelector('#kpi .card'); await fillProfile({ contact: '<img src=x onerror="window.__x=1">Sample <b>Owner</b>' });
+    await openQuote(); await p.locator('[data-action="quote-new"]').click(); await p.locator('[data-action="quote-print"]').click(); await p.waitForTimeout(300);
+    const r = await p.evaluate(() => ({ text: window.__printed.at(-1), html: document.querySelector('#print-doc .pd-contact').innerHTML, img: document.querySelectorAll('#print-doc .pd-contact img, #print-doc .pd-contact b').length, ran: window.__x }));
+    assert.match(r.text, /Contact: <img src=x onerror="window.__x=1">Sample <b>Owner<\/b>/); assert.match(r.html, /&lt;img/);
+    assert.equal(r.img, 0); assert.equal(r.ran, undefined);
+    await p.reload(); await p.waitForSelector('#kpi .card'); await fillProfile({ contact: '' });
   });
 
   assert.deepEqual(errors, []);

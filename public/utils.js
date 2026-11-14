@@ -503,6 +503,113 @@ export function menuById(id) {
   if (!id) return null;
   return SAVED_MENUS.find(m => m.id === id) || MENUS.find(m => m.id === id) || null;
 }
+/* ── MEAL SERVICES (meal-by-meal menus) ── */
+/* A service is one meal served at the event: lunch on the 14th, dinner on the 14th, a second lunch on the 15th.
+   The older fields stay the record every screen, backup and older app version uses, and keep their meaning:
+   - `dishes` is the one list of dishes. A dish's `meal` says which meal it is for (none = every meal); `svc` names
+     the service when a meal has more than one; `id`, `cat` (course), `type` (veg / egg / non-veg) and `diet`
+     (restrictions such as Jain) are optional details. An older app version keeps these details when it edits a menu.
+   - `meals` and `mealPlan` hold each meal's main service: its guests, rate and library menu.
+   `services` (saved only once an event is edited meal by meal) adds what the older fields cannot hold: each
+   service's id, its own date (only when it differs from the event date) and time, and for a further service of the
+   same meal its own guests, rate and menu. Service ids are not meal names: `svc-<meal>` is only the id a main
+   service gets when it is first read from older fields, and later services get new ids.
+   A dish whose meal is no longer one of the event's meals is never moved to other meals: it is kept as it is and
+   listed as not in any meal until you choose a meal for it. `servicesSig` notes the older fields as this app last
+   saved them, so a change made by an older app version can be pointed out. */
+export const DISH_CATS = [['starter', 'Starter'], ['soup', 'Soup'], ['salad', 'Salad'], ['snacks', 'Snacks / chaat'], ['main', 'Main course'],
+  ['bread', 'Bread'], ['rice', 'Rice'], ['dal', 'Dal'], ['accompaniment', 'Accompaniment'], ['dessert', 'Dessert'], ['beverage', 'Beverage'], ['other', 'Other']];
+export const FOOD_TYPES = [['veg', 'Veg'], ['egg', 'Egg'], ['nonveg', 'Non-veg']];
+export const DIET_TAGS = [['jain', 'Jain'], ['no_onion_garlic', 'No onion-garlic'], ['vegan', 'Vegan'], ['gluten_free', 'Gluten-free'], ['nut_free', 'Nut-free']];
+const VEG_ONLY = ['jain', 'no_onion_garlic', 'vegan'];
+/* A dish's details are only ever what you chose; nothing here guesses a type or a diet from the dish name.
+   One food type per dish. A course is one of the usual ones or your own (up to 40 characters).
+   Jain, no onion-garlic and vegan are restrictions only a veg dish can meet, so they need type veg. */
+export function dishProblem(d) {
+  if (d.cat !== undefined && (typeof d.cat !== 'string' || !d.cat.trim() || d.cat.length > 40)) return 'Course name must be 1–40 characters';
+  if (d.type !== undefined && !FOOD_TYPES.some(([k]) => k === d.type)) return 'Choose one food type: veg, egg or non-veg';
+  if (d.diet !== undefined && (!Array.isArray(d.diet) || d.diet.some(x => !DIET_TAGS.some(([k]) => k === x)) || new Set(d.diet).size !== d.diet.length)) return 'Unknown diet mark';
+  if ((d.diet || []).some(x => VEG_ONLY.includes(x)) && d.type !== 'veg') return 'Jain, no onion-garlic and vegan dishes must be veg';
+  return '';
+}
+function hashText(s) { let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0; return h.toString(36); }
+export function servicesSig(ev) {
+  const plan = Object.fromEntries(MEAL_ORDER.filter(m => ev.mealPlan?.[m]).map(m => [m, [ev.mealPlan[m].guests, ev.mealPlan[m].rate, ev.mealPlan[m].menu || '']]));
+  return hashText(JSON.stringify([MEAL_ORDER.filter(m => (ev.meals || []).includes(m)), plan, (ev.dishes || []).map(d => [d.name, d.meal || '', d.head || '', d.svc || ''])]));
+}
+const activeMeals = ev => MEAL_ORDER.filter(m => (ev?.meals || []).includes(m));
+// A dish for a meal the event no longer has (or never had): kept, not served at any meal until you choose one
+export const isUnassigned = (ev, d) => !!d.meal && !activeMeals(ev).includes(d.meal);
+/* The event's services, each with its dishes (`ref` is the dish's place in ev.dishes; `shared` means served at every
+   meal; `preview` means shown from the chosen library menu because the service has no dishes of its own yet, never
+   saved). Also the dishes not in any meal, and whether an older app version changed the menu since this app saved it. */
+export function eventServices(ev) {
+  const meals = activeMeals(ev), stored = Array.isArray(ev?.services) ? ev.services : [];
+  const mainOf = (m, plan) => ({ guests: plan?.guests ?? (m ? 0 : Number(ev.guests) || 0), rate: plan?.rate ?? 0, template: plan?.menu || (!m && ev.menu) || '' });
+  const when = s => ({ ...(s.date && s.date !== ev.date ? { date: s.date } : {}), ...(s.time ? { time: s.time } : {}) });
+  const list = [];
+  for (const m of meals.length ? meals : ['']) {
+    const own = stored.filter(s => s.meal === m), plan = m ? ev.mealPlan?.[m] : null;
+    if (!own.length) list.push({ id: m ? `svc-${m}` : 'svc-all', meal: m, main: true, ...mainOf(m, plan) });
+    own.forEach((s, i) => list.push(i === 0 ? { id: s.id, meal: m, main: true, ...when(s), ...mainOf(m, plan) }
+      : { id: s.id, meal: m, main: false, ...when(s), guests: s.guests || 0, rate: s.rate || 0, template: s.template?.id || '' }));
+  }
+  const dishes = ev?.dishes || [];
+  for (const s of list) {
+    const ids = new Set(list.filter(x => x.meal === s.meal).map(x => x.id));
+    const mainId = list.find(x => x.meal === s.meal).id;
+    s.dishes = [];
+    dishes.forEach((d, ref) => {
+      if (!d.meal) { s.dishes.push(s.meal ? { ...d, ref, shared: true } : { ...d, ref }); return; }
+      if (d.meal !== s.meal) return;
+      if ((d.svc && ids.has(d.svc) ? d.svc : mainId) === s.id) s.dishes.push({ ...d, ref });   // unknown service: the meal's main one
+    });
+    const tpl = s.template ? menuById(s.template) : null;
+    s.template = s.template ? { id: s.template, name: tpl?.name || s.template } : null;
+    if (tpl?.items?.length && !s.dishes.some(d => !d.shared)) {
+      s.dishes = [...tpl.items.map(name => ({ name, head: '', preview: true })), ...s.dishes];
+      s.fromTemplate = true;
+    }
+  }
+  const unassigned = dishes.map((d, ref) => ({ ...d, ref })).filter(d => isUnassigned(ev, d));
+  return { services: list, unassigned, changedElsewhere: Array.isArray(ev?.services) && !!ev.servicesSig && ev.servicesSig !== servicesSig(ev) };
+}
+/* Services as edited (each with its dishes, as eventServices gives them) → the fields to save. Main services go to
+   meals/mealPlan as before; further services and dates/times go to `services`. Previewed library dishes are not
+   saved (the chosen menu is, so they show again). Dishes not in any meal are kept exactly as they were, and so are
+   the details of services for a meal the event no longer has. */
+export function applyServices(ev, services) {
+  const mealPlan = {}, dishes = [], seen = new Set(), stored = [];
+  const meals = MEAL_ORDER.filter(m => services.some(s => s.meal === m));
+  for (const m of [...meals, '']) {
+    services.filter(s => s.meal === m).forEach((s, i) => {
+      const main = i === 0, tpl = s.template?.id || s.template || '';
+      if (main && m && s.guests > 0 && s.rate > 0) mealPlan[m] = { guests: s.guests, rate: s.rate, ...(tpl ? { menu: tpl } : {}) };
+      stored.push({ id: s.id, meal: m, ...(s.date && s.date !== ev.date ? { date: s.date } : {}), ...(s.time ? { time: s.time } : {}),
+        ...(main ? {} : { guests: s.guests || 0, rate: s.rate || 0, ...(tpl ? { template: { id: tpl, name: s.template?.name || menuById(tpl)?.name || tpl } } : {}) }) });
+      for (const d of s.dishes || []) {
+        if (d.preview) continue;
+        const { ref, shared, preview, meal, svc, ...x } = d;
+        if (shared || !m) { const k = String(d.name).toLowerCase(); if (!seen.has(k)) { seen.add(k); dishes.push(x); } continue; }
+        dishes.push({ ...x, meal: m, ...(main ? {} : { svc: s.id }) });
+      }
+    });
+  }
+  const unassigned = (ev.dishes || []).filter(d => d.meal && !meals.includes(d.meal));
+  const keptServices = (Array.isArray(ev.services) ? ev.services : []).filter(s => s.meal && !meals.includes(s.meal) && !stored.some(x => x.id === s.id));
+  const best = Object.entries(mealPlan).filter(([, v]) => v.menu).sort((a, b) => b[1].guests * b[1].rate - a[1].guests * a[1].rate)[0];
+  const noMeal = services.find(s => !s.meal && s.template);
+  const out = { meals, mealPlan, dishes: [...dishes, ...unassigned], services: [...stored, ...keptServices],
+    ...(best ? { menu: best[1].menu } : noMeal ? { menu: noMeal.template.id || noMeal.template } : {}) };
+  out.servicesSig = servicesSig({ ...ev, ...out });
+  return out;
+}
+// After this app saved the older fields (event form, menu sheet): note them as current. Events without services are left as they are.
+export function syncServices(record) {
+  if (!Array.isArray(record?.services) || record.servicesSig === servicesSig(record)) return record;
+  return { ...record, servicesSig: servicesSig(record) };
+}
+
 // Which menus suit a meal: those marked for it first, then menus not marked for any meal, then the rest
 export function menusForMeal(meal) {
   const list = allMenus(), fits = m => (m.meals || []).includes(meal), open = m => !(m.meals || []).length;
@@ -1081,7 +1188,7 @@ export function dishCounter(name, learned) {
 const MEAL_WORDS = [['breakfast', /^(breakfast|nashta|नाश्ता)$/], ['lunch', /^lunch$/], ['hightea', /^(high|hi)[ -]?tea$/],
   ['dinner', /^dinner$/], ['latenight', /^(late[ -]?night|midnight)( snacks?)?$/]];
 export function mealHeading(text) {
-  const t = String(text || '').toLowerCase().replace(/[\s:\-–—]+$/, '').replace(/\s+menu$/, '').replace(/\s+/g, ' ').trim();
+  const t = String(text || '').toLowerCase().replace(/[\s:\-–—]+$/, '').replace(/\s*\([^)]*\)$/, '').replace(/\s+menu$/, '').replace(/\s+/g, ' ').trim();
   return (MEAL_WORDS.find(([, re]) => re.test(t)) || [''])[0];
 }
 /* Pasted menu text (WhatsApp message, Google Lens copy, a typed list) → dishes, each with the meal whose heading it
@@ -1105,12 +1212,13 @@ export function parseMenu(text) {
   }
   return out;
 }
-// Dishes back to editable text: dishes for every meal first, then each meal's dishes under its own heading
+/* Dishes back to editable text: dishes for every meal first, then each meal's dishes under its own heading, then
+   dishes for a meal the event doesn't have, under that meal's heading marked "not in this event" (kept, never moved) */
 export function menuText(dishes, meals, names) {
-  // A dish for a meal the event no longer has is listed with the dishes for every meal, never left out
-  const own = m => dishes.filter(d => (meals.includes(d.meal) ? d.meal : '') === m).map(d => d.name);
+  const own = m => dishes.filter(d => (d.meal || '') === m).map(d => d.name);
   const parts = [own('')];
   for (const m of meals) if (own(m).length) parts.push([`${names[m] || m}:`, ...own(m)]);
+  for (const m of MEAL_ORDER) if (!meals.includes(m) && own(m).length) parts.push([`${names[m] || m} (not in this event):`, ...own(m)]);
   return parts.filter(p => p.length).map(p => p.join('\n')).join('\n\n');
 }
 
