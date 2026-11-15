@@ -2310,20 +2310,22 @@ function menuSource(ev, v) {
 }
 function clientMenu(ev, v) {
   const m = menuSource(ev, v); if (!m) return null;
-  return { v, label: m.label, meals: m.src.services.filter(s => s.dishes.length).map(s => ({ title: snapLabel(ev, m.src, s),
+  // A meal served only the dishes common to every meal is still listed (its dishes are under "Served at every meal")
+  const shared = m.src.shared || [];
+  return { v, label: m.label, meals: m.src.services.filter(s => s.dishes.length || shared.length).map(s => ({ title: snapLabel(ev, m.src, s),
       when: [s.date && s.date !== ev.date ? fmtDate(s.date) : '', s.time || ''].filter(Boolean).join(' · '), guests: s.guests || 0, dishes: s.dishes.map(clientDish) })),
-    shared: (m.src.shared || []).map(clientDish) };
+    shared: shared.map(clientDish) };
 }
 const dietText = d => (d.diet || []).map(k => DIET_NAME[k] || k).join(', ');
 function clientMenuHtml(cm) {
   return `<div class="pd-menu-label">${esc(cm.label)}</div>
     ${cm.meals.map(m => `<section class="pd-meal"><h2>${esc(m.title)}</h2>${m.when || m.guests ? `<div class="pd-muted">${esc([m.when, m.guests ? `${m.guests} guests` : ''].filter(Boolean).join(' · '))}</div>` : ''}
-      <ul>${m.dishes.map(d => `<li>${esc(d.name)}${d.diet ? ` <span class="pd-muted">(${esc(dietText(d))})</span>` : ''}</li>`).join('')}</ul></section>`).join('')}
+      ${m.dishes.length ? '' : '<div class="pd-muted">Dishes served at every meal (listed below)</div>'}<ul>${m.dishes.map(d => `<li>${esc(d.name)}${d.diet ? ` <span class="pd-muted">(${esc(dietText(d))})</span>` : ''}</li>`).join('')}</ul></section>`).join('')}
     ${cm.shared.length ? `<section class="pd-meal"><h2>Served at every meal</h2><ul>${cm.shared.map(d => `<li>${esc(d.name)}${d.diet ? ` <span class="pd-muted">(${esc(dietText(d))})</span>` : ''}</li>`).join('')}</ul></section>` : ''}`;
 }
 function clientMenuText(cm) {
   const L = [cm.label];
-  for (const m of cm.meals) { L.push('', `*${m.title}*${m.when ? ` · ${m.when}` : ''}${m.guests ? ` · ${m.guests} guests` : ''}`); for (const d of m.dishes) L.push(`• ${d.name}${d.diet ? ` (${dietText(d)})` : ''}`); }
+  for (const m of cm.meals) { L.push('', `*${m.title}*${m.when ? ` · ${m.when}` : ''}${m.guests ? ` · ${m.guests} guests` : ''}`); if (!m.dishes.length) L.push('_Dishes served at every meal (listed below)_'); for (const d of m.dishes) L.push(`• ${d.name}${d.diet ? ` (${dietText(d)})` : ''}`); }
   if (cm.shared.length) { L.push('', '*Served at every meal*'); for (const d of cm.shared) L.push(`• ${d.name}${d.diet ? ` (${dietText(d)})` : ''}`); }
   return L.join('\n');
 }

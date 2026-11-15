@@ -159,6 +159,24 @@ const INTERNAL = /Chaat|Tandoor|Barbeque|Our kitchen|cost|margin|contribution|ve
     assert.doesNotMatch(noAnnex, /annexure/);
   });
 
+  await test('a meal served only the dishes common to every meal is still on the menu (PDF and WhatsApp)', async () => {
+    const setDishes = f => p.evaluate(async src => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest;
+      const e = d.events.find(x => x.id === 'W'); e.dishes = new Function('x', `return (${src})(x)`)(e.dishes); delete e._rev; await db.importAllData(d, 'replace'); }, f.toString());
+    const before = (await ev()).dishes;
+    await setDishes(ds => ds.filter(d => d.meal !== 'dinner'));   // dinner has no dishes of its own; Mineral Water is served at every meal
+    await openEvent(); await p.locator('[data-action="menu-send"]').click(); await p.waitForSelector('#md-modal.active');
+    await p.selectOption('#md-ver', 'draft');
+    const preview = await p.locator('#md-preview').innerText();
+    assert.match(preview, /Dinner[\s\S]*Dishes served at every meal \(listed below\)[\s\S]*Served at every meal[\s\S]*Mineral Water/i, preview);
+    await p.locator('#btn-md-print').click(); await p.waitForTimeout(300);
+    assert.match((await printed()).text, /Lunch[\s\S]*Dinner[\s\S]*Served at every meal/i);
+    await p.locator('#btn-md-wa').click(); await p.waitForTimeout(200);
+    const wa = decodeURIComponent((await p.evaluate(() => window.__opened.at(-1))).split('text=')[1]);
+    assert.match(wa, /\*Dinner\*.*\n_Dishes served at every meal \(listed below\)_/, wa);
+    await p.locator('#md-modal [data-action="close-modal"]').click();
+    await setDishes(new Function(`return () => ${JSON.stringify(before)}`)());
+  });
+
   await test('backups keep menus sent and quote annexures; malformed ones are refused', async () => {
     const r = await p.evaluate(async () => { const db = await import('./db.js'); const out = [];
       const d0 = await db.exportAllData(); delete d0.manifest;
