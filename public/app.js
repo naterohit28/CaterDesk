@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.22.0';
+const APP_BUILD = '4.22.1';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -307,10 +307,13 @@ function storeOf(type) { return type === 'drafts' ? 'expenses' : type; }
 
 /* Reopen the screen used last (within 12 hours) above Home, so Back still returns Home,
    and offer to continue an expense that was being typed when the app was closed. */
+/* Opening the app starts on Home. Only when the installed app is reopened within a few minutes (Android closed it in
+   the background, e.g. while the camera was open for a bill photo) does it go back to the screen you were on.
+   In a browser tab a reload is just a refresh of Home. */
+const RESUME_WINDOW = 10 * 60e3;
 function resumeWhereLeft(last) {
-  // Only in the installed app; in a browser tab a reload is just a refresh of Home
   const installed = window.matchMedia?.('(display-mode: standalone)').matches;
-  if (installed && last && last.tab !== 'home' && Date.now() - (last.at || 0) < 12 * 3600e3) {
+  if (installed && last && last.tab !== 'home' && Date.now() - (last.at || 0) < RESUME_WINDOW) {
     if (last.tab === 'evdetail' && D.events.some(e => e.id === last.ref)) showEvDetail(last.ref);
     else if (last.tab === 'vendetail' && D.vendors.some(v => v.id === last.ref)) showVenDetail(last.ref);
     else if (TOP_TABS.includes(last.tab)) go(last.tab);
