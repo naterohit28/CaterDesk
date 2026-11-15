@@ -47,16 +47,34 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [],
     const x = await bill(p, 'x1'); assert.deepEqual([x.evId, x.purchase, x.amt], ['e1', 'PO1', 2500]);
   });
 
+  await test('a new purchase bill saved with + Next: the next, ordinary expense can choose its event again (Codex P2 on #67)', async () => {
+    await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest;
+      d.events[0].dishes.push({ name: 'Sample Ice', head: '', src: 'buy' });
+      d.events[0].purchases.push({ ...d.events[0].purchases[0], id: 'PO2', svc: 'svc-all', item: 'Sample Ice', basis: { item: 'Sample Ice', src: 'buy' }, status: 'delivered' }); delete d.events[0]._rev; await db.importAllData(d, 'replace'); });
+    await p.reload(); await p.waitForSelector('#kpi .card'); await p.locator('#n-events:visible').click();
+    await p.locator('#ev-list [data-action="evdetail"][data-id="e1"]:visible').click(); await p.waitForSelector('#tab-evdetail .detail-name');
+    await p.locator('#buy-list [data-buy="svc-all|sample ice"] [data-action="buy-status"]').click(); await p.waitForSelector('#ask-modal.active');
+    await p.locator('#ask-actions button', { hasText: 'Record / link its bill' }).click(); await p.waitForSelector('#exp-modal.active');
+    while (await p.locator('#ask-modal.active').count()) { await p.locator('#ask-actions button').last().click(); await p.waitForTimeout(300); }
+    assert.equal(await p.locator('#exp-ev').isDisabled(), true, 'locked for the purchase bill');
+    await p.fill('#exp-amt', '700'); await p.locator('#btn-save-exp-next').click(); await p.waitForTimeout(700);
+    while (await p.locator('#ask-modal.active').count()) { await p.locator('#ask-actions button').first().click(); await p.waitForTimeout(300); }
+    assert.equal(await p.locator('#exp-ev').isDisabled(), false, 'the next entry can choose its event');
+    await p.selectOption('#exp-ev', 'e2'); await p.fill('#exp-amt', '300'); await save();
+    const d = await dump(p), ice = d.expenses.filter(x => x.purchase === 'PO2'), other = d.expenses.find(x => x.amt === 300);
+    assert.deepEqual([ice.length, ice[0].evId, other.evId, other.purchase], [1, 'e1', 'e2', undefined]);
+  });
+
   await test('the database refuses a save that puts a purchase link on another event, or on an order\'s bill; nothing is written', async () => {
     const r = await p.evaluate(async () => { const db = await import('./db.js'), out = [];
-      const x = (await db.exportAllData()).expenses.find(e => e.id === 'x1');
+      const before = (await db.exportAllData()).expenses, x = before.find(e => e.id === 'x1');
       const tries = [{ ...x, evId: 'e2' }, { ...x, id: 'x2', _rev: undefined, evId: 'e2' }, { ...x, order: 'o1' }, { ...x, purchase: 'PO-none' }];
       for (const rec of tries) { try { await db.commitChanges([{ store: 'expenses', record: rec, expected: rec.id === 'x1' ? x : null }], { check: true }); out.push('saved'); } catch (e) { out.push(e.message); } }
       // in one save with its event: the event's own purchases decide
       const e2 = (await db.exportAllData()).events.find(e => e.id === 'e2');
       try { await db.commitChanges([{ store: 'events', record: { ...e2, notes: 'Sample' }, expected: e2 }, { store: 'expenses', record: { ...x, evId: 'e2' }, expected: x }], { check: true }); out.push('saved'); } catch (e) { out.push(e.message); }
       const now = await db.exportAllData();
-      return { out, same: JSON.stringify(now.expenses) === JSON.stringify([x]) && !now.events.find(e => e.id === 'e2').notes }; });
+      return { out, same: JSON.stringify(now.expenses) === JSON.stringify(before) && !now.events.find(e => e.id === 'e2').notes }; });
     assert.deepEqual(r.out, Array(5).fill('This bill is linked to a purchase on another event. Nothing was saved.'));
     assert.equal(r.same, true, 'nothing written');
   });
@@ -80,7 +98,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [],
     const p2 = await ctx2.newPage(); p2.setDefaultTimeout(15000); p2.on('pageerror', e => errors.push(e.message));
     await p2.goto(BASE_URL); await p2.waitForSelector('#kpi .card');
     await p2.locator('#import-input').setInputFiles(file); await p2.waitForSelector('#ask-modal.active');
-    assert.match(await p2.locator('#ask-msg').innerText(), /2 events · 2 expenses[\s\S]*Checked: complete and undamaged/);
+    assert.match(await p2.locator('#ask-msg').innerText(), /2 events · 4 expenses[\s\S]*Checked: complete and undamaged/);
     await p2.locator('#ask-actions button', { hasText: 'Replace all data' }).click();
     await p2.waitForSelector('#toast-msg:has-text("Imported")');
     assert.match(await p2.locator('#toast-msg').innerText(), /1 bill was linked to a purchase on another event; the bill is kept, the link removed/);

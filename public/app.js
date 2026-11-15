@@ -4938,6 +4938,7 @@ async function saveExpense({ next = false } = {}) {
     q('exp-notes').value = '';
     clearFieldErrors();
     startExpSession(null);
+    q('exp-ev').disabled = false;   // the next entry is an ordinary expense: its event can be chosen (a purchase's bill locked it)
     updateExpEvHint();
     q('exp-amt').focus({ preventScroll: true });
     showToast(over ? `Saved · ${over}` : `Saved ${fmtCurrency(record.amt)} · add the next – पुढील खर्च`, over ? 'error' : 'success');
