@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.23.0';
+const APP_BUILD = '4.23.1';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -588,10 +588,11 @@ function closeOverlay() {
     const finish = () => {
       if (done) return; done = true; clearTimeout(timer);
       const index = popWaiters.indexOf(finish); if (index >= 0) popWaiters.splice(index, 1);
-      if (history.state?.overlay) history.replaceState({ tab: CT, ref: curRef, depth: 0 }, '');
       o.after?.(); syncOverlayAccessibility(); res();
     };
-    const timer = setTimeout(finish, 600);
+    // A slow phone: the Back has not arrived in time. Carry on; when it lands it only takes history back to the
+    // page already shown (the entry keeps its real depth; it is never rewritten as the root).
+    const timer = setTimeout(() => { if (!done) lateBacks++; finish(); }, 600);
     popWaiters.push(finish);
     history.back();
   });
@@ -602,14 +603,24 @@ function dropOverlays() {
   while (overlays.length) { const o = overlays.pop(); o.hide(); o.after?.(); }
 }
 
+let lateBacks = 0;              // Backs of sheets already closed, still to arrive (slow phones)
+let homeUnwind = false, homeTimer = 0;
 function onPopState(e) {
   if (popWaiters.length) { popWaiters.shift()(); return; }
+  // A late Back of a sheet already closed: history has now caught up with the page shown; nothing else to do
+  if (lateBacks > 0) { lateBacks--; return; }
+  // Unwinding to Home: whatever entry this lands on becomes the root again, and Home stays shown
+  if (homeUnwind) { homeUnwind = false; clearTimeout(homeTimer); settleHome(); return; }
   if (overlays.length) { const o = overlays.pop(); o.hide(); o.after?.(); return; }
   const st = e.state;
   if (st?.overlay) { history.back(); return; }   // stale entry reached via Forward
   restorePage(st || { tab: 'home', ref: null });
 }
 
+function settleHome() {
+  if (history.state?.tab !== 'home' || history.state?.depth || history.state?.overlay) history.replaceState({ tab: 'home', ref: null, depth: 0 }, '');
+  if (CT !== 'home') go('home', { fromHistory: true });
+}
 function restorePage(st) {
   if (st.tab === 'evdetail' && st.ref)       showEvDetail(st.ref, { fromHistory: true });
   else if (st.tab === 'vendetail' && st.ref) showVenDetail(st.ref, { fromHistory: true });
@@ -640,9 +651,15 @@ function go(id, { ref = null, fromHistory = false } = {}) {
     const st = history.state || { depth: 0 };
     const depth = st.depth || 0;
     if (id === 'home' && depth > 0) {
-      // Home is the root: unwind to it so Back from Home exits, like a native app
+      // Home is the root: unwind to it so Back from Home exits, like a native app. Home shows now (and is remembered)
+      // without waiting for history; if the unwinding lands nowhere (depth miscounted), the entry is made the root.
       dropOverlays();
-      history.go(-depth);
+      homeUnwind = true; clearTimeout(homeTimer);
+      homeTimer = setTimeout(() => { if (homeUnwind) { homeUnwind = false; settleHome(); } }, 700);
+      go('home', { fromHistory: true });
+      // Late Backs still on their way take history part of the way; unwinding the rest must not go past the start
+      const steps = depth - lateBacks;
+      if (steps > 0) history.go(-steps);
       return;
     }
     const entry = { tab: id, ref };
