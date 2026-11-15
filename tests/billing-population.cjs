@@ -75,6 +75,73 @@ const DATA = { version: 'ffv2', photos: [], vPays: [], vendors: [],
     assert.deepEqual(r, { same: true, billing: 0 });
   });
 
+  // The owner's review table (Codex P2 findings on #68): five bill situations side by side
+  const CASES = { version: 'ffv2', photos: [], vPays: [], vendors: [],
+    events: [
+      { id: 'c1', name: 'Sample No Bill Advance', date: day(-5), venue: 'Sample Hall', type: 'Party – पार्टी', billing: 0, guests: 40, photoIds: [] },
+      { id: 'c2', name: 'Sample Part Paid', date: day(-5), venue: 'Sample Hall', type: 'Party – पार्टी', billing: 20000, guests: 40, photoIds: [] },
+      { id: 'c3', name: 'Sample Overpaid', date: day(-5), venue: 'Sample Hall', type: 'Party – पार्टी', billing: 20000, guests: 40, photoIds: [] },
+      { id: 'c4', name: 'Sample Fully Waived', date: day(-5), venue: 'Sample Hall', type: 'Party – पार्टी', billing: 0, guests: 40, photoIds: [],
+        billChanges: [{ at: '2026-11-10T10:00:00.000Z', from: 10000, to: 0, reason: 'Sample full waiver', kind: 'waiver', ack: 'written', taxReview: true }] },
+      { id: 'c5', name: 'Sample Never Billed', date: day(-5), venue: 'Sample Hall', type: 'Party – पार्टी', billing: 0, guests: 40, photoIds: [],
+        payPlan: [{ id: 'PM1', label: 'Advance', when: 'booking', amt: 5000 }, { id: 'PM2', label: 'Second', when: 'before', days: 2, amt: 5000 }] }],
+    expenses: [x('k1', 'c1', 1000), x('k2', 'c2', 4000), x('k3', 'c3', 4000), x('k4', 'c4', 3000), x('k5', 'c5', 2000)],
+    cPays: [{ id: 'q1', evId: 'c1', amt: 5000, date: day(-6), mode: 'UPI' }, { id: 'q2', evId: 'c2', amt: 5000, date: day(-6), mode: 'UPI' },
+      { id: 'q3', evId: 'c3', amt: 25000, date: day(-6), mode: 'UPI' }] };
+  const openEv = async id => { await home(); await p.locator('#n-events:visible').click(); await p.locator(`#ev-list [data-action="evdetail"][data-id="${id}"]:visible`).click(); await p.waitForSelector('#tab-evdetail .detail-name'); };
+
+  await test('five bill situations: advance without a bill, part paid, overpaid, fully waived, never billed', async () => {
+    await p.evaluate(async d => { await (await import('./db.js')).importAllData(d, 'replace'); }, CASES);
+    const r = await p.evaluate(async () => { const u = await import('./utils.js'), d = await (await import('./db.js')).exportAllData();
+      const ev = id => d.events.find(e => e.id === id), st = id => u.settlementStatus(ev(id), d.cPays);
+      return { set: ['c1', 'c2', 'c3', 'c4', 'c5'].map(id => u.billSet(ev(id))),
+        c1: [st('c1').outstanding, st('c1').over], c2: [st('c2').outstanding, st('c2').over], c3: [st('c3').outstanding, st('c3').over], c4: [st('c4').adjusted, st('c4').taxReview],
+        books: u.booksCheck(d.events, d.expenses, d.cPays, d.vPays).overReceived, receivable: u.booksCheck(d.events, d.expenses, d.cPays, d.vPays).receivable,
+        split: (s => [s.contribP / 100, s.awaitP / 100, s.pendingP / 100])(u.billingSplit(d.events, d.expenses, d.cPays)) }; });
+    assert.deepEqual(r.set, [false, true, true, true, false], 'a waived ₹0 bill is known; a 0 never set is not');
+    assert.deepEqual(r.c1, [0, 0], 'no bill, ₹5,000 advance: nothing pending, no overpayment');
+    assert.deepEqual(r.c2, [15000, 0], '₹20,000 bill, ₹5,000 received: ₹15,000 pending');
+    assert.deepEqual(r.c3, [0, 5000], '₹20,000 bill, ₹25,000 received: ₹5,000 overpaid');
+    assert.deepEqual(r.c4, [10000, true], 'fully waived: the ₹10,000 adjustment and its tax review stay recorded');
+    assert.equal(r.books, 5000, 'the books check flags only the real overpayment, never the advance');
+    assert.equal(r.receivable, 15000);
+    // contribution: c2 16,000 + c3 16,000 + c4 −3,000 (the waived event's loss counts); c1 and c5 costs await billing
+    assert.deepEqual(r.split, [29000, 3000, 15000]);
+    await home(); await p.locator('#n-summary:visible').click(); await p.waitForTimeout(400);
+    const books = await p.locator('#summary-content').innerText();
+    assert.match(books, /Received more than the bill \(refund or bill change\?\)\s*₹5,000\b/, 'only the real ₹5,000 overpayment');
+  });
+
+  await test('a fully waived bill is a known ₹0 bill on its page: its loss shows, its settlement stands, reconciliation is not blocked', async () => {
+    await openEv('c4');
+    assert.equal(await p.locator('#ev-bill-unset').count(), 0, 'not "Not set"');
+    assert.equal(await metric('#tab-evdetail', 'Bill'), '₹0');
+    assert.match(await p.locator('#tab-evdetail').innerText(), /−₹3,000|-₹3,000/, 'the loss is shown');
+    assert.match(await p.locator('#settle-line').innerText(), /Sample full waiver/);
+    const blocked = await p.evaluate(async () => { const u = await import('./utils.js'), d = await (await import('./db.js')).exportAllData();
+      return u.reconBlockers(d.events.find(e => e.id === 'c4'), d.expenses).map(b => b.en); });
+    assert.equal(blocked.includes('The bill is not set yet'), false);
+    // Home: the waived event's loss is a real loss; the never-billed event is not called a loss
+    await home(); const ins = await p.locator('body').innerText();
+    if (/made a loss/.test(ins)) { assert.match(ins, /made a loss: [^\n]*Sample Fully Waived/); assert.doesNotMatch(ins, /made a loss: [^\n]*Sample (Never Billed|No Bill Advance)/); }
+    const insights = await p.evaluate(async () => { const u = await import('./utils.js'), d = await (await import('./db.js')).exportAllData();
+      return u.generateInsights(d.events, d.cPays, d.expenses, d.vendors, d.vPays).map(i => i.en).join(' | '); });
+    assert.match(insights, /1 event made a loss: <b>Sample Fully Waived<\/b>/);
+  });
+
+  await test('a plan made before the bill was cleared is paused (nothing due or overdue) and can still be removed', async () => {
+    await openEv('c5');
+    assert.match(await p.locator('#pay-paused').innerText(), /Payment plan paused until the bill is set \(2 milestones kept\)/);
+    assert.doesNotMatch(await p.locator('#tab-evdetail').innerText(), /overdue|more than the bill/i);
+    await p.locator('#pay-schedule [data-action="plan-edit"]').click(); await p.waitForSelector('#plan-modal.active');
+    await p.locator('#btn-save-plan').first().click(); await p.waitForTimeout(300);
+    assert.match(await p.locator('#toast-msg').innerText(), /Set the bill before changing the plan/);
+    for (let i = 0; i < 5 && await p.locator('#plan-modal [data-pm-del]').count(); i++)
+      await p.locator('#plan-modal [data-pm-del]').first().click();
+    await p.locator('#btn-save-plan').first().click(); await p.waitForTimeout(400);
+    assert.equal(await p.evaluate(async () => (await (await import('./db.js')).exportAllData()).events.find(e => e.id === 'c5').payPlan), undefined, 'removed');
+  });
+
   assert.deepEqual(errors, []);
   await browser.close();
   console.log(failed ? 'billing population FAIL' : 'billing population PASS');

@@ -965,7 +965,7 @@ function draftsCard() {
 function eventStatus(ev) {
   const { received: rec, pending: pend } = calcEventPL(ev, D.cPays, D.expenses);
   const noCosts = isOverdue(ev) && !ev.outsourced && !D.expenses.some(x => x.evId === ev.id);
-  return { rec, pend, noCosts, overdue: paymentSchedule(ev, D.cPays).overdue > 0, noBill: clientDueP(ev) === 0 };   // no bill yet: not "paid"
+  return { rec, pend, noCosts, overdue: paymentSchedule(ev, D.cPays).overdue > 0, noBill: !billSet(ev) };   // no bill yet: not "paid" (a bill waived to ₹0 at settlement is a known bill)
 }
 
 function eventCard(ev) {
@@ -1182,7 +1182,7 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
 
     <div class="card pad">
       <div class="metrics" style="margin:0;padding:0;border:0">
-        <div class="metric"><div class="label">Bill – बिल</div>${ev.billing > 0 ? `<div class="amt-md">${fmtCurrency(ev.billing)}</div>` : `<div class="amt-md muted" id="ev-bill-unset">${tr('Not set', 'ठरले नाही')}</div>`}${ev.gst?.amount ? `<div class="meta" id="ev-gst">${tr(`+ GST ${fmtCurrency(ev.gst.amount)}`, `+ जीएसटी ${fmtCurrency(ev.gst.amount)}`)}</div>` : ''}</div>
+        <div class="metric"><div class="label">Bill – बिल</div>${billSet(ev) ? `<div class="amt-md">${fmtCurrency(ev.billing)}</div>` : `<div class="amt-md muted" id="ev-bill-unset">${tr('Not set', 'ठरले नाही')}</div>`}${ev.gst?.amount ? `<div class="meta" id="ev-gst">${tr(`+ GST ${fmtCurrency(ev.gst.amount)}`, `+ जीएसटी ${fmtCurrency(ev.gst.amount)}`)}</div>` : ''}</div>
         <div class="metric"><div class="label">Received – मिळाले</div><div class="amt-md pos">${fmtCurrency(rec)}</div></div>
         <div class="metric"><div class="label">Pending – बाकी</div><div class="amt-md ${pend > 0 ? (pendingOverdue(ev) ? 'neg' : 'due') : 'muted'}" id="ev-pending">${billSet(ev) ? fmtCurrency(Math.max(0, pend)) : '—'}</div></div>
       </div>
@@ -4166,6 +4166,10 @@ function whenText(r) {
 }
 function scheduleBlock(ev) {
   const s = paymentSchedule(ev, D.cPays);
+  if (s.paused) return `<div id="pay-schedule" style="margin-top:var(--s4);padding-top:var(--s4);border-top:1px solid var(--line)">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:var(--s2)">
+      <span class="meta" id="pay-paused">${tr(`Payment plan paused until the bill is set (${(ev.payPlan || []).length} milestone${(ev.payPlan || []).length > 1 ? 's' : ''} kept)`, 'बिल ठरेपर्यंत हप्ते थांबवले')}</span>
+      <button type="button" class="btn-sm" data-action="plan-edit">${icon('pencil', 16)}${tr('Edit', 'बदला')}</button></div></div>`;
   if (!s.scheduled) return '';   // its button sits in the event's action row
   return `<div id="pay-schedule" style="margin-top:var(--s4);padding-top:var(--s4);border-top:1px solid var(--line)">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:var(--s2)">
@@ -4181,7 +4185,7 @@ function scheduleBlock(ev) {
 let planDraft = [];
 function openPlanModal() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
-  if (!billSet(ev)) { showToast('Set the event\u2019s total bill first: a payment plan divides the bill. – आधी बिल भरा', 'error'); return; }
+  if (!billSet(ev) && !(ev.payPlan || []).length) { showToast('Set the event\u2019s total bill first: a payment plan divides the bill. – आधी बिल भरा', 'error'); return; }
   planDraft = (ev.payPlan || []).map(m => ({ ...m }));
   if (!planDraft.length) planDraft = [{ id: uid('PM'), label: 'Advance', when: 'booking', amt: '' }];
   renderPlanRows();
@@ -4224,6 +4228,8 @@ async function savePlan() {
       showToast('Each milestone needs an amount (₹ or % of the bill) and when it is due – रक्कम व तारीख लिहा', 'error'); return;
     }
   }
+  // Bill not set: the paused plan can only be removed; milestones wait for the bill
+  if (!billSet(ev) && rows.length) { showToast('Set the bill before changing the plan. To remove it, clear every milestone and save. – आधी बिल भरा', 'error'); return; }
   const total = rows.reduce((s, r) => s + (r.pct != null ? Math.round(toPaise(ev.billing) * r.pct / 100) : toPaise(r.amt)), 0);
   if (total > toPaise(ev.billing)) { showToast('The schedule is more than the bill – हप्ते बिलापेक्षा जास्त', 'error'); return; }
   try { await patchEvent(ev.id, { payPlan: rows }, rows.length ? [] : ['payPlan']); } catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
