@@ -553,6 +553,17 @@ export async function prepareImport(payload) {
           || (s.guests !== undefined && (!Number.isSafeInteger(s.guests) || s.guests < 0)) || (s.rate !== undefined && (amount(s.rate, 'meal rate'), false))
           || (s.template !== undefined && (!s.template || !str(s.template.id, 64) || !s.template.id || !str(s.template.name, 120)))))) throw new Error('Invalid meal menus');
       if (row.servicesSig !== undefined && !str(row.servicesSig, 16)) throw new Error('Invalid meal menus');
+      // Client-approved menu versions (4.24.0): numbered 1, 2, … in order; each a copy of the meals and their dishes.
+      // A copied dish is checked no more strictly than the event's own dishes (any name, any number), so approving never makes a backup unrestorable.
+      const badSnapDish = d => !d || typeof d.name !== 'string' || !d.name.trim() || (d.head !== undefined && !str(d.head, 120)) || (d.cat !== undefined && !str(d.cat, 40))
+        || (d.type !== undefined && !['veg', 'egg', 'nonveg'].includes(d.type)) || (d.diet !== undefined && (!Array.isArray(d.diet) || d.diet.some(x => !['jain', 'no_onion_garlic', 'vegan', 'gluten_free', 'nut_free'].includes(x))));
+      if (row.menuApproved !== undefined && (!Array.isArray(row.menuApproved) || row.menuApproved.length > 200
+        || row.menuApproved.some((v, i) => !v || !str(v.id, 40) || !v.id || v.n !== i + 1 || typeof v.at !== 'string' || !['written', 'verbal'].includes(v.by) || (v.who !== undefined && !str(v.who, 200))
+          || !Array.isArray(v.services) || v.services.length > 30 || v.services.some(s => !s || !str(s.id, 40) || !MEAL_KEYS.includes(s.meal) || (s.date !== undefined && !validDate(s.date)) || (s.time !== undefined && !str(s.time, 10))
+            || !Number.isSafeInteger(s.guests) || s.guests < 0 || (amount(s.rate, 'meal rate'), false) || (s.template !== undefined && (!s.template || !str(s.template.id, 64) || !str(s.template.name, 120)))
+            || !Array.isArray(s.dishes) || s.dishes.some(badSnapDish))
+          || !Array.isArray(v.shared) || v.shared.some(badSnapDish) || (v.pending !== undefined && (!Array.isArray(v.pending) || v.pending.some(x => !str(x, 40)))))
+        || new Set(row.menuApproved.map(v => v.id)).size !== row.menuApproved.length)) throw new Error('Invalid approved menu');
       if (row.logistics !== undefined && (typeof row.logistics !== 'object' || row.logistics === null || Array.isArray(row.logistics) || Object.values(row.logistics).some(v => typeof v !== 'string'))) throw new Error('Invalid venue logistics');
       if (row.recon != null && (typeof row.recon !== 'object' || Array.isArray(row.recon) || !Number.isSafeInteger(row.recon.costPaise) || !Number.isSafeInteger(row.recon.billPaise) || typeof row.recon.sig !== 'string')) throw new Error('Invalid reconciliation');
       if (row.reconHistory !== undefined && (!Array.isArray(row.reconHistory) || row.reconHistory.some(h => !h || typeof h !== 'object' || !['reconciled', 'reopened'].includes(h.action)))) throw new Error('Invalid reconciliation history');
@@ -624,7 +635,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.23.1';
+export const APP_VERSION = '4.24.0';
 const COUNT_METHOD_IDS = ['tokens', 'tally', 'gate', 'coupons', 'joint', 'other'];
 // v4.18.0 kept menus in their own store (database version 5): copy them into meta once and empty that store
 export async function migrateLegacyMenus() {

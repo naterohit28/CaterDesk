@@ -53,7 +53,7 @@ const HISTORY = { id: 'e2', name: 'Sample Past Party', date: day(-40), venue: 'S
     const s = u.eventServices(e).services;
     s[0].time = '12:30'; s[0].dishes[0] = { ...s[0].dishes[0], id: 'd1', cat: 'rice', type: 'veg', diet: ['jain'] };
     s.splice(1, 0, { id: 'svc-k2m9', meal: 'lunch', date: '2099-03-02', time: '13:00', guests: 120, rate: 400, template: null, dishes: [{ name: 'Veg Biryani', head: '' }, { name: 'Raita', head: '', cat: 'accompaniment' }] });
-    await db.importAllData({ version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [], vendors: [], events: [{ ...e, ...u.applyServices(e, s) }, h] }); }, [EVENT, HISTORY]);
+    await db.importAllData({ version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [], vendors: [], events: [(rec => ({ ...rec, menuApproved: [u.approvedVersion(rec, { by: 'written', id: 'MA1-test', at: '2026-11-01T10:00:00.000Z' })] }))({ ...e, ...u.applyServices(e, s) }), h] }); }, [EVENT, HISTORY]);
   const start = await ev('e1'), history = noRev(await ev('e2'));
 
   await test('the old app (4.21.1) opens the same database and shows the event, the second lunch\'s dishes under lunch', async () => {
@@ -70,6 +70,7 @@ const HISTORY = { id: 'e2', name: 'Sample Past Party', date: day(-40), venue: 'S
     await go('new');
     const e = await ev('e1');
     assert.deepEqual(e.services, start.services, 'old app kept the services as they were');
+    assert.deepEqual(e.menuApproved, start.menuApproved, 'old app kept the approved menu versions'); assert.equal(e.menuApproved.length, 1);
     assert.deepEqual(e.dishes.find(d => d.name === 'Jeera Rice'), { name: 'Jeera Rice', head: '', meal: 'lunch', id: 'd1', cat: 'rice', type: 'veg', diet: ['jain'] }, 'dish details kept');
     assert.deepEqual(e.dishes.filter(d => d.svc).map(d => [d.name, d.svc]), [['Veg Biryani', 'svc-k2m9'], ['Raita', 'svc-k2m9']], 'second-lunch dishes still name their service');
     const view = await U((u, x) => u.eventServices(x), e);
