@@ -620,13 +620,14 @@ export function syncServices(record) {
    meal is listed under `pending`. The kitchen or counter for each dish is kept with it (for vendor orders), never shown
    to the client. Each meal keeps the date it was approved for (its own date, else the event's), so a later
    change of the event date shows as a change. */
+const named = d => String(d.name ?? '').trim() !== '';
 const snapDish = d => ({ name: d.name, head: d.head || '', ...(d.cat ? { cat: d.cat } : {}), ...(d.type ? { type: d.type } : {}), ...(d.diet?.length ? { diet: [...d.diet] } : {}) });
 export function menuSnapshot(ev) {
   const { services } = eventServices(ev);
-  const shared = (services[0]?.dishes || []).filter(d => d.shared).map(snapDish);
+  const shared = (services[0]?.dishes || []).filter(d => d.shared && named(d)).map(snapDish);
   return {
     services: services.map(s => ({ id: s.id, meal: s.meal, ...((s.date || ev.date) ? { date: s.date || ev.date } : {}), ...(s.time ? { time: s.time } : {}), guests: s.guests || 0, rate: s.rate || 0,
-      ...(s.template ? { template: { id: s.template.id, name: s.template.name } } : {}), dishes: s.dishes.filter(d => !d.shared && !d.preview).map(snapDish) })),
+      ...(s.template ? { template: { id: s.template.id, name: s.template.name } } : {}), dishes: s.dishes.filter(d => !d.shared && !d.preview && named(d)).map(snapDish) })),
     shared,
     pending: services.filter(s => s.fromTemplate).map(s => s.id)
   };
@@ -638,11 +639,18 @@ export const latestApproved = ev => approvedMenus(ev).at(-1) || null;
    number of differences. */
 export function menuDiff(older, newer) {
   const out = [], key = d => String(d.name).trim().toLowerCase();
+  const sig = d => JSON.stringify([d.head || '', (d.diet || []).join(), d.type || '', d.cat || '']);
+  // Dishes are matched by name; two dishes with the same name (plain Rice and Jain Rice) are matched one by one, an
+  // identical one first, so adding, removing or changing either is still seen.
   const sides = (a = [], b = []) => {
-    const A = new Map(a.map(d => [key(d), d])), B = new Map(b.map(d => [key(d), d]));
-    const added = b.filter(d => !A.has(key(d))).map(d => d.name), removed = a.filter(d => !B.has(key(d))).map(d => d.name);
-    const changed = [];
-    for (const d of b) { const o = A.get(key(d)); if (!o) continue;
+    const added = [], removed = [], changed = [], pairs = [], byName = new Map();
+    for (const d of a) { const k = key(d); if (!byName.has(k)) byName.set(k, []); byName.get(k).push(d); }
+    const rest = [];
+    for (const d of b) { const olds = byName.get(key(d)) || [], i = olds.findIndex(o => sig(o) === sig(d));
+      if (i >= 0) olds.splice(i, 1); else rest.push(d); }
+    for (const d of rest) { const olds = byName.get(key(d)) || []; if (olds.length) pairs.push([olds.shift(), d]); else added.push(d.name); }
+    const left = new Set([...byName.values()].flat()); for (const o of a) if (left.has(o)) removed.push(o.name);
+    for (const [o, d] of pairs) {
       if ((o.head || '') !== (d.head || '')) changed.push({ name: d.name, what: 'counter', from: o.head || '', to: d.head || '' });
       if ((o.diet || []).join() !== (d.diet || []).join()) changed.push({ name: d.name, what: 'diet', from: (o.diet || []).join(', '), to: (d.diet || []).join(', ') });
       // Food type (veg / egg / non-veg) and course matter to the client: either change needs approval again

@@ -134,6 +134,21 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [], 
     assert.deepEqual((await ev('e1')).menuApproved.at(-1).services.map(s => s.date), [day(9), day(9)], 'the approved copy still has the old date');
   });
 
+  await test('two dishes with the same name (Jain and plain) are told apart; a very long dish name never makes a backup unrestorable', async () => {
+    const r = await p.evaluate(async () => { const db = await import('./db.js'), u = await import('./utils.js'); const out = {};
+      const d0 = await db.exportAllData(); delete d0.manifest;
+      const d = structuredClone(d0), e = d.events.find(x => x.id === 'e1'); delete e._rev;
+      e.dishes = [...e.dishes, { name: 'Sample Rice', head: '', meal: 'lunch', diet: ['jain'] }, { name: 'Sample Rice', head: '', meal: 'lunch' }, { name: 'Sample ' + 'Long Dish '.repeat(25), head: '', meal: 'dinner' }];
+      e.menuApproved = [...e.menuApproved, u.approvedVersion(e, { by: 'written' })];
+      out.approved = u.menuSinceApproved(e).count;
+      try { await db.importAllData(structuredClone(d), 'replace'); out.restore = 'ok'; } catch (x) { out.restore = x.message; }
+      e.dishes = e.dishes.filter(x => !(x.name === 'Sample Rice' && x.diet));   // the Jain rice is dropped
+      const diff = u.menuSinceApproved(e); out.count = diff.count; out.removed = diff.meals.flatMap(m => m.removed);
+      await db.importAllData(d0, 'replace'); return out; });
+    assert.equal(r.approved, 0); assert.equal(r.restore, 'ok', 'a backup with a long approved dish name restores');
+    assert.equal(r.count, 1, 'removing the Jain variant is a change'); assert.deepEqual(r.removed, ['Sample Rice']);
+  });
+
   await test('backups keep approved versions; malformed ones are refused', async () => {
     const r = await p.evaluate(async () => { const db = await import('./db.js'); const out = [];
       const d0 = await db.exportAllData(); delete d0.manifest;
