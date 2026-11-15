@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.28.1';
+const APP_BUILD = '4.28.2';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1181,7 +1181,7 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
 
     <div class="card pad">
       <div class="metrics" style="margin:0;padding:0;border:0">
-        <div class="metric"><div class="label">Bill – बिल</div><div class="amt-md">${fmtCurrency(ev.billing)}</div>${ev.gst?.amount ? `<div class="meta" id="ev-gst">${tr(`+ GST ${fmtCurrency(ev.gst.amount)}`, `+ जीएसटी ${fmtCurrency(ev.gst.amount)}`)}</div>` : ''}</div>
+        <div class="metric"><div class="label">Bill – बिल</div>${ev.billing > 0 ? `<div class="amt-md">${fmtCurrency(ev.billing)}</div>` : `<div class="amt-md muted" id="ev-bill-unset">${tr('Not set', 'ठरले नाही')}</div>`}${ev.gst?.amount ? `<div class="meta" id="ev-gst">${tr(`+ GST ${fmtCurrency(ev.gst.amount)}`, `+ जीएसटी ${fmtCurrency(ev.gst.amount)}`)}</div>` : ''}</div>
         <div class="metric"><div class="label">Received – मिळाले</div><div class="amt-md pos">${fmtCurrency(rec)}</div></div>
         <div class="metric"><div class="label">Pending – बाकी</div><div class="amt-md ${pend > 0 ? (pendingOverdue(ev) ? 'neg' : 'due') : 'muted'}" id="ev-pending">${fmtCurrency(Math.max(0, pend))}</div></div>
       </div>
@@ -1253,7 +1253,8 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
     <div class="card pad">
       <div class="photo-strip">
         ${photos.map(p => `<img class="photo-thumb" src="${esc(p.data)}" loading="lazy" alt="Event photo" role="button" tabindex="0" data-action="lightbox" data-photoid="${esc(p.id)}" data-evid="${esc(id)}">`).join('')}
-        <button type="button" class="photo-add" data-action="add-photo" data-id="${esc(id)}">${icon('camera', 22)}Add – जोडा</button>
+        <button type="button" class="photo-add" data-action="add-photo-cam" data-id="${esc(id)}">${icon('camera', 22)}<span class="t-en">Camera</span><span class="t-mr">कॅमेरा</span></button>
+        <button type="button" class="photo-add" data-action="add-photo" data-id="${esc(id)}">${icon('image', 22)}<span class="t-en">Gallery</span><span class="t-mr">गॅलरी</span></button>
       </div>
     </div>
   `;
@@ -4498,14 +4499,14 @@ async function saveEvent() {
   if (needGuests && !chosen.length && !errors.guests && !(Number(data.guests) >= 1)) errors.guests = 'Guests – पाहुण्यांची संख्या आवश्यक';
   Object.assign(errors, guestErrs);
   const valid = rulesOk && !errors.guests && !Object.keys(guestErrs).length;
-  if (!errors.adv && !errors.billing && adv !== '' && Number(adv) > Number(data.billing)) errors.adv = 'Advance is more than the total bill – अॅडव्हान्स बिलापेक्षा जास्त';
+  if (!errors.adv && !errors.billing && adv !== '' && Number(data.billing) > 0 && Number(adv) > Number(data.billing)) errors.adv = 'Advance is more than the total bill – अॅडव्हान्स बिलापेक्षा जास्त';
   // Rule keys are field names; the inputs are ev-<name>
   const out = q('ev-handling').dataset.value === 'out';
   const outVenId = out ? qv('ev-out-ven') : '';
   const charge = out && !id && qv('ev-out-charge') ? qf('ev-out-charge') : '';
   if (out && !outVenId) errors['out-ven'] = 'Choose who does the event – विक्रेता निवडा';
   if (charge !== '' && !(charge > 0)) errors['out-charge'] = 'Enter their charge – रक्कम लिहा';
-  else if (charge !== '' && !errors.billing && charge > Number(data.billing)) errors['out-charge'] = 'Their charge is more than the bill – बिलापेक्षा जास्त';
+  else if (charge !== '' && !errors.billing && Number(data.billing) > 0 && charge > Number(data.billing)) errors['out-charge'] = 'Their charge is more than the bill – बिलापेक्षा जास्त';
   if (!valid || errors.adv || errors['out-ven'] || errors['out-charge']) { showFieldErrors(Object.fromEntries(Object.entries(errors).map(([k, v]) => ['ev-' + k, v]))); return; }
 
   const base = id ? formBase.ev : null;
@@ -5203,9 +5204,9 @@ async function deleteFromSheet(type, idField) {
 }
 
 /* ── PHOTOS ──────────────────────────────────────── */
-function triggerPhoto(evId) {
+function triggerPhoto(evId, camera = false) {
   pendingPhotoEvId = evId;
-  q('photo-input').click();
+  q(camera ? 'photo-cam' : 'photo-input').click();
 }
 
 async function handlePhotoInput(files) {
@@ -5524,6 +5525,7 @@ function bindAllEvents() {
       case 'edit-cpay':    openCPayModal(null, id); break;
       case 'edit-vpay':    openVPayModal(null, id); break;
       case 'add-photo':    triggerPhoto(id); break;
+      case 'add-photo-cam': triggerPhoto(id, true); break;
       case 'lightbox':     openEventPhoto(el.dataset.evid, el.dataset.photoid); break;
       // Bill photos: the file picker must open inside the tap itself
       case 'snap':         billTarget = 'snap';  q('bill-cam').click(); break;
@@ -5593,6 +5595,7 @@ function bindAllEvents() {
   ['fs-timings', 'fs-setup'].forEach(id => q(id).addEventListener('input', renderFunctionSheet));
   // Photo / import inputs
   q('photo-input').addEventListener('change', function () { handlePhotoInput(this.files); });
+  q('photo-cam').addEventListener('change', function () { handlePhotoInput(this.files).finally(() => { this.value = ''; }); });
   ['bill-cam', 'bill-gal'].forEach(inputId => q(inputId).addEventListener('change', async function () {
     const files = [...this.files];
     this.value = '';

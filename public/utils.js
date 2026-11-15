@@ -254,8 +254,11 @@ export function nextQuoteDraft(ev, { from = null, newOption = false } = {}) {
   const qs = ev.quotes || [];
   const last = from || qs.at(-1);
   const option = newOption ? 'ABCDEFGH'.split('').find(l => !quoteOptions(ev).includes(l)) || 'H' : quoteOption(last);
+  // A first quote starts from the event's own meals: each with its booked guests, and its rate where one is known (4.28.2)
+  const meals = MEAL_ORDER.filter(m => (ev.meals || []).includes(m) || ev.mealPlan?.[m]?.guests > 0);
   const lines = last ? structuredClone(last.lines)
-    : MEAL_ORDER.filter(m => ev.mealPlan?.[m]?.guests > 0 && ev.mealPlan[m].rate > 0).map(m => ({ kind: 'meal', meal: m, guests: ev.mealPlan[m].guests, rate: ev.mealPlan[m].rate, ...(ev.mealPlan[m].menu ? { menu: ev.mealPlan[m].menu } : {}) }));
+    : meals.map(m => { const mp = ev.mealPlan?.[m] || {};
+      return { kind: 'meal', meal: m, guests: mp.guests > 0 ? mp.guests : Number(ev.guests) || '', rate: mp.rate > 0 ? mp.rate : '', ...(mp.menu ? { menu: mp.menu } : {}) }; });
   return { v: Math.max(0, ...qs.map(x => x.v)) + 1, status: 'draft', ...(option !== 'A' || newOption ? { option } : {}), lines: lines.length ? lines : [{ kind: 'meal', meal: 'dinner', guests: Number(ev.guests) || '', rate: '' }],
     showRates: last ? last.showRates !== false : true, terms: last?.terms || '', ...(last?.gst ? { gst: { ...last.gst } } : {}),
     ...(latestApproved(ev) ? { annex: latestApproved(ev).id } : last?.annex === 'draft' ? { annex: 'draft' } : {}) };
@@ -804,7 +807,7 @@ export const EVENT_RULES = {
   name:    { required: true, requiredMsg: 'Event name – नाव आवश्यक आहे' },
   date:    { required: true, date: true, requiredMsg: 'Date – दिनांक आवश्यक आहे' },
   venue:   { required: true, requiredMsg: 'Venue – ठिकाण आवश्यक आहे' },
-  billing: { required: true, numeric: true, min: 1, requiredMsg: 'Billing amount – बिल रक्कम आवश्यक आहे', minMsg: 'Billing must be > 0' },
+  billing: { numeric: true, min: 0, minMsg: 'Bill cannot be negative' },   // optional (4.28.2): often not known when the event is booked
   budget:  { numeric: true, min: 0 },
   guests:  { numeric: true, integer: true, min: 0 },
   mobile:  { phone: true }
