@@ -222,6 +222,27 @@ const INTERNAL = /Chaat|Tandoor|Barbeque|Our kitchen|cost|margin|contribution|ve
     assert.deepEqual(r, ['kept', 'long ok', 'Invalid menu sent to client', 'Invalid menu sent to client', 'Invalid menu sent to client', 'Invalid quote', 'Invalid quote']);
   });
 
+  await test('a menu sent at 01:00 in India reprints and is listed with that day\'s date, not the day before', async () => {
+    const d0 = await dump(); delete d0.manifest;
+    const e = d0.events.find(x => x.id === 'W'); delete e._rev;
+    e.menuDocs = [{ ...e.menuDocs[0], at: '2026-11-14T19:30:00.000Z' }];   // 15 Nov 2026, 01:00 IST
+    e.menuApproved = e.menuApproved.map((v, i) => i === 0 ? { ...v, at: '2026-11-14T19:30:00.000Z' } : v);
+    const c2 = await browser.newContext({ ...devices['Pixel 5'], viewport: { width: 360, height: 780 }, timezoneId: 'Asia/Kolkata' });
+    const q2 = await c2.newPage(); q2.setDefaultTimeout(10000); q2.on('pageerror', x => errors.push(x.message));
+    await q2.goto(BASE_URL); await q2.waitForSelector('#kpi .card');
+    await q2.evaluate(async d => { localStorage.setItem('ffv2_profile', JSON.stringify({ name: 'Sample Caterers', phone: '9000000009' })); const db = await import('./db.js'); await db.importAllData(d, 'replace'); }, d0);
+    await q2.reload(); await q2.waitForSelector('#kpi .card'); await q2.locator('#n-events:visible').click();
+    await q2.locator('#ev-list [data-action="evdetail"][data-id="W"]:visible').click(); await q2.waitForSelector('#tab-evdetail .detail-name');
+    await q2.evaluate(() => { window.__printed = []; window.print = () => window.__printed.push(document.querySelector('#print-doc').innerText); });
+    await q2.locator('[data-action="menu-send"]').click(); await q2.waitForSelector('#md-modal.active');
+    const day15 = await q2.evaluate(async () => (await import('./utils.js')).fmtDate('2026-11-15'));
+    assert.match(await q2.locator('#md-issued').innerText(), new RegExp(`Sent ${day15}`));
+    assert.match(await q2.locator('#md-ver').innerText(), new RegExp(`Version 1 · approved ${day15}`));
+    await q2.locator('#md-issued [data-md-reprint]').click(); await q2.waitForTimeout(300);
+    assert.match(await q2.evaluate(() => window.__printed.at(-1)), new RegExp(`Date ${day15}`));
+    await c2.close();
+  });
+
   assert.deepEqual(errors, []);
   await browser.close();
   console.log(failed ? 'client documents FAIL' : 'client documents PASS');
