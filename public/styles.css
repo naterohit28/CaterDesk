@@ -708,3 +708,11 @@ body::before {
 .pd-meal ul { margin: 4px 0 0; padding-left: 18px; columns: 2; column-gap: 24px; }
 .pd-meal li { break-inside: avoid; padding: 1px 0; }
 .md-preview { white-space: pre-wrap; font: var(--fs-sm)/1.5 var(--font); background: var(--surface-2); border-radius: var(--r-md); padding: var(--s3); margin: 0; max-height: 40vh; overflow: auto; color: var(--text); }
+/* Settings brand is a button: looks as before, goes Home */
+button.d-brand { width: 100%; border: 0; border-bottom: 2px solid var(--accent); padding: 0 0 16px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 0; }
+button.d-brand:active { opacity: .7; }
+button.d-brand:focus-visible { outline: 2px solid var(--brand-text); outline-offset: 4px; border-radius: var(--r-sm); }
+/* Remind / Confirmed under an order not yet confirmed: lined up with the order's text, part of the same item */
+.dl-acts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); padding: 0 0 var(--s3) calc(38px + var(--s3)); border-bottom: 1px solid var(--line); }
+.dl-acts:last-child { border-bottom: 0; }
+.row:has(+ .dl-acts) { border-bottom: 0; padding-bottom: var(--s2); }

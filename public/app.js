@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.25.0';
+const APP_BUILD = '4.26.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -820,6 +820,9 @@ function rHome() {
     .map(e => { const s = paymentSchedule(e, D.cPays); return { ...e, _p: s.outstanding, _late: s.overdue > 0, _due: s.dueNow, _od: s.overdue, _sched: s.scheduled }; })
     .filter(e => e._p > 0)
     .sort((a, b) => (b._late - a._late) || (b._p - a._p));
+  // The total still to collect, beside the heading (the sum of the amounts listed below)
+  const odTotal = od.reduce((s, e) => s + toPaise(e._p), 0) / 100;
+  q('od-total').textContent = odTotal ? fmtCurrency(odTotal) : ''; q('od-total').hidden = !odTotal;
 
   q('od-list').innerHTML = od.length ? `<div class="card list">${od.map(e => `
     <div class="row" role="button" tabindex="0" data-action="evdetail" data-id="${esc(e.id)}">
@@ -1507,15 +1510,70 @@ function dishGroups(ev) {
   return groups;
 }
 
+/* Orders go to a counter for one meal: when two meals (or two dinners) use the same counter, each gets its own order,
+   with that meal's dishes, date and time. An event with one meal (or none) works as before. An order saved before
+   orders had a meal belongs to its counter's row when that counter serves only one meal; otherwise it is listed as an
+   older order for all meals. */
+function counterRows(ev) {
+  if (ev.outsourced) { const g = dishGroups(ev); return g.size ? [{ key: OUT_HEAD, head: OUT_HEAD, svcId: '', label: '', names: g.get(OUT_HEAD), dishes: (ev.dishes || []).filter(d => !isUnassigned(ev, d)) }] : []; }
+  const all = eventServices(ev).services, many = all.length > 1, rows = [];
+  for (const s of all) {
+    const g = new Map();
+    for (const d of s.dishes) { if (d.preview || !d.head) continue; if (!g.has(d.head)) g.set(d.head, []); g.get(d.head).push(d); }
+    for (const [head, ds] of g) rows.push({ key: many ? `${s.id}|${head}` : head, head, svcId: many ? s.id : '', svc: s, label: many ? svcLabel(ev, s, all) : '', names: ds.map(d => d.name), dishes: ds });
+  }
+  return rows;
+}
+function rowOf(ev, o, rows = counterRows(ev)) {
+  if (o.svc) return rows.find(r => r.head === o.head && (r.svcId === o.svc || (!r.svcId && r.svc?.id === o.svc))) || null;
+  const same = rows.filter(r => r.head === o.head);
+  return same.length === 1 ? same[0] : null;
+}
+// The dishes an order covers: its meal's dishes for that counter (an older order: the counter's dishes at every meal)
+function orderItems(ev, o) {
+  const r = rowOf(ev, o); if (r) return r.names;
+  return o.svc ? [] : dishGroups(ev).get(o.head) || [];
+}
+// The dishes an order covers, with what matters to the vendor and the client: food type and diet marks
+function orderDishes(ev, o) {
+  const r = rowOf(ev, o); if (r) return r.dishes;
+  return o.svc ? [] : (ev.dishes || []).filter(d => (d.head || '') === o.head && !isUnassigned(ev, d));
+}
+/* Orders already with a vendor whose dishes changed between two versions of the event: a dish added or removed, or
+   its food type (veg → non-veg) or diet marks (Jain…) changed, or it moved to another meal (an older order covers
+   every meal). Nothing is re-sent; the order is flagged. */
+function ordersHit(before, after) {
+  const key = (e, o) => orderDishes(e, o).map(d => JSON.stringify([String(d.name).trim().toLowerCase(), d.meal || '', d.type || '', (d.diet || []).join()])).sort().join('\n');
+  return (before.orders || []).filter(o => ACTIVE_ORDER.includes(o.status) && key(before, o) !== key(after, o)).map(o => o.id);
+}
+// Guests an order is planned for: its meal's guests when known, else the counter's guests as before
+function orderGuests(ev, head, svcId) {
+  const s = svcId ? eventServices(ev).services.find(x => x.id === svcId) : null;
+  if (s?.guests > 0) return { guests: s.guests, meal: s.meal, from: 'meal' };
+  const g = counterGuests(ev, head);
+  return { ...g, from: g.meal ? 'meal' : 'event' };
+}
+// What was recorded about the venue that a vendor needs to know
+function venueNotes(ev) {
+  return LOGISTICS.filter(l => ['gas', 'power', 'water', 'access'].includes(l.id) && ev.logistics?.[l.id])
+    .map(l => `${l.en}: ${(l.opts.find(x => x[0] === ev.logistics[l.id]) || [])[1] || ev.logistics[l.id]}`).join(' · ');
+}
+const ORDER_STEPS = [['prepared', 'Prepared'], ['opened', 'WhatsApp opened'], ['sent', 'Sent'], ['confirmed', 'Confirmed'], ['delivered', 'Delivered'], ['billed', 'Billed']];
+function orderSteps(o) {
+  if (o.status === 'cancelled') return 'Cancelled';
+  const reached = o.status === 'delivered' && orderBillOf(o) ? 5 : ORDER_STEPS.findIndex(x => x[0] === o.status);
+  return ORDER_STEPS.map(([, l], i) => i <= reached ? `✓ ${l}` : l).join(' → ');
+}
+
 // Usual vendor for a counter: listed speciality or who supplied it before. No guess beyond that.
 function counterVendor(head) {
   return rankVendors('Live Counter', head)[0][0]?.id || '';
 }
 
-// Counter row: planned portions and what was ordered; actual served is never inferred from the order
-function counterPlanLine(ev, head, o) {
+// Counter row: planned portions (for that meal's guests) and what was ordered; actual served is never inferred from the order
+function counterPlanLine(ev, head, o, svcId = '') {
   const plan = ev.counterPlan?.[head]; if (ev.outsourced || !plan?.takeUp) return '';
-  const { guests } = counterGuests(ev, head), s = counterSuggestion(guests, plan.takeUp, plan.minimum);
+  const { guests } = orderGuests(ev, head, svcId), s = counterSuggestion(guests, plan.takeUp, plan.minimum);
   if (!s) return '';
   return `<div class="meta">${tr(`Plan ${s.proposed} (${plan.takeUp}% of ${guests})${o?.plates && o.plates !== s.proposed ? ` · ordered ${o.plates}` : ''}${o?.belowMinimum ? ' · below minimum' : ''}`,
     `नियोजन ${s.proposed} (${guests} चे ${plan.takeUp}%)${o?.plates && o.plates !== s.proposed ? ` · ऑर्डर ${o.plates}` : ''}`)}</div>`;
@@ -1523,17 +1581,17 @@ function counterPlanLine(ev, head, o) {
 
 // Orders whose counter is no longer on the menu (dishes removed): kept in view with their status or warning
 function offMenuOrders(ev) {
-  const onMenu = new Set(dishGroups(ev).keys());
-  const latest = new Map();
-  for (const o of ev.orders || []) if (!onMenu.has(o.head)) latest.set(o.head, o);   // the newest per counter
+  const rows = counterRows(ev), latest = new Map();
+  for (const o of ev.orders || []) if (!rowOf(ev, o, rows)) latest.set(`${o.svc || ''}|${o.head}`, o);   // the newest per counter and meal
   if (!latest.size) return '';
-  return `<div class="meta" style="padding:var(--s3) var(--s4) 0">${tr('Orders for counters no longer on the menu', 'मेनूत नसलेल्या काउंटरच्या ऑर्डर')}</div>`
+  const older = [...latest.values()].some(o => !o.svc && rows.some(r => r.head === o.head));
+  return `<div class="meta" style="padding:var(--s3) var(--s4) 0">${older ? tr('Other orders', 'इतर ऑर्डर') : tr('Orders for counters no longer on the menu', 'मेनूत नसलेल्या काउंटरच्या ऑर्डर')}</div>`
     + [...latest.values()].map(o => {
-      const ven = D.vendors.find(v => v.id === o.venId), st = orderStatus(o, ev);
+      const ven = D.vendors.find(v => v.id === o.venId), st = orderStatus(o, ev), allMeals = !o.svc && rows.some(r => r.head === o.head);
       return `<div class="row" style="min-height:56px" data-off-order="${esc(o.id)}">
         <div class="row-ic">${icon('utensils', 18)}</div>
         <div class="row-body"><div class="title-sm trunc">${esc(short(o.head))}${ven ? ` · <span data-nl>${esc(ven.name)}</span>` : ''}</div>
-          <div class="meta">${tr('Not on the current menu', 'सध्याच्या मेनूत नाही')}</div></div>
+          <div class="meta">${allMeals ? tr('Older order · all meals', 'जुनी ऑर्डर · सर्व जेवण') : tr('Not on the current menu', 'सध्याच्या मेनूत नाही')}</div></div>
         <button type="button" class="chip ${o.menuChanged ? 'due' : st.tone}" data-action="order-status" data-id="${esc(o.id)}">${o.menuChanged ? tr('Menu changed · resend', 'मेनू बदलला · पुन्हा पाठवा') : (x => tr(st.en + x, st.mr + x))(o.plates ? ' · ' + o.plates : '')}</button>
       </div>`; }).join('');
 }
@@ -1544,18 +1602,19 @@ function menuOrdersCard(ev) {
     <div class="sec"><span class="sec-title">Menu & orders – मेनू व ऑर्डर</span></div>
     <div class="card pad"><div class="meta">${tr('Add the dishes agreed with the client. Counter items become vendor orders you can send on WhatsApp.', 'ग्राहकाशी ठरलेले पदार्थ जोडा. काउंटरचे पदार्थ विक्रेत्यांना ऑर्डर म्हणून WhatsApp वर पाठवता येतात.')}</div>
       <button type="button" class="btn-sm" style="margin-top:var(--s3)" data-action="menu-edit">${icon('plus', 16)}${tr('Add menu', 'मेनू जोडा')}</button></div>`;
-  const groups = dishGroups(ev);
+  const groups = dishGroups(ev), rows = counterRows(ev);
   const orders = ev.orders || [];
-  const counters = [...groups].filter(([head]) => head).map(([head, names]) => {
-    const o = [...orders].reverse().find(x => x.head === head && x.status !== 'cancelled');
+  const counters = rows.map(r => {
+    const { head, names } = r;
+    const o = [...orders].reverse().find(x => x.status !== 'cancelled' && rowOf(ev, x, rows)?.key === r.key);
     const ven = D.vendors.find(v => v.id === (o?.venId || (ev.outsourced ? ev.outVenId : counterVendor(head))));
     const st = o && orderStatus(o, ev);
-    return `<div class="row" style="min-height:56px">
+    return `<div class="row" style="min-height:56px" data-counter="${esc(r.key)}">
       <div class="row-ic">${icon('utensils', 18)}</div>
-      <div class="row-body"><div class="title-sm trunc">${ev.outsourced ? tr('Whole event', 'संपूर्ण कार्यक्रम') : esc(short(head))}${ven ? ` · <span data-nl>${esc(ven.name)}</span>` : ''}</div>
-        <div class="meta trunc" data-nl>${esc(names.join(', '))}</div>${counterPlanLine(ev, head, o)}</div>
+      <div class="row-body"><div class="title-sm trunc">${ev.outsourced ? tr('Whole event', 'संपूर्ण कार्यक्रम') : esc(short(head))}${r.label ? ` · ${esc(r.label)}` : ''}${ven ? ` · <span data-nl>${esc(ven.name)}</span>` : ''}</div>
+        <div class="meta trunc" data-nl>${esc(names.join(', '))}</div>${counterPlanLine(ev, head, o, r.svcId)}</div>
       ${o ? `<button type="button" class="chip ${o.menuChanged ? 'due' : st.tone}" data-action="order-status" data-id="${esc(o.id)}">${o.menuChanged ? tr('Menu changed · resend', 'मेनू बदलला · पुन्हा पाठवा') : (x => tr(st.en + x, st.mr + x))(o.plates ? ' · ' + o.plates : '')}</button>`
-          : `<button type="button" class="btn-sm" data-action="order-new" data-id="${esc(head)}">${icon('message', 16)}${tr('Order', 'ऑर्डर')}</button>`}
+          : `<button type="button" class="btn-sm" data-action="order-new" data-id="${esc(head)}" data-svc="${esc(r.svcId)}">${icon('message', 16)}${tr('Order', 'ऑर्डर')}</button>`}
     </div>`;
   }).join('');
   const kitchen = groups.get('') || [];
@@ -1656,7 +1715,7 @@ async function saveMenu() {
   if (changed && before.length) {
     // Keep the previous menu (G-11) and mark sent/confirmed orders whose counter's dishes changed; nothing is re-sent
     patch.menuVersions = [...(ev.menuVersions || []), { at: new Date().toISOString(), dishes: before }].slice(-20);
-    const hit = new Set(menuChangeImpact(before, dishes, ev.orders || []));
+    const hit = new Set(ordersHit(ev, { ...ev, dishes }));
     if (hit.size) patch.orders = ev.orders.map(o => hit.has(o.id) ? { ...o, menuChanged: true } : o);
   }
   await patchEvent(ev.id, patch);
@@ -1682,14 +1741,17 @@ async function assignDish(i) {
   refreshCurrent();
 }
 
-function openOrderModal({ head, orderId }) {
+function openOrderModal({ head, svc = '', orderId }) {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const o = orderId ? (ev.orders || []).find(x => x.id === orderId) : null;
-  head = o?.head || head;
+  head = o?.head || head; svc = o ? o.svc || '' : svc;
+  const all = eventServices(ev).services, s = svc ? all.find(x => x.id === svc) : null;
+  // An event with one meal has no meal on its rows: that meal's own date and time still go on the order
+  const when = s || (svc ? null : rowOf(ev, { head })?.svc) || null;
   q('ord-id').value = o?.id || '';
-  q('ord-head').value = head;
-  q('ord-mtitle').textContent = ev.outsourced ? 'Menu to caterer – केटररला मेनू' : `${short(head)} order – ऑर्डर`;
-  q('ord-items').textContent = (dishGroups(ev).get(head) || []).join(', ');
+  q('ord-head').value = head; q('ord-svc').value = svc;
+  q('ord-mtitle').textContent = ev.outsourced ? 'Menu to caterer – केटररला मेनू' : `${short(head)} order${s ? ` · ${svcLabel(ev, s, all)}` : ''} – ऑर्डर`;
+  q('ord-items').textContent = orderItems(ev, { head, svc }).join(', ');
   const [usual, inCat, others] = rankVendors('Live Counter', head);
   const opt = v => ({ v: v.id, l: v.name + (v.phone ? '' : ' (no phone)') });
   populateSelect('ord-ven', [{ v: '', l: 'Choose vendor – विक्रेता निवडा' }, ...[...usual, ...inCat, ...others].map(opt)],
@@ -1704,9 +1766,9 @@ function openOrderModal({ head, orderId }) {
   q('ord-plates').value = o?.plates || '';
   updateCounterPlan();
   // No plan: start from this counter's guests (its meal's count if known), still replaceable by a plan
-  if (!q('ord-plates').value) { const g = counterGuests(ev, head).guests || ''; q('ord-plates').value = g; ordAuto = String(g); }
-  q('ord-date').value = o?.date || ev.date;
-  q('ord-time').value = o?.time || '';
+  if (!q('ord-plates').value) { const g = orderGuests(ev, head, svc).guests || ''; q('ord-plates').value = g; ordAuto = String(g); }
+  q('ord-date').value = o?.date || when?.date || ev.date;
+  q('ord-time').value = o?.time || when?.time || '';
   q('ord-notes').value = o?.notes || '';
   q('btn-cancel-ord').hidden = !o;
   clearFieldErrors();
@@ -1718,23 +1780,30 @@ function updateCounterPlan() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const hint = q('ord-plan');
   if (ev.outsourced) { hint.hidden = true; return; }
-  const { guests, meal } = counterGuests(ev, qv('ord-head'));
+  const { guests, meal } = orderGuests(ev, qv('ord-head'), qv('ord-svc'));
   const s = counterSuggestion(guests, qv('ord-takeup'), qv('ord-min'));
   const plates = Number(qv('ord-plates')) || 0, min = Math.floor(Number(qv('ord-min')) || 0);
   if (s && (!qv('ord-plates') || qv('ord-plates') === ordAuto)) { q('ord-plates').value = String(s.proposed); ordAuto = String(s.proposed); }
   const parts = [];
   if (s) parts.push(tr(`${guests} ${meal ? MEALS[meal].toLowerCase() + ' ' : ''}guests × ${Number(qv('ord-takeup'))}% = ${s.forecast} suggested`, `${guests} पाहुणे × ${Number(qv('ord-takeup'))}% = ${s.forecast}`)
     + (s.minimumApplied ? tr(` · vendor minimum ${min}`, ` · किमान ${min}`) : ''));
+  if (!s && guests) parts.push(tr(`Based on ${guests} ${meal ? MEALS[meal].toLowerCase() + ' ' : ''}guests; change it if needed`, `${guests} पाहुण्यांवर आधारित`));
   if (min && plates && plates < min) parts.push(`<span class="due">${tr(`Below the vendor minimum of ${min}: add a note why`, `किमान ${min} पेक्षा कमी: कारण लिहा`)}</span>`);
   hint.innerHTML = parts.join('<br>'); hint.hidden = !parts.length;
 }
 
 function orderMessage(ev, o, ven) {
-  const items = (dishGroups(ev).get(o.head) || []).join(', ');
+  const items = orderItems(ev, o).join(', ');
+  const all = eventServices(ev).services, s = o.svc ? all.find(x => x.id === o.svc) : null;
+  const meal = s ? svcLabel(ev, s, all) : ev.meals?.length ? mealLabel(ev) : '';
+  const ver = o.menuVersion ? approvedMenus(ev).find(v => v.id === o.menuVersion) : null, venue = venueNotes(ev);
   return `Namaste ${ven.name}! Order for ${ev.name}:\n`
-    + `Date: ${fmtDate(o.date)}${o.time ? ', ' + o.time : ''}${ev.meals?.length ? ' (' + mealLabel(ev) + ')' : ''}\nVenue: ${ev.venue || '-'}\n`
+    + `Date: ${fmtDate(o.date)}${o.time ? ', ' + o.time : ''}${meal ? ' (' + meal + ')' : ''}\nVenue: ${ev.venue || '-'}\n`
     + (ev.outsourced ? `Full event catering for ${o.plates || '-'} guests\n` + (items ? `Menu: ${items}\n` : '')
                      : `${short(o.head)} for ${o.plates || '-'} plates\n` + (items ? `Items: ${items}\n` : ''))
+    + (o.basis?.guests && !ev.outsourced ? `Guests: ${o.basis.guests}\n` : '')
+    + (venue ? `At the venue: ${venue}\n` : '')
+    + (ver ? `Menu: version ${ver.n}, approved by the client\n` : '')
     + (o.notes ? `Note: ${o.notes}\n` : '') + `\nPlease confirm. Thank you!`;
 }
 
@@ -1755,6 +1824,10 @@ async function sendOrder() {
   const status = !old || old.status === 'cancelled' ? (phoneOk ? 'opened' : 'prepared') : old.status === 'prepared' && phoneOk ? 'opened' : old.status;
   const o = { ...(old || {}), id, head: qv('ord-head'), venId, plates: Number(qv('ord-plates')) || 0, date: qv('ord-date'), time: qv('ord-time'),
               notes: qv('ord-notes'), status, at: new Date().toISOString(), ...(phoneOk ? { openedAt: new Date().toISOString() } : {}) };
+  // The meal it is for, the approved menu it follows (only when the menu is unchanged since), the guests it is planned on
+  if (qv('ord-svc')) o.svc = qv('ord-svc'); else delete o.svc;
+  const ap = menuSinceApproved(ev); if (ap.last && !ap.count) o.menuVersion = ap.last.id; else delete o.menuVersion;
+  const g = orderGuests(ev, o.head, o.svc); if (g.guests && !ev.outsourced) o.basis = { guests: g.guests, from: g.from }; else delete o.basis;
   // Keep every different message sent for this order (G-26); the latest version starts as opened/prepared
   const now = new Date().toISOString();
   const versioned = addOrderMessage(old?.messages, orderMessage(ev, o, ven), phoneOk, now);
@@ -1764,7 +1837,7 @@ async function sendOrder() {
   const unproven = old && !(old.messages || []).length;
   if ((versioned.changed || unproven) && old && ['sent', 'confirmed'].includes(old.status)) o.status = phoneOk ? 'opened' : 'prepared';
   if (below) o.belowMinimum = minimum; else delete o.belowMinimum;
-  const sugg = ev.outsourced ? null : counterSuggestion(counterGuests(ev, o.head).guests, takeUp, minimum);
+  const sugg = ev.outsourced ? null : counterSuggestion(orderGuests(ev, o.head, o.svc).guests, takeUp, minimum);
   if (sugg) o.suggested = sugg.proposed; else delete o.suggested;   // what the plan proposed; the order (plates) is yours
   const orders = old ? ev.orders.map(x => x.id === id ? o : x) : [...(ev.orders || []), o];
   const patch = { orders };
@@ -1780,12 +1853,15 @@ async function sendOrder() {
 async function orderAction(orderId) {
   const ev = D.events.find(e => e.id === curRef); const o = ev?.orders?.find(x => x.id === orderId); if (!o) return;
   const ven = D.vendors.find(v => v.id === o.venId);
+  const all = eventServices(ev).services, s = o.svc ? all.find(x => x.id === o.svc) : null;
   const next = await askSheet({
-    title: `${short(o.head)} · ${ven?.name || ''} – ${ORDER_STATUS[o.status].en}`,
+    title: `${short(o.head)}${s ? ` · ${svcLabel(ev, s, all)}` : ''} · ${ven?.name || ''} – ${ORDER_STATUS[o.status].en}`,
+    message: orderSteps(o),
     actions: [
       ...(['prepared', 'opened'].includes(o.status) || o.menuChanged ? [{ label: 'I have sent it – पाठवले', value: 'sent', style: 'btn-secondary' }] : []),
       ...(['prepared', 'opened', 'sent'].includes(o.status) || o.menuChanged ? [{ label: 'Vendor confirmed – पक्के', value: 'confirmed', style: 'btn-secondary' }] : []),
       ...(o.status !== 'delivered' ? [{ label: 'Delivered · record bill – आले, बिल नोंदवा', value: 'delivered', style: 'btn-primary' }] : []),
+      ...(['opened', 'sent'].includes(o.status) && !o.menuChanged ? [{ label: 'Remind to confirm – आठवण द्या', value: 'remind', style: 'btn-secondary' }] : []),
       { label: 'Edit / send again – बदला', value: 'edit', style: 'btn-secondary' },
       ...((o.messages || []).length ? [{ label: `Message history (${o.messages.length}) – संदेशांचा इतिहास`, value: 'history', style: 'btn-secondary' }] : []),
       ...(o.status === 'delivered' && !orderBillOf(o) ? [{ label: 'Record / link its bill – बिल नोंदवा', value: 'bill', style: 'btn-primary' }] : []),
@@ -1794,6 +1870,7 @@ async function orderAction(orderId) {
   });
   if (!next) return;
   if (next === 'edit') { openOrderModal({ orderId }); return; }
+  if (next === 'remind') { await remindOrder(ev.id, orderId); return; }
   if (next === 'bill') { orderBill(ev, o); return; }
   if (next === 'history') {
     const MSG = { prepared: 'Not sent yet', opened: 'WhatsApp opened (not confirmed sent)', sent: 'Sent (you confirmed)', confirmed: 'Vendor confirmed' };
@@ -1802,9 +1879,7 @@ async function orderAction(orderId) {
     return;
   }
   // Marking it sent or vendor-confirmed is what clears a menu-change warning (the latest menu went out)
-  await patchEvent(ev.id, { orders: ev.orders.map(x => { if (x.id !== orderId) return x; const y = { ...x, status: next };
-    if (['sent', 'confirmed'].includes(next)) { delete y.menuChanged; if (y.messages?.length) y.messages = markOrderMessage(y.messages, next, new Date().toISOString()); }
-    return y; }) });
+  await setOrderStatus(ev, orderId, next);
   refreshCurrent();
   if (next !== 'delivered') return;
   // Outsourced: their charge was recorded when the event was booked; don't count it twice
@@ -1844,22 +1919,65 @@ async function cancelOrderFromSheet() {
 }
 
 // Home: orders due today or tomorrow that haven't arrived yet
+/* Home: deliveries today and tomorrow, and every order not yet confirmed by its vendor for the next 2 days, with a
+   one-tap reminder (WhatsApp opens with the order details; you send it) and Confirmed for when the vendor replies */
+const UNCONFIRMED = ['prepared', 'opened', 'sent'];
 function deliveriesCard() {
-  const t = today(), tm = addDays(t, 1);
-  const due = D.events.flatMap(ev => (ev.orders || []).filter(o => ACTIVE_ORDER.includes(o.status) && (o.date === t || o.date === tm)).map(o => ({ ev, o })))
+  const t = today(), tm = addDays(t, 1), t2 = addDays(t, 2);
+  const due = D.events.flatMap(ev => (ev.orders || []).filter(o => ACTIVE_ORDER.includes(o.status)
+      && (o.date === t || o.date === tm || (UNCONFIRMED.includes(o.status) && o.date === t2))).map(o => ({ ev, o })))
     .sort((a, b) => (a.o.date + (a.o.time || '')).localeCompare(b.o.date + (b.o.time || '')));
   if (!due.length) return '';
+  const open = due.filter(({ o }) => UNCONFIRMED.includes(o.status)).length;
+  const when = d => d === t ? tr('Today', 'आज') : d === tm ? tr('Tomorrow', 'उद्या') : esc(fmtDate(d));
   return `
-    <div class="sec"><span class="sec-title">Deliveries – पुरवठा</span><span class="meta">${due.length}</span></div>
+    <div class="sec"><span class="sec-title">Deliveries – पुरवठा</span><span class="meta">${due.length}${open ? tr(` · ${open} to confirm`, ` · ${open} पक्की करायची`) : ''}</span></div>
     <div class="card list" id="deliveries">${due.map(({ ev, o }) => {
-      const ven = D.vendors.find(v => v.id === o.venId), st = ORDER_STATUS[o.status];
+      const ven = D.vendors.find(v => v.id === o.venId), st = ORDER_STATUS[o.status], pending = UNCONFIRMED.includes(o.status), last = (o.reminded || []).at(-1);
       return `<div class="row" role="button" tabindex="0" data-action="evdetail" data-id="${esc(ev.id)}">
         <div class="row-ic">${icon('truck', 18)}</div>
-        <div class="row-body"><div class="title-sm trunc">${o.date === t ? tr('Today', 'आज') : tr('Tomorrow', 'उद्या')}${o.time ? ' ' + esc(o.time) : ''} · <span data-nl>${esc(ven?.name || '')}</span></div>
+        <div class="row-body"><div class="title-sm trunc">${when(o.date)}${o.time ? ' ' + esc(o.time) : ''} · <span data-nl>${esc(ven?.name || '')}</span></div>
           <div class="meta trunc">${esc(short(o.head))} · ${o.plates || ''} ${tr('plates', 'ताट')} · <span data-nl>${esc(ev.name)}</span></div></div>
         <span class="chip ${st.tone}">${tr(st.en, st.mr)}</span>
-      </div>`;
+      </div>${pending ? `<div class="dl-acts" data-order="${esc(o.id)}">
+        ${o.status === 'prepared' || o.menuChanged
+          ? `<button type="button" class="btn-sm" data-action="order-status" data-id="${esc(o.id)}" data-ev="${esc(ev.id)}">${icon('message', 16)}${tr(o.menuChanged ? 'Send new menu' : 'Send order', o.menuChanged ? 'नवा मेनू पाठवा' : 'ऑर्डर पाठवा')}</button>`
+          : `<button type="button" class="btn-sm" data-action="order-remind" data-id="${esc(o.id)}" data-ev="${esc(ev.id)}">${icon('message', 16)}${tr('Remind', 'आठवण')}</button>`}
+        <button type="button" class="btn-sm" data-action="order-confirm" data-id="${esc(o.id)}" data-ev="${esc(ev.id)}">${icon('check', 16)}${tr('Confirmed', 'पक्के')}</button>
+        ${last ? `<span class="meta">${tr(`Reminded ${fmtDate(last.slice(0, 10))} ${last.slice(11, 16)}`, `आठवण ${fmtDate(last.slice(0, 10))}`)}</span>` : ''}
+      </div>` : ''}`;
     }).join('')}</div>`;
+}
+// The reminder: the same order details, asking the vendor to confirm (WhatsApp opens; nothing is sent by the app)
+function reminderMessage(ev, o, ven) {
+  const all = eventServices(ev).services, s = o.svc ? all.find(x => x.id === o.svc) : null;
+  const meal = s ? svcLabel(ev, s, all) : ev.meals?.length ? mealLabel(ev) : '', items = orderItems(ev, o).join(', ');
+  return `Namaste ${ven.name}! A reminder for ${ev.name}:\n`
+    + `Date: ${fmtDate(o.date)}${o.time ? ', ' + o.time : ''}${meal ? ' (' + meal + ')' : ''}\nVenue: ${ev.venue || '-'}\n`
+    + (ev.outsourced ? `Full event catering for ${o.plates || '-'} guests\n` : `${short(o.head)} for ${o.plates || '-'} plates\n`)
+    + (items ? `${ev.outsourced ? 'Menu' : 'Items'}: ${items}\n` : '') + (o.basis?.guests && !ev.outsourced ? `Guests: ${o.basis.guests}\n` : '')
+    + `\nPlease confirm everything is on track. Thank you!`;
+}
+async function remindOrder(evId, orderId) {
+  const ev = D.events.find(e => e.id === evId), o = ev?.orders?.find(x => x.id === orderId); if (!o) return;
+  const ven = D.vendors.find(v => v.id === o.venId), phone = phoneDigits(ven?.phone);
+  if (!phone) { showToast(`${ven?.name || 'This vendor'} has no phone number – add it to send a reminder on WhatsApp.`, 'error'); return; }
+  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(reminderMessage(ev, o, ven))}`, '_blank', 'noopener');
+  await patchEvent(ev.id, { orders: ev.orders.map(x => x.id === orderId ? { ...x, reminded: [...(x.reminded || []), new Date().toISOString()].slice(-20) } : x) });
+  showToast(`WhatsApp opened with a reminder for ${ven.name}. Tap Confirmed when they reply – उत्तर आल्यावर पक्के करा`);
+  refreshCurrent();
+}
+// Vendor confirmed: the same step as in the order's status sheet (it also clears a menu-change warning)
+async function setOrderStatus(ev, orderId, next) {
+  await patchEvent(ev.id, { orders: ev.orders.map(x => { if (x.id !== orderId) return x; const y = { ...x, status: next };
+    if (['sent', 'confirmed'].includes(next)) { delete y.menuChanged; if (y.messages?.length) y.messages = markOrderMessage(y.messages, next, new Date().toISOString()); }
+    return y; }) });
+}
+async function confirmOrder(evId, orderId) {
+  const ev = D.events.find(e => e.id === evId), o = ev?.orders?.find(x => x.id === orderId); if (!o) return;
+  await setOrderStatus(ev, orderId, 'confirmed');
+  showToast(`${D.vendors.find(v => v.id === o.venId)?.name || 'Vendor'} confirmed – पक्के`);
+  refreshCurrent();
 }
 
 // Quiet comparison, per category, of this event's cost per plate with the usual for its menu/type
@@ -2569,7 +2687,7 @@ async function saveServiceSheet() {
   else if (before.length) {
     // Keep the previous menu and mark sent orders whose counter's dishes changed; nothing is re-sent
     patch.menuVersions = [...(ev.menuVersions || []), { at: new Date().toISOString(), dishes: before }].slice(-20);
-    const hit = new Set(menuChangeImpact(before, patch.dishes, ev.orders || []));
+    const hit = new Set(ordersHit(ev, { ...ev, ...patch }));
     if (hit.size) patch.orders = ev.orders.map(o => hit.has(o.id) ? { ...o, menuChanged: true } : o);
   }
   const btn = q('btn-save-svc'), label = btn.textContent;
@@ -2928,12 +3046,17 @@ function functionSheetText(ev, extra = ev.functionSheet || {}) {
   if (cp.rules) L.push(`- Rules: ${cp.rules}`);
   const groups = dishGroups(ev), menu = menuById(ev.menu);
   L.push('', 'MENU');
-  if (groups.size) for (const [head, names] of groups) {
-    if (!head) { L.push(`- Our kitchen: ${names.join(', ')}`); continue; }
-    const o = [...(ev.orders || [])].reverse().find(x => x.head === head && x.status !== 'cancelled');
-    const ven = D.vendors.find(v => v.id === o?.venId);
-    L.push(`- ${ev.outsourced ? 'Whole event' : short(head)}: ${names.join(', ')}`);
-    L.push(`  ${ven ? `${ven.name}${ven.phone ? ' (' + ven.phone + ')' : ''}` : 'No vendor order yet'}${o ? ` · ${o.plates ? o.plates + ' plates · ' : ''}${ORDER_STATUS[o.status]?.en || o.status}` : ''}`);
+  if (groups.size) {
+    // One line per counter and meal, each with its own order (vendor, plates, status); an older order made for every
+    // meal is shown where a meal has no order of its own
+    if (groups.has('')) L.push(`- Our kitchen: ${groups.get('').join(', ')}`);
+    const rows = counterRows(ev), live = [...(ev.orders || [])].reverse().filter(x => x.status !== 'cancelled');
+    for (const r of rows) {
+      const own = live.find(x => rowOf(ev, x, rows)?.key === r.key), o = own || live.find(x => !x.svc && x.head === r.head);
+      const ven = D.vendors.find(v => v.id === o?.venId);
+      L.push(`- ${ev.outsourced ? 'Whole event' : short(r.head)}${r.label ? ` · ${r.label}` : ''}: ${r.names.join(', ')}`);
+      L.push(`  ${ven ? `${ven.name}${ven.phone ? ' (' + ven.phone + ')' : ''}` : 'No vendor order yet'}${o ? ` · ${o.plates ? o.plates + ' plates · ' : ''}${ORDER_STATUS[o.status]?.en || o.status}${own ? '' : ' (older order, all meals)'}` : ''}`);
+    }
   } else if (menu) L.push(`- ${menu.name}: ${menu.items.join(', ')}`);
   else L.push('- Not entered');
   const staff = (ev.labour?.rows || []).map(labRow).filter(r => !isExtra(r) && heads(r));
@@ -5040,8 +5163,10 @@ function bindAllEvents() {
       case 'svc-use':      useServiceTemplate(id); break;
       case 'lab-edit':     openLabModal(); break;
       case 'dish-assign':  assignDish(Number(id)); break;
-      case 'order-new':    openOrderModal({ head: id }); break;
-      case 'order-status': orderAction(id); break;
+      case 'order-new':    openOrderModal({ head: id, svc: el.dataset.svc || '' }); break;
+      case 'order-remind': remindOrder(el.dataset.ev, id); break;
+      case 'order-confirm': confirmOrder(el.dataset.ev, id); break;
+      case 'order-status': if (el.dataset.ev && el.dataset.ev !== curRef) { await showEvDetail(el.dataset.ev); } orderAction(id); break;   // from Home: its event first
       case 'recon-open':   openReconModal(); break;
       case 'plan-edit':    openPlanModal(); break;
       case 'count-open':   openCountModal(); break;
@@ -5248,6 +5373,8 @@ function bindAllEvents() {
   // Settings panel / FAB
   q('drawer-toggle').addEventListener('click', openDrawer);
   q('drawer-bg').addEventListener('click', () => closeOverlay());
+  // The brand at the top of Settings: close Settings (its history entry goes with it), then Home as the Home tab does
+  q('drawer-home').addEventListener('click', () => closeOverlay().then(() => go('home')));
   q('fab').addEventListener('click', () => FAB[CT]?.run());
 
   // Bottom nav
