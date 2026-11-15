@@ -202,8 +202,11 @@
 
   <!-- VENDORS -->
   <div id="tab-vendors" class="tab">
-    <div class="toolbar">
-      <label class="search"><i data-ic="search" data-size="18"></i><input type="search" id="ven-q" placeholder="Search vendors…" enterkeyhint="search" autocomplete="off"></label>
+    <div id="ven-sum"></div>
+    <div class="toolbar" id="ven-tools">
+      <label class="search"><i data-ic="search" data-size="18"></i><input type="search" id="ven-q" placeholder="Name, category, phone or GSTIN" aria-label="Search vendors" enterkeyhint="search" autocomplete="off"></label>
+      <div class="chips-row" id="ven-filters" role="group" aria-label="Filter vendors"></div>
+      <div class="field ven-sortrow"><label for="ven-sort">Sort – क्रम</label><select id="ven-sort"></select></div>
     </div>
     <div id="ven-list"></div>
   </div>
@@ -415,6 +418,14 @@
     <div class="field"><label for="ven-phone">Phone – मोबाईल</label>
       <div style="display:flex;gap:var(--s2)"><input type="tel" id="ven-phone" placeholder="9XXXXXXXXX" style="flex:1;min-width:0">
         <button type="button" class="btn-sm" data-contact="ven" hidden>Contacts – संपर्क</button></div></div>
+    <!-- Registered vendors only; unregistered vendors leave both empty. Never used to work out tax on bills. -->
+    <div id="ven-tax">
+      <div class="field"><label for="ven-gstin">GSTIN (optional) – जीएसटीआयएन</label>
+        <input type="text" id="ven-gstin" maxlength="20" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="15 characters, e.g. 27ABCDE1234F1Z5" aria-describedby="ven-gstin-hint">
+        <div class="meta" id="ven-gstin-hint" style="margin-top:4px">Leave empty if the vendor is not GST-registered – नोंदणी नसल्यास रिकामे ठेवा</div></div>
+      <div class="field"><label for="ven-legal">Registered business name (optional) – नोंदणीकृत नाव</label>
+        <input type="text" id="ven-legal" maxlength="200" autocomplete="off" placeholder="As on the GST certificate"></div>
+    </div>
     <div class="field"><label for="ven-notes">Notes – नोंदी</label><input type="text" id="ven-notes" placeholder="Any notes" enterkeyhint="done"></div>
     <div class="s-foot"><button type="button" class="btn btn-primary" id="btn-save-ven">Save vendor – जतन करा</button></div>
   </div>
