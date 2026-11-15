@@ -315,6 +315,18 @@ export async function saveEventPhotos(event, dataUrls) {
   return record;
 }
 
+// Why a bill's purchase link cannot stand, or '' if it is valid. A removed link leaves a note on the bill (linkRepair):
+// when, which purchase, why, and whether on start, on restore or on saving, so its history can always be explained (4.28.1).
+export const REPAIR_REASONS = { 'other-event': 'the purchase is on another event', 'also-order': 'the bill is also linked to a vendor order' };
+export function purchaseLinkProblem(x, ev) {
+  if (x.purchase === undefined) return '';
+  if (x.order) return 'also-order';
+  return (ev?.purchases || []).some(p => p.id === x.purchase) ? '' : 'other-event';
+}
+export function withoutPurchaseLink(x, reason, from, at = new Date().toISOString()) {
+  const { purchase, ...kept } = x;
+  return { ...kept, linkRepair: { at, purchase: String(purchase).slice(0, 40), reason, from } };
+}
 // 4.28.0 could move a purchase's bill to another event (4.28.1 fix): on start, such a bill keeps everything except the
 // link to a purchase that is not on its event (or that is also an order's), so every later save and backup is valid.
 export async function repairPurchaseLinks() {
@@ -325,10 +337,10 @@ export async function repairPurchaseLinks() {
     tx.onerror = tx.onabort = () => reject(tx.ffError || tx.error || new Error('Purchase link repair aborted'));
     const evs = tx.objectStore('events').getAll(), exs = tx.objectStore('expenses').getAll();
     const run = () => {
-      const owned = new Map((evs.result || []).map(e => [e.id, new Set((e.purchases || []).map(p => p.id))]));
+      const byId = new Map((evs.result || []).map(e => [e.id, e]));
       for (const x of exs.result || []) {
-        if (x.purchase === undefined || (typeof x.purchase === 'string' && !x.order && owned.get(x.evId)?.has(x.purchase))) continue;
-        const { purchase: _gone, ...kept } = x; tx.objectStore('expenses').put({ ...kept, _rev: (Number(x._rev) || 0) + 1 }); fixed++;
+        const why = purchaseLinkProblem(x, byId.get(x.evId)); if (!why) continue;
+        tx.objectStore('expenses').put({ ...withoutPurchaseLink(x, why, 'start'), _rev: (Number(x._rev) || 0) + 1 }); fixed++;
       }
     };
     let waiting = 2; evs.onsuccess = exs.onsuccess = () => { if (!--waiting) run(); };
@@ -589,6 +601,9 @@ export async function prepareImport(payload) {
           || (p.changed !== undefined && p.changed !== true) || (p.messages !== undefined && (!Array.isArray(p.messages) || p.messages.some(m => !m || typeof m.text !== 'string' || !['prepared', 'opened', 'sent', 'confirmed'].includes(m.status))))
           || (p.reminded !== undefined && (!Array.isArray(p.reminded) || p.reminded.length > 20 || p.reminded.some(t => typeof t !== 'string' || t.length > 40)))))) throw new Error('Invalid purchase');
       if (row.additional !== undefined && typeof row.additional !== 'boolean') throw new Error('Invalid extra flag');
+      if (row.linkRepair !== undefined && (name !== 'expenses' || !row.linkRepair || typeof row.linkRepair !== 'object' || typeof row.linkRepair.at !== 'string' || row.linkRepair.at.length > 40
+        || typeof row.linkRepair.purchase !== 'string' || row.linkRepair.purchase.length > 40 || !Object.hasOwn(REPAIR_REASONS, row.linkRepair.reason)
+        || !['start', 'restore', 'edit'].includes(row.linkRepair.from))) throw new Error('Invalid link repair note');
       if (row.split !== undefined && (!row.split || typeof row.split.id !== 'string' || (amount(row.split.total, 'shared bill'), false))) throw new Error('Invalid shared bill');
       if (row.stock !== undefined && (row.stock !== true || name !== 'expenses' || row.evId)) throw new Error('Invalid common stock entry');
       if (row.billNo !== undefined && (typeof row.billNo !== 'string' || row.billNo.length > 60)) throw new Error('Invalid bill number');
@@ -684,9 +699,8 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
             if (store === 'expenses' && row.purchase !== undefined && typeof row.purchase !== 'string') throw new Error('Invalid purchase link in expenses: ' + row.id);
             // 4.28.0 could move a purchase's bill to another event: such a backup still restores in full. The bill and its
             // amount are kept; only the link to a purchase that is not on its event (or that is also an order's) is removed.
-            if (store === 'expenses' && row.purchase !== undefined && (row.order || !(final.events.get(row.evId)?.purchases || []).some(x => x.id === row.purchase))) {
-              const { purchase: _gone, ...kept } = row; rows.set(row.id, kept); repaired++;
-            }
+            const why = store === 'expenses' ? purchaseLinkProblem(row, final.events.get(row.evId)) : '';
+            if (why) { rows.set(row.id, withoutPurchaseLink(row, why, 'restore')); repaired++; }
             if (store === 'cPays') ref('evId', 'events', true);
             if (store === 'vPays') { ref('venId', 'vendors', true); ref('evId', 'events'); }
             if (store === 'photos') { ref('eventId', 'events'); ref('expenseId', 'expenses'); }
@@ -735,6 +749,7 @@ export async function checkAndMigrate() {
   }
   await setMeta('app_version', APP_VERSION);
   await recoverUnlinkedBills();
-  try { await repairPurchaseLinks(); } catch (e) { console.error('Purchase link repair left unchanged:', e); }
+  try { const n = await repairPurchaseLinks(); if (n) setTimeout(() => window.dispatchEvent(new CustomEvent('ff-link-repair', { detail: n })), 600); }
+  catch (e) { console.error('Purchase link repair left unchanged:', e); }
   return storedVer;
 }

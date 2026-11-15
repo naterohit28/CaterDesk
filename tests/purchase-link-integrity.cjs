@@ -81,11 +81,20 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [],
 
   await test('a bill 4.28.0 already moved: on start it keeps the bill and amount, losing only the impossible link; later saves work', async () => {
     await plantMovedBill(p);
-    await openBill('x9');   // opening reloads the app: the start-up check runs
+    await p.reload(); await p.waitForSelector('#kpi .card');   // the start-up check runs and says so
+    await p.waitForSelector('#toast-msg:has-text("linked to a purchase on another event")');
+    assert.match(await p.locator('#toast-msg').innerText(), /^1 bill was linked to a purchase on another event\. The link was removed; the bill, amount and photos are unchanged/);
     const after = await bill(p, 'x9'); assert.deepEqual([after.evId, after.amt, after.purchase], ['e2', 900, undefined], 'repaired on start');
+    // a note on the bill records what was removed, when and why
+    assert.deepEqual({ ...after.linkRepair, at: typeof after.linkRepair.at }, { at: 'string', purchase: 'PO1', reason: 'other-event', from: 'start' });
+    await openBill('x9');
+    assert.match(await p.locator('#exp-repair-note').innerText(), /^Purchase link removed on .+ \(by the app.s data check\): the purchase is on another event\. The bill and amount were not changed\.$/);
+    assert.equal(await p.locator('#exp-repair-note').isVisible(), true);
     assert.equal(await p.locator('#exp-ev').isDisabled(), false, 'an ordinary bill again');
     await p.fill('#exp-notes', 'Sample note'); await save();
-    const x = await bill(p, 'x9'); assert.deepEqual([x.evId, x.amt, x.purchase, x.notes], ['e2', 900, undefined, 'Sample note']);
+    const x = await bill(p, 'x9'); assert.deepEqual([x.evId, x.amt, x.purchase, x.notes, x.linkRepair.from], ['e2', 900, undefined, 'Sample note', 'start'], 'the note stays with the bill');
+    await openBill('x1'); assert.equal(await p.locator('#exp-repair-note').isVisible(), false, 'no note on a valid bill');
+    await p.keyboard.press('Escape');
     assert.equal((await bill(p, 'x1')).purchase, 'PO1', 'the real bill keeps its link');
   });
 
@@ -103,12 +112,26 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [],
     await p2.waitForSelector('#toast-msg:has-text("Imported")');
     assert.match(await p2.locator('#toast-msg').innerText(), /1 bill was linked to a purchase on another event; the bill is kept, the link removed/);
     const strip = d => JSON.stringify(Object.fromEntries(['events', 'expenses', 'vendors', 'cPays', 'vPays', 'photos'].map(s => [s, d[s].map(({ _rev, ...r }) => r)])));
-    const want = structuredClone(backup); delete want.expenses.find(x => x.id === 'x9').purchase;
-    assert.equal(strip(await dump(p2)), strip(want), 'every record identical except the one removed link');
+    const want = structuredClone(backup), w9 = want.expenses.find(x => x.id === 'x9'); delete w9.purchase;
+    const got = await dump(p2), g9 = got.expenses.find(x => x.id === 'x9');
+    assert.deepEqual({ ...g9.linkRepair, at: typeof g9.linkRepair.at }, { at: 'string', purchase: 'PO1', reason: 'other-event', from: 'restore' }, 'the restore leaves its note');
+    w9.linkRepair = g9.linkRepair;
+    assert.equal(strip(got), strip(want), 'every record identical except the one removed link and its note');
     // and the restored data saves and backs up again cleanly
     const again = await p2.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); return (await db.importAllData(d, 'replace')).repaired; });
     assert.equal(again, 0);
     await ctx2.close(); fs.unlinkSync(file);
+  });
+
+  await test('a repair note must be complete and well-formed to be restored', async () => {
+    const r = await p.evaluate(async () => { const db = await import('./db.js'), out = [];
+      const d0 = await db.exportAllData(); delete d0.manifest;
+      const tries = [n => ({ ...n, reason: 'made-up' }), n => ({ ...n, from: 'elsewhere' }), n => ({ ...n, purchase: 7 }), () => 'text'];
+      const base = { at: '2026-11-15T10:00:00.000Z', purchase: 'PO1', reason: 'other-event', from: 'start' };
+      for (const t of [n => n, ...tries]) { const d = structuredClone(d0); d.expenses.find(x => x.id === 'x1').linkRepair = t(base);
+        try { await db.importAllData(d, 'replace'); out.push('ok'); } catch (e) { out.push(e.message); } }
+      await db.importAllData(d0, 'replace'); return out; });
+    assert.deepEqual(r, ['ok', ...Array(4).fill('Invalid link repair note')]);
   });
 
   assert.deepEqual(errors, []);

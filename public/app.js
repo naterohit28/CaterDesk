@@ -7,7 +7,7 @@
 import {
   getAll, putOne, putChecked, commitChanges, deleteOne, getMeta, setMeta,
   savePhoto, saveEventPhotos, getPhotosForEvent, deletePhoto, saveBill, getBillsForExpense,
-  exportAllData, importAllData, inspectBackup, checkAndMigrate, migrateLegacyMenus
+  exportAllData, importAllData, inspectBackup, checkAndMigrate, migrateLegacyMenus, withoutPurchaseLink, REPAIR_REASONS
 } from './db.js';
 
 import {
@@ -154,6 +154,7 @@ window.addEventListener('ffdb-update-needed', () => showToast('A storage update 
 window.addEventListener('pageshow', syncOverlayAccessibility);
 window.addEventListener('focus', syncOverlayAccessibility);
 window.addEventListener('ff-migration-error', e => showToast('Legacy data could not be migrated. Originals were kept. ' + e.detail, 'error'));
+window.addEventListener('ff-link-repair', e => showToast(`${e.detail} bill${e.detail > 1 ? 's were' : ' was'} linked to a purchase on another event. The link was removed; the bill, amount and photos are unchanged. Open the bill to see the note.`, 'error'));
 window.addEventListener('unhandledrejection', e => {
   e.preventDefault(); console.error(e.reason); showLoading(false);
   showToast(e.reason?.message || 'Operation failed. Your data has not been confirmed saved.', 'error');
@@ -4720,6 +4721,10 @@ function openExpModal(arg) {
   // A purchase's bill stays on the purchase's event (4.28.1): its event cannot be changed here
   q('exp-amt').disabled = !!part; q('exp-ev').disabled = !!part || !!ex?.stock || !!(ex?.purchase || (!ex && expPurchase));
   q('exp-split-note').hidden = !part && !ex?.stock;
+  // A purchase link removed by the 4.28.1 repair: say when and why, so the bill's history is never a mystery
+  const fix = ex?.linkRepair;
+  q('exp-repair-note').hidden = !fix;
+  q('exp-repair-note').textContent = fix ? `Purchase link removed on ${fmtDate(localDay(fix.at))} (${fix.from === 'restore' ? 'when a backup was restored' : fix.from === 'edit' ? 'when this bill was saved' : 'by the app’s data check'}): ${REPAIR_REASONS[fix.reason] || 'it was not valid'}. The bill and amount were not changed.` : '';
   q('exp-split-note').innerHTML = part && ex.stock ? tr(`Shared bill: the common-stock part of ${fmtCurrency(ex.split.total)}, on no event yet. To use it for an event, move it with Split bill; the bill total stays the same.`,
     `वाटलेले बिल: ${fmtCurrency(ex.split.total)} पैकी साठ्याचा भाग.`)
     : part ? tr(`Shared bill: this event's part of ${fmtCurrency(ex.split.total)} across ${part.length} events. Changes to vendor, item, date or payment apply to every part.`,
@@ -4903,12 +4908,12 @@ async function saveExpense({ next = false } = {}) {
     billIds: expWork.bills.map(b => b.id),
     ...(additional ? { additional: true } : {})
   }, ['draft', ...(additional ? [] : ['additional']), ...(billNo ? [] : ['billNo'])]);   // a filled-in bill draft becomes a normal expense
-  if (record.purchase && !purchaseOwned(record)) delete record.purchase;   // a link 4.28.0 left pointing at another event's purchase
+  if (record.purchase && !purchaseOwned(record)) Object.assign(record, withoutPurchaseLink(record, record.order ? 'also-order' : 'other-event', 'edit')), delete record.purchase;   // a link 4.28.0 left pointing at another event's purchase
 
   // One shared bill: vendor, item, date and payment stay the same on every part
   const siblings = base?.split ? splitParts(D.expenses, base.split.id).filter(x => x.id !== record.id).map(s => {
     const { _rev, billNo: _no, ...r } = s;
-    if (r.purchase && !purchaseOwned(r)) delete r.purchase;
+    if (r.purchase && !purchaseOwned(r)) { Object.assign(r, withoutPurchaseLink(r, r.order ? 'also-order' : 'other-event', 'edit')); delete r.purchase; }
     return { store: 'expenses', record: { ...r, cat: record.cat, head: record.head, date: record.date, pay: record.pay, mode: record.mode, venId: record.venId, dueDate: record.dueDate, notes: record.notes, ...(billNo ? { billNo } : {}) }, expected: s };
   }) : [];
   await commitChanges([{ store: 'expenses', record, expected: base }, ...siblings, ...expWork.removed.map(id => ({ store: 'photos', id, unchecked: true }))], { check: true, extraStores: ['events', 'vendors'] });
