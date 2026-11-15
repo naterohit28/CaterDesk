@@ -84,8 +84,8 @@ const DATA = { version: 'ffv2', photos: [], vendors: [], vPays: [], cPays: [], e
   await test('event page folds each meal\'s dishes; a quote can list them for the client', async () => {
     await p.reload(); await p.waitForSelector('#kpi .card'); await p.locator('#n-events:visible').click();
     await p.locator('#ev-list [data-action="evdetail"][data-id="W"]:visible').click(); await p.waitForSelector('#tab-evdetail .detail-name');
-    assert.match(await p.locator('[data-meal-menu="breakfast"] summary').innerText(), /Breakfast · Sample Breakfast Deluxe menu · 3 dishes/);
-    assert.match(await p.locator('[data-meal-menu="dinner"] summary').innerText(), /Dinner · Golden menu · 11 dishes/);
+    assert.match(await p.locator('[data-meal-menu="breakfast"]').innerText(), /From Sample Breakfast Deluxe menu · 3 dishes · not confirmed yet/);
+    assert.match(await p.locator('[data-meal-menu="dinner"]').innerText(), /From Golden menu · 11 dishes · not confirmed yet/);
     await p.locator('[data-action="quote-open"]').click(); await p.waitForSelector('#quote-modal.active');
     await p.locator('#quote-items').check(); await p.evaluate(() => { window.open = () => null; });
     await p.locator('[data-action="quote-share"]').click(); await p.waitForSelector('#ask-modal.active');

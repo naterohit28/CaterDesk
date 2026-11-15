@@ -524,12 +524,13 @@ export const DIET_TAGS = [['jain', 'Jain'], ['no_onion_garlic', 'No onion-garlic
 const VEG_ONLY = ['jain', 'no_onion_garlic', 'vegan'];
 /* A dish's details are only ever what you chose; nothing here guesses a type or a diet from the dish name.
    One food type per dish. A course is one of the usual ones or your own (up to 40 characters).
-   Jain, no onion-garlic and vegan are restrictions only a veg dish can meet, so they need type veg. */
+   Jain, no onion-garlic and vegan are restrictions an egg or non-veg dish cannot meet, so they are refused on one;
+   a dish with no food type set may carry them (nothing is assumed either way). */
 export function dishProblem(d) {
   if (d.cat !== undefined && (typeof d.cat !== 'string' || !d.cat.trim() || d.cat.length > 40)) return 'Course name must be 1–40 characters';
   if (d.type !== undefined && !FOOD_TYPES.some(([k]) => k === d.type)) return 'Choose one food type: veg, egg or non-veg';
   if (d.diet !== undefined && (!Array.isArray(d.diet) || d.diet.some(x => !DIET_TAGS.some(([k]) => k === x)) || new Set(d.diet).size !== d.diet.length)) return 'Unknown diet mark';
-  if ((d.diet || []).some(x => VEG_ONLY.includes(x)) && d.type !== 'veg') return 'Jain, no onion-garlic and vegan dishes must be veg';
+  if ((d.diet || []).some(x => VEG_ONLY.includes(x)) && (d.type === 'egg' || d.type === 'nonveg')) return 'Jain, no onion-garlic and vegan cannot be on an egg or non-veg dish';
   return '';
 }
 function hashText(s) { let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0; return h.toString(36); }
@@ -545,13 +546,14 @@ export const isUnassigned = (ev, d) => !!d.meal && !activeMeals(ev).includes(d.m
    saved). Also the dishes not in any meal, and whether an older app version changed the menu since this app saved it. */
 export function eventServices(ev) {
   const meals = activeMeals(ev), stored = Array.isArray(ev?.services) ? ev.services : [];
-  const mainOf = (m, plan) => ({ guests: plan?.guests ?? (m ? 0 : Number(ev.guests) || 0), rate: plan?.rate ?? 0, template: plan?.menu || (!m && ev.menu) || '' });
+  // A main service's menu is the meal price's menu; a meal without a price yet keeps its chosen menu with the service
+  const mainOf = (m, plan, s) => ({ guests: plan?.guests ?? (m ? 0 : Number(ev.guests) || 0), rate: plan?.rate ?? 0, template: plan?.menu || s?.template?.id || (!m && ev.menu) || '' });
   const when = s => ({ ...(s.date && s.date !== ev.date ? { date: s.date } : {}), ...(s.time ? { time: s.time } : {}) });
   const list = [];
   for (const m of meals.length ? meals : ['']) {
     const own = stored.filter(s => s.meal === m), plan = m ? ev.mealPlan?.[m] : null;
     if (!own.length) list.push({ id: m ? `svc-${m}` : 'svc-all', meal: m, main: true, ...mainOf(m, plan) });
-    own.forEach((s, i) => list.push(i === 0 ? { id: s.id, meal: m, main: true, ...when(s), ...mainOf(m, plan) }
+    own.forEach((s, i) => list.push(i === 0 ? { id: s.id, meal: m, main: true, ...when(s), ...mainOf(m, plan, s) }
       : { id: s.id, meal: m, main: false, ...when(s), guests: s.guests || 0, rate: s.rate || 0, template: s.template?.id || '' }));
   }
   const dishes = ev?.dishes || [];
@@ -579,6 +581,7 @@ export function eventServices(ev) {
    saved (the chosen menu is, so they show again). Dishes not in any meal are kept exactly as they were, and so are
    the details of services for a meal the event no longer has. */
 export function applyServices(ev, services) {
+  const tplOf = (tpl, s) => ({ id: tpl, name: s.template?.name || menuById(tpl)?.name || tpl });
   const mealPlan = {}, dishes = [], seen = new Set(), stored = [];
   const meals = MEAL_ORDER.filter(m => services.some(s => s.meal === m));
   for (const m of [...meals, '']) {
@@ -586,7 +589,7 @@ export function applyServices(ev, services) {
       const main = i === 0, tpl = s.template?.id || s.template || '';
       if (main && m && s.guests > 0 && s.rate > 0) mealPlan[m] = { guests: s.guests, rate: s.rate, ...(tpl ? { menu: tpl } : {}) };
       stored.push({ id: s.id, meal: m, ...(s.date && s.date !== ev.date ? { date: s.date } : {}), ...(s.time ? { time: s.time } : {}),
-        ...(main ? {} : { guests: s.guests || 0, rate: s.rate || 0, ...(tpl ? { template: { id: tpl, name: s.template?.name || menuById(tpl)?.name || tpl } } : {}) }) });
+        ...(main ? (tpl && !mealPlan[m] ? { template: tplOf(tpl, s) } : {}) : { guests: s.guests || 0, rate: s.rate || 0, ...(tpl ? { template: tplOf(tpl, s) } : {}) }) });
       for (const d of s.dishes || []) {
         if (d.preview) continue;
         const { ref, shared, preview, meal, svc, ...x } = d;

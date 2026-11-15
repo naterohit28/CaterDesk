@@ -124,10 +124,11 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [], 
     assert.deepEqual(view.unassigned, []); assert.deepEqual(view.services[0].dishes.map(d => d.name).sort(), ['Mineral Water', 'Paneer Tikka', 'Upma']);
   });
 
-  await test('food type is separate from diet marks: one type per dish, Jain / no onion-garlic / vegan only on veg, courses editable, nothing guessed', async () => {
+  await test('food type is separate from diet marks: one type per dish, Jain / no onion-garlic / vegan never on egg or non-veg, courses editable, nothing guessed', async () => {
     const r = await U(u => [{ type: 'veg', diet: ['jain', 'gluten_free'], cat: 'Live pasta' }, { type: 'nonveg', diet: ['jain'] }, { diet: ['vegan'] }, { type: 'egg', diet: ['nut_free'] },
       { type: ['veg', 'nonveg'] }, { type: 'vegetarian' }, { diet: ['jain', 'jain'], type: 'veg' }, { cat: '' }, { cat: 'x'.repeat(41) }, { cat: 'soup' }].map(d => u.dishProblem(d)));
-    assert.deepEqual(r.map(Boolean), [false, true, true, false, true, true, true, true, true, false]);
+    // vegan with no food type set is allowed (nothing assumed); only an egg or non-veg dish clashes
+    assert.deepEqual(r.map(Boolean), [false, true, false, false, true, true, true, true, true, false]);
     const cats = await U(u => u.DISH_CATS.map(c => c[0]));
     for (const c of ['soup', 'salad', 'snacks', 'accompaniment']) assert.ok(cats.includes(c), c);
     const view = await U((u, e) => u.eventServices(e).services[0].dishes.map(d => [d.type, d.diet]), LEGACY);
@@ -138,7 +139,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [], 
         const d = structuredClone(d0); Object.assign(d.events.find(e => e.id === 'e1').dishes[0], dish);
         try { await db.importAllData(d, 'replace'); out.push('accepted'); } catch (e) { out.push(e.message.split('.')[0]); } }
       await db.importAllData(d0, 'replace'); return out; });
-    assert.deepEqual(imp, ['accepted', ...Array(5).fill('Invalid dish details')]);
+    assert.deepEqual(imp, ['accepted', 'Invalid dish details', 'accepted', ...Array(3).fill('Invalid dish details')]);
   });
 
   await test('the event form notes saved services as current; an event without them gets no new fields', async () => {
