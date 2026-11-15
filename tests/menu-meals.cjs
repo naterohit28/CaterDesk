@@ -197,7 +197,8 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     assert.match(await p.locator('#meal-plan').innerText(), /Lunch\s*Golden\s*200 × ₹700\s*₹1,40,000\s*Dinner\s*Golden\s*400 × ₹800\s*₹3,20,000/);
     const text = await p.evaluate(async () => { const d = await (await import('./db.js')).exportAllData(); const e = d.events.find(x => x.name === 'Sample Menu Per Meal');
       return (await import('./utils.js')).nextQuoteDraft(e).lines; });
-    assert.deepEqual(text.map(l => l.menu), ['golden', 'golden'], 'a new quote keeps each meal\'s menu');
+    // 4.28.2: a first quote lists every meal of the event; priced meals keep their menu and rate, the others wait for a rate
+    assert.deepEqual(text.map(l => [l.meal, l.guests, l.rate, l.menu]), [['breakfast', 50, '', undefined], ['lunch', 200, 700, 'golden'], ['hightea', 50, '', undefined], ['dinner', 400, 800, 'golden'], ['latenight', 50, '', undefined]], 'a new quote lists every meal and keeps the menu of each priced meal');
   });
 
   assert.deepEqual(errors, []);
