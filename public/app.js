@@ -2217,6 +2217,11 @@ function snapLabel(ev, snap, s) {
   return (MEALS[s.meal] || 'Menu') + (same.length > 1 ? ` ${same.findIndex(x => x.id === s.id) + 1}` : '') + (same.length > 1 || (s.date && s.date !== ev.date) ? ` · ${fmtDate(s.date || ev.date)}` : '');
 }
 const FACT = { date: 'Date', time: 'Time', guests: 'Guests', rate: '₹ / plate' };
+// One dish's change, in words: who makes it, its diet marks, its food type or its course
+function dishChangeText(c) {
+  const name = { type: v => TYPE_NAME[v] || 'not set', course: v => CAT_NAME[v] || v || 'not set', counter: v => short(v) || 'Our kitchen', diet: v => v || 'no marks' }[c.what];
+  return `${c.what === 'type' ? 'food type ' : c.what === 'course' ? 'course ' : ''}${esc(name(c.from))} → ${esc(name(c.to))}`;
+}
 const factVal = (k, v) => v === '' ? '–' : k === 'date' ? fmtDate(v) : k === 'rate' ? fmtCurrency(v) : String(v);
 function menuDiffHtml(ev, diff, newer, older) {
   if (!diff.meals.length) return `<div class="meta">${tr('No changes.', 'बदल नाहीत.')}</div>`;
@@ -2225,7 +2230,7 @@ function menuDiffHtml(ev, diff, newer, older) {
     ${m.facts.map(f => `<div class="mv-line"><span class="sym c" aria-label="changed">~</span><span>${FACT[f.what]} ${esc(factVal(f.what, f.from))} → ${esc(factVal(f.what, f.to))}</span></div>`).join('')}
     ${m.added.map(n => `<div class="mv-line"><span class="sym p" aria-label="added">+</span><span data-nl>${esc(n)}</span></div>`).join('')}
     ${m.removed.map(n => `<div class="mv-line"><span class="sym m" aria-label="removed">−</span><span data-nl>${esc(n)}</span></div>`).join('')}
-    ${m.changed.map(c => `<div class="mv-line"><span class="sym c" aria-label="changed">~</span><span data-nl>${esc(c.name)}: ${c.what === 'counter' ? `${esc(short(c.from) || 'Our kitchen')} → ${esc(short(c.to) || 'Our kitchen')}` : `${esc(c.from || 'no marks')} → ${esc(c.to || 'no marks')}`}</span></div>`).join('')}
+    ${m.changed.map(c => `<div class="mv-line"><span class="sym c" aria-label="changed">~</span><span data-nl>${esc(c.name)}: ${dishChangeText(c)}</span></div>`).join('')}
   </div>`).join('');
 }
 function approvalBar(ev) {

@@ -93,6 +93,30 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [], 
     assert.equal(await p.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
   });
 
+  await test('a dish changed from veg to non-veg (or a new course) after approval needs approval again', async () => {
+    // Food type and course are kept from before (the sheet no longer asks for them); set them as saved data
+    const setDish = (name, fields) => p.evaluate(async ([n, f]) => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest;
+      const e = d.events.find(x => x.id === 'e1'); e.dishes = e.dishes.map(x => x.name === n ? { ...x, ...f } : x); delete e._rev; await db.importAllData(d, 'replace'); }, [name, fields]);
+    await setDish('Gulab Jamun', { type: 'veg' });
+    await openEvent(); await p.locator('[data-action="menu-approve"]').click(); await p.waitForSelector('#ma-modal.active');
+    await p.selectOption('#ma-by', 'written'); await p.locator('#btn-save-approval').click(); await p.waitForTimeout(600);
+    await openEvent(); assert.match(await bar(), /Approved v3/);
+    await setDish('Gulab Jamun', { type: 'nonveg' });
+    await openEvent();
+    assert.match(await bar(), /Changed since approved v3 · 1 change/, 'veg → non-veg is not "unchanged since approval"');
+    const u = await p.evaluate(async () => { const u = await import('./utils.js'), db = await import('./db.js'); const e = (await db.exportAllData()).events[0]; return u.menuSinceApproved(e).count; });
+    assert.equal(u, 1);
+    await p.locator('[data-action="menu-approve"]').click(); await p.waitForSelector('#ma-modal.active');
+    assert.match(await p.locator('#ma-body').innerText(), /Lunch\n~\nGulab Jamun: food type Veg → Non-veg/);
+    await p.locator('#ma-modal [data-action="close-modal"]').click();
+    await setDish('Gulab Jamun', { type: 'veg', cat: 'dessert' });
+    await openEvent();
+    assert.match(await bar(), /Changed since approved v3 · 1 change/, 'a new course needs approval too');
+    await p.locator('[data-action="menu-approve"]').click(); await p.waitForSelector('#ma-modal.active');
+    assert.match(await p.locator('#ma-body').innerText(), /Gulab Jamun: course not set → Dessert/);
+    await p.locator('#ma-modal [data-action="close-modal"]').click();
+  });
+
   await test('backups keep approved versions; malformed ones are refused', async () => {
     const r = await p.evaluate(async () => { const db = await import('./db.js'); const out = [];
       const d0 = await db.exportAllData(); delete d0.manifest;

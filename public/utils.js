@@ -633,7 +633,7 @@ export function menuSnapshot(ev) {
 export const approvedMenus = ev => Array.isArray(ev?.menuApproved) ? ev.menuApproved : [];
 export const latestApproved = ev => approvedMenus(ev).at(-1) || null;
 /* What changed between two menu copies (older may be null: everything is new), meal by meal: dishes added and
-   removed, a dish's kitchen/counter or diet marks changed, and the meal's date, time, guests or rate. `count` is the
+   removed, a dish's kitchen/counter, diet marks, food type or course changed, and the meal's date, time, guests or rate. `count` is the
    number of differences. */
 export function menuDiff(older, newer) {
   const out = [], key = d => String(d.name).trim().toLowerCase();
@@ -643,7 +643,10 @@ export function menuDiff(older, newer) {
     const changed = [];
     for (const d of b) { const o = A.get(key(d)); if (!o) continue;
       if ((o.head || '') !== (d.head || '')) changed.push({ name: d.name, what: 'counter', from: o.head || '', to: d.head || '' });
-      if ((o.diet || []).join() !== (d.diet || []).join()) changed.push({ name: d.name, what: 'diet', from: (o.diet || []).join(', '), to: (d.diet || []).join(', ') }); }
+      if ((o.diet || []).join() !== (d.diet || []).join()) changed.push({ name: d.name, what: 'diet', from: (o.diet || []).join(', '), to: (d.diet || []).join(', ') });
+      // Food type (veg / egg / non-veg) and course matter to the client: either change needs approval again
+      if ((o.type || '') !== (d.type || '')) changed.push({ name: d.name, what: 'type', from: o.type || '', to: d.type || '' });
+      if ((o.cat || '') !== (d.cat || '')) changed.push({ name: d.name, what: 'course', from: o.cat || '', to: d.cat || '' }); }
     return { added, removed, changed };
   };
   const olds = new Map((older?.services || []).map(s => [s.id, s])), news = new Map((newer?.services || []).map(s => [s.id, s]));
