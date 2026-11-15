@@ -123,6 +123,42 @@ const INTERNAL = /Chaat|Tandoor|Barbeque|Our kitchen|cost|margin|contribution|ve
     assert.equal(await p.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
   });
 
+  await test('a menu sent before approval prints again with its DRAFT warning; an approved one without', async () => {
+    await openEvent(); await p.locator('[data-action="menu-send"]').click(); await p.waitForSelector('#md-modal.active');
+    await p.selectOption('#md-ver', 'draft'); await p.locator('#btn-md-sent').click(); await p.waitForTimeout(600);
+    const docs = (await ev()).menuDocs;
+    assert.equal(docs.at(-1).v, 'draft');
+    const rows = p.locator('#md-issued [data-md-reprint]');
+    await rows.first().click(); await p.waitForTimeout(300);   // newest first: the draft just sent
+    assert.match((await printed()).text, /DRAFT – menu not yet approved by the client/);
+    await rows.last().click(); await p.waitForTimeout(300);    // the approved version 2 sent earlier
+    assert.doesNotMatch((await printed()).text, /DRAFT/);
+  });
+
+  await test('a quotation with a menu annexure never also lists the library menu\'s dishes; without one it does', async () => {
+    const golden = await p.evaluate(async () => (await import('./utils.js')).menuById('golden').items);
+    // A draft whose lunch line uses the Golden library menu, with "list each menu's dishes" on and the approved annexure
+    await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest; const e = d.events[0];
+      e.quotes = e.quotes.filter(x => x.status !== 'draft');
+      e.quotes.push({ v: 9, status: 'draft', lines: [{ kind: 'meal', meal: 'lunch', guests: 250, rate: 450, menu: 'golden' }], showRates: true, showItems: true, terms: '', annex: e.menuApproved.at(-1).id });
+      delete e._rev; await db.importAllData(d, 'replace'); });
+    await openQuote();
+    await p.locator('[data-action="quote-print"]').click(); await p.waitForTimeout(300);
+    const withAnnex = (await printed()).text, quotePart = withAnnex.slice(0, withAnnex.indexOf('Menu – annexure'));
+    assert.match(quotePart, /Lunch – Golden menu[\s\S]*Dishes: see the menu annexure/);
+    for (const n of golden.slice(0, 3)) assert.doesNotMatch(withAnnex, new RegExp(n.replace(/[()]/g, '.')), 'no library dish list beside the approved menu');
+    assert.match(annexOf(withAnnex), /Gulab Jamun/, 'the dishes come from the approved event menu');
+    await p.locator('[data-action="quote-share"]').click(); await p.waitForSelector('#ask-modal.active');
+    const share = await p.locator('#ask-msg').innerText();
+    for (const n of golden.slice(0, 3)) assert.doesNotMatch(share, new RegExp(n.replace(/[()]/g, '.')));
+    assert.match(share, /— Menu —[\s\S]*Gulab Jamun/);
+    await p.locator('#ask-actions button').last().click(); await p.waitForTimeout(300);
+    await p.selectOption('#quote-annex', ''); await p.locator('[data-action="quote-print"]').click(); await p.waitForTimeout(300);
+    const noAnnex = (await printed()).text;
+    assert.match(noAnnex, new RegExp(golden[0].replace(/[()]/g, '.')), 'without an annexure the chosen library menu is listed, as before');
+    assert.doesNotMatch(noAnnex, /annexure/);
+  });
+
   await test('backups keep menus sent and quote annexures; malformed ones are refused', async () => {
     const r = await p.evaluate(async () => { const db = await import('./db.js'); const out = [];
       const d0 = await db.exportAllData(); delete d0.manifest;

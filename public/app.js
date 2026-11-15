@@ -1928,7 +1928,8 @@ function quoteText(ev, q) {
   for (const l of t.lines) {
     // Rates hidden: each line shows its amount only (no guest count or per-plate rate)
     const mealName = l.kind === 'meal' ? MEALS[l.meal] + (l.menu && quoteMenu(q, l.menu) ? ` (${quoteMenu(q, l.menu).name} menu)` : '') : '';
-    const dishes = l.kind === 'meal' && q.showItems && l.menu ? (quoteMenu(q, l.menu)?.items || []) : [];
+    // With a menu annexure the dishes come from it alone (the approved event menu), never also from the library menu
+    const dishes = l.kind === 'meal' && q.showItems && l.menu && !q.annex ? (quoteMenu(q, l.menu)?.items || []) : [];
     if (l.kind === 'meal') L.push(q.showRates !== false ? `${mealName}: ${l.guests} guests × ${fmtCurrency(l.rate)} = ${fmtCurrency(l.total)}` : `${mealName}: ${fmtCurrency(l.total)}`);
     else if (l.kind === 'item') L.push(`${l.label}: ${fmtCurrency(l.amt)}`);
     else L.push(`${l.label}: −${fmtCurrency(l.amt)}`);
@@ -1978,7 +1979,7 @@ function renderQuote() {
         ${cur.gst ? '' : `<button type="button" class="btn-sm" data-gst-add>+ ${tr('GST', 'जीएसटी')}</button>`}
       </div>
       <label class="check-row"><input type="checkbox" id="quote-rates"${cur.showRates !== false ? ' checked' : ''}><span>${tr('Show per-plate rates to the client', 'ग्राहकाला प्रति ताट दर दाखवा')}</span></label>
-      ${cur.lines.some(l => l.kind === 'meal' && l.menu) ? `<label class="check-row"><input type="checkbox" id="quote-items"${cur.showItems ? ' checked' : ''}><span>${tr('List each menu\'s dishes for the client', 'मेनूचे पदार्थ दाखवा')}</span></label>` : ''}
+      ${cur.lines.some(l => l.kind === 'meal' && l.menu) ? `<label class="check-row"><input type="checkbox" id="quote-items"${cur.showItems ? ' checked' : ''}><span>${tr('List each menu\'s dishes for the client (not used when a menu annexure is added: it lists the event\'s own dishes)', 'मेनूचे पदार्थ दाखवा')}</span></label>` : ''}
       ${approvedMenus(ev).length || menuSnapshot(ev).services.some(s => s.dishes.length) ? `<div class="field"><label for="quote-annex">${tr('Menu annexure (pages after the quotation)', 'मेनू परिशिष्ट')}</label><select id="quote-annex">
         <option value="">No menu annexure</option>${[...approvedMenus(ev)].reverse().map(v => `<option value="${esc(v.id)}"${cur.annex === v.id ? ' selected' : ''}>Menu version ${v.n} · approved ${fmtDate(String(v.at).slice(0, 10))}</option>`).join('')}
         <option value="draft"${cur.annex === 'draft' ? ' selected' : ''}>Current menu – not yet approved</option></select></div>` : ''}
@@ -2401,7 +2402,7 @@ async function markMenuDocSent() {
 function reprintMenuDoc(id) {
   const ev = D.events.find(e => e.id === curRef); const d = ev?.menuDocs?.find(x => x.id === id); if (!d) return;
   const profile = d.profile || getProfile(); if (needProfile(profile, 'menu')) return;
-  printDoc(menuDocHtml(ev, d.menu, profile, { date: String(d.at).slice(0, 10), eventInfo: d.event }));
+  printDoc(menuDocHtml(ev, d.menu, profile, { date: String(d.at).slice(0, 10), eventInfo: d.event, draft: d.v === 'draft' }));   // sent unapproved: still says DRAFT
 }
 
 /* ── ADD OR CHANGE A MEAL'S MENU ── */
@@ -2664,11 +2665,13 @@ const quoteEvent = (ev, qt) => qt.snap?.event || ev;
 const quoteMenu = (qt, id) => qt.snap ? qt.snap.menus?.[id] || null : menuById(id);
 // The quote as a printable A4 document: no costs, margins or internal notes
 function quoteDocHtml(ev, qt, profile) {
+  // The menu annexure: the frozen copy of a sent quote; a draft (or a quote sent before copies) uses the chosen version
+  const annex = qt.annex ? qt.snap?.annex || clientMenu(ev, qt.annex) : null;
   const t = quoteTotal(qt), p = profile || {}, many = quoteOptions({ quotes: [...(ev.quotes || []), qt] }).length > 1, E = quoteEvent(ev, qt);
   const line = (a, b, c, cls = '') => `<tr class="${cls}"><td>${a}</td><td class="n">${b}</td><td class="n">${c}</td></tr>`;
   const rows = t.lines.map(l => {
-    if (l.kind === 'meal') { const mn = l.menu && quoteMenu(qt, l.menu), dishes = qt.showItems && mn ? mn.items || [] : [];
-      return line(`<b>${MEALS[l.meal]}</b>${mn ? ` – ${esc(mn.name)} menu` : ''}${dishes.length ? `<div class="pd-dishes">${dishes.map(esc).join(' · ')}</div>` : ''}`,
+    if (l.kind === 'meal') { const mn = l.menu && quoteMenu(qt, l.menu), dishes = qt.showItems && mn && !annex ? mn.items || [] : [];
+      return line(`<b>${MEALS[l.meal]}</b>${mn ? ` – ${esc(mn.name)} menu` : ''}${dishes.length ? `<div class="pd-dishes">${dishes.map(esc).join(' · ')}</div>` : ''}${annex ? '<div class="pd-dishes">Dishes: see the menu annexure</div>' : ''}`,
         qt.showRates !== false ? `${l.guests} × ${fmtCurrency(l.rate)}` : '', fmtCurrency(l.total)); }
     if (l.kind === 'item') return line(esc(l.label), '', fmtCurrency(l.amt));
     return line(`${esc(l.label)} <span class="pd-muted">(discount)</span>`, '', `−${fmtCurrency(l.amt)}`);
@@ -2677,8 +2680,6 @@ function quoteDocHtml(ev, qt, profile) {
     ? line('Subtotal', '', fmtCurrency(t.total), 'pd-sub') + line(`GST @ ${qt.gst.rate}% on ${fmtCurrency(qt.gst.taxable)}`, '', fmtCurrency(t.gst), 'pd-sub') + line('<b>Total</b>', '', `<b>${fmtCurrency(t.grand)}</b>`, 'pd-total')
     : line('<b>Total</b> <span class="pd-muted">(before any applicable GST)</span>', '', `<b>${fmtCurrency(t.total)}</b>`, 'pd-total');
   const when = String(qt.sentAt || qt.at || new Date().toISOString()).slice(0, 10);
-  // The menu annexure: the frozen copy of a sent quote; a draft (or a quote sent before copies) uses the chosen version
-  const annex = qt.annex ? qt.snap?.annex || clientMenu(ev, qt.annex) : null;
   return `<div class="pd">
     ${qt.status === 'draft' ? '<div class="pd-draft">DRAFT – not yet sent to the client</div>' : ''}
     ${qt.status !== 'draft' && !qt.snap ? '<div class="pd-draft pd-rebuilt">Rebuilt from current data: this quotation was sent before CaterDesk kept copies, so details may differ from what was sent.</div>' : ''}
