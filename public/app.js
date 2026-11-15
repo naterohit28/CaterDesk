@@ -14,7 +14,7 @@ import {
   EXPENSE_HEADS, EVENT_TYPES, VENUE_TYPES, LOGISTICS, venueTypeLabel, logisticsPrompts, venueSuggestion, PAY_MODES, PERIODS, PERIOD_SHORT, MENUS, allMenus, setSavedMenus, menusForMeal, cleanSlabs, isEditedStarter, menuById, menuRate, menuCostPerPlate, costChecklist,
   uid, today, localDay, daysSince, fmtDate, fmtCurrency, esc,
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
-  calcEventReceived, calcEventPL, toPaise, billSet, calcVendorBalance, normGstin, gstinValid, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
+  calcEventReceived, calcEventPL, toPaise, billSet, billingSplit, calcVendorBalance, normGstin, gstinValid, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
   RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, learnedDishes, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
@@ -752,17 +752,16 @@ function periodLabel() {
 function rHome() {
   renderPeriodSegs();
   const P = sliceByPeriod(D, period);
-  const tb = sumRupees(P.events, e => e.billing);
-  const te = sumRupees(P.expenses);
-  const rc = sumRupees(P.cPays);
-  const profit  = (Math.round(tb * 100) - Math.round(te * 100)) / 100;
+  // Contribution, margin and what is still owed: events with a bill only (billingSplit). Costs of events without a
+  // bill are shown apart as awaiting billing; their advances stay in Received.
+  const bs = billingSplit(P.events, P.expenses, P.cPays);
+  const tb = bs.billP / 100, te = bs.expP / 100, rc = bs.recP / 100, profit = bs.contribP / 100;
   const done = reconciledIds(P.events, P.expenses);
   const provisional = P.events.filter(e => !done.has(e.id)).length;
-  const noBill = P.events.filter(e => !billSet(e)).length;   // their costs count; their bill is not known yet
-  const due = sumRupees(P.events, e => clientDue(e));   // what clients pay, GST included where recorded
-  const pending = Math.max(0, due - rc);
-  const margin  = tb > 0 ? Math.round(profit / tb * 100) : 0;
-  const collected = due > 0 ? Math.min(100, rc / due * 100) : 0;
+  const noBill = bs.unbilled;
+  const pending = bs.pendingP / 100;
+  const margin  = bs.margin ?? 0;
+  const collected = bs.dueP > 0 ? Math.min(100, (bs.recP - bs.advP) / bs.dueP * 100) : 0;
   const pl = periodLabel();
 
   q('kpi').innerHTML = `
@@ -770,7 +769,7 @@ function rHome() {
       <div class="label">${tr(`Event contribution · ${pl.en}`, `कार्यक्रम योगदान · ${pl.mr}`)}</div>
       <div class="amt-xl ${profit < 0 ? 'neg' : ''}" style="margin-top:4px">${fmtCurrency(profit)}</div>
       <div class="hero-sub">${P.events.length ? tr(
-        `${margin}% margin on ${fmtCurrency(tb)} billed · ${P.events.length} event${P.events.length > 1 ? 's' : ''}${provisional ? ` · ${provisional} provisional` : ''}${noBill ? ` · ${noBill} without a bill yet (costs counted, bill not)` : ''}`,
+        `${margin}% margin on ${fmtCurrency(tb)} billed · ${P.events.length} event${P.events.length > 1 ? 's' : ''}${provisional ? ` · ${provisional} provisional` : ''}${noBill ? ` · ${noBill} without a bill yet` : ''}`,
         `${fmtCurrency(tb)} बिलावर ${margin}% मार्जिन · ${P.events.length} कार्यक्रम${provisional ? ` · ${provisional} अंदाजे` : ''}${noBill ? ` · ${noBill} बिलाशिवाय` : ''}`)
         : tr('No events in this period', 'या कालावधीत कार्यक्रम नाहीत')}</div>
       <div class="metrics">
@@ -778,6 +777,7 @@ function rHome() {
         <div class="metric"><div class="label">Pending – बाकी</div><div class="amt-md ${pending > 0 ? 'due' : 'muted'}">${fmtCurrency(pending)}</div></div>
         <div class="metric"><div class="label">Expenses – खर्च</div><div class="amt-md">${fmtCurrency(te)}</div></div>
       </div>
+      ${noBill ? `<div class="meta" id="kpi-awaiting" style="margin-top:var(--s2)">${tr(`${fmtCurrency(bs.awaitP / 100)} of costs and ${fmtCurrency(bs.advP / 100)} received are on ${noBill} event${noBill > 1 ? 's' : ''} without a bill yet: not in contribution or pending until the bill is set.`, `बिल नसलेल्या ${noBill} कार्यक्रमांचा खर्च ${fmtCurrency(bs.awaitP / 100)} योगदानात नाही.`)}</div>` : ''}
       <div class="prog" style="margin-top:var(--s4)" aria-label="Collected ${Math.round(collected)}%"><span style="width:${collected}%"></span></div>
       <div class="meta" style="margin-top:6px">${tr(`${Math.round(collected)}% of billing collected`, `बिलाच्या ${Math.round(collected)}% वसुली`)}</div>
     </div>
@@ -1118,10 +1118,10 @@ function receiptLink(ev, p) {
     + `Received: ${fmtCurrency(p.amt)} on ${fmtDate(p.date)} by ${mode}${p.notes ? ' · ' + p.notes : ''}
 
 `
-    + `Total bill: ${fmtCurrency(ev.billing)}
+    + `Total bill: ${billSet(ev) ? fmtCurrency(ev.billing) : 'to be confirmed'}
 Paid so far: ${fmtCurrency(received)}
 `
-    + (left ? `Balance: ${fmtCurrency(left)}` : `Fully paid – thank you!`) + `
+    + (!billSet(ev) ? `Received as an advance; the balance follows once the bill is confirmed.` : left ? `Balance: ${fmtCurrency(left)}` : `Fully paid – thank you!`) + `
 
 Thank you!
 
@@ -1184,7 +1184,7 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
       <div class="metrics" style="margin:0;padding:0;border:0">
         <div class="metric"><div class="label">Bill – बिल</div>${ev.billing > 0 ? `<div class="amt-md">${fmtCurrency(ev.billing)}</div>` : `<div class="amt-md muted" id="ev-bill-unset">${tr('Not set', 'ठरले नाही')}</div>`}${ev.gst?.amount ? `<div class="meta" id="ev-gst">${tr(`+ GST ${fmtCurrency(ev.gst.amount)}`, `+ जीएसटी ${fmtCurrency(ev.gst.amount)}`)}</div>` : ''}</div>
         <div class="metric"><div class="label">Received – मिळाले</div><div class="amt-md pos">${fmtCurrency(rec)}</div></div>
-        <div class="metric"><div class="label">Pending – बाकी</div><div class="amt-md ${pend > 0 ? (pendingOverdue(ev) ? 'neg' : 'due') : 'muted'}" id="ev-pending">${fmtCurrency(Math.max(0, pend))}</div></div>
+        <div class="metric"><div class="label">Pending – बाकी</div><div class="amt-md ${pend > 0 ? (pendingOverdue(ev) ? 'neg' : 'due') : 'muted'}" id="ev-pending">${billSet(ev) ? fmtCurrency(Math.max(0, pend)) : '—'}</div></div>
       </div>
       ${rec > 0 ? `<div class="prog" style="margin-top:var(--s3)" aria-label="Collected ${pct}%"><span style="width:${pct}%"></span></div>
       <div class="meta" style="margin-top:6px" id="ev-collected">${tr(`${Math.round(pct)}% of ${ev.gst?.amount ? `${fmtCurrency(clientDue(ev))} (incl. GST)` : 'the bill'} collected`, `बिलाच्या ${Math.round(pct)}% वसुली`)}</div>` : ''}
@@ -3927,9 +3927,9 @@ function booksCard(b) {
 function rSummary() {
   renderPeriodSegs();
   const P = sliceByPeriod(D, period);
-  const totalBill = sumRupees(P.events, e => e.billing);
-  const totalExp  = sumRupees(P.expenses);
-  const profit    = (Math.round(totalBill * 100) - Math.round(totalExp * 100)) / 100;
+  const bs = billingSplit(P.events, P.expenses, P.cPays);   // contribution and margin: events with a bill only
+  const totalBill = bs.billP / 100;
+  const profit    = bs.contribP / 100;
   const done      = reconciledIds(P.events, P.expenses);
   const noData    = t => `<div class="list-empty">${t}</div>`;
   const missing   = new Set(eventsMissingCosts(P.events, P.expenses).map(e => e.id));
@@ -3966,7 +3966,7 @@ function rSummary() {
       <div class="bar-val">${fmtCurrency(a)}</div>
     </div>`).join('') || noData('No data – माहिती नाही');
 
-  const board = [...P.events].sort((a, b) => b.billing - a.billing).slice(0, 10).map((e, i) => `
+  const board = P.events.filter(billSet).sort((a, b) => b.billing - a.billing).slice(0, 10).map((e, i) => `
     <div class="row" role="button" tabindex="0" data-action="evdetail" data-id="${esc(e.id)}">
       <div class="rank ${i < 3 ? 'top' : ''}">${i + 1}</div>
       <div class="row-body"><div class="title-sm trunc" data-nl>${esc(e.name)}</div><div class="meta trunc">${fmtDate(e.date)} · <span data-nl>${esc(e.venue)}</span></div></div>
@@ -3976,10 +3976,11 @@ function rSummary() {
   q('summary-content').innerHTML = `
     <div class="metric-tiles">
       <div class="card"><div class="label">Contribution – योगदान</div><div class="amt-lg ${profit >= 0 ? 'pos' : 'neg'}">${fmtCurrency(profit)}</div>
-        ${P.events.length ? `<div class="meta" id="contrib-final">${tr(`${done.size} of ${P.events.length} final · before overheads`, `${P.events.length} पैकी ${done.size} अंतिम`)}</div>` : ''}</div>
+        ${P.events.length ? `<div class="meta" id="contrib-final">${tr(`${done.size} of ${P.events.length} final · before overheads`, `${P.events.length} पैकी ${done.size} अंतिम`)}</div>` : ''}
+        ${bs.unbilled ? `<div class="meta due" id="contrib-awaiting">${tr(`${fmtCurrency(bs.awaitP / 100)} of costs awaiting billing (${bs.unbilled} event${bs.unbilled > 1 ? 's' : ''} without a bill): not included`, `बिल नसलेल्या कार्यक्रमांचा खर्च ${fmtCurrency(bs.awaitP / 100)} समाविष्ट नाही`)}</div>` : ''}</div>
       <div class="card"><div class="label">Margin – मार्जिन</div><div class="amt-lg ${totalBill > 0 ? (profit >= 0 ? 'pos' : 'neg') : 'muted'}">${totalBill > 0 ? Math.round(profit / totalBill * 100) + '%' : '—'}</div></div>
       <div class="card"><div class="label">Billed – बिल</div><div class="amt-lg">${fmtCurrency(totalBill)}</div></div>
-      <div class="card"><div class="label">Events – कार्यक्रम</div><div class="amt-lg">${P.events.length}</div></div>
+      <div class="card"><div class="label">Events – कार्यक्रम</div><div class="amt-lg">${P.events.length}</div>${bs.unbilled ? `<div class="meta">${tr(`${bs.unbilled} without a bill`, `${bs.unbilled} बिलाशिवाय`)}</div>` : ''}</div>
     </div>
     ${missing.size ? `<div class="card" style="margin-top:var(--s3)"><div class="note alert"><span class="note-ic">${icon('receipt', 16)}</span>
       <div>${tr(`${missing.size} event${missing.size > 1 ? 's have' : ' has'} no expenses, so contribution here is overstated.`, `${missing.size} कार्यक्रमांचा खर्च नोंदवलेला नाही, त्यामुळे नफा जास्त दिसतो.`)}</div></div></div>` : ''}
@@ -4387,7 +4388,7 @@ function updateQuote() {
   const byMenu = menu ? costed.filter(e => e.menu === menu.id) : [];
   const basis = byMenu.length ? menu.name : (type || '').split(' – ')[0];
   const cost = avg(byMenu.length ? byMenu : costed.filter(e => e.type === type), e => spent.get(e.id));
-  const billed = menu ? avg(peers.filter(e => e.menu === menu.id), e => e.billing) : null;
+  const billed = menu ? avg(peers.filter(e => e.menu === menu.id && billSet(e)), e => e.billing) : null;
   const lines = [];
   if (cost) {
     lines.push(`${esc(basis)} usually costs you <b>${fmtCurrency(cost.perPlate)}/plate</b> (${cost.n} reconciled event${cost.n > 1 ? 's' : ''})`);

@@ -66,7 +66,8 @@ const DATA = { version: 'ffv2', photos: [], vPays: [], vendors: [],
     assert.ok(blocked.includes('The bill is not set yet'), 'reconciliation waits for the bill');
     // Home says how many events have no bill; Reports show them apart and keep them out of per-plate benchmarks
     await p.locator('#n-home:visible').click().catch(() => {}); await p.reload(); await p.waitForSelector('#kpi .card');
-    assert.match(await p.locator('#kpi .hero').innerText(), /1 without a bill yet \(costs counted, bill not\)/);
+    assert.match(await p.locator('#kpi .hero').innerText(), /1 without a bill yet/);
+    assert.match(await p.locator('#kpi-awaiting').innerText(), /without a bill yet: not in contribution or pending until the bill is set/);
     await p.locator('#n-summary:visible').click(); await p.waitForTimeout(400);
     const row = p.locator('#tab-summary .bar-row[data-action="evdetail"][data-id="e1"]');
     assert.match(await row.innerText(), /no bill yet[\s\S]*—/);

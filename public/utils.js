@@ -278,6 +278,27 @@ export const gstPaise = ev => toPaise(ev?.gst?.amount || 0);
 // A bill of 0 means "not set yet" (4.28.2): the form refuses 0 and every bill before 4.28.2 was at least ₹1, so a set
 // bill is never 0. An event without a bill has no contribution, margin, settlement or payment plan until it is set.
 export const billSet = ev => Number(ev?.billing) > 0;
+/* One population for money summaries (Home, Reports): contribution, margin and receivables use only events whose bill
+   is set. Costs of events without a bill stay recorded and visible, counted apart as "awaiting billing"; their
+   payments stay in Received but never reduce what billed events still owe. Expenses on no event (common stock,
+   overheads) count as before. All in paise.
+   Unset bill vs complimentary (docs/BILLING_STATES.md): today billing 0 always means "not set". A free event would
+   need its own explicit marker (e.g. complimentary: true with billing 0), so the two can be told apart later. */
+export function billingSplit(events, expenses, cPays) {
+  const unbilled = new Set(events.filter(e => !billSet(e)).map(e => e.id));
+  const billed = events.filter(billSet);
+  const sumP = (rows, f) => rows.reduce((s, r) => s + toPaise(f(r) || 0), 0);
+  const expP = sumP(expenses, x => x.amt);
+  const awaitP = sumP(expenses.filter(x => unbilled.has(x.evId)), x => x.amt);
+  const billP = sumP(billed, e => e.billing);
+  const recP = sumP(cPays, p => p.amt);
+  const advP = sumP(cPays.filter(p => unbilled.has(p.evId)), p => p.amt);
+  const dueP = billed.reduce((s, e) => s + clientDueP(e), 0);
+  const contribP = billP - (expP - awaitP);
+  return { billed, unbilled: unbilled.size, billP, expP, awaitP, contribP, recP, advP, dueP,
+    pendingP: Math.max(0, dueP - (recP - advP)),
+    margin: billP > 0 ? Math.round(contribP / billP * 100) : null };
+}
 export const clientDueP = ev => toPaise(ev?.billing || 0) + gstPaise(ev);
 export const clientDue = ev => fromPaise(clientDueP(ev));
 
