@@ -510,7 +510,7 @@ export async function prepareImport(payload) {
       const badClientMenu = m => !m || typeof m !== 'object' || !cmStr(m.v, 40) || typeof m.label !== 'string' || !Array.isArray(m.meals) || m.meals.length > 30
         || m.meals.some(x => !x || typeof x.title !== 'string' || typeof x.when !== 'string' || !Number.isSafeInteger(x.guests) || x.guests < 0 || !Array.isArray(x.dishes) || x.dishes.some(badCmDish))
         || !Array.isArray(m.shared) || m.shared.some(badCmDish);
-      if (row.menuDocs !== undefined && (!Array.isArray(row.menuDocs) || row.menuDocs.length > 200 || row.menuDocs.some(d => !d || !cmStr(d.id, 40) || typeof d.at !== 'string' || !cmStr(d.v, 40)
+      if (row.menuDocs !== undefined && (!Array.isArray(row.menuDocs) || row.menuDocs.length > 200 || row.menuDocs.some(d => !d || !cmStr(d.id, 40) || typeof d.at !== 'string' || (d.date !== undefined && !validDate(d.date)) || !cmStr(d.v, 40)
         || !Number.isSafeInteger(d.layout) || badClientMenu(d.menu) || typeof d.text !== 'string' || !d.event || typeof d.event.name !== 'string' || !cmStr(d.event.date, 10)
         || (d.profile !== undefined && (typeof d.profile !== 'object' || d.profile === null || Object.values(d.profile).some(v => typeof v !== 'string' || v.length > 1000)))))) throw new Error('Invalid menu sent to client');
       if (row.quotes !== undefined && (!Array.isArray(row.quotes) || row.quotes.length > 100 || row.quotes.some(qt => !qt || !Number.isSafeInteger(qt.v) || qt.v < 1

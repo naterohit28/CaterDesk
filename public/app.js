@@ -2479,8 +2479,14 @@ function needProfile(profile, what) {
 }
 
 /* ── SEND THE MENU TO THE CLIENT (menu only) ── */
+// The date on the PDF last printed from this sheet, for that exact menu: kept with the copy when it is marked sent, so a
+// menu printed before midnight and marked sent after it keeps the date the client saw
+let mdPrinted = null;
+const mdKey = cm => `${cm.v}
+${clientMenuText(cm)}`;
 function openMenuDocSheet() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  mdPrinted = null;
   const vers = [...approvedMenus(ev)].reverse();
   q('md-ver').innerHTML = vers.map(v => `<option value="${esc(v.id)}">Version ${v.n} · approved ${fmtDate(localDay(v.at))}</option>`).join('')
     + `<option value="draft">Current menu – not yet approved</option>`;
@@ -2501,7 +2507,8 @@ function printMenuDoc() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const profile = getProfile(); if (needProfile(profile, 'menu')) return;
   const cm = clientMenu(ev, qv('md-ver')); if (!cm) return;
-  printDoc(menuDocHtml(ev, cm, profile, { date: today(), draft: cm.v === 'draft' }));   // an approved version prints clean; the current menu says DRAFT
+  const date = today(); mdPrinted = { key: mdKey(cm), date };
+  printDoc(menuDocHtml(ev, cm, profile, { date, draft: cm.v === 'draft' }));   // an approved version prints clean; the current menu says DRAFT
 }
 function shareMenuDoc() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
@@ -2514,7 +2521,8 @@ async function markMenuDocSent() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const cm = clientMenu(ev, qv('md-ver')); if (!cm) return;
   const prof = getProfile();
-  const doc = { id: uid('MD'), at: new Date().toISOString(), v: cm.v, layout: DOC_LAYOUT, menu: cm, text: clientMenuText(cm),
+  const date = mdPrinted?.key === mdKey(cm) ? mdPrinted.date : today();
+  const doc = { id: uid('MD'), at: new Date().toISOString(), date, v: cm.v, layout: DOC_LAYOUT, menu: cm, text: clientMenuText(cm),
     event: { name: ev.name, date: ev.date, venue: ev.venue || '' }, ...(Object.keys(prof).length ? { profile: prof } : {}) };
   try { await patchEvent(ev.id, { menuDocs: [...(ev.menuDocs || []), doc] }); } catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
   renderMenuDocSheet(); refreshCurrent();
@@ -2523,7 +2531,7 @@ async function markMenuDocSent() {
 function reprintMenuDoc(id) {
   const ev = D.events.find(e => e.id === curRef); const d = ev?.menuDocs?.find(x => x.id === id); if (!d) return;
   const profile = d.profile || getProfile(); if (needProfile(profile, 'menu')) return;
-  printDoc(menuDocHtml(ev, d.menu, profile, { date: localDay(d.at), eventInfo: d.event, draft: d.v === 'draft' }));   // sent unapproved: still says DRAFT
+  printDoc(menuDocHtml(ev, d.menu, profile, { date: d.date || localDay(d.at), eventInfo: d.event, draft: d.v === 'draft' }));   // the issue date kept with it (older copies: the local day kept); sent unapproved: still says DRAFT
 }
 
 /* ── ADD OR CHANGE A MEAL'S MENU ── */
