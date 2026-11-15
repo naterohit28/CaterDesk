@@ -679,3 +679,10 @@ body::before {
 .svc-dish.field { margin-bottom: 0; }
 .svc-dish.field input, .svc-dish.field select { min-height: 40px; padding: 8px 12px; }
 .svc-dish.field select { padding-right: 34px; background-position: right 10px center; }
+.svc-step { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2); margin: var(--s2) 0 var(--s1); }
+.svc-cat-h { margin-top: var(--s3); }
+.row-btns { display: flex; flex-wrap: wrap; gap: var(--s2); }
+#svc-save button { padding: 0 var(--s2); text-align: center; line-height: 1.25; }
+.svc-dish-who { display: flex; align-items: center; gap: var(--s2); }
+.svc-dish-who select { flex: 1; min-width: 0; }
+.svc-diet-btn { flex-shrink: 0; max-width: 45%; min-height: 40px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; line-height: 38px; }

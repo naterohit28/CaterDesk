@@ -437,18 +437,35 @@
 <div class="modal-ov" id="svc-modal">
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="svc-mtitle">
     <div class="s-handle"></div>
-    <div class="s-head"><div class="s-title" id="svc-mtitle">Meal menu – मेनू</div><button type="button" class="icon-btn" data-action="close-modal" aria-label="Close"><i data-ic="x"></i></button></div>
-    <div class="f2">
-      <div class="field"><label for="svc-date">Date – तारीख</label><input type="date" id="svc-date"></div>
-      <div class="field"><label for="svc-time">Time – वेळ</label><input type="time" id="svc-time"></div>
+    <div class="s-head"><div class="s-title" id="svc-mtitle">Add a menu – मेनू जोडा</div><button type="button" class="icon-btn" data-action="close-modal" aria-label="Close"><i data-ic="x"></i></button></div>
+    <div class="field"><label for="svc-meal">1 · Meal – जेवण</label><select id="svc-meal"></select></div>
+    <div id="svc-body" hidden>
+      <div class="meta" id="svc-facts" style="margin:-6px 0 var(--s3)"></div>
+      <div class="f2">
+        <div class="field"><label for="svc-date">Date – तारीख</label><input type="date" id="svc-date"></div>
+        <div class="field"><label for="svc-time">Time – वेळ</label><input type="time" id="svc-time"></div>
+      </div>
+      <div class="field"><label for="svc-tpl">2 · Menu from the library (optional) – मेनू</label><select id="svc-tpl"></select></div>
+      <div id="svc-tpl-note"></div>
+      <div class="field" style="margin-top:var(--s2)"><label for="svc-add">3 · Dishes – पदार्थ</label>
+        <textarea id="svc-add" rows="3" placeholder="Poha, Upma, Idli, Medu Vada, Fruit Bowl, Tea and Coffee"></textarea>
+        <div class="svc-step"><button type="button" class="btn-sm" id="btn-svc-add">Add dishes – जोडा</button><span class="meta" id="svc-count"></span></div></div>
+      <div class="meta" style="margin:-6px 0 var(--s2)">Then choose for each dish: our kitchen or a counter / vendor.</div>
+      <div id="svc-dishes"></div>
+      <div class="field"><span class="label" id="svc-save-l">4 · Save – जतन</span>
+        <div class="seg" role="group" aria-labelledby="svc-save-l" id="svc-save" style="margin-top:6px">
+          <button type="button" data-save="event" aria-pressed="true">This event only – फक्त हा कार्यक्रम</button>
+          <button type="button" data-save="library" aria-pressed="false">Also as a new library menu – लायब्ररीतही</button>
+        </div></div>
+      <div id="svc-lib" hidden>
+        <div class="meta" style="margin-bottom:var(--s3)">A new menu is added to the Menu Library with these dishes. Existing library menus are never changed here.</div>
+        <div class="f2">
+          <div class="field"><label for="svc-libname">New menu name – नाव</label><input type="text" id="svc-libname" maxlength="80"></div>
+          <div class="field"><label for="svc-libprice">₹ / plate – दर</label><input type="number" id="svc-libprice" min="0" step="0.01" inputmode="decimal"></div>
+        </div>
+      </div>
     </div>
-    <div class="field"><label for="svc-tpl">Library menu – मेनू</label><select id="svc-tpl"></select></div>
-    <div id="svc-tpl-note"></div>
-    <div id="svc-dishes"></div>
-    <div class="field" style="margin-top:var(--s3)"><label for="svc-add">Add dishes – पदार्थ जोडा</label>
-      <textarea id="svc-add" rows="2" placeholder="One per line or separated by commas"></textarea>
-      <button type="button" class="btn-sm" id="btn-svc-add" style="margin-top:var(--s2)">Add – जोडा</button></div>
-    <div class="s-foot"><button type="button" class="btn btn-primary" id="btn-save-svc">Save menu – जतन करा</button></div>
+    <div class="s-foot"><button type="button" class="btn btn-primary" id="btn-save-svc" disabled>Save menu – जतन करा</button></div>
   </div>
 </div>
 

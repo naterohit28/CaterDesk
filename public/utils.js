@@ -524,12 +524,13 @@ export const DIET_TAGS = [['jain', 'Jain'], ['no_onion_garlic', 'No onion-garlic
 const VEG_ONLY = ['jain', 'no_onion_garlic', 'vegan'];
 /* A dish's details are only ever what you chose; nothing here guesses a type or a diet from the dish name.
    One food type per dish. A course is one of the usual ones or your own (up to 40 characters).
-   Jain, no onion-garlic and vegan are restrictions only a veg dish can meet, so they need type veg. */
+   Jain, no onion-garlic and vegan are restrictions an egg or non-veg dish cannot meet, so they are refused on one;
+   a dish with no food type set may carry them (nothing is assumed either way). */
 export function dishProblem(d) {
   if (d.cat !== undefined && (typeof d.cat !== 'string' || !d.cat.trim() || d.cat.length > 40)) return 'Course name must be 1–40 characters';
   if (d.type !== undefined && !FOOD_TYPES.some(([k]) => k === d.type)) return 'Choose one food type: veg, egg or non-veg';
   if (d.diet !== undefined && (!Array.isArray(d.diet) || d.diet.some(x => !DIET_TAGS.some(([k]) => k === x)) || new Set(d.diet).size !== d.diet.length)) return 'Unknown diet mark';
-  if ((d.diet || []).some(x => VEG_ONLY.includes(x)) && d.type !== 'veg') return 'Jain, no onion-garlic and vegan dishes must be veg';
+  if ((d.diet || []).some(x => VEG_ONLY.includes(x)) && (d.type === 'egg' || d.type === 'nonveg')) return 'Jain, no onion-garlic and vegan cannot be on an egg or non-veg dish';
   return '';
 }
 function hashText(s) { let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0; return h.toString(36); }
