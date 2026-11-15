@@ -823,6 +823,19 @@ export const VENDOR_RULES = {
   phone:  { phone: true }
 };
 
+/* A vendor's GSTIN (optional; unregistered vendors have none): 15 characters, typed with or without spaces, in any
+   case. Two-digit state code, the business PAN, an entity number, the letter Z, then a check character computed from
+   the first 14, so a mistyped character is caught. It is only kept and shown; tax on bills is never changed by it. */
+export const normGstin = s => String(s ?? '').toUpperCase().replace(/[\s-]/g, '');
+const GSTIN_SHAPE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+export function gstinValid(g) {
+  if (typeof g !== 'string' || !GSTIN_SHAPE.test(g)) return false;
+  const C = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  let sum = 0;
+  for (let i = 0; i < 14; i++) { const p = C.indexOf(g[i]) * (i % 2 ? 2 : 1); sum += Math.floor(p / 36) + (p % 36); }
+  return C[(36 - (sum % 36)) % 36] === g[14];
+}
+
 export const VPAY_RULES = {
   venId: { required: true, requiredMsg: 'Select a vendor – विक्रेता निवडा' },
   amt:   { required: true, numeric: true, min: 1, requiredMsg: 'Amount – रक्कम आवश्यक आहे', minMsg: 'Amount must be > 0' },

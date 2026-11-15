@@ -14,7 +14,7 @@ import {
   EXPENSE_HEADS, EVENT_TYPES, VENUE_TYPES, LOGISTICS, venueTypeLabel, logisticsPrompts, venueSuggestion, PAY_MODES, PERIODS, PERIOD_SHORT, MENUS, allMenus, setSavedMenus, menusForMeal, cleanSlabs, isEditedStarter, menuById, menuRate, menuCostPerPlate, costChecklist,
   uid, today, localDay, daysSince, fmtDate, fmtCurrency, esc,
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
-  calcEventReceived, calcEventPL, toPaise, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
+  calcEventReceived, calcEventPL, toPaise, calcVendorBalance, normGstin, gstinValid, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
   RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, learnedDishes, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.26.1';
+const APP_BUILD = '4.27.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -56,7 +56,7 @@ let lbOnDelete = null;            // what the lightbox Delete button does for th
 let expWork = { id: '', bills: [], added: [], removed: [], saved: false };
 
 // List filters (kept while the app is open)
-const F = { evQ: '', ev: 'all', expQ: '', exp: 'all', expEv: '', venQ: '' };
+const F = { evQ: '', ev: 'all', expQ: '', exp: 'all', expEv: '', venQ: '', ven: 'all', venSort: 'pay' };
 let period = 'all';
 
 /* ── SMALL HELPERS ───────────────────────────────── */
@@ -101,6 +101,10 @@ function editedRecord(base, fields, drop = []) {
   for (const k of drop) delete record[k];
   delete record._rev;   // the database assigns the next revision
   return record;
+}
+
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); showToast('Copied – कॉपी केले'); } catch { showToast('Could not copy – कॉपी झाले नाही', 'error'); }
 }
 
 function readPref(key, fallback) {
@@ -189,6 +193,7 @@ async function boot() {
   initLang();
   syncSettingsUI();
   period = readPref('ffv2_period', 'all');
+  { const s = readPref('ffv2_ven_sort', 'pay'); F.venSort = typeof s === 'string' && Object.hasOwn(VEN_SORTS, s) ? s : 'pay'; }
   if (!PERIODS[period]) period = 'all';
   // Storage normally opens in well under a second. If it hasn't after 4s, an older copy
   // of the app is holding it (the browser only signals "blocked" to the first waiter),
@@ -3426,7 +3431,22 @@ function balanceView({ balance: bal, entries }) {
   return `<span class="chip pos">${tr('Settled', 'पूर्ण')}</span>`;
 }
 
+/* The Vendors tab: what you owe suppliers and the advances you have given them (people who lent money or paid a bill
+   for you are kept apart, in their own section and total), then the list. Balances come from calcVendorBalance(),
+   the same figure as the vendor's own page; nothing here changes a bill or a payment. */
+const VEN_STEP = 30;
+const VEN_FILTERS = [['all', 'All', 'सर्व'], ['pay', 'To pay', 'देणे'], ['adv', 'Advances', 'आगाऊ'], ['settled', 'Settled', 'पूर्ण'], ['none', 'No activity', 'नोंद नाही']];
+const VEN_SORTS = { pay: 'Highest payable – जास्त देणे', name: 'Name A–Z – नाव अ–ज्ञ', recent: 'Recently used – अलीकडे वापरलेले' };
+let venShown = VEN_STEP;
+const venState = b => !b.entries ? 'none' : b.balance > 0 ? 'pay' : b.balance < 0 ? 'adv' : 'settled';
+// Suppliers' totals in paise: only what you owe counts as payable; advances are kept separate
+function vendorTotals(rows) {
+  let payP = 0, advP = 0;
+  for (const { b } of rows) { const p = toPaise(b.balance); if (p > 0) payP += p; else advP -= p; }
+  return { pay: payP / 100, adv: advP / 100 };
+}
 function rVen() {
+  q('ven-sum').innerHTML = ''; q('ven-tools').hidden = !D.vendors.length;
   if (!D.vendors.length) {
     q('ven-list').innerHTML = emptyState({
       ic: 'store', text: 'No vendors yet – विक्रेते नाही',
@@ -3434,29 +3454,54 @@ function rVen() {
     });
     return;
   }
-  const list = D.vendors
-    .filter(v => matches(F.venQ, v.name, v.cat, v.specialty, v.phone))
-    .map(v => ({ v, b: calcVendorBalance(v.id, D.expenses, D.vPays) }))
-    // Vendors you owe come first, then by name
-    .sort((a, b) => (Math.max(0, b.b.balance) - Math.max(0, a.b.balance)) || a.v.name.localeCompare(b.v.name));
-  if (!list.length) {
-    q('ven-list').innerHTML = emptyState({ ic: 'search', text: 'No matching vendors – काहीही सापडले नाही' });
-    return;
-  }
+  // When each vendor was last used: their latest bill or payment
+  const last = new Map(), seen = (id, d) => { if (id && d && d > (last.get(id) || '')) last.set(id, d); };
+  for (const x of D.expenses) seen(x.venId, x.date);
+  for (const p of D.vPays) seen(p.venId, p.date);
+  const all = D.vendors.map(v => ({ v, b: calcVendorBalance(v.id, D.expenses, D.vPays), last: last.get(v.id) || '' }));
+  const suppliers = all.filter(r => !isPerson(r.v)), people = all.filter(r => isPerson(r.v));
+  const t = vendorTotals(suppliers);
+  q('ven-sum').innerHTML = `<div class="card pad ven-sum"><div class="metrics" style="margin:0;padding:0;border:0">
+    <div class="metric"><div class="label">Total payable – एकूण देणे</div><div class="amt-md ${t.pay > 0 ? 'due' : 'muted'}">${fmtCurrency(t.pay)}</div></div>
+    <div class="metric"><div class="label">Vendor advances – आगाऊ दिले</div><div class="amt-md ${t.adv > 0 ? 'info' : 'muted'}">${fmtCurrency(t.adv)}</div></div>
+    <div class="metric"><div class="label">Total vendors – एकूण विक्रेते</div><div class="amt-md">${suppliers.length}</div></div></div></div>`;
+
+  const digits = s => String(s || '').replace(/\D/g, '');
+  const qDigits = digits(F.venQ);
+  const found = all.filter(({ v }) => matches(F.venQ, v.name, v.legalName, v.cat, v.specialty, v.phone, v.gstin)
+    || (qDigits.length >= 3 && qDigits === F.venQ.replace(/[\s+-]/g, '') && digits(v.phone).includes(qDigits)));
+  const count = k => found.filter(r => k === 'all' || venState(r.b) === k).length;
+  q('ven-filters').innerHTML = VEN_FILTERS.map(([k, en, mr]) =>
+    `<button type="button" class="f-chip" data-action="ven-filter" data-id="${k}" aria-pressed="${F.ven === k}">${tr(en, mr)}<span class="n">${count(k)}</span></button>`).join('');
+  const sortSel = q('ven-sort'); if (sortSel.value !== F.venSort) sortSel.value = F.venSort;
+
+  const list = found.filter(r => F.ven === 'all' || venState(r.b) === F.ven);
+  const byName = (a, b) => a.v.name.localeCompare(b.v.name, 'en', { sensitivity: 'base' });
+  const sorter = { pay: (a, b) => (Math.max(0, b.b.balance) - Math.max(0, a.b.balance)) || byName(a, b),
+    name: byName, recent: (a, b) => (b.last > a.last ? 1 : b.last < a.last ? -1 : 0) || byName(a, b) }[F.venSort] || byName;
+  const sup = list.filter(r => !isPerson(r.v)).sort(sorter), ppl = list.filter(r => isPerson(r.v)).sort(sorter);
   const row = ({ v, b }) => `
     <div class="row" role="button" tabindex="0" data-action="vendetail" data-id="${esc(v.id)}">
       <div class="avatar" data-nl>${esc(initials(v.name))}</div>
       <div class="row-body">
-        <div class="title-sm trunc" data-nl>${esc(v.name)}</div>
-        <div class="meta trunc">${isPerson(v) ? tr('Other person', 'इतर व्यक्ती') : esc(v.cat) + (v.specialty ? ' · ' + esc(v.specialty) : '')}</div>
+        <div class="title-sm ven-name" data-nl>${esc(v.name)}</div>
+        <div class="meta trunc">${isPerson(v) ? tr('Other person', 'इतर व्यक्ती') : esc(v.cat || '') + (v.specialty ? ' · ' + esc(v.specialty) : '')}</div>
       </div>
       <div class="row-end">${balanceView(b)}</div>
     </div>`;
-  const vendors = list.filter(r => !isPerson(r.v)), people = list.filter(r => isPerson(r.v));
+  if (!list.length) {
+    q('ven-list').innerHTML = emptyState({ ic: 'search', text: 'No matching vendors – काहीही सापडले नाही',
+      action: F.ven !== 'all' ? `<button type="button" class="btn btn-secondary" data-action="ven-filter" data-id="all">${tr('Show all', 'सर्व दाखवा')}</button>` : '' });
+    return;
+  }
+  const shown = sup.slice(0, venShown), more = sup.length - shown.length;
+  const owedPeople = vendorTotals(people).pay;
   q('ven-list').innerHTML =
-    (vendors.length ? `<div class="card list">${vendors.map(row).join('')}</div>` : '') +
-    (people.length ? `<div class="sec"><span class="sec-title">Other people – इतर व्यक्ती</span><span class="meta">${tr('lent or paid for you', 'उधार / तुमच्यासाठी भरले')}</span></div>
-      <div class="card list">${people.map(row).join('')}</div>` : '');
+    (sup.length ? `<div class="sec"><span class="sec-title">${tr('Vendors', 'विक्रेते')}</span><span class="meta" role="status">${more > 0 ? tr(`${shown.length} of ${sup.length}`, `${sup.length} पैकी ${shown.length}`) : sup.length}</span></div>
+      <div class="card list" id="ven-sup">${shown.map(row).join('')}</div>
+      ${more > 0 ? `<button type="button" class="btn btn-secondary ven-more" data-action="ven-more">${tr(`Show more (${more} more)`, `आणखी दाखवा (${more})`)}</button>` : ''}` : '') +
+    (ppl.length ? `<div class="sec"><span class="sec-title">Other people – इतर व्यक्ती</span>${owedPeople > 0 ? `<span class="sec-amt due"><small>${tr('you owe', 'देणे')}</small>${fmtCurrency(owedPeople)}</span>` : `<span class="meta">${tr('lent or paid for you', 'उधार / तुमच्यासाठी भरले')}</span>`}</div>
+      <div class="card list" id="ven-ppl">${ppl.map(row).join('')}</div>` : '');
 }
 
 /* ── VENDOR DETAIL ───────────────────────────────── */
@@ -3479,6 +3524,13 @@ function showVenDetail(id, { fromHistory = false } = {}) {
         </div>
       </div>
     </div>
+    ${!isPerson(vn) && (vn.gstin || vn.legalName) ? `<div class="card pad" id="ven-gst">
+      ${vn.legalName ? `<div class="label">Registered name – नोंदणीकृत नाव</div><div class="title-sm" data-nl style="overflow-wrap:anywhere">${esc(vn.legalName)}</div>` : ''}
+      ${vn.gstin ? `<div class="label"${vn.legalName ? ' style="margin-top:var(--s3)"' : ''}>GSTIN</div>
+        <div class="gstin-row"><span class="gstin" data-nl>${esc(vn.gstin)}</span>
+          <button type="button" class="btn-sm" data-action="copy-gstin" data-id="${esc(vn.gstin)}" aria-label="Copy GSTIN">${icon('clipboard', 16)}${tr('Copy', 'कॉपी')}</button></div>
+        <a class="meta gst-link" href="https://services.gst.gov.in/services/searchtp" target="_blank" rel="noopener noreferrer">${tr('Check on the official GST portal (paste the GSTIN there)', 'अधिकृत जीएसटी पोर्टलवर तपासा')} ↗</a>` : ''}
+    </div>` : ''}
     ${vn.notes ? `<div class="card pad"><div class="label">Notes – नोंदी</div><div class="notes-text" data-nl>${esc(vn.notes)}</div></div>` : ''}
 
     <div class="card pad">
@@ -4692,6 +4744,7 @@ function setVenKind(kind) {
   q('ven-kind').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.kind === kind)));
   q('ven-kind-hint').hidden = !person;
   q('ven-cat-row').hidden = person;
+  q('ven-tax').hidden = person;   // a person (lender) has no GSTIN
   q('ven-name-lbl').innerHTML = person ? 'Name – नाव <span class="req">*</span>' : 'Vendor name – विक्रेत्याचे नाव <span class="req">*</span>';
   q('ven-name').placeholder = person ? 'Friend, relative, financier…' : 'Business / supplier name';
   q('btn-save-ven').textContent = person ? 'Save – जतन करा' : 'Save vendor – जतन करा';
@@ -4704,6 +4757,8 @@ function openVenModal(id, kind = 'vendor') {
   q('ven-name').value  = vn?.name  || '';
   q('ven-phone').value = vn?.phone || '';
   q('ven-notes').value = vn?.notes || '';
+  q('ven-gstin').value = vn?.gstin || '';
+  q('ven-legal').value = vn?.legalName || '';
   populateSelect('ven-cat', Object.keys(EXPENSE_HEADS), vn?.cat || (pickVendorForExpense ? qv('exp-cat') : pickVendorForEvent ? 'Operations' : ''));
   loadVenSpecialty(vn?.specialty || (pickVendorForExpense ? qv('exp-head') : pickVendorForEvent ? 'Outsourced Event – आउटसोर्स कार्यक्रम' : ''));
   setVenKind(vn ? (isPerson(vn) ? 'person' : 'vendor') : kind);
@@ -4720,13 +4775,18 @@ function loadVenSpecialty(selected = '') {
 async function saveVendor() {
   const data = { name: qv('ven-name'), phone: qv('ven-phone') };
   const { valid, errors } = validate(VENDOR_RULES, data);
-  if (!valid) { showFieldErrors({ 'ven-name': errors.name, 'ven-phone': errors.phone }); return; }
+  const person = q('ven-kind').dataset.value === 'person';
+  // GSTIN: optional, kept in capitals without spaces; checked (shape and check character) before saving
+  const gstin = person ? '' : normGstin(qv('ven-gstin')), legalName = person ? '' : qv('ven-legal').trim();
+  const gstErr = gstin && !gstinValid(gstin) ? (gstin.length !== 15 ? 'GSTIN has 15 characters – जीएसटीआयएन १५ अक्षरी असतो' : 'This GSTIN is not valid – please check it – जीएसटीआयएन तपासा') : '';
+  if (!valid || gstErr) { showFieldErrors({ 'ven-name': errors.name, 'ven-phone': errors.phone, ...(gstErr ? { 'ven-gstin': gstErr } : {}) }); return; }
 
   const id = qv('ven-id');
-  const person = q('ven-kind').dataset.value === 'person';
   const base = id ? formBase.ven : null;
+  // Same id, so every bill and payment stays linked; empty GST fields are removed rather than kept blank
   const record = editedRecord(base, { id: id || uid('VN'), name: data.name, cat: person ? '' : qv('ven-cat'), specialty: person ? '' : qv('ven-specialty'),
-                   phone: data.phone, notes: qv('ven-notes'), ...(person ? { kind: 'person' } : {}) }, person ? [] : ['kind']);
+                   phone: data.phone, notes: qv('ven-notes'), ...(person ? { kind: 'person' } : {}), ...(gstin ? { gstin } : {}), ...(legalName ? { legalName } : {}) },
+                   [...(person ? [] : ['kind']), ...(gstin ? [] : ['gstin']), ...(legalName ? [] : ['legalName'])]);
 
   await putChecked('vendors', record, base);
   if (id) D.vendors = D.vendors.map(v => v.id === id ? record : v);
@@ -5220,6 +5280,9 @@ function bindAllEvents() {
       case 'period':       period = id; writePref('ffv2_period', id); renderPage(CT); break;
       case 'ev-filter':    F.ev = id; rEvents(); break;
       case 'exp-filter': expensePage = 1; F.exp = id; rExp(); break;
+      case 'ven-filter': venShown = VEN_STEP; F.ven = id; rVen(); break;
+      case 'ven-more': venShown += VEN_STEP; rVen(); break;
+      case 'copy-gstin': copyText(id); break;
       case 'expense-prev': expensePage--; rExp(); window.scrollTo(0, 0); break;
       case 'expense-next': expensePage++; rExp(); window.scrollTo(0, 0); break;
     }
@@ -5265,7 +5328,9 @@ function bindAllEvents() {
   // Search boxes filter as you type
   q('ev-q').addEventListener('input', e => { F.evQ = e.target.value.trim(); rEvents(); });
   q('exp-q').addEventListener('input', e => { expensePage = 1; F.expQ = e.target.value.trim(); rExp(); });
-  q('ven-q').addEventListener('input', e => { F.venQ = e.target.value.trim(); rVen(); });
+  q('ven-q').addEventListener('input', e => { F.venQ = e.target.value.trim(); venShown = VEN_STEP; rVen(); });
+  populateSelect('ven-sort', Object.entries(VEN_SORTS).map(([v, l]) => ({ v, l })), F.venSort);
+  q('ven-sort').addEventListener('change', e => { F.venSort = VEN_SORTS[e.target.value] ? e.target.value : 'pay'; writePref('ffv2_ven_sort', F.venSort); venShown = VEN_STEP; rVen(); });
 
   ['fs-timings', 'fs-setup'].forEach(id => q(id).addEventListener('input', renderFunctionSheet));
   // Photo / import inputs

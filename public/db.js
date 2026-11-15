@@ -5,6 +5,7 @@
  * Images stored separately in 'photos' store (blob/base64)
  */
 
+import { gstinValid } from './utils.js';
 const DB_NAME    = 'FlavorFusionDB';
 /* Version 4 is kept on purpose: raising it breaks an older app version still open in another tab or window (its save
    would be refused by the browser). New kinds of records go into existing stores instead – the menu library lives in
@@ -478,6 +479,9 @@ export async function prepareImport(payload) {
       }
       if (row.guests !== undefined && (!Number.isSafeInteger(row.guests) || row.guests < 0)) throw new Error('Invalid guest count');
       if (['events', 'vendors'].includes(name) && (typeof row.name !== 'string' || !row.name.trim())) throw new Error('Missing name in ' + name);
+      // Vendor GSTIN and registered business name (4.27.0): optional; a person has neither
+      if (name === 'vendors' && ((row.gstin !== undefined && !gstinValid(row.gstin)) || (row.legalName !== undefined && (typeof row.legalName !== 'string' || row.legalName.length > 200))
+        || (row.kind === 'person' && (row.gstin !== undefined || row.legalName !== undefined)))) throw new Error('Invalid vendor GSTIN');
       if (name === 'events') { amount(row.billing, 'billing'); if (row.budget !== undefined) amount(row.budget, 'budget'); }
       if (['expenses', 'cPays', 'vPays'].includes(name)) amount(row.amt ?? (row.draft ? 0 : undefined), name);
       if (['events', 'expenses', 'cPays', 'vPays'].includes(name) && !row.draft && !validDate(row.date)) throw new Error('Invalid date in ' + name);
@@ -651,7 +655,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.26.1';
+export const APP_VERSION = '4.27.0';
 const COUNT_METHOD_IDS = ['tokens', 'tally', 'gate', 'coupons', 'joint', 'other'];
 // v4.18.0 kept menus in their own store (database version 5): copy them into meta once and empty that store
 export async function migrateLegacyMenus() {
