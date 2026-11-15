@@ -149,11 +149,12 @@ export async function commitChanges(changes, opts = {}) {
 }
 async function commitPhysical(changes, { clear = [], check = false, extraStores = [] } = {}) {
   const guardedDelete = check && changes.some(c => !c.record && ['events', 'vendors'].includes(c.store));
-  const names = [...new Set([...clear, ...extraStores, ...(guardedDelete ? STORES : []), ...changes.map(c => c.store)])];
+  const names = [...new Set([...clear, ...extraStores, ...(guardedDelete ? STORES : []), ...changes.map(c => c.store),
+    ...(changes.some(c => c.store === 'expenses' && c.record?.purchase !== undefined) ? ['events'] : [])])];
   if (!names.length) return;
   return withTx(db => new Promise((resolve, reject) => {
     const tx = transaction(db, names, 'readwrite');
-    let failure;
+    let failure; const purchaseChecked = new Set();
     tx.oncomplete = () => {
       changes.forEach(c => { if (c.record && c.nextRev) c.record._rev = c.nextRev; });
       resolve();
@@ -167,6 +168,21 @@ async function commitPhysical(changes, { clear = [], check = false, extraStores 
         const req = os.get(id);
         req.onsuccess = () => {
           try {
+            // A bill linked to a purchase (4.28.1): that purchase must be on the bill's own event, and the bill not also an order's
+            if (c.store === 'expenses' && c.record?.purchase !== undefined && !purchaseChecked.has(c)) {
+              const verdict = ev => {
+                if (typeof c.record.purchase === 'string' && !c.record.order && (ev?.purchases || []).some(x => x.id === c.record.purchase)) return true;
+                failure = new Error('This bill is linked to a purchase on another event. Nothing was saved.'); tx.abort(); return false;
+              };
+              const own = changes.find(op => op.store === 'events' && op.record?.id === c.record.evId);
+              if (own) { if (!verdict(own.record)) return; }
+              else {
+                const er = tx.objectStore('events').get(c.record.evId ?? '');
+                er.onsuccess = () => { if (verdict(er.result)) { purchaseChecked.add(c); req.onsuccess(); } };
+                er.onerror = e => { e.preventDefault?.(); failure = new Error('Could not verify the linked purchase. Nothing was saved.'); tx.abort(); };
+                return;
+              }
+            }
             const current = req.result;
             const canonicalObj = o => o ? JSON.stringify(Object.fromEntries(Object.entries(o).filter(([k]) => k !== '_rev').sort(([a],[b]) => a.localeCompare(b)))) : '';
             const revMismatch = current && c.expected && current._rev !== undefined && c.expected._rev !== undefined && current._rev !== c.expected._rev;
@@ -299,6 +315,25 @@ export async function saveEventPhotos(event, dataUrls) {
   return record;
 }
 
+// 4.28.0 could move a purchase's bill to another event (4.28.1 fix): on start, such a bill keeps everything except the
+// link to a purchase that is not on its event (or that is also an order's), so every later save and backup is valid.
+export async function repairPurchaseLinks() {
+  return withTx(db => new Promise((resolve, reject) => {
+    const tx = transaction(db, ['events', 'expenses'], 'readwrite');
+    let fixed = 0;
+    tx.oncomplete = () => resolve(fixed);
+    tx.onerror = tx.onabort = () => reject(tx.ffError || tx.error || new Error('Purchase link repair aborted'));
+    const evs = tx.objectStore('events').getAll(), exs = tx.objectStore('expenses').getAll();
+    const run = () => {
+      const owned = new Map((evs.result || []).map(e => [e.id, new Set((e.purchases || []).map(p => p.id))]));
+      for (const x of exs.result || []) {
+        if (x.purchase === undefined || (typeof x.purchase === 'string' && !x.order && owned.get(x.evId)?.has(x.purchase))) continue;
+        const { purchase: _gone, ...kept } = x; tx.objectStore('expenses').put({ ...kept, _rev: (Number(x._rev) || 0) + 1 }); fixed++;
+      }
+    };
+    let waiting = 2; evs.onsuccess = exs.onsuccess = () => { if (!--waiting) run(); };
+  }));
+}
 // If the OS stopped the app after a bill image committed but before its form was
 // saved, preserve the attachment as a draft instead of leaving an invisible orphan.
 export async function recoverUnlinkedBills() {
@@ -620,8 +655,8 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
   return withTx(db => new Promise((resolve, reject) => {
     const tx = transaction(db, [...BASE_STORES, 'meta'], 'readwrite');
     let failure;
-    const current = {}; let pending = DATA_STORES.length;
-    tx.oncomplete = () => resolve();
+    const current = {}; let pending = DATA_STORES.length, repaired = 0;
+    tx.oncomplete = () => resolve({ repaired });
     tx.onerror = tx.onabort = () => reject(failure || tx.ffError || tx.error || new Error('Import aborted; previous data retained'));
     DATA_STORES.forEach(name => {
       const req = tx.objectStore(phys(name)).getAll();
@@ -646,7 +681,12 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
             };
             if (store === 'expenses') { ref('evId', 'events', !row.draft && !row.stock); ref('venId', 'vendors'); }
             // A bill linked to a purchase (4.28.0): that purchase exists on the bill's event, and the bill is not also an order's
-            if (store === 'expenses' && row.purchase !== undefined && (typeof row.purchase !== 'string' || row.order || !(final.events.get(row.evId)?.purchases || []).some(x => x.id === row.purchase))) throw new Error('Invalid purchase link in expenses: ' + row.id);
+            if (store === 'expenses' && row.purchase !== undefined && typeof row.purchase !== 'string') throw new Error('Invalid purchase link in expenses: ' + row.id);
+            // 4.28.0 could move a purchase's bill to another event: such a backup still restores in full. The bill and its
+            // amount are kept; only the link to a purchase that is not on its event (or that is also an order's) is removed.
+            if (store === 'expenses' && row.purchase !== undefined && (row.order || !(final.events.get(row.evId)?.purchases || []).some(x => x.id === row.purchase))) {
+              const { purchase: _gone, ...kept } = row; rows.set(row.id, kept); repaired++;
+            }
             if (store === 'cPays') ref('evId', 'events', true);
             if (store === 'vPays') { ref('venId', 'vendors', true); ref('evId', 'events'); }
             if (store === 'photos') { ref('eventId', 'events'); ref('expenseId', 'expenses'); }
@@ -668,7 +708,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.28.0';
+export const APP_VERSION = '4.28.1';
 const COUNT_METHOD_IDS = ['tokens', 'tally', 'gate', 'coupons', 'joint', 'other'];
 // v4.18.0 kept menus in their own store (database version 5): copy them into meta once and empty that store
 export async function migrateLegacyMenus() {
@@ -695,5 +735,6 @@ export async function checkAndMigrate() {
   }
   await setMeta('app_version', APP_VERSION);
   await recoverUnlinkedBills();
+  try { await repairPurchaseLinks(); } catch (e) { console.error('Purchase link repair left unchanged:', e); }
   return storedVer;
 }

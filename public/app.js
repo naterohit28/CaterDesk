@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.28.0';
+const APP_BUILD = '4.28.1';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -4354,6 +4354,8 @@ function useVenueOffer() {
 
 let expLogi = '';
 let expOrder = '', expPurchase = '';
+// A bill's purchase link is valid only on the purchase's own event, and never together with an order link
+const purchaseOwned = x => !x.order && (D.events.find(e => e.id === x.evId)?.purchases || []).some(p => p.id === x.purchase);
 
 // Values the menu last filled in, so a changed menu or guest count updates them
 // but never overwrites a figure typed by hand
@@ -4715,7 +4717,8 @@ function openExpModal(arg) {
   q('btn-del-exp').hidden       = !ex;
   // A part of a shared bill: its amount and event come from the split; change them with "Share bill"
   const part = ex?.split ? splitParts(D.expenses, ex.split.id) : null;
-  q('exp-amt').disabled = !!part; q('exp-ev').disabled = !!part || !!ex?.stock;
+  // A purchase's bill stays on the purchase's event (4.28.1): its event cannot be changed here
+  q('exp-amt').disabled = !!part; q('exp-ev').disabled = !!part || !!ex?.stock || !!(ex?.purchase || (!ex && expPurchase));
   q('exp-split-note').hidden = !part && !ex?.stock;
   q('exp-split-note').innerHTML = part && ex.stock ? tr(`Shared bill: the common-stock part of ${fmtCurrency(ex.split.total)}, on no event yet. To use it for an event, move it with Split bill; the bill total stays the same.`,
     `वाटलेले बिल: ${fmtCurrency(ex.split.total)} पैकी साठ्याचा भाग.`)
@@ -4848,6 +4851,7 @@ async function saveExpense({ next = false } = {}) {
   const base = formBase.exp && formBase.exp.id === expWork.id ? formBase.exp : null;
   if (base?.split) { data.amt = base.amt; data.evId = base.evId; }   // set by the split, not this form
   if (base?.stock) data.evId = '';                                   // common stock moves to an event only through the split
+  if (base?.purchase && purchaseOwned(base)) data.evId = base.evId;  // a purchase's bill stays on the purchase's event
   const { errors } = validate(EXPENSE_RULES, data);
   if (base?.stock) delete errors.evId;
   const venId = qv('exp-vendor').startsWith('__new') ? '' : qv('exp-vendor');
@@ -4899,10 +4903,12 @@ async function saveExpense({ next = false } = {}) {
     billIds: expWork.bills.map(b => b.id),
     ...(additional ? { additional: true } : {})
   }, ['draft', ...(additional ? [] : ['additional']), ...(billNo ? [] : ['billNo'])]);   // a filled-in bill draft becomes a normal expense
+  if (record.purchase && !purchaseOwned(record)) delete record.purchase;   // a link 4.28.0 left pointing at another event's purchase
 
   // One shared bill: vendor, item, date and payment stay the same on every part
   const siblings = base?.split ? splitParts(D.expenses, base.split.id).filter(x => x.id !== record.id).map(s => {
     const { _rev, billNo: _no, ...r } = s;
+    if (r.purchase && !purchaseOwned(r)) delete r.purchase;
     return { store: 'expenses', record: { ...r, cat: record.cat, head: record.head, date: record.date, pay: record.pay, mode: record.mode, venId: record.venId, dueDate: record.dueDate, notes: record.notes, ...(billNo ? { billNo } : {}) }, expected: s };
   }) : [];
   await commitChanges([{ store: 'expenses', record, expected: base }, ...siblings, ...expWork.removed.map(id => ({ store: 'photos', id, unchecked: true }))], { check: true, extraStores: ['events', 'vendors'] });
@@ -5410,13 +5416,13 @@ async function handleImport(file) {
       if (!mode) return;
 
       showLoading(true);
-      await importAllData(payload, mode);
+      const { repaired = 0 } = await importAllData(payload, mode) || {};
       if (mode === 'replace') restorePrefs(payload.prefs);   // merge keeps this phone's settings
       await loadAll();
       changesChannel?.postMessage('changed');
       go('home');
       renderPage('home');
-      showToast('Imported – आयात झाली');
+      showToast(repaired ? `Imported. ${repaired} bill${repaired > 1 ? 's were' : ' was'} linked to a purchase on another event; the bill${repaired > 1 ? 's are' : ' is'} kept, the link removed. – आयात झाली` : 'Imported – आयात झाली');
     } catch (err) {
       showToast(err.message || 'Import failed. Existing data was kept. – आयात अयशस्वी', 'error');
       console.error(err);
