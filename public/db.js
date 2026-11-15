@@ -544,6 +544,15 @@ export async function prepareImport(payload) {
         || (o.basis !== undefined && (!o.basis || !Number.isSafeInteger(o.basis.guests) || o.basis.guests < 0 || !['meal', 'event'].includes(o.basis.from)))
         || (o.reminded !== undefined && (!Array.isArray(o.reminded) || o.reminded.length > 20 || o.reminded.some(t => typeof t !== 'string' || t.length > 40)))))) throw new Error('Invalid order');
       if (row.orders?.some(o => o?.messages !== undefined && (!Array.isArray(o.messages) || o.messages.some(m => !m || typeof m.text !== 'string' || !['prepared', 'opened', 'sent', 'confirmed'].includes(m.status))))) throw new Error('Invalid order messages');
+      // Purchases of bought items (4.28.0)
+      if (row.purchases !== undefined && (!Array.isArray(row.purchases) || row.purchases.length > 500 || new Set(row.purchases.map(p => p?.id)).size !== row.purchases.length
+        || row.purchases.some(p => !p || typeof p.id !== 'string' || !p.id || p.id.length > 40 || typeof p.item !== 'string' || !p.item.trim() || !['buy', 'finish'].includes(p.src)
+          || (p.svc !== undefined && (typeof p.svc !== 'string' || !p.svc || p.svc.length > 40)) || (p.venId !== undefined && typeof p.venId !== 'string')
+          || typeof p.qty !== 'number' || !Number.isFinite(p.qty) || p.qty <= 0 || !['pcs', 'kg', 'litre', 'packet', 'bottle', 'carton', 'tub', 'box'].includes(p.unit)
+          || !validDate(p.date) || (p.time !== undefined && (typeof p.time !== 'string' || p.time.length > 10)) || (p.notes !== undefined && (typeof p.notes !== 'string' || p.notes.length > 500))
+          || (p.estCost !== undefined && (amount(p.estCost, 'estimated cost'), false)) || !['prepared', 'opened', 'sent', 'confirmed', 'delivered', 'cancelled'].includes(p.status)
+          || (p.changed !== undefined && p.changed !== true) || (p.messages !== undefined && (!Array.isArray(p.messages) || p.messages.some(m => !m || typeof m.text !== 'string' || !['prepared', 'opened', 'sent', 'confirmed'].includes(m.status))))
+          || (p.reminded !== undefined && (!Array.isArray(p.reminded) || p.reminded.length > 20 || p.reminded.some(t => typeof t !== 'string' || t.length > 40)))))) throw new Error('Invalid purchase');
       if (row.additional !== undefined && typeof row.additional !== 'boolean') throw new Error('Invalid extra flag');
       if (row.split !== undefined && (!row.split || typeof row.split.id !== 'string' || (amount(row.split.total, 'shared bill'), false))) throw new Error('Invalid shared bill');
       if (row.stock !== undefined && (row.stock !== true || name !== 'expenses' || row.evId)) throw new Error('Invalid common stock entry');
@@ -636,6 +645,8 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
               if ((required || row[field]) && !final[target].has(row[field])) throw new Error('Missing ' + target + ' reference in ' + store + ': ' + row.id);
             };
             if (store === 'expenses') { ref('evId', 'events', !row.draft && !row.stock); ref('venId', 'vendors'); }
+            // A bill linked to a purchase (4.28.0): that purchase exists on the bill's event, and the bill is not also an order's
+            if (store === 'expenses' && row.purchase !== undefined && (typeof row.purchase !== 'string' || row.order || !(final.events.get(row.evId)?.purchases || []).some(x => x.id === row.purchase))) throw new Error('Invalid purchase link in expenses: ' + row.id);
             if (store === 'cPays') ref('evId', 'events', true);
             if (store === 'vPays') { ref('venId', 'vendors', true); ref('evId', 'events'); }
             if (store === 'photos') { ref('eventId', 'events'); ref('expenseId', 'expenses'); }

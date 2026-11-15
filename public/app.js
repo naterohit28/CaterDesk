@@ -1509,6 +1509,7 @@ function dishGroups(ev) {
   const groups = new Map();
   for (const d of ev.dishes || []) {
     if (isUnassigned(ev, d)) continue;   // its meal is no longer in the event: nothing is ordered for it
+    if (d.src) continue;                 // bought: under To buy, not the kitchen or a counter
     if (!groups.has(d.head || '')) groups.set(d.head || '', []);
     groups.get(d.head || '').push(d.name);
   }
@@ -1633,11 +1634,181 @@ function menuOrdersCard(ev) {
       ${ev.outsourced ? `<div class="meta" style="padding:var(--s3) var(--s4)">${tr('Outsourced event: the full menu goes to the caterer doing the event.', 'आउटसोर्स कार्यक्रम: संपूर्ण मेनू त्या केटररला जातो.')}</div>` : `<div style="padding:var(--s3) var(--s4)">
         <div class="meta" style="margin-bottom:var(--s2)">${tr('Tap a dish to change where it comes from', 'पदार्थ कुठून येतो ते बदलण्यासाठी टॅप करा')}</div>
         <div class="chips-row" style="margin:0;padding:0;flex-wrap:wrap">${dishes.map((d, i) =>
-          `<button type="button" class="f-chip" data-action="dish-assign" data-id="${i}" data-nl style="max-width:100%;overflow:hidden;text-overflow:ellipsis">${esc(d.name)}${d.head ? ` · ${esc(short(d.head))}` : ''}${d.meal ? ` · ${esc(MEALS[d.meal] || '')}${isUnassigned(ev, d) ? ' (not in this event)' : ''}` : ''}</button>`).join('')}</div>
+          `<button type="button" class="f-chip" data-action="dish-assign" data-id="${i}" data-nl style="max-width:100%;overflow:hidden;text-overflow:ellipsis">${esc(d.name)}${d.src ? ` · ${esc(SRC_NAME[d.src])}` : ''}${d.head ? ` · ${esc(short(d.head))}` : ''}${d.meal ? ` · ${esc(MEALS[d.meal] || '')}${isUnassigned(ev, d) ? ' (not in this event)' : ''}` : ''}</button>`).join('')}</div>
         ${dishes.some(d => isUnassigned(ev, d)) ? `<div class="meta" style="margin-top:var(--s2);color:var(--due)">${tr('Some dishes are for a meal no longer in this event. They are kept but not ordered: edit the menu to choose a meal for them.', 'काही पदार्थ आता नसलेल्या जेवणाचे आहेत. मेनू बदलून जेवण निवडा.')}</div>` : ''}
       </div>`}
       ${offMenuOrders(ev)}
-    </div>`;
+    </div>${buyCard(ev)}`;
+}
+
+/* ── PURCHASES (4.28.0): things bought ready-made, or bought and finished by us ──────────────
+   Kept apart from counter orders (ev.orders). One purchase is one item for one meal (or for every meal, when the dish
+   is served at every meal): supplier, quantity and unit, delivery date and time, instructions and an optional
+   estimated cost (never added to costs). WhatsApp messages are versioned like orders; nothing is resent by itself;
+   no expense is made by itself: the delivered purchase's bill is recorded or linked once (x.purchase). */
+const BUY_UNITS = [['pcs', 'pieces – नग'], ['kg', 'kg – किलो'], ['litre', 'litres – लिटर'], ['packet', 'packets – पाकीट'],
+  ['bottle', 'bottles – बाटल्या'], ['carton', 'cartons – खोके'], ['tub', 'tubs – टब'], ['box', 'boxes – बॉक्स']];
+const UNIT_NAME = Object.fromEntries(BUY_UNITS.map(([k, l]) => [k, l.split(' – ')[0]]));
+const buyKey = (svc, name) => `${svc || '*'}|${String(name).trim().toLowerCase()}`;
+// The bought dishes, one row per meal (a dish served at every meal: one row for all of them)
+function buyRows(ev) {
+  if (ev?.outsourced) return [];
+  const { services } = eventServices(ev), rows = [], seen = new Set();
+  for (const s of services) for (const d of s.dishes) {
+    if (!d.src || d.preview) continue;
+    const svc = d.shared ? '' : s.id, key = buyKey(svc, d.name);
+    if (seen.has(key)) continue; seen.add(key);
+    rows.push({ key, svc, name: d.name, src: d.src, meal: d.shared ? '' : s.meal,
+      label: d.shared ? (services.length > 1 ? 'Every meal' : '') : s.meal ? svcLabel(ev, s, services) : '' });
+  }
+  return rows;
+}
+const buyOf = (ev, key) => [...(ev.purchases || [])].reverse().find(p => p.status !== 'cancelled' && buyKey(p.svc, p.item) === key) || null;
+const purchaseBillOf = p => D.expenses.find(x => x.purchase === p.id) || null;
+function buyStatus(p) {
+  const st = ORDER_STATUS[p.status] || ORDER_STATUS.sent;
+  if (p.status !== 'delivered') return st;
+  return purchaseBillOf(p) ? { en: 'Delivered · billed', mr: 'आले · बिल', tone: 'pos' } : { en: 'Delivered · bill not in', mr: 'आले · बिल नाही', tone: 'due' };
+}
+const qtyText = p => `${p.qty} ${UNIT_NAME[p.unit] || p.unit}`;
+function buyCard(ev) {
+  const rows = buyRows(ev), keys = new Set(rows.map(r => r.key));
+  const off = new Map();
+  for (const p of ev.purchases || []) if (p.status !== 'cancelled' && !keys.has(buyKey(p.svc, p.item))) off.set(buyKey(p.svc, p.item), p);
+  if (!rows.length && !off.size) return '';
+  const chip = p => { const st = buyStatus(p), ven = D.vendors.find(v => v.id === p.venId);
+    return `<button type="button" class="chip ${p.changed ? 'due' : st.tone}" data-action="buy-status" data-id="${esc(p.id)}">${p.changed ? tr('Menu changed · review', 'मेनू बदलला · तपासा') : tr(st.en, st.mr)}</button>`; };
+  const line = (title, meta, end, key) => `<div class="row" style="min-height:56px"${key ? ` data-buy="${esc(key)}"` : ''}><div class="row-ic">${icon('basket', 18)}</div>
+      <div class="row-body"><div class="title-sm trunc" data-nl>${title}</div><div class="meta trunc" data-nl>${meta}</div></div>${end}</div>`;
+  return `<div class="sec"><span class="sec-title">${tr('To buy', 'विकत घ्यायचे')}</span><span class="meta">${tr('bought ready-made or to finish', 'तयार / आपण पूर्ण करू')}</span></div>
+    <div class="card list" id="buy-list">${rows.map(r => { const p = buyOf(ev, r.key), ven = p && D.vendors.find(v => v.id === p.venId);
+      return line(esc(r.name) + (r.label ? ` · ${esc(r.label)}` : ''), [SRC_NAME[r.src], p ? `${ven?.name || ''} · ${qtyText(p)}` : ''].filter(Boolean).map(esc).join(' · '),
+        p ? chip(p) : `<button type="button" class="btn-sm" data-action="buy-new" data-id="${esc(r.key)}">${icon('message', 16)}${tr('Order', 'ऑर्डर')}</button>`, r.key); }).join('')}
+    ${[...off.values()].map(p => line(esc(p.item), `${tr('Not on the current menu', 'सध्याच्या मेनूत नाही')} · ${esc(qtyText(p))}`, chip(p))).join('')}</div>`;
+}
+// Purchases already given to a supplier whose item later left the menu, moved to another meal or changed sourcing
+function purchasesHit(before, after) {
+  const was = new Map(buyRows(before).map(r => [r.key, r])), now = new Map(buyRows(after).map(r => [r.key, r]));
+  return (before.purchases || []).filter(p => ['opened', 'sent', 'confirmed'].includes(p.status)).filter(p => {
+    const k = buyKey(p.svc, p.item); return was.has(k) && (!now.has(k) || now.get(k).src !== p.src); }).map(p => p.id);
+}
+const flagPurchases = (ev, after, patch) => { const hit = new Set(purchasesHit(ev, after)); if (hit.size) patch.purchases = ev.purchases.map(p => hit.has(p.id) ? { ...p, changed: true } : p); return hit.size; };
+
+function openBuyModal({ key = '', id = '' }) {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const p = id ? (ev.purchases || []).find(x => x.id === id) : null, row = p ? null : buyRows(ev).find(r => r.key === key);
+  if (!p && !row) return;
+  const item = p?.item || row.name, svc = p ? p.svc || '' : row.svc, src = p?.src || row.src;
+  const all = eventServices(ev).services, s = svc ? all.find(x => x.id === svc) : null;
+  q('buy-id').value = p?.id || ''; q('buy-svc').value = svc; q('buy-item').value = item; q('buy-src').value = src;
+  q('buy-mtitle').textContent = `${item}${s?.meal ? ` · ${svcLabel(ev, s, all)}` : ''}`;
+  q('buy-what').textContent = `${SRC_NAME[src]}${src === 'finish' ? ' – our kitchen finishes it' : ''}`;
+  const sup = D.vendors.filter(v => !isPerson(v)).sort((a, b) => a.name.localeCompare(b.name));
+  populateSelect('buy-ven', [{ v: '', l: 'Choose supplier – पुरवठादार निवडा' }, ...sup.map(v => ({ v: v.id, l: v.name + (v.gstin ? ` · ${v.gstin}` : '') + (v.phone ? '' : ' (no phone)') }))], p?.venId || '');
+  q('buy-qty').value = p?.qty || ''; populateSelect('buy-unit', BUY_UNITS.map(([v, l]) => ({ v, l })), p?.unit || 'pcs');
+  q('buy-date').value = p?.date || s?.date || ev.date; q('buy-time').value = p?.time || s?.time || '';
+  q('buy-notes').value = p?.notes || ''; q('buy-est').value = p?.estCost ?? '';
+  q('btn-cancel-buy').hidden = !p;
+  clearFieldErrors(); openSheet('buy-modal');
+}
+function buyMessage(ev, p, ven) {
+  const all = eventServices(ev).services, s = p.svc ? all.find(x => x.id === p.svc) : null, meal = s?.meal ? svcLabel(ev, s, all) : '';
+  return `Namaste ${ven.name}! Purchase order for ${ev.name}:\nItem: ${p.item}\nQuantity: ${qtyText(p)}\n`
+    + `Deliver: ${fmtDate(p.date)}${p.time ? ', ' + p.time : ''}${meal ? ' (' + meal + ')' : ''}\nVenue: ${ev.venue || '-'}\n`
+    + (p.notes ? `Note: ${p.notes}\n` : '') + `\nPlease confirm. Thank you!`;
+}
+async function sendBuy() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const venId = qv('buy-ven'), qty = Number(qv('buy-qty')), unit = qv('buy-unit'), date = qv('buy-date'), est = qv('buy-est');
+  const errs = {};
+  if (!venId) errs['buy-ven'] = 'Choose a supplier – पुरवठादार निवडा';
+  if (!(qty > 0) || Math.round(qty * 1000) !== qty * 1000) errs['buy-qty'] = 'Enter the quantity – संख्या लिहा';
+  if (!UNIT_NAME[unit]) errs['buy-unit'] = 'Choose a unit – एकक निवडा';
+  if (!date) errs['buy-date'] = 'Delivery date – दिनांक';
+  if (est !== '' && !(Number(est) >= 0 && Math.round(Number(est) * 100) === Number(est) * 100)) errs['buy-est'] = 'An amount in ₹ (up to 2 decimals) – रक्कम';
+  if (Object.keys(errs).length) { showFieldErrors(errs); return; }
+  const ven = D.vendors.find(v => v.id === venId), phoneOk = !!phoneDigits(ven?.phone);
+  const id = qv('buy-id') || uid('PO'), old = (ev.purchases || []).find(x => x.id === id);
+  const all = eventServices(ev).services, s = qv('buy-svc') ? all.find(x => x.id === qv('buy-svc')) : null;
+  const now = new Date().toISOString();
+  const status = !old || old.status === 'cancelled' ? (phoneOk ? 'opened' : 'prepared') : old.status === 'prepared' && phoneOk ? 'opened' : old.status;
+  const p = { ...(old || {}), id, item: qv('buy-item'), src: qv('buy-src'), venId, qty, unit, date, status, at: now,
+    basis: { item: qv('buy-item'), src: qv('buy-src'), meal: s?.meal || '' } };
+  if (qv('buy-svc')) p.svc = qv('buy-svc'); else delete p.svc;
+  for (const [k, v] of [['time', qv('buy-time')], ['notes', qv('buy-notes').trim()]]) if (v) p[k] = v; else delete p[k];
+  if (est !== '') p.estCost = Number(est); else delete p.estCost;
+  const versioned = addOrderMessage(old?.messages, buyMessage(ev, p, ven), phoneOk, now);
+  p.messages = versioned.messages;
+  // A changed instruction is not sent or confirmed yet; a menu-change warning stays until it is marked sent
+  if (versioned.changed && old && ['sent', 'confirmed'].includes(old.status)) p.status = phoneOk ? 'opened' : 'prepared';
+  await patchEvent(ev.id, { purchases: old ? ev.purchases.map(x => x.id === id ? p : x) : [...(ev.purchases || []), p] });
+  closeModals(); refreshCurrent();
+  const phone = phoneDigits(ven?.phone);
+  if (phone) window.open(`https://wa.me/${phone}?text=${encodeURIComponent(p.messages.at(-1).text)}`, '_blank', 'noopener');
+  else showToast(`Purchase saved. ${ven?.name || 'This supplier'} has no phone number – add it to send on WhatsApp.`, 'error');
+}
+async function setBuyStatus(ev, id, next) {
+  await patchEvent(ev.id, { purchases: ev.purchases.map(x => { if (x.id !== id) return x; const y = { ...x, status: next };
+    if (['sent', 'confirmed'].includes(next)) { delete y.changed; if (y.messages?.length) y.messages = markOrderMessage(y.messages, next, new Date().toISOString()); }
+    return y; }) });
+}
+async function buyAction(id) {
+  const ev = D.events.find(e => e.id === curRef); const p = ev?.purchases?.find(x => x.id === id); if (!p) return;
+  const ven = D.vendors.find(v => v.id === p.venId);
+  const next = await askSheet({ title: `${p.item} · ${ven?.name || ''} – ${buyStatus(p).en}`, message: `${qtyText(p)} · ${fmtDate(p.date)}${p.time ? ' ' + p.time : ''}${p.estCost != null ? ` · estimate ${fmtCurrency(p.estCost)}` : ''}\n${orderSteps(p)}`,
+    actions: [
+      ...(['prepared', 'opened'].includes(p.status) || p.changed ? [{ label: 'I have sent it – पाठवले', value: 'sent', style: 'btn-secondary' }] : []),
+      ...(['prepared', 'opened', 'sent'].includes(p.status) || p.changed ? [{ label: 'Supplier confirmed – पक्के', value: 'confirmed', style: 'btn-secondary' }] : []),
+      ...(p.status !== 'delivered' ? [{ label: 'Delivered · record bill – आले, बिल नोंदवा', value: 'delivered', style: 'btn-primary' }] : []),
+      ...(['opened', 'sent'].includes(p.status) && !p.changed ? [{ label: 'Remind to confirm – आठवण द्या', value: 'remind', style: 'btn-secondary' }] : []),
+      { label: 'Edit / send again – बदला', value: 'edit', style: 'btn-secondary' },
+      ...((p.messages || []).length ? [{ label: `Message history (${p.messages.length}) – संदेशांचा इतिहास`, value: 'history', style: 'btn-secondary' }] : []),
+      ...(p.status === 'delivered' && !purchaseBillOf(p) ? [{ label: 'Record / link its bill – बिल नोंदवा', value: 'bill', style: 'btn-primary' }] : []),
+      ...(p.status !== 'delivered' ? [{ label: 'Cancel purchase – रद्द', value: 'cancelled', style: 'btn-danger' }] : [])] });
+  if (!next) return;
+  if (next === 'edit') { openBuyModal({ id }); return; }
+  if (next === 'bill') { purchaseBill(ev, p); return; }
+  if (next === 'history') {
+    const MSG = { prepared: 'Not sent yet', opened: 'WhatsApp opened (not confirmed sent)', sent: 'Sent (you confirmed)', confirmed: 'Supplier confirmed' };
+    await askSheet({ title: `${p.item} · messages – संदेश`, message: [...p.messages].reverse().map(m => `Version ${m.v} · ${fmtDate(localDay(m.at))} · ${MSG[m.status]}\n${m.text}`).join('\n\n— — —\n\n'), actions: [] });
+    return;
+  }
+  if (next === 'remind') {
+    const phone = phoneDigits(ven?.phone);
+    if (!phone) { showToast(`${ven?.name || 'This supplier'} has no phone number – add it to send a reminder on WhatsApp.`, 'error'); return; }
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(`Namaste ${ven.name}! A reminder for ${ev.name}:\nItem: ${p.item}\nQuantity: ${qtyText(p)}\nDeliver: ${fmtDate(p.date)}${p.time ? ', ' + p.time : ''}\n\nPlease confirm everything is on track. Thank you!`)}`, '_blank', 'noopener');
+    await patchEvent(ev.id, { purchases: ev.purchases.map(x => x.id === id ? { ...x, reminded: [...(x.reminded || []), new Date().toISOString()].slice(-20) } : x) });
+    refreshCurrent(); return;
+  }
+  await setBuyStatus(ev, id, next);
+  refreshCurrent();
+  if (next === 'delivered') purchaseBill(D.events.find(e => e.id === ev.id) || ev, { ...p, status: 'delivered' });
+}
+/* Delivered: its bill. If this supplier already has an unlinked bill on the event (entered from the bill itself),
+   link it instead of recording it again; otherwise record it, linked. A bill is linked to one order or one purchase. */
+async function purchaseBill(ev, p) {
+  if (purchaseBillOf(p)) { showToast('Its bill is already recorded – बिल आधीच नोंदवले'); return; }
+  const ven = D.vendors.find(v => v.id === p.venId);
+  const open = D.expenses.filter(x => x.evId === ev.id && x.venId === p.venId && !x.order && !x.purchase && !x.draft).slice(0, 3);
+  if (open.length) {
+    const pick = await askSheet({ title: 'Bill already recorded? – बिल आधीच नोंदवले?',
+      message: `${ven?.name || 'This supplier'} already has ${open.length === 1 ? 'a bill' : 'bills'} on this event. If this delivery's bill is one of these, link it so it is not counted twice.`,
+      actions: [...open.map(x => ({ label: `Link: ${short(x.head || x.cat)} · ${fmtCurrency(x.split?.total ?? x.amt)} · ${fmtDate(x.date)}`, value: x.id, style: 'btn-primary' })),
+        { label: 'No, record a new bill – नवीन बिल', value: 'new', style: 'btn-secondary' }] });
+    if (!pick) return;
+    if (pick !== 'new') {
+      const x = D.expenses.find(e => e.id === pick); if (!x) return;
+      const { _rev, ...rec } = x;
+      await commitChanges([{ store: 'expenses', record: { ...rec, purchase: p.id }, expected: x }], { check: true, extraStores: ['events', 'vendors'] });
+      await loadAll(); refreshCurrent(); showToast('Bill linked to the purchase – बिल खरेदीला जोडले'); return;
+    }
+  }
+  openExpModal({ prefill: { evId: ev.id, cat: 'Raw Material', venId: p.venId, purchase: p.id, ...(p.estCost != null ? {} : {}) } });
+}
+async function cancelBuyFromSheet() {
+  const id = qv('buy-id'); const ev = D.events.find(e => e.id === curRef); if (!ev || !id) return;
+  await patchEvent(ev.id, { purchases: ev.purchases.map(x => x.id === id ? { ...x, status: 'cancelled' } : x) });
+  closeModals(); refreshCurrent();
 }
 
 // Save changed menu/orders on the event currently open
@@ -1722,6 +1893,7 @@ async function saveMenu() {
     patch.menuVersions = [...(ev.menuVersions || []), { at: new Date().toISOString(), dishes: before }].slice(-20);
     const hit = new Set(ordersHit(ev, { ...ev, dishes }));
     if (hit.size) patch.orders = ev.orders.map(o => hit.has(o.id) ? { ...o, menuChanged: true } : o);
+    flagPurchases(ev, { ...ev, dishes }, patch);
   }
   await patchEvent(ev.id, patch);
   closeModals();
@@ -1737,12 +1909,17 @@ async function assignDish(i) {
   const heads = EXPENSE_HEADS['Live Counter'].filter(h => !/counter setup/i.test(h));
   const head = await askSheet({
     title: `${d.name} – comes from?`,
-    actions: [{ label: 'Our kitchen – आपले किचन', value: '__kitchen', style: 'btn-secondary' },
+    actions: [{ label: 'Our kitchen – आपले किचन', value: '__kitchen', style: !d.src && !d.head ? 'btn-primary' : 'btn-secondary' },
+              ...SRC_OPTS.map(([v, l]) => ({ label: l, value: v, style: whoValue(d) === v ? 'btn-primary' : 'btn-secondary' })),
               ...heads.map(h => ({ label: h, value: h, style: h === d.head ? 'btn-primary' : 'btn-secondary' }))]
   });
   if (!head) return;
-  const dishes = ev.dishes.map((x, j) => j === i ? { ...x, head: head === '__kitchen' ? '' : head, manual: true } : x);
-  await patchEvent(ev.id, { dishes });
+  const dishes = ev.dishes.map((x, j) => { if (j !== i) return x; const y = { ...x }; setWho(y, head === '__kitchen' ? '' : head); return y; });
+  const patch = { dishes };
+  const hit = new Set(ordersHit(ev, { ...ev, dishes }));   // a counter order or purchase that lost this dish is flagged; nothing is resent
+  if (hit.size) patch.orders = ev.orders.map(o => hit.has(o.id) ? { ...o, menuChanged: true } : o);
+  flagPurchases(ev, { ...ev, dishes }, patch);
+  await patchEvent(ev.id, patch);
   refreshCurrent();
 }
 
@@ -1899,7 +2076,7 @@ const orderBillOf = o => D.expenses.find(x => x.order === o.id) || null;
 async function orderBill(ev, o) {
   if (orderBillOf(o)) { showToast('Its bill is already recorded – बिल आधीच नोंदवले'); return; }
   const ven = D.vendors.find(v => v.id === o.venId);
-  const open = D.expenses.filter(x => x.evId === ev.id && x.venId === o.venId && !x.order && !x.draft).slice(0, 3);
+  const open = D.expenses.filter(x => x.evId === ev.id && x.venId === o.venId && !x.order && !x.purchase && !x.draft).slice(0, 3);
   if (open.length) {
     const pick = await askSheet({ title: 'Bill already recorded? – बिल आधीच नोंदवले?',
       message: `${ven?.name || 'This vendor'} already has ${open.length === 1 ? 'a bill' : 'bills'} on this event. If the delivery's bill is one of these, link it so it is not counted twice.`,
@@ -2701,13 +2878,14 @@ async function saveServiceSheet() {
       dishes: [...clean, ...s.dishes.filter(d => d.shared)] };
   });
   const patch = applyServices(ev, all);
-  const before = ev.dishes || [], sig = list => list.map(d => JSON.stringify([d.name, d.meal || '', d.svc || '', d.head || '', d.cat || '', d.type || '', d.diet || []])).sort().join('\n');
+  const before = ev.dishes || [], sig = list => list.map(d => JSON.stringify([d.name, d.meal || '', d.svc || '', d.head || '', d.src || '', d.cat || '', d.type || '', d.diet || []])).sort().join('\n');
   if (sig(before) === sig(patch.dishes)) patch.dishes = before;   // same dishes: kept in their order, no new menu version
   else if (before.length) {
     // Keep the previous menu and mark sent orders whose counter's dishes changed; nothing is re-sent
     patch.menuVersions = [...(ev.menuVersions || []), { at: new Date().toISOString(), dishes: before }].slice(-20);
     const hit = new Set(ordersHit(ev, { ...ev, ...patch }));
     if (hit.size) patch.orders = ev.orders.map(o => hit.has(o.id) ? { ...o, menuChanged: true } : o);
+    flagPurchases(ev, { ...ev, ...patch }, patch);
   }
   const btn = q('btn-save-svc'), label = btn.textContent;
   btn.disabled = true; btn.textContent = 'Saving… – जतन होत आहे';
@@ -3097,7 +3275,8 @@ function functionSheetText(ev, extra = ev.functionSheet || {}) {
   if (cp.rules) L.push(`- Rules: ${cp.rules}`);
   const groups = dishGroups(ev), menu = menuById(ev.menu);
   L.push('', 'MENU');
-  if (groups.size) {
+  const bought = buyRows(ev);
+  if (groups.size || bought.length) {
     // One line per counter and meal, each with its own order (vendor, plates, status); an older order made for every
     // meal is shown where a meal has no order of its own
     if (groups.has('')) L.push(`- Our kitchen: ${groups.get('').join(', ')}`);
@@ -3108,6 +3287,10 @@ function functionSheetText(ev, extra = ev.functionSheet || {}) {
       L.push(`- ${ev.outsourced ? 'Whole event' : short(r.head)}${r.label ? ` · ${r.label}` : ''}: ${r.names.join(', ')}`);
       L.push(`  ${ven ? `${ven.name}${ven.phone ? ' (' + ven.phone + ')' : ''}` : 'No vendor order yet'}${o ? ` · ${o.plates ? o.plates + ' plates · ' : ''}${ORDER_STATUS[o.status]?.en || o.status}${own ? '' : ' (older order, all meals)'}` : ''}`);
     }
+    // Bought items: ready-made, or bought and finished in our kitchen, with their purchase
+    for (const r of bought) { const pu = buyOf(ev, r.key), sv = pu && D.vendors.find(v => v.id === pu.venId);
+      L.push(`- ${SRC_NAME[r.src]}${r.label ? ` · ${r.label}` : ''}: ${r.name}`);
+      L.push(`  ${pu ? `${sv?.name || 'Supplier'}${sv?.phone ? ' (' + sv.phone + ')' : ''} · ${qtyText(pu)} · ${ORDER_STATUS[pu.status]?.en || pu.status}` : 'No purchase order yet'}`); }
   } else if (menu) L.push(`- ${menu.name}: ${menu.items.join(', ')}`);
   else L.push('- Not entered');
   const staff = (ev.labour?.rows || []).map(labRow).filter(r => !isExtra(r) && heads(r));
@@ -4168,7 +4351,7 @@ function useVenueOffer() {
 }
 
 let expLogi = '';
-let expOrder = '';
+let expOrder = '', expPurchase = '';
 
 // Values the menu last filled in, so a changed menu or guest count updates them
 // but never overwrites a figure typed by hand
@@ -4505,7 +4688,7 @@ function openExpModal(arg) {
   const ex   = arg && typeof arg === 'object' && !pre ? arg : null;
   formBase.exp = snapshot(ex);   // an expense or bill draft being edited; null for a new entry
   expLogi = pre?.logi || '';
-  expOrder = pre?.order || '';   // the delivered order this new bill is for (G-23)     // which venue reminder a new expense answers (one expense per reminder)
+  expOrder = pre?.order || ''; expPurchase = pre?.purchase || '';   // the delivered order this new bill is for (G-23)     // which venue reminder a new expense answers (one expense per reminder)
   expTouched = { item: !!(ex || pre?.head), pay: !!(ex || arg?.resume) };
   const evId = ex?.evId || pre?.evId || (typeof arg === 'string' && arg) || defaultEventId();
   const last = readPref('ffv2_lastexp', {});
@@ -4698,6 +4881,7 @@ async function saveExpense({ next = false } = {}) {
   const record = editedRecord(base, {
     ...(!base && expLogi ? { logi: expLogi } : {}),
     ...(!base && expOrder ? { order: expOrder } : {}),
+    ...(!base && expPurchase ? { purchase: expPurchase } : {}),
     id:    expWork.id,
     evId:  data.evId,
     cat:   qv('exp-cat'),
@@ -4726,7 +4910,7 @@ async function saveExpense({ next = false } = {}) {
   const i = D.expenses.findIndex(x => x.id === record.id);
   if (i >= 0) D.expenses[i] = record; else D.expenses.push(record);
   expWork.saved = true;
-  expLogi = ''; expOrder = '';   // a "+Next" entry answers no reminder or order unless opened from one
+  expLogi = ''; expOrder = ''; expPurchase = '';   // a "+Next" entry answers no reminder or order unless opened from one
   try { localStorage.removeItem('ffv2_expdraft'); } catch {}   // saved: nothing left to resume
   writePref('ffv2_lastexp', { cat: record.cat, head: record.head, mode: record.mode || readPref('ffv2_lastexp', {}).mode });
 
@@ -5288,6 +5472,8 @@ function bindAllEvents() {
       case 'svc-use':      useServiceTemplate(id); break;
       case 'lab-edit':     openLabModal(); break;
       case 'dish-assign':  assignDish(Number(id)); break;
+      case 'buy-new':      openBuyModal({ key: id }); break;
+      case 'buy-status':   buyAction(id); break;
       case 'order-new':    openOrderModal({ head: id, svc: el.dataset.svc || '' }); break;
       case 'order-remind': remindOrder(el.dataset.ev, id); break;
       case 'order-confirm': confirmOrder(el.dataset.ev, id); break;
@@ -5473,6 +5659,8 @@ function bindAllEvents() {
     labRows.splice(Number(b.dataset.labDel), 1); renderLabRows();
   });
   q('btn-send-ord').addEventListener('click', () => runSave('order', sendOrder));
+  q('btn-send-buy').addEventListener('click', () => runSave('purchase', sendBuy));
+  q('btn-cancel-buy').addEventListener('click', cancelBuyFromSheet);
   q('btn-cancel-ord').addEventListener('click', () => runSave('order', cancelOrderFromSheet));
   q('btn-save-exp').addEventListener('click', () => runSave('expense', () => saveExpense()));
   q('btn-save-exp-next').addEventListener('click', () => runSave('expense', () => saveExpense({ next: true })));
