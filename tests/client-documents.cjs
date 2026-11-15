@@ -184,12 +184,17 @@ const INTERNAL = /Chaat|Tandoor|Barbeque|Our kitchen|cost|margin|contribution|ve
       const now = (await db.exportAllData()).events[0];
       out.push(JSON.stringify([now.menuDocs, now.quotes]) === JSON.stringify([d0.events[0].menuDocs, d0.events[0].quotes]) ? 'kept' : 'lost');
       const md = d0.events[0].menuDocs[0], q2 = d0.events[0].quotes.find(x => x.v === 2);
+      // whatever the event itself accepts (very long dish and event names, many dishes) restores once sent
+      const long = 'Sample ' + 'Long Dish '.repeat(25), ok = structuredClone(d0);
+      ok.events[0].menuDocs = [{ ...md, event: { ...md.event, name: 'Sample ' + 'Event '.repeat(50) }, text: md.text + long.repeat(100),
+        menu: { ...md.menu, meals: [{ ...md.menu.meals[0], dishes: [...Array(250)].map((_, i) => ({ name: long + i })) }] } }];
+      try { await db.importAllData(ok, 'replace'); out.push('long ok'); } catch (e) { out.push(e.message); }
       for (const bad of [e => { e.menuDocs = [{ ...md, menu: { ...md.menu, meals: [{ ...md.menu.meals[0], dishes: [{ name: 'x', head: 'Chaat' }] }] } }]; }, e => { e.menuDocs = 'x'; },
         e => { e.menuDocs = [{ ...md, layout: 'one' }]; }, e => { e.quotes.find(x => x.v === 2).annex = 5; }, e => { e.quotes.find(x => x.v === 2).snap = { ...q2.snap, annex: { label: 'x' } }; }]) {
         const d = structuredClone(d0); bad(d.events[0]);
         try { await db.importAllData(d, 'replace'); out.push('accepted'); } catch (e) { out.push(e.message.split('.')[0]); } }
       await db.importAllData(d0, 'replace'); return out; });
-    assert.deepEqual(r, ['kept', 'Invalid menu sent to client', 'Invalid menu sent to client', 'Invalid menu sent to client', 'Invalid quote', 'Invalid quote']);
+    assert.deepEqual(r, ['kept', 'long ok', 'Invalid menu sent to client', 'Invalid menu sent to client', 'Invalid menu sent to client', 'Invalid quote', 'Invalid quote']);
   });
 
   assert.deepEqual(errors, []);

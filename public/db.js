@@ -503,14 +503,15 @@ export async function prepareImport(payload) {
       if (row.billChanges !== undefined && (!Array.isArray(row.billChanges) || row.billChanges.some(b => !b || typeof b.reason !== 'string' || (amount(b.from, 'bill'), amount(b.to, 'bill'), false)
         || (b.kind !== undefined && !['discount', 'waiver', 'writeoff'].includes(b.kind)) || (b.ack !== undefined && !['written', 'verbal', 'none'].includes(b.ack))
         || (b.kind && !(b.to < b.from && b.reason.trim()))))) throw new Error('Invalid bill history');
-      // A menu as the client saw it: meals with dish names and diet marks only (4.25.0)
+      // A menu as the client saw it: meals with dish names and diet marks only (4.25.0). Names and text are checked no more
+      // strictly than the event's own (any dish or event name, any number of dishes), so sending a menu never makes a backup unrestorable.
       const cmStr = (v, max) => typeof v === 'string' && v.length <= max;
-      const badCmDish = d => !d || !cmStr(d.name, 200) || (d.diet !== undefined && (!Array.isArray(d.diet) || d.diet.some(x => !cmStr(x, 40)))) || Object.keys(d).some(k => !['name', 'diet'].includes(k));
-      const badClientMenu = m => !m || typeof m !== 'object' || !cmStr(m.v, 40) || !cmStr(m.label, 200) || !Array.isArray(m.meals) || m.meals.length > 30
-        || m.meals.some(x => !x || !cmStr(x.title, 120) || !cmStr(x.when, 60) || !Number.isSafeInteger(x.guests) || x.guests < 0 || !Array.isArray(x.dishes) || x.dishes.length > 200 || x.dishes.some(badCmDish))
+      const badCmDish = d => !d || typeof d.name !== 'string' || (d.diet !== undefined && (!Array.isArray(d.diet) || d.diet.some(x => !cmStr(x, 40)))) || Object.keys(d).some(k => !['name', 'diet'].includes(k));
+      const badClientMenu = m => !m || typeof m !== 'object' || !cmStr(m.v, 40) || typeof m.label !== 'string' || !Array.isArray(m.meals) || m.meals.length > 30
+        || m.meals.some(x => !x || typeof x.title !== 'string' || typeof x.when !== 'string' || !Number.isSafeInteger(x.guests) || x.guests < 0 || !Array.isArray(x.dishes) || x.dishes.some(badCmDish))
         || !Array.isArray(m.shared) || m.shared.some(badCmDish);
       if (row.menuDocs !== undefined && (!Array.isArray(row.menuDocs) || row.menuDocs.length > 200 || row.menuDocs.some(d => !d || !cmStr(d.id, 40) || typeof d.at !== 'string' || !cmStr(d.v, 40)
-        || !Number.isSafeInteger(d.layout) || badClientMenu(d.menu) || !cmStr(d.text, 20000) || !d.event || !cmStr(d.event.name, 200) || !cmStr(d.event.date, 10)
+        || !Number.isSafeInteger(d.layout) || badClientMenu(d.menu) || typeof d.text !== 'string' || !d.event || typeof d.event.name !== 'string' || !cmStr(d.event.date, 10)
         || (d.profile !== undefined && (typeof d.profile !== 'object' || d.profile === null || Object.values(d.profile).some(v => typeof v !== 'string' || v.length > 1000)))))) throw new Error('Invalid menu sent to client');
       if (row.quotes !== undefined && (!Array.isArray(row.quotes) || row.quotes.length > 100 || row.quotes.some(qt => !qt || !Number.isSafeInteger(qt.v) || qt.v < 1
         || !['draft', 'sent', 'accepted', 'declined'].includes(qt.status) || !Array.isArray(qt.lines) || qt.lines.length > 50
