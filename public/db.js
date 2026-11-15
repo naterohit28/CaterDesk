@@ -535,6 +535,9 @@ export async function prepareImport(payload) {
         || (row.gst.from !== undefined && typeof row.gst.from !== 'string'))) throw new Error('Invalid GST');
       if (row.quotes?.some(qt => qt.gst !== undefined && (!qt.gst || !(Number(qt.gst.rate) > 0 && Number(qt.gst.rate) <= 100) || (amount(qt.gst.taxable, 'GST taxable amount'), false)))) throw new Error('Invalid quote');
       if (row.dispute !== undefined && (!row.dispute || typeof row.dispute.reason !== 'string' || !row.dispute.reason.trim() || typeof row.dispute.at !== 'string' || (amount(row.dispute.amt, 'disputed amount'), false))) throw new Error('Invalid dispute');
+      // An order's meal, the approved menu it follows and the guests it was planned on (4.26.0)
+      if (row.orders?.some(o => o && ((o.svc !== undefined && (typeof o.svc !== 'string' || !o.svc || o.svc.length > 40)) || (o.menuVersion !== undefined && (typeof o.menuVersion !== 'string' || o.menuVersion.length > 40))
+        || (o.basis !== undefined && (!o.basis || !Number.isSafeInteger(o.basis.guests) || o.basis.guests < 0 || !['meal', 'event'].includes(o.basis.from)))))) throw new Error('Invalid order');
       if (row.orders?.some(o => o?.messages !== undefined && (!Array.isArray(o.messages) || o.messages.some(m => !m || typeof m.text !== 'string' || !['prepared', 'opened', 'sent', 'confirmed'].includes(m.status))))) throw new Error('Invalid order messages');
       if (row.additional !== undefined && typeof row.additional !== 'boolean') throw new Error('Invalid extra flag');
       if (row.split !== undefined && (!row.split || typeof row.split.id !== 'string' || (amount(row.split.total, 'shared bill'), false))) throw new Error('Invalid shared bill');
@@ -647,7 +650,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.25.0';
+export const APP_VERSION = '4.26.0';
 const COUNT_METHOD_IDS = ['tokens', 'tally', 'gate', 'coupons', 'joint', 'other'];
 // v4.18.0 kept menus in their own store (database version 5): copy them into meta once and empty that store
 export async function migrateLegacyMenus() {
