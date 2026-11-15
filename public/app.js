@@ -3044,12 +3044,17 @@ function functionSheetText(ev, extra = ev.functionSheet || {}) {
   if (cp.rules) L.push(`- Rules: ${cp.rules}`);
   const groups = dishGroups(ev), menu = menuById(ev.menu);
   L.push('', 'MENU');
-  if (groups.size) for (const [head, names] of groups) {
-    if (!head) { L.push(`- Our kitchen: ${names.join(', ')}`); continue; }
-    const o = [...(ev.orders || [])].reverse().find(x => x.head === head && x.status !== 'cancelled');
-    const ven = D.vendors.find(v => v.id === o?.venId);
-    L.push(`- ${ev.outsourced ? 'Whole event' : short(head)}: ${names.join(', ')}`);
-    L.push(`  ${ven ? `${ven.name}${ven.phone ? ' (' + ven.phone + ')' : ''}` : 'No vendor order yet'}${o ? ` · ${o.plates ? o.plates + ' plates · ' : ''}${ORDER_STATUS[o.status]?.en || o.status}` : ''}`);
+  if (groups.size) {
+    // One line per counter and meal, each with its own order (vendor, plates, status); an older order made for every
+    // meal is shown where a meal has no order of its own
+    if (groups.has('')) L.push(`- Our kitchen: ${groups.get('').join(', ')}`);
+    const rows = counterRows(ev), live = [...(ev.orders || [])].reverse().filter(x => x.status !== 'cancelled');
+    for (const r of rows) {
+      const own = live.find(x => rowOf(ev, x, rows)?.key === r.key), o = own || live.find(x => !x.svc && x.head === r.head);
+      const ven = D.vendors.find(v => v.id === o?.venId);
+      L.push(`- ${ev.outsourced ? 'Whole event' : short(r.head)}${r.label ? ` · ${r.label}` : ''}: ${r.names.join(', ')}`);
+      L.push(`  ${ven ? `${ven.name}${ven.phone ? ' (' + ven.phone + ')' : ''}` : 'No vendor order yet'}${o ? ` · ${o.plates ? o.plates + ' plates · ' : ''}${ORDER_STATUS[o.status]?.en || o.status}${own ? '' : ' (older order, all meals)'}` : ''}`);
+    }
   } else if (menu) L.push(`- ${menu.name}: ${menu.items.join(', ')}`);
   else L.push('- Not entered');
   const staff = (ev.labour?.rows || []).map(labRow).filter(r => !isExtra(r) && heads(r));

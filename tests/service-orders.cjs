@@ -165,6 +165,20 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     await open2();
     assert.match(await row(`s2-lunch|${CHAAT}`).innerText(), /Plan 125 \(50% of 250\)/, 'lunch plans for lunch guests');
     assert.match(await row(`s2-dinner|${CHAAT}`).innerText(), /Plan 150 \(50% of 300\)/, 'dinner plans for dinner guests');
+    // The function sheet: the older all-meals order shows on both meals until each has its own; then each meal its own vendor and plates
+    const sheet = async () => { await p.locator('[data-action="fs-open"]').click(); await p.waitForSelector('#fs-modal.active');
+      const t = await p.locator('#fs-text').innerText(); await p.locator('#fs-modal [data-action="close-modal"]').click(); return t; };
+    assert.match(await sheet(), /- Chaat · Lunch: Pani Puri\n  Sample Chaat Stall \(9000000001\) · 300 plates · .* \(older order, all meals\)\n- Chaat · Dinner: Sev Puri\n  Sample Chaat Stall .* \(older order, all meals\)/);
+    await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest; const e = d.events.find(x => x.id === 'e2'); delete e._rev;
+      e.orders = [...e.orders, { id: 'l2', svc: 's2-lunch', head: 'Chaat – चाट', venId: 'v1', plates: 125, date: e.date, status: 'confirmed', at: '2026-11-02T10:00:00.000Z' },
+        { id: 'd2', svc: 's2-dinner', head: 'Chaat – चाट', venId: 'v2', plates: 150, date: e.date, status: 'sent', at: '2026-11-02T11:00:00.000Z' }];
+      await db.importAllData(d, 'replace'); });
+    await open2();
+    const t = await sheet();
+    assert.match(t, /- Chaat · Lunch: Pani Puri\n  Sample Chaat Stall \(9000000001\) · 125 plates · [^\n(]*\n- Chaat · Dinner: Sev Puri\n  Sample Tandoor Co \(9000000002\) · 150 plates · [^\n(]*$/m, t);
+    await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest; const e = d.events.find(x => x.id === 'e2'); delete e._rev;
+      e.orders = e.orders.filter(o => o.id === 'old2'); await db.importAllData(d, 'replace'); });
+    await open2();
     // Move Pani Puri from lunch to dinner in one save: the older order covers both meals with the same dish names, but a meal changed
     await p.locator('[data-action="menu-edit"]').first().click(); await p.waitForSelector('#menu-modal.active');
     const text = await p.inputValue('#menu-text');
