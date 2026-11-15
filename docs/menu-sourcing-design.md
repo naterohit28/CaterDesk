@@ -1,6 +1,6 @@
-# Menu sourcing and purchase orders — technical design (v4.27.1)
+# Menu sourcing and purchase orders — technical design (v4.28.0)
 
-Status: proposed, for owner approval before implementation. Scope: menu sourcing and basic purchase-order preparation
+Status: approved by the owner on 15 Nov 2026, shipping with the guest count as one release, 4.28.0. Scope: menu sourcing and basic purchase-order preparation
 only. No inventory, stock accounting, automatic supplier choice or quantity prediction.
 
 ## 1. What exists today
@@ -77,7 +77,6 @@ a purchase, never both; a purchase links to at most one expense. Linking never c
 6. Change flags for sent purchases.
 7. Tests for the ten scenarios in the brief, full suite, Codex review.
 
-## 6. Decision needed
+## 6. Decision
 
-The owner asked for this in v4.27.1 together with the guest count. It is a feature-sized change, so it is numbered
-**4.28.0** unless the owner prefers 4.27.1. The guest-count change could also ship first, on its own, as 4.27.1.
+Approved as one release with the guest count, numbered 4.28.0.
