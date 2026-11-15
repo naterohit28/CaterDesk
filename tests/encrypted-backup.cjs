@@ -133,7 +133,7 @@ DATA.expenses.push({ id: 'x2', evId: 'e1', cat: 'Raw Material', head: 'Water –
   await test('a multi-piece file: a changed header or tag, a dropped, swapped or cut-off piece each fail; the intact file opens', async () => {
     const r = await p.evaluate(async () => { const c = await import('./backup-crypto.js');
       const k = await c.newRecoveryKey(), key = await c.importBackupKey(k.raw), id = await c.keyIdOf(k.raw);
-      const rnd = new Uint8Array(7_000_000); for (let i = 0; i < rnd.length; i += 65536) crypto.getRandomValues(rnd.subarray(i, Math.min(rnd.length, i + 65536)));
+      const rnd = new Uint8Array(12_000_000); for (let i = 0; i < rnd.length; i += 65536) crypto.getRandomValues(rnd.subarray(i, Math.min(rnd.length, i + 65536)));
       let s = ''; for (let i = 0; i < rnd.length; i += 8192) s += String.fromCharCode(...rnd.subarray(i, i + 8192));
       const json = JSON.stringify({ blob: btoa(s) });
       const { parts } = await c.encryptBackup(key, id, json);
