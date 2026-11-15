@@ -714,6 +714,13 @@ export function today() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
+// The local calendar day (YYYY-MM-DD) of a saved timestamp. Timestamps are kept in UTC, so cutting the text would give
+// the previous day for anything saved before 05:30 in India.
+export function localDay(ts) {
+  const d = new Date(ts);
+  if (isNaN(d)) return String(ts ?? '').slice(0, 10);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 export function daysSince(d) {
   if (!d) return 0;

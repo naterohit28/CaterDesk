@@ -12,7 +12,7 @@ import {
 
 import {
   EXPENSE_HEADS, EVENT_TYPES, VENUE_TYPES, LOGISTICS, venueTypeLabel, logisticsPrompts, venueSuggestion, PAY_MODES, PERIODS, PERIOD_SHORT, MENUS, allMenus, setSavedMenus, menusForMeal, cleanSlabs, isEditedStarter, menuById, menuRate, menuCostPerPlate, costChecklist,
-  uid, today, daysSince, fmtDate, fmtCurrency, esc,
+  uid, today, localDay, daysSince, fmtDate, fmtCurrency, esc,
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.26.0';
+const APP_BUILD = '4.26.1';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -2099,7 +2099,7 @@ function renderQuote() {
       <label class="check-row"><input type="checkbox" id="quote-rates"${cur.showRates !== false ? ' checked' : ''}><span>${tr('Show per-plate rates to the client', 'ग्राहकाला प्रति ताट दर दाखवा')}</span></label>
       ${cur.lines.some(l => l.kind === 'meal' && l.menu) ? `<label class="check-row"><input type="checkbox" id="quote-items"${cur.showItems ? ' checked' : ''}><span>${tr('List each menu\'s dishes for the client (not used when a menu annexure is added: it lists the event\'s own dishes)', 'मेनूचे पदार्थ दाखवा')}</span></label>` : ''}
       ${approvedMenus(ev).length || (m => m.shared.length || m.services.some(s => s.dishes.length))(menuSnapshot(ev)) ? `<div class="field"><label for="quote-annex">${tr('Menu annexure (pages after the quotation)', 'मेनू परिशिष्ट')}</label><select id="quote-annex">
-        <option value="">No menu annexure</option>${[...approvedMenus(ev)].reverse().map(v => `<option value="${esc(v.id)}"${cur.annex === v.id ? ' selected' : ''}>Menu version ${v.n} · approved ${fmtDate(String(v.at).slice(0, 10))}</option>`).join('')}
+        <option value="">No menu annexure</option>${[...approvedMenus(ev)].reverse().map(v => `<option value="${esc(v.id)}"${cur.annex === v.id ? ' selected' : ''}>Menu version ${v.n} · approved ${fmtDate(localDay(v.at))}</option>`).join('')}
         <option value="draft"${cur.annex === 'draft' ? ' selected' : ''}>Current menu – not yet approved</option></select></div>` : ''}
       <div class="field"><label for="quote-terms">${tr('Terms / note for the client', 'अटी / टीप')}</label><textarea id="quote-terms" maxlength="2000" placeholder="e.g. 50% advance to confirm; valid for 15 days">${esc(cur.terms || '')}</textarea></div>
       <div id="quote-total">${quoteTotalsHtml(cur)}</div>
@@ -2363,7 +2363,7 @@ function menuDiffHtml(ev, diff, newer, older) {
 function approvalBar(ev) {
   const st = menuSinceApproved(ev), last = st.last;
   if (!last && !st.now.services.some(s => s.dishes.length) && !st.now.shared.length) return '';
-  const when = last ? `${fmtDate(String(last.at).slice(0, 10))} · ${last.by}${last.who ? ` (${last.who})` : ''}` : '';
+  const when = last ? `${fmtDate(localDay(last.at))} · ${last.by}${last.who ? ` (${last.who})` : ''}` : '';
   const text = !last ? tr('Not approved by the client yet', 'ग्राहकाने अजून मान्य केला नाही')
     : !st.count ? tr(`Approved v${last.n} · ${when}`, `मान्य आवृत्ती ${last.n} · ${when}`)
     : tr(`Changed since approved v${last.n} · ${st.count} change${st.count > 1 ? 's' : ''}`, `मान्य आवृत्ती ${last.n} नंतर ${st.count} बदल`);
@@ -2410,7 +2410,7 @@ function openVersionsSheet() {
   q('mv-body').innerHTML = [...list].reverse().map(v => {
     const prev = list[v.n - 2] || null, d = menuDiff(prev, v);
     return `<details class="mv-ver"${v.n === list.length ? ' open' : ''}><summary><span class="title-sm">${tr(`Version ${v.n}`, `आवृत्ती ${v.n}`)}</span>
-      <span class="meta">${fmtDate(String(v.at).slice(0, 10))} · ${esc(v.by)}${v.who ? ` (${esc(v.who)})` : ''} · ${v.services.reduce((k, s) => k + s.dishes.length, 0) + v.shared.length} dishes</span></summary>
+      <span class="meta">${fmtDate(localDay(v.at))} · ${esc(v.by)}${v.who ? ` (${esc(v.who)})` : ''} · ${v.services.reduce((k, s) => k + s.dishes.length, 0) + v.shared.length} dishes</span></summary>
       <div class="mv-diff">${prev ? `<div class="meta">${tr(`Changes from version ${prev.n}:`, `आवृत्ती ${prev.n} पासूनचे बदल:`)}</div>${menuDiffHtml(ev, d, v, prev)}` : menuDiffHtml(ev, d, v, null)}</div></details>`; }).join('');
   openSheet('mv-modal');
 }
@@ -2425,7 +2425,7 @@ const clientDish = d => ({ name: d.name, ...(d.diet?.length ? { diet: [...d.diet
 function menuSource(ev, v) {
   if (v === 'draft') return { src: menuSnapshot(ev), label: 'Draft menu – not yet approved by the client' };
   const ver = approvedMenus(ev).find(x => x.id === v);
-  return ver ? { src: ver, label: `Menu version ${ver.n} · approved ${fmtDate(String(ver.at).slice(0, 10))}` } : null;
+  return ver ? { src: ver, label: `Menu version ${ver.n} · approved ${fmtDate(localDay(ver.at))}` } : null;
 }
 function clientMenu(ev, v) {
   const m = menuSource(ev, v); if (!m) return null;
@@ -2479,10 +2479,16 @@ function needProfile(profile, what) {
 }
 
 /* ── SEND THE MENU TO THE CLIENT (menu only) ── */
+// The date on the PDF last printed from this sheet, for that exact menu: kept with the copy when it is marked sent, so a
+// menu printed before midnight and marked sent after it keeps the date the client saw
+let mdPrinted = null;
+const mdKey = cm => `${cm.v}
+${clientMenuText(cm)}`;
 function openMenuDocSheet() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  mdPrinted = null;
   const vers = [...approvedMenus(ev)].reverse();
-  q('md-ver').innerHTML = vers.map(v => `<option value="${esc(v.id)}">Version ${v.n} · approved ${fmtDate(String(v.at).slice(0, 10))}</option>`).join('')
+  q('md-ver').innerHTML = vers.map(v => `<option value="${esc(v.id)}">Version ${v.n} · approved ${fmtDate(localDay(v.at))}</option>`).join('')
     + `<option value="draft">Current menu – not yet approved</option>`;
   q('md-ver').value = vers[0]?.id || 'draft';
   renderMenuDocSheet();
@@ -2494,14 +2500,15 @@ function renderMenuDocSheet() {
   q('md-preview').textContent = cm ? clientMenuText(cm) : '';
   const issued = [...(ev.menuDocs || [])].reverse();
   q('md-issued').innerHTML = issued.length ? `<div class="label" style="margin:var(--s3) 0 var(--s1)">${tr('Sent before', 'आधी पाठवलेले')}</div>`
-    + issued.map(d => `<div class="row" style="min-height:48px"><div class="row-body"><div class="title-sm">${esc(d.menu.label)}</div><div class="meta">${tr(`Sent ${fmtDate(String(d.at).slice(0, 10))}`, `पाठवले ${fmtDate(String(d.at).slice(0, 10))}`)}</div></div>
+    + issued.map(d => `<div class="row" style="min-height:48px"><div class="row-body"><div class="title-sm">${esc(d.menu.label)}</div><div class="meta">${tr(`Sent ${fmtDate(localDay(d.at))}`, `पाठवले ${fmtDate(localDay(d.at))}`)}</div></div>
         <button type="button" class="btn-sm" data-md-reprint="${esc(d.id)}">${icon('download', 16)}${tr('Print again', 'पुन्हा')}</button></div>`).join('') : '';
 }
 function printMenuDoc() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const profile = getProfile(); if (needProfile(profile, 'menu')) return;
   const cm = clientMenu(ev, qv('md-ver')); if (!cm) return;
-  printDoc(menuDocHtml(ev, cm, profile, { date: today(), draft: cm.v === 'draft' }));   // an approved version prints clean; the current menu says DRAFT
+  const date = today(); mdPrinted = { key: mdKey(cm), date };
+  printDoc(menuDocHtml(ev, cm, profile, { date, draft: cm.v === 'draft' }));   // an approved version prints clean; the current menu says DRAFT
 }
 function shareMenuDoc() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
@@ -2514,7 +2521,8 @@ async function markMenuDocSent() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const cm = clientMenu(ev, qv('md-ver')); if (!cm) return;
   const prof = getProfile();
-  const doc = { id: uid('MD'), at: new Date().toISOString(), v: cm.v, layout: DOC_LAYOUT, menu: cm, text: clientMenuText(cm),
+  const date = mdPrinted?.key === mdKey(cm) ? mdPrinted.date : today();
+  const doc = { id: uid('MD'), at: new Date().toISOString(), date, v: cm.v, layout: DOC_LAYOUT, menu: cm, text: clientMenuText(cm),
     event: { name: ev.name, date: ev.date, venue: ev.venue || '' }, ...(Object.keys(prof).length ? { profile: prof } : {}) };
   try { await patchEvent(ev.id, { menuDocs: [...(ev.menuDocs || []), doc] }); } catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
   renderMenuDocSheet(); refreshCurrent();
@@ -2523,7 +2531,7 @@ async function markMenuDocSent() {
 function reprintMenuDoc(id) {
   const ev = D.events.find(e => e.id === curRef); const d = ev?.menuDocs?.find(x => x.id === id); if (!d) return;
   const profile = d.profile || getProfile(); if (needProfile(profile, 'menu')) return;
-  printDoc(menuDocHtml(ev, d.menu, profile, { date: String(d.at).slice(0, 10), eventInfo: d.event, draft: d.v === 'draft' }));   // sent unapproved: still says DRAFT
+  printDoc(menuDocHtml(ev, d.menu, profile, { date: d.date || localDay(d.at), eventInfo: d.event, draft: d.v === 'draft' }));   // the issue date kept with it (older copies: the local day kept); sent unapproved: still says DRAFT
 }
 
 /* ── ADD OR CHANGE A MEAL'S MENU ── */

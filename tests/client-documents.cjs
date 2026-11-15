@@ -222,6 +222,69 @@ const INTERNAL = /Chaat|Tandoor|Barbeque|Our kitchen|cost|margin|contribution|ve
     assert.deepEqual(r, ['kept', 'long ok', 'Invalid menu sent to client', 'Invalid menu sent to client', 'Invalid menu sent to client', 'Invalid quote', 'Invalid quote']);
   });
 
+  await test('a menu sent at 01:00 in India reprints and is listed with that day\'s date, not the day before', async () => {
+    const d0 = await dump(); delete d0.manifest;
+    const e = d0.events.find(x => x.id === 'W'); delete e._rev;
+    e.menuDocs = [{ ...e.menuDocs[0], at: '2026-11-14T19:30:00.000Z' }];   // 15 Nov 2026, 01:00 IST
+    e.menuApproved = e.menuApproved.map((v, i) => i === 0 ? { ...v, at: '2026-11-14T19:30:00.000Z' } : v);
+    const c2 = await browser.newContext({ ...devices['Pixel 5'], viewport: { width: 360, height: 780 }, timezoneId: 'Asia/Kolkata' });
+    const q2 = await c2.newPage(); q2.setDefaultTimeout(10000); q2.on('pageerror', x => errors.push(x.message));
+    await q2.goto(BASE_URL); await q2.waitForSelector('#kpi .card');
+    await q2.evaluate(async d => { localStorage.setItem('ffv2_profile', JSON.stringify({ name: 'Sample Caterers', phone: '9000000009' })); const db = await import('./db.js'); await db.importAllData(d, 'replace'); }, d0);
+    await q2.reload(); await q2.waitForSelector('#kpi .card'); await q2.locator('#n-events:visible').click();
+    await q2.locator('#ev-list [data-action="evdetail"][data-id="W"]:visible').click(); await q2.waitForSelector('#tab-evdetail .detail-name');
+    await q2.evaluate(() => { window.__printed = []; window.print = () => window.__printed.push(document.querySelector('#print-doc').innerText); });
+    await q2.locator('[data-action="menu-send"]').click(); await q2.waitForSelector('#md-modal.active');
+    const day15 = await q2.evaluate(async () => (await import('./utils.js')).fmtDate('2026-11-15'));
+    assert.match(await q2.locator('#md-issued').innerText(), new RegExp(`Sent ${day15}`));
+    assert.match(await q2.locator('#md-ver').innerText(), new RegExp(`Version 1 · approved ${day15}`));
+    await q2.locator('#md-issued [data-md-reprint]').click(); await q2.waitForTimeout(300);
+    assert.match(await q2.evaluate(() => window.__printed.at(-1)), new RegExp(`Date ${day15}`));
+
+    // A new copy: printed at 23:59 on 14 Nov, marked sent at 00:01 on 15 Nov → it keeps 14 Nov, the date the client saw,
+    // even after the app is opened again; the saved time stays in UTC
+    await q2.clock.setFixedTime(new Date('2026-11-14T18:29:00.000Z'));   // 14 Nov 23:59 IST
+    await q2.locator('#md-ver').selectOption('draft');
+    await q2.locator('#btn-md-print').click(); await q2.waitForTimeout(300);
+    const day14 = await q2.evaluate(async () => (await import('./utils.js')).fmtDate('2026-11-14'));
+    assert.match(await q2.evaluate(() => window.__printed.at(-1)), new RegExp(`Date ${day14}`));
+    await q2.clock.setFixedTime(new Date('2026-11-14T18:31:00.000Z'));   // 15 Nov 00:01 IST
+    await q2.locator('#btn-md-sent').click(); await q2.waitForTimeout(600);
+    const kept = await q2.evaluate(async () => (await (await import('./db.js')).exportAllData()).events.find(e => e.id === 'W').menuDocs.at(-1));
+    assert.deepEqual([kept.date, kept.at], ['2026-11-14', '2026-11-14T18:31:00.000Z']);
+    await q2.clock.setFixedTime(new Date('2026-11-20T06:00:00.000Z'));
+    await q2.reload(); await q2.waitForSelector('#kpi .card'); await q2.locator('#n-events:visible').click();
+    await q2.locator('#ev-list [data-action="evdetail"][data-id="W"]:visible').click(); await q2.waitForSelector('#tab-evdetail .detail-name');
+    await q2.evaluate(() => { window.__printed = []; window.print = () => window.__printed.push(document.querySelector('#print-doc').innerText); });
+    await q2.locator('[data-action="menu-send"]').click(); await q2.waitForSelector('#md-modal.active');
+    await q2.locator('#md-issued [data-md-reprint]').first().click(); await q2.waitForTimeout(300);   // newest first
+    assert.match(await q2.evaluate(() => window.__printed.at(-1)), new RegExp(`Date ${day14}`), 'reprint keeps the printed date');
+    // Printed twice on different days: the copy kept has the later print's date
+    await q2.clock.setFixedTime(new Date('2026-11-21T06:00:00.000Z'));   // 21 Nov
+    await q2.locator('#md-ver').selectOption('draft'); await q2.locator('#btn-md-print').click(); await q2.waitForTimeout(200);
+    await q2.clock.setFixedTime(new Date('2026-11-22T06:00:00.000Z'));   // 22 Nov
+    await q2.locator('#btn-md-print').click(); await q2.waitForTimeout(200);
+    await q2.locator('#btn-md-sent').click(); await q2.waitForTimeout(600);
+    const lastDoc = async () => q2.evaluate(async () => (await (await import('./db.js')).exportAllData()).events.find(e => e.id === 'W').menuDocs.at(-1));
+    assert.equal((await lastDoc()).date, '2026-11-22');
+    // Marked sent without printing (e.g. sent on WhatsApp): that day's local date; a print of a different menu does not count
+    await q2.reload(); await q2.waitForSelector('#kpi .card'); await q2.locator('#n-events:visible').click();
+    await q2.locator('#ev-list [data-action="evdetail"][data-id="W"]:visible').click(); await q2.waitForSelector('#tab-evdetail .detail-name');
+    await q2.evaluate(() => { window.print = () => {}; window.open = () => null; });
+    await q2.locator('[data-action="menu-send"]').click(); await q2.waitForSelector('#md-modal.active');
+    await q2.clock.setFixedTime(new Date('2026-11-23T19:00:00.000Z'));   // 24 Nov 00:30 IST
+    await q2.locator('#md-ver').selectOption({ index: 0 }); await q2.locator('#btn-md-print').click(); await q2.waitForTimeout(200);   // an approved version printed…
+    await q2.clock.setFixedTime(new Date('2026-11-24T19:00:00.000Z'));   // 25 Nov 00:30 IST
+    await q2.locator('#md-ver').selectOption('draft'); await q2.locator('#btn-md-wa').click(); await q2.waitForTimeout(200);   // …but the draft is what is sent
+    await q2.locator('#btn-md-sent').click(); await q2.waitForTimeout(600);
+    assert.deepEqual([(await lastDoc()).date, (await lastDoc()).v], ['2026-11-25', 'draft'], 'the local day it was sent, never blank or an older print');
+    // a malformed issue date is refused on restore
+    const bad = await q2.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest;
+      d.events.find(e => e.id === 'W').menuDocs.at(-1).date = '14-11-2026'; try { await db.importAllData(d, 'replace'); return 'accepted'; } catch (e) { return e.message.split('.')[0]; } });
+    assert.equal(bad, 'Invalid menu sent to client');
+    await c2.close();
+  });
+
   assert.deepEqual(errors, []);
   await browser.close();
   console.log(failed ? 'client documents FAIL' : 'client documents PASS');
