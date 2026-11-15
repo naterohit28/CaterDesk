@@ -135,6 +135,19 @@ const INTERNAL = /Chaat|Tandoor|Barbeque|Our kitchen|cost|margin|contribution|ve
     assert.doesNotMatch((await printed()).text, /DRAFT/);
   });
 
+  await test('an unapproved menu whose dishes are all served at every meal can still be attached as an annexure', async () => {
+    const S = { id: 'S', name: 'Sample Shared Menu Party', date: day(25), venue: 'Sample Hall', type: 'Wedding – लग्न', billing: 100000, guests: 100, meals: ['lunch', 'dinner'], photoIds: [],
+      mealPlan: { lunch: { guests: 100, rate: 400 }, dinner: { guests: 100, rate: 500 } }, dishes: [{ name: 'Sample Water', head: '' }, { name: 'Sample Salad', head: '' }] };
+    await p.evaluate(async e => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest; d.events.push(e); await db.importAllData(d, 'replace'); }, S);
+    await p.reload(); await p.waitForSelector('#kpi .card'); await p.locator('#n-events:visible').click();
+    await p.locator('#ev-list [data-action="evdetail"][data-id="S"]:visible').click(); await p.waitForSelector('#tab-evdetail .detail-name');
+    await p.locator('[data-action="quote-open"]').click(); await p.waitForSelector('#quote-modal.active');
+    assert.equal(await p.locator('#quote-annex').count(), 1, 'the annexure choice is offered');
+    assert.deepEqual(await p.locator('#quote-annex option').allInnerTexts(), ['No menu annexure', 'Current menu – not yet approved']);
+    await p.locator('#quote-modal [data-action="close-modal"]').first().click();
+    await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest; d.events = d.events.filter(e => e.id !== 'S'); await db.importAllData(d, 'replace'); });
+  });
+
   await test('a quotation with a menu annexure never also lists the library menu\'s dishes; without one it does', async () => {
     const golden = await p.evaluate(async () => (await import('./utils.js')).menuById('golden').items);
     // A draft whose lunch line uses the Golden library menu, with "list each menu's dishes" on and the approved annexure

@@ -1980,7 +1980,7 @@ function renderQuote() {
       </div>
       <label class="check-row"><input type="checkbox" id="quote-rates"${cur.showRates !== false ? ' checked' : ''}><span>${tr('Show per-plate rates to the client', 'ग्राहकाला प्रति ताट दर दाखवा')}</span></label>
       ${cur.lines.some(l => l.kind === 'meal' && l.menu) ? `<label class="check-row"><input type="checkbox" id="quote-items"${cur.showItems ? ' checked' : ''}><span>${tr('List each menu\'s dishes for the client (not used when a menu annexure is added: it lists the event\'s own dishes)', 'मेनूचे पदार्थ दाखवा')}</span></label>` : ''}
-      ${approvedMenus(ev).length || menuSnapshot(ev).services.some(s => s.dishes.length) ? `<div class="field"><label for="quote-annex">${tr('Menu annexure (pages after the quotation)', 'मेनू परिशिष्ट')}</label><select id="quote-annex">
+      ${approvedMenus(ev).length || (m => m.shared.length || m.services.some(s => s.dishes.length))(menuSnapshot(ev)) ? `<div class="field"><label for="quote-annex">${tr('Menu annexure (pages after the quotation)', 'मेनू परिशिष्ट')}</label><select id="quote-annex">
         <option value="">No menu annexure</option>${[...approvedMenus(ev)].reverse().map(v => `<option value="${esc(v.id)}"${cur.annex === v.id ? ' selected' : ''}>Menu version ${v.n} · approved ${fmtDate(String(v.at).slice(0, 10))}</option>`).join('')}
         <option value="draft"${cur.annex === 'draft' ? ' selected' : ''}>Current menu – not yet approved</option></select></div>` : ''}
       <div class="field"><label for="quote-terms">${tr('Terms / note for the client', 'अटी / टीप')}</label><textarea id="quote-terms" maxlength="2000" placeholder="e.g. 50% advance to confirm; valid for 15 days">${esc(cur.terms || '')}</textarea></div>
