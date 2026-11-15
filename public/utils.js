@@ -255,7 +255,7 @@ export function nextQuoteDraft(ev, { from = null, newOption = false } = {}) {
   const last = from || qs.at(-1);
   const option = newOption ? 'ABCDEFGH'.split('').find(l => !quoteOptions(ev).includes(l)) || 'H' : quoteOption(last);
   const lines = last ? structuredClone(last.lines)
-    : MEAL_ORDER.filter(m => ev.mealPlan?.[m]?.guests > 0).map(m => ({ kind: 'meal', meal: m, guests: ev.mealPlan[m].guests, rate: ev.mealPlan[m].rate, ...(ev.mealPlan[m].menu ? { menu: ev.mealPlan[m].menu } : {}) }));
+    : MEAL_ORDER.filter(m => ev.mealPlan?.[m]?.guests > 0 && ev.mealPlan[m].rate > 0).map(m => ({ kind: 'meal', meal: m, guests: ev.mealPlan[m].guests, rate: ev.mealPlan[m].rate, ...(ev.mealPlan[m].menu ? { menu: ev.mealPlan[m].menu } : {}) }));
   return { v: Math.max(0, ...qs.map(x => x.v)) + 1, status: 'draft', ...(option !== 'A' || newOption ? { option } : {}), lines: lines.length ? lines : [{ kind: 'meal', meal: 'dinner', guests: Number(ev.guests) || '', rate: '' }],
     showRates: last ? last.showRates !== false : true, terms: last?.terms || '', ...(last?.gst ? { gst: { ...last.gst } } : {}),
     ...(latestApproved(ev) ? { annex: latestApproved(ev).id } : last?.annex === 'draft' ? { annex: 'draft' } : {}) };
@@ -588,7 +588,8 @@ export function applyServices(ev, services) {
   for (const m of [...meals, '']) {
     services.filter(s => s.meal === m).forEach((s, i) => {
       const main = i === 0, tpl = s.template?.id || s.template || '';
-      if (main && m && s.guests > 0 && s.rate > 0) mealPlan[m] = { guests: s.guests, rate: s.rate, ...(tpl ? { menu: tpl } : {}) };
+      // A meal's guests are kept even before it is priced (rate 0); only priced meals add to the bill
+      if (main && m && s.guests > 0) mealPlan[m] = { guests: s.guests, rate: s.rate > 0 ? s.rate : 0, ...(tpl ? { menu: tpl } : {}) };
       stored.push({ id: s.id, meal: m, ...(s.date && s.date !== ev.date ? { date: s.date } : {}), ...(s.time ? { time: s.time } : {}),
         ...(main ? (tpl && !mealPlan[m] ? { template: tplOf(tpl, s) } : {}) : { guests: s.guests || 0, rate: s.rate || 0, ...(tpl ? { template: tplOf(tpl, s) } : {}) }) });
       for (const d of s.dishes || []) {

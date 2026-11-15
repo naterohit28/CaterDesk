@@ -2907,9 +2907,18 @@ const fromPaiseLocal = p => p / 100;
 const MEAL_NAME = k => k === 'all' ? 'Guests' : MEALS[k];
 const countKeys = ev => ev.meals?.length ? COUNT_MEALS.filter(m => ev.meals.includes(m)) : ['all'];
 // Event page: one concise line per counted meal, plus the action
+// The guests registered for a meal ('all' = the event without meals): the meal's own number, else the event's (as counted)
+const bookedGuests = (ev, k) => k === 'all' ? Number(ev.guests) || 0 : Number(ev.mealPlan?.[k]?.guests) || Number(ev.guests) || 0;
+function guestsLine(ev) {
+  const keys = countKeys(ev), missing = keys.filter(k => !bookedGuests(ev, k) && !guestCountStatus(ev, k).started);
+  const known = keys.filter(k => bookedGuests(ev, k)).map(k => keys.length > 1 || k !== 'all' ? `${MEALS[k]} ${bookedGuests(ev, k)}` : `${bookedGuests(ev, k)}`);
+  if (missing.length && ev.date >= today()) return `<div class="guests-miss" id="guests-line"><span class="meta due">${tr(`Guest count not entered${keys.length > 1 || missing[0] !== 'all' ? ` (${missing.map(k => MEALS[k]).join(', ')})` : ''}`, 'पाहुण्यांची संख्या नोंदलेली नाही')}</span>
+    <button type="button" class="btn-sm" data-action="count-open">${tr('Enter guests', 'पाहुणे नोंदवा')}</button></div>`;
+  return known.length ? `<div class="meta" id="guests-line" data-nl>${tr(`Guests: ${known.join(' · ')}`, `पाहुणे: ${known.join(' · ')}`)}</div>` : '';
+}
 function countLine(ev) {
   const lines = countKeys(ev).map(k => ({ k, s: guestCountStatus(ev, k) })).filter(x => x.s.started);
-  return `<div style="margin-top:var(--s3)" id="count-line">${lines.map(({ k, s }) => `<div class="meta" data-nl>${MEAL_NAME(k)}: ${tr(`contracted ${s.contracted} · counted ${s.counted ?? '—'}${s.extra ? ` · extra ${s.extra}` : ''}${s.accepted ? ` · approved ${s.accepted}` : ''}${s.disputed ? ` · disputed ${s.disputed}` : ''}${s.billed ? ` · billed ${s.billed}` : ''}`,
+  return `<div style="margin-top:var(--s3)" id="count-line">${guestsLine(ev)}${lines.map(({ k, s }) => `<div class="meta" data-nl>${MEAL_NAME(k)}: ${tr(`contracted ${s.contracted} · counted ${s.counted ?? '—'}${s.extra ? ` · extra ${s.extra}` : ''}${s.accepted ? ` · approved ${s.accepted}` : ''}${s.disputed ? ` · disputed ${s.disputed}` : ''}${s.billed ? ` · billed ${s.billed}` : ''}`,
     `करार ${s.contracted} · मोजले ${s.counted ?? '—'}${s.extra ? ` · जास्त ${s.extra}` : ''}`)}</div>`).join('')}
     ${ev.date >= today() && !countPolicyAgreed(ev.countPolicy) ? `<div class="meta due" id="count-policy-flag">${tr('Count method not agreed with the client yet', 'मोजणीची पद्धत ग्राहकाशी ठरलेली नाही')}</div>` : ''}</div>`;
 }
@@ -2936,16 +2945,13 @@ function renderCount() {
   </div>`).join('');
   const cp = ev.countPolicy || {}, agreed = countPolicyAgreed(cp);
   q('count-body').innerHTML = `
-    <details class="card pad" id="count-policy" style="margin:0 0 var(--s3)"${agreed || ev.date <= today() ? '' : ' open'}>
-      <summary class="label" style="cursor:pointer">${agreed ? tr(`Count method: ${COUNT_METHODS.find(m => m.id === cp.method).en} · agreed`, `मोजणी: ${COUNT_METHODS.find(m => m.id === cp.method).mr} · ठरले`) : tr('Count method not agreed with the client yet', 'मोजणीची पद्धत ठरलेली नाही')}</summary>
-      <div class="field" style="margin-top:var(--s2)"><label for="cp-method">${tr('How plates are counted', 'मोजणीची पद्धत')}</label><select id="cp-method"><option value="">Choose – निवडा</option>${COUNT_METHODS.map(m => `<option value="${m.id}"${m.id === cp.method ? ' selected' : ''}>${esc(m.en + ' – ' + m.mr)}</option>`).join('')}</select></div>
-      <div class="field"><label for="cp-counter">${tr('Who counts, and where', 'कोण व कुठे मोजणार')}</label><input type="text" id="cp-counter" maxlength="200" value="${esc(cp.counter || '')}" placeholder="e.g. supervisor at plate counter"></div>
-      <div class="f2"><div class="field"><label for="cp-rep">${tr('Client representative', 'ग्राहक प्रतिनिधी')}</label><input type="text" id="cp-rep" maxlength="100" value="${esc(cp.rep || '')}" placeholder="Name"></div>
-        <div class="field"><label for="cp-rep-phone">${tr('Their phone', 'फोन')}</label><input type="tel" id="cp-rep-phone" maxlength="20" inputmode="tel" value="${esc(cp.repPhone || '')}" placeholder="Mobile"></div></div>
-      <div class="field"><label for="cp-rules">${tr('Rules agreed', 'ठरलेले नियम')}</label><textarea id="cp-rules" rows="2" maxlength="1000" placeholder="Second servings, kids, staff and vendor meals, tolerance">${esc(cp.rules || '')}</textarea></div>
-      <label class="check-row"><input type="checkbox" id="cp-confirmed"${cp.confirmed ? ' checked data-agreed="1"' : ''}><span>${tr('The client agreed to this method', 'ग्राहकाने ही पद्धत मान्य केली')}</span></label>
-      <button type="button" class="btn btn-secondary" style="width:100%;margin-top:var(--s2)" data-action="count-policy-save">${tr('Save count method', 'पद्धत जतन')}</button>
-    </details>
+    <div class="card pad" id="count-booked" style="margin:0 0 var(--s3)">
+      <div class="label">${tr(`Booked guests${k === 'all' ? '' : ` · ${MEALS[k]}`}`, 'नोंदलेले पाहुणे')}</div>
+      ${s.started ? `<div class="amt-md" style="margin-top:2px">${s.contracted}</div><div class="meta">${tr('Fixed when counting started', 'मोजणी सुरू झाल्यावर ठरले')}</div>`
+        : `<div class="booked-row"><div class="field" style="margin:0;flex:1"><input type="number" id="count-booked-n" min="1" inputmode="numeric" aria-label="Booked guests" placeholder="e.g. 300" value="${bookedGuests(ev, k) || ''}"></div>
+          <button type="button" class="btn btn-secondary" data-action="count-booked-save">${tr('Save', 'जतन')}</button></div>
+          ${bookedGuests(ev, k) ? '' : `<div class="meta due" style="margin-top:6px">${tr('Not entered yet: enter the guests booked by the client', 'अजून नोंदलेले नाही')}</div>`}`}
+    </div>
     <div class="card pad" style="margin:0 0 var(--s3)">
       <div class="label">${tr(`${MEAL_NAME(k)} · contracted ${s.contracted} @ ${fmtCurrency(s.rate)}`, `करार ${s.contracted} @ ${fmtCurrency(s.rate)}`)}</div>
       <div class="meta" style="margin-top:4px">${s.counted == null ? tr('Not counted yet', 'अजून मोजले नाही') : tr(`Counted ${s.counted} (${fmtAt(s.last.at)})`, `मोजले ${s.counted}`)}${s.extra ? ` · <b>${tr(`${s.extra} over the contract (proposed, not billed)`, `${s.extra} जास्त (प्रस्तावित)`)}</b>` : ''}</div>
@@ -2959,7 +2965,17 @@ function renderCount() {
       <button type="button" class="btn btn-secondary" data-action="count-save">${tr('Save count', 'मोजणी जतन')}</button>
       ${s.unrequested ? `<button type="button" class="btn btn-secondary" data-action="count-request">${tr(`Ask approval for ${s.unrequested} extra`, `${s.unrequested} जास्त मान्यता`)}</button>` : ''}
     </div>
-    ${s.unbilled ? `<button type="button" class="btn btn-primary" style="width:100%;margin-top:var(--s3)" data-action="count-bill">${tr(`Add ${s.unbilled} approved plates to the bill (+${fmtCurrency(s.requests.filter(r => r.unbilled).reduce((t, r) => t + toPaise(r.rate) * r.unbilled, 0) / 100)})`, `${s.unbilled} मान्य ताटे बिलात जोडा`)}</button>` : ''}`;
+    ${s.unbilled ? `<button type="button" class="btn btn-primary" style="width:100%;margin-top:var(--s3)" data-action="count-bill">${tr(`Add ${s.unbilled} approved plates to the bill (+${fmtCurrency(s.requests.filter(r => r.unbilled).reduce((t, r) => t + toPaise(r.rate) * r.unbilled, 0) / 100)})`, `${s.unbilled} मान्य ताटे बिलात जोडा`)}</button>` : ''}
+    <details class="card pad" id="count-policy" style="margin:var(--s4) 0 0">
+      <summary class="label" style="cursor:pointer">${agreed ? tr(`Count method: ${COUNT_METHODS.find(m => m.id === cp.method).en} · agreed`, `मोजणी: ${COUNT_METHODS.find(m => m.id === cp.method).mr} · ठरले`) : tr('Count method not agreed with the client yet', 'मोजणीची पद्धत ठरलेली नाही')}</summary>
+      <div class="field" style="margin-top:var(--s2)"><label for="cp-method">${tr('How plates are counted', 'मोजणीची पद्धत')}</label><select id="cp-method"><option value="">Choose – निवडा</option>${COUNT_METHODS.map(m => `<option value="${m.id}"${m.id === cp.method ? ' selected' : ''}>${esc(m.en + ' – ' + m.mr)}</option>`).join('')}</select></div>
+      <div class="field"><label for="cp-counter">${tr('Who counts, and where', 'कोण व कुठे मोजणार')}</label><input type="text" id="cp-counter" maxlength="200" value="${esc(cp.counter || '')}" placeholder="e.g. supervisor at plate counter"></div>
+      <div class="f2"><div class="field"><label for="cp-rep">${tr('Client representative', 'ग्राहक प्रतिनिधी')}</label><input type="text" id="cp-rep" maxlength="100" value="${esc(cp.rep || '')}" placeholder="Name"></div>
+        <div class="field"><label for="cp-rep-phone">${tr('Their phone', 'फोन')}</label><input type="tel" id="cp-rep-phone" maxlength="20" inputmode="tel" value="${esc(cp.repPhone || '')}" placeholder="Mobile"></div></div>
+      <div class="field"><label for="cp-rules">${tr('Rules agreed', 'ठरलेले नियम')}</label><textarea id="cp-rules" rows="2" maxlength="1000" placeholder="Second servings, kids, staff and vendor meals, tolerance">${esc(cp.rules || '')}</textarea></div>
+      <label class="check-row"><input type="checkbox" id="cp-confirmed"${cp.confirmed ? ' checked data-agreed="1"' : ''}><span>${tr('The client agreed to this method', 'ग्राहकाने ही पद्धत मान्य केली')}</span></label>
+      <button type="button" class="btn btn-secondary" style="width:100%;margin-top:var(--s2)" data-action="count-policy-save">${tr('Save count method', 'पद्धत जतन')}</button>
+    </details>`;
 }
 async function saveGuestCounts(mutate, extra = {}) {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return null;
@@ -2973,6 +2989,8 @@ async function saveGuestCounts(mutate, extra = {}) {
 async function countAction(action, id) {
   const now = new Date().toISOString();
   if (action === 'count-save') {
+    { const ev = D.events.find(e => e.id === curRef);   // counting is measured against the guests booked: register them first
+      if (ev && !guestCountStatus(ev, countMeal).started && !bookedGuests(ev, countMeal)) { showFieldErrors({ 'count-booked-n': 'Enter the booked guests first – आधी पाहुणे नोंदवा' }); return; } }
     const raw = qv('count-n'), n = Math.floor(Number(raw)), note = qv('count-note');
     if (raw === '' || !(n >= 0)) { showFieldErrors({ 'count-n': 'Enter the count – संख्या लिहा' }); return; }
     const had = guestCountStatus(D.events.find(e => e.id === curRef), countMeal).counted;
@@ -3016,6 +3034,20 @@ async function countAction(action, id) {
   refreshCurrent(); renderCount();
 }
 
+async function saveBookedGuests() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const k = countMeal, raw = qv('count-booked-n'), n = Number(raw);
+  if (guestCountStatus(ev, k).started) return;
+  if (!(Number.isInteger(n) && n >= 1)) { showFieldErrors({ 'count-booked-n': 'Enter the guests booked (1 or more) – पाहुण्यांची संख्या लिहा' }); return; }
+  let patch;
+  if (k === 'all') patch = { guests: n };
+  else {
+    const plan = { ...(ev.mealPlan || {}), [k]: { ...(ev.mealPlan?.[k] || { rate: 0 }), guests: n } };
+    patch = { mealPlan: plan };   // the meal's own guests; meals are never added up into the event's number
+  }
+  try { await patchEvent(ev.id, patch); } catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
+  refreshCurrent(); renderCount(); showToast('Guests saved – पाहुणे नोंदवले');
+}
 async function saveCountPolicy() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const p = { method: qv('cp-method'), counter: qv('cp-counter'), rep: qv('cp-rep'), repPhone: qv('cp-rep-phone'), rules: qv('cp-rules') };
@@ -4021,12 +4053,15 @@ function mealPlanLine(ev) {
 let mpAuto = '';   // the bill value last filled from the meal total, so a typed bill is never overwritten
 function readMealPlan() {
   const plan = {};
-  document.querySelectorAll('#ev-mp-rows [data-mp]').forEach(row => {
-    const g = row.querySelector('[data-k="guests"]').value, r = row.querySelector('[data-k="rate"]').value, mn = row.querySelector('[data-k="menu"]').value;
-    if (g || r || mn) plan[row.dataset.mp] = { guests: g === '' ? 0 : Math.max(0, Math.floor(Number(g))), rate: r === '' ? 0 : Number(r), ...(mn ? { menu: mn } : {}) };
-  });
+  for (const m of MEAL_ORDER) {
+    const gIn = document.querySelector(`#ev-g-meals [data-gm="${m}"]`), row = document.querySelector(`#ev-mp-rows [data-mp="${m}"]`);
+    if (!gIn && !row) continue;
+    const g = gIn?.value || '', r = row?.querySelector('[data-k="rate"]').value || '', mn = row?.querySelector('[data-k="menu"]').value || '';
+    if (g || r || mn) plan[m] = { guests: g === '' ? 0 : Math.max(0, Math.floor(Number(g))), rate: r === '' ? 0 : Number(r), ...(mn ? { menu: mn } : {}) };
+  }
   return plan;
 }
+
 // A meal's menu choices: menus marked for that meal first, then general ones, then the rest (a hidden menu already chosen stays)
 function mealMenuOptions(meal, sel) {
   const g = menusForMeal(meal), opt = x => `<option value="${esc(x.id)}"${x.id === sel ? ' selected' : ''}>${esc(x.name)}</option>`;
@@ -4040,11 +4075,17 @@ function renderMealPlan(values) {
   q('ev-mp').hidden = !meals.length;
   q('ev-menu').closest('.field').hidden = !!meals.length;   // with meals, each meal has its own menu
   if (meals.length) q('ev-menu-hint').hidden = true;
-  // One row per meal: its own menu, guests and rate (a day can have breakfast, lunch, high tea, dinner, late night)
-  q('ev-mp-rows').innerHTML = `<div class="q-head mp-head" aria-hidden="true"><span>${tr('Meal · menu', 'जेवण · मेनू')}</span><span>${tr('Guests', 'पाहुणे')}</span><span>${tr('₹ / plate', '₹ / ताट')}</span></div>`
+  // Guests: with meals, one required box per meal (an older event's guest number is only a hint: saving unchanged adds
+  // nothing); else one box
+  const hint = meals.length ? Number(qv('ev-guests')) || '' : '';
+  q('ev-guests').hidden = !!meals.length;
+  q('ev-g-lbl').htmlFor = meals.length ? `ev-mp-${meals[0]}-g` : 'ev-guests';
+  q('ev-g-meals').innerHTML = meals.map(m => `<div class="g-meal"><label for="ev-mp-${m}-g">${MEALS[m]}</label>
+    <input type="number" id="ev-mp-${m}-g" data-gm="${m}" min="1" inputmode="numeric" placeholder="${hint ? esc(String(hint)) : 'Guests'}" value="${values[m]?.guests || ''}"></div>`).join('');
+  // Menu and rate per meal (optional; a day can have breakfast, lunch, high tea, dinner, late night)
+  q('ev-mp-rows').innerHTML = `<div class="q-head mp-head" aria-hidden="true"><span>${tr('Meal · menu', 'जेवण · मेनू')}</span><span>${tr('₹ / plate', '₹ / ताट')}</span></div>`
     + meals.map(m => `<div class="mp-row" data-mp="${m}"><div class="mp-name">${MEALS[m]}</div>
     <div class="field" style="margin:0"><select id="ev-mp-${m}-m" data-k="menu" aria-label="${MEALS[m]} menu"><option value="">No menu – मेनू नाही</option>${mealMenuOptions(m, values[m]?.menu)}</select></div>
-    <div class="field" style="margin:0"><input type="number" id="ev-mp-${m}-g" data-k="guests" min="0" inputmode="numeric" aria-label="${MEALS[m]} guests" placeholder="${esc(qv('ev-guests') || '0')}" value="${values[m]?.guests || ''}"></div>
     <div class="field" style="margin:0"><input type="number" id="ev-mp-${m}-r" data-k="rate" min="0" inputmode="decimal" aria-label="${MEALS[m]} rate per plate" placeholder="0" value="${values[m]?.rate || ''}"></div></div>`).join('');
   updateMealPlan();
 }
@@ -4054,10 +4095,10 @@ function mainMealMenu() {
   const best = Object.entries(plan).filter(([, v]) => v.menu).sort((a, b) => b[1].guests * b[1].rate - a[1].guests * a[1].rate)[0];
   return best ? best[1].menu : '';
 }
-// Only meals still ticked, with both guests and a rate, are kept
+// Meals still ticked with their guests are kept (a rate is optional: 0 until priced; only priced meals add to the bill)
 function mealPlanFields(meals) {
   const plan = readMealPlan(), out = {};
-  for (const m of meals) if (plan[m]?.guests > 0 && plan[m]?.rate > 0) out[m] = { guests: plan[m].guests, rate: Math.round(plan[m].rate * 100) / 100, ...(plan[m].menu ? { menu: plan[m].menu } : {}) };
+  for (const m of meals) if (plan[m]?.guests > 0) out[m] = { guests: plan[m].guests, rate: plan[m].rate > 0 ? Math.round(plan[m].rate * 100) / 100 : 0, ...(plan[m].menu ? { menu: plan[m].menu } : {}) };
   return out;
 }
 function updateMealPlan() {
@@ -4251,8 +4292,18 @@ async function saveEvent() {
     guests: qf('ev-guests')
   };
   const id = qv('ev-id');
+  // Guests are registered first: required (per meal when meals are chosen) for a new or upcoming event; a past event
+  // can still be corrected without them
+  const chosen = MEAL_ORDER.filter(m => evMeals().includes(m)), guestErrs = {}, needGuests = !id || !data.date || data.date >= today();
+  if (chosen.length) {
+    // an event that already has a guest number (used for each meal) is not blocked; a new one needs each meal's guests
+    if (needGuests && !(Number(qv('ev-guests')) >= 1)) for (const m of chosen) { const v = Number(qv(`ev-mp-${m}-g`)); if (!(Number.isInteger(v) && v >= 1)) guestErrs[`mp-${m}-g`] = `${MEALS[m]}: guests – पाहुणे आवश्यक`; }
+  }
   const adv = id || !qv('ev-adv') ? '' : qf('ev-adv');   // optional: blank means no advance
-  const { valid, errors } = validate({ ...EVENT_RULES, adv: { numeric: true, min: 1, minMsg: 'Advance must be > 0' } }, { ...data, adv });
+  const { valid: rulesOk, errors } = validate({ ...EVENT_RULES, adv: { numeric: true, min: 1, minMsg: 'Advance must be > 0' } }, { ...data, adv });
+  if (needGuests && !chosen.length && !errors.guests && !(Number(data.guests) >= 1)) errors.guests = 'Guests – पाहुण्यांची संख्या आवश्यक';
+  Object.assign(errors, guestErrs);
+  const valid = rulesOk && !errors.guests && !Object.keys(guestErrs).length;
   if (!errors.adv && !errors.billing && adv !== '' && Number(adv) > Number(data.billing)) errors.adv = 'Advance is more than the total bill – अॅडव्हान्स बिलापेक्षा जास्त';
   // Rule keys are field names; the inputs are ev-<name>
   const out = q('ev-handling').dataset.value === 'out';
@@ -5239,6 +5290,7 @@ function bindAllEvents() {
       case 'plan-edit':    openPlanModal(); break;
       case 'count-open':   openCountModal(); break;
       case 'count-policy-save': saveCountPolicy(); break;
+      case 'count-booked-save': saveBookedGuests(); break;
       case 'fs-open':  openFunctionSheet(); break;
       case 'settle-open': openSettle(); break;
       case 'quote-open': openQuote(); break;
@@ -5530,10 +5582,11 @@ function bindAllEvents() {
     if (set.has(k)) set.delete(k); else set.add(k);
     d.diet = DIET_TAGS.map(([x]) => x).filter(x => set.has(x)); renderServiceSheet(); });
   q('ev-mp-rows').addEventListener('input', updateMealPlan);
+  q('ev-g-meals').addEventListener('input', updateMealPlan);
   q('ev-mp-rows').addEventListener('change', e => {
     if (e.target.dataset.k !== 'menu') return;
     const row = e.target.closest('[data-mp]'), menu = menuById(e.target.value), rate = row.querySelector('[data-k="rate"]');
-    const guests = row.querySelector('[data-k="guests"]').value || qv('ev-guests');
+    const guests = qv(`ev-mp-${row.dataset.mp}-g`) || qv('ev-guests');
     if (menu && (!rate.value || rate.dataset.auto === rate.value)) { rate.value = String(menuRate(menu, guests)); rate.dataset.auto = rate.value; }
     updateMealPlan();
   });

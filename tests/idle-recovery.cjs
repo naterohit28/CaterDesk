@@ -14,7 +14,7 @@ const assert = require('node:assert/strict');
     await p.evaluate(async () => { const d = await import('./db.js'); await d.setMeta('pin_hash', null); await d.importAllData({ version: 'ffv2', events: [{ id: 'idle-event', name: 'Idle event', date: '2026-10-27', venue: 'Pune', billing: 10000 }], vendors: [{ id: 'idle-vendor', name: 'Supplier', cat: 'Raw Material' }], expenses: [], cPays: [], vPays: [], photos: [] }); });
     await p.reload(); await p.waitForSelector('#kpi .card');
   };
-  const newEvent = async name => { await p.locator('#n-events').click(); await p.locator('#fab').click(); for (const [id, value] of [['ev-name', name], ['ev-date', '2026-10-27'], ['ev-venue', 'Pune'], ['ev-billing', '1000']]) await p.locator('#' + id).fill(value); };
+  const newEvent = async name => { await p.locator('#n-events').click(); await p.locator('#fab').click(); for (const [id, value] of [['ev-name', name], ['ev-date', '2026-10-27'], ['ev-venue', 'Pune'], ['ev-billing', '1000'], ['ev-guests', '100']]) await p.locator('#' + id).fill(value); };
   await test('queued write cancels before unlocking Save; wake cannot permit duplicate', async () => {
     await seed(); await newEvent('Blocked save');
     const blocker = await ctx.newPage(); await blocker.goto(BASE_URL); await blocker.waitForSelector('#kpi .card');

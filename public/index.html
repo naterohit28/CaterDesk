@@ -262,8 +262,15 @@
         <button type="button" class="f-chip" data-meal="latenight" aria-pressed="false">Late night – रात्री उशिरा</button>
       </div>
     </div>
-    <!-- Optional price per meal: each meal its own guests and rate; the total can fill the bill (one amount) -->
-    <details class="field" id="ev-mp" hidden><summary class="label" style="cursor:pointer">Price by meal (optional) – जेवणानुसार दर</summary>
+    <!-- Guests come first and are required: one number, or one per meal when meals are chosen (each meal is counted
+         on its own; guests of different meals are never added up) -->
+    <div class="field" id="ev-g">
+      <label for="ev-guests" id="ev-g-lbl">Guests – पाहुणे <span class="req">*</span></label>
+      <input type="number" id="ev-guests" placeholder="e.g. 300" min="1" inputmode="numeric" enterkeyhint="next">
+      <div id="ev-g-meals" class="g-meals"></div>
+    </div>
+    <!-- Optional menu and price per meal; the total can fill the bill (one amount) -->
+    <details class="field" id="ev-mp" hidden><summary class="label" style="cursor:pointer">Menu and price by meal (optional) – जेवणानुसार मेनू व दर</summary>
       <div id="ev-mp-rows" style="margin-top:var(--s2)"></div>
       <div class="meta" id="ev-mp-total" data-nl></div></details>
     <div class="field"><label for="ev-venue">Venue – ठिकाण <span class="req">*</span></label><input type="text" id="ev-venue" placeholder="Hall / location" autocapitalize="words" enterkeyhint="next"></div>
@@ -279,10 +286,7 @@
       <div class="f2" id="ev-logi-fields" style="margin-top:var(--s2);flex-wrap:wrap"></div></details>
     <!-- Menu + guests fill the bill from the rate card and the expected cost from what that menu
          has cost before. Both stay editable. -->
-    <div class="f2">
-      <div class="field"><label for="ev-menu">Menu – मेनू</label><select id="ev-menu"></select></div>
-      <div class="field"><label for="ev-guests">Guests / plates – पाहुणे</label><input type="number" id="ev-guests" placeholder="e.g. 300" min="1" inputmode="numeric" enterkeyhint="next"></div>
-    </div>
+    <div class="field"><label for="ev-menu">Menu – मेनू</label><select id="ev-menu"></select></div>
     <div class="meta" id="ev-menu-hint" data-nl hidden style="margin:-6px 0 var(--s3)"></div>
     <div class="f2">
       <div class="field"><label for="ev-billing">Total bill ₹ – एकूण बिल <span class="req">*</span></label><input type="number" id="ev-billing" placeholder="0" min="1" inputmode="decimal" enterkeyhint="next"></div>

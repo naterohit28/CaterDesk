@@ -263,8 +263,8 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .mt-total { border-top: 1px solid var(--line); margin-top: 2px; padding-top: 6px; }
 .mt-total .mt-amt { font-weight: 700; }
 /* Event form: one row per meal – name above, then menu | guests | rate */
-.mp-head { grid-template-columns: minmax(0, 1.6fr) minmax(0, .9fr) minmax(0, .9fr); }
-.mp-row { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, .9fr) minmax(0, .9fr); gap: 6px; align-items: center; margin-bottom: var(--s2); }
+.mp-head { grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr); }
+.mp-row { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr); gap: 6px; align-items: center; margin-bottom: var(--s2); }
 .mp-name { grid-column: 1 / -1; font-size: var(--fs-xs); font-weight: 650; color: var(--text); margin: 2px 0 -2px 2px; }
 .mp-row select { padding-left: 10px; padding-right: 24px; background-position: right 6px center; }
 .mp-row input[type="number"] { padding-left: 10px; padding-right: 8px; font-variant-numeric: tabular-nums; }
@@ -726,3 +726,10 @@ button.d-brand:focus-visible { outline: 2px solid var(--brand-text); outline-off
 .gstin-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); margin-top: 2px; }
 .gstin { font-size: var(--fs-md); font-weight: 600; letter-spacing: .04em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .gst-link { display: inline-block; margin-top: var(--s2); color: var(--brand-text); min-height: 24px; }
+/* Guests per meal in the event form (4.27.1): meal name above its guest box, two to a row on a phone */
+.g-meals { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); }
+.g-meals:empty { display: none; }
+.g-meal label { margin-bottom: 4px; }
+.booked-row { display: flex; gap: var(--s2); align-items: center; margin-top: 6px; }
+.booked-row .btn { width: auto; flex: 0 0 auto; padding: 0 var(--s4); }
+.guests-miss { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); flex-wrap: wrap; }
