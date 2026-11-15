@@ -699,3 +699,12 @@ body::before {
 .mv-ver summary { display: flex; flex-direction: column; gap: 2px; cursor: pointer; list-style: none; }
 .mv-ver summary::-webkit-details-marker { display: none; }
 .mv-diff { padding-top: var(--s2); }
+/* Client documents: menu pages and the send-menu preview */
+.pd-break { break-before: page; page-break-before: always; margin-top: 24px; }
+.pd-rebuilt { border-color: #555; color: #333; font-weight: 600; letter-spacing: 0; }
+.pd-menu-label { font-size: 9.5pt; color: #555; margin-bottom: 8px; }
+.pd-meal { break-inside: avoid; margin-top: 12px; }
+.pd-meal h2 { font-size: 12pt; margin: 0 0 2px; color: #0D2425; }
+.pd-meal ul { margin: 4px 0 0; padding-left: 18px; columns: 2; column-gap: 24px; }
+.pd-meal li { break-inside: avoid; padding: 1px 0; }
+.md-preview { white-space: pre-wrap; font: var(--fs-sm)/1.5 var(--font); background: var(--surface-2); border-radius: var(--r-md); padding: var(--s3); margin: 0; max-height: 40vh; overflow: auto; color: var(--text); }

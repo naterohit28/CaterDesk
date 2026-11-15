@@ -4,7 +4,7 @@
 
 An offline-first app for catering events, expenses, vendor credit, client collections, menus and vendor orders. Business records stay in the device's browser storage; the hosted app also sends limited error diagnostics to its server.
 
-**Current source and hosted web build: v4.24.0.** Documentation checked on **14 November 2026**.
+**Current source and hosted web build: v4.25.0.** Documentation checked on **14 November 2026**.
 
 [Open the app](https://expense-calculator-kohl.vercel.app/) · [Download published packages](https://github.com/naterohit28/CaterDesk/releases) · [Historical reliability report](docs/RELIABILITY.md) · [Competitor/name research and Claude evaluation notes](docs/research/README.md) · [Report an issue](https://github.com/naterohit28/CaterDesk/issues)
 
@@ -31,16 +31,16 @@ The **APK wrapper version, hosted web version and bundled desktop version are in
 
 | Component | Verified state on 3 November 2026 | Meaning |
 | --- | --- | --- |
-| Source and hosted web app | **4.24.0** | Current UI, data/export version, service worker and error reporter |
+| Source and hosted web app | **4.25.0** | Current UI, data/export version, service worker and error reporter |
 | Service-worker release cache | `flavor-fusion-v2-cache-v25` | Installed web assets; this number is not the database schema version |
-| Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** | APK package inspected locally; launches the hosted app, which can run 4.24.0 |
+| Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** | APK package inspected locally; launches the hosted app, which can run 4.25.0 |
 | Android requirements for that local wrapper | min API **24**, target API **36** | Android 7.0+ and a compatible browser provider |
 | Latest GitHub Release with downloadable binaries | **2.4.7** | APK and desktop ZIP; later source tags do not imply newer binaries were uploaded |
 | Desktop package currently in the owner's `Apps/Desktop` folder | **2.4.7** | A static older bundle, not the current source build |
-| Desktop launcher source/instructions | **4.24.0** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
+| Desktop launcher source/instructions | **4.25.0** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
 | IndexedDB schema | **4** | Kept separate from application version changes |
 
-Do not relabel an older package as 4.24.0. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
+Do not relabel an older package as 4.25.0. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
 
 ## Current features
 
@@ -147,17 +147,17 @@ The APK is a **Trusted Web Activity** wrapper around the hosted site. It does no
 1. Keep a business-data backup.
 2. Obtain the intended APK from its actual release assets or the owner's prepared local package. Install over the existing app with the same package/signing identity.
 3. Open online to download updates. Check the **web build in Settings**, not just Android App info.
-4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **4.24.0**.
+4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **4.25.0**.
 
 A newer web release may reload automatically during the first 20 seconds of startup when no active form/save/overlay prevents it, at most once per release per session. Otherwise it waits for a later start or explicit reload. Refresh can also switch versions when no form/save is open. Service-worker cache mappings preserve matching assets for older open pages until navigation.
 
 Do not uninstall or clear browser/site storage to force an update. If Android rejects an APK, check package, versionCode and signing certificate before proceeding. The public certificate association is [`public/.well-known/assetlinks.json`](public/.well-known/assetlinks.json).
 
-The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **4.24.0**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
+The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **4.25.0**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
 
 ## Windows desktop testing
 
-Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v4.24.0 package.
+Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v4.25.0 package.
 
 1. Extract the entire ZIP; keep `app/` beside `CaterDesk-Desktop.exe`.
 2. Run the EXE. Microsoft Edge opens an app window; a tray icon provides **Open CaterDesk**, storage information and **Exit test server**.
@@ -339,6 +339,7 @@ This is a short source-feature history, not a list of available binary downloads
 
 | Version | Main changes |
 | --- | --- |
+| 4.25.0 | **Client documents from an approved menu:** a quotation can add a **menu annexure** (pages after the quotation) from a chosen approved version, or the current menu marked as a draft; a new quote version takes the latest approved menu. **Send menu** on the event page sends the menu on its own, as a PDF or WhatsApp text, from a chosen version. Client documents show meals, dishes and diet marks only, never kitchens, counters, vendors, rates or costs. **I have sent it** keeps the exact menu sent, and printing it again later shows the same menu even after changes. A quotation sent before copies were kept prints with a note that it was rebuilt from current data. |
 | 4.24.0 | **Client-approved menu versions:** **Mark approved** on the event page keeps a copy of every meal's menu as it is, numbered (version 1, 2, …), with how it was approved (written or verbal) and by whom. A kept version is never changed; when the menu changes afterwards, the page says *Changed since approved v1 · N changes*, and approving again shows what changed meal by meal (dishes added or removed, a dish's kitchen/counter or diet marks, date, time, guests, rate) and keeps it as the next version. **Versions** lists them newest first with the changes from the one before. A library menu shown for a meal but not used is left out of the copy and named. Nothing is sent to anyone. |
 | 4.23.1 | **Home always opens Home:** tapping Home now always lands on Home and is remembered as the last screen. On a slow phone, closing a sheet could leave its Back still on the way; tapping Home in that moment showed Home and then jumped back to Events (and the app reopened on Events). Home now shows at once, a late Back changes nothing, and a miscounted history is reset to Home. |
 | 4.23.0 | **Menu by meal:** the event page shows each meal with its own dishes (grouped by course where one was set), with its date, time, guests and rate, and who prepares each dish; dishes served at every meal are listed once. A library menu chosen for a meal shows as *not confirmed yet* until **Use these dishes** makes them that meal's dishes, so counters and vendor orders see them. **Add menu** (or **Edit** on a meal) opens one sheet in four steps: choose the meal (a repeated meal shows its date), choose a library menu (menus for that meal first, each with its dish count) or *Create new menu*, type or paste the dishes (for example *Poha, Upma, Idli, Medu Vada, Fruit Bowl, Tea and Coffee*) and choose for each our kitchen or a counter, with diet marks such as Jain under a small *Diet* button, and save for this event only or also as a new library menu. Dishes a meal already has stay unless you choose to add to or replace them; existing library menus are never changed; switching meals with unsaved changes asks first. The page points out dishes of a removed meal and a menu changed in an older app version. |
