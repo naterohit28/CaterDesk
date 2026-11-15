@@ -537,7 +537,8 @@ export async function prepareImport(payload) {
       if (row.dispute !== undefined && (!row.dispute || typeof row.dispute.reason !== 'string' || !row.dispute.reason.trim() || typeof row.dispute.at !== 'string' || (amount(row.dispute.amt, 'disputed amount'), false))) throw new Error('Invalid dispute');
       // An order's meal, the approved menu it follows and the guests it was planned on (4.26.0)
       if (row.orders?.some(o => o && ((o.svc !== undefined && (typeof o.svc !== 'string' || !o.svc || o.svc.length > 40)) || (o.menuVersion !== undefined && (typeof o.menuVersion !== 'string' || o.menuVersion.length > 40))
-        || (o.basis !== undefined && (!o.basis || !Number.isSafeInteger(o.basis.guests) || o.basis.guests < 0 || !['meal', 'event'].includes(o.basis.from)))))) throw new Error('Invalid order');
+        || (o.basis !== undefined && (!o.basis || !Number.isSafeInteger(o.basis.guests) || o.basis.guests < 0 || !['meal', 'event'].includes(o.basis.from)))
+        || (o.reminded !== undefined && (!Array.isArray(o.reminded) || o.reminded.length > 20 || o.reminded.some(t => typeof t !== 'string' || t.length > 40)))))) throw new Error('Invalid order');
       if (row.orders?.some(o => o?.messages !== undefined && (!Array.isArray(o.messages) || o.messages.some(m => !m || typeof m.text !== 'string' || !['prepared', 'opened', 'sent', 'confirmed'].includes(m.status))))) throw new Error('Invalid order messages');
       if (row.additional !== undefined && typeof row.additional !== 'boolean') throw new Error('Invalid extra flag');
       if (row.split !== undefined && (!row.split || typeof row.split.id !== 'string' || (amount(row.split.total, 'shared bill'), false))) throw new Error('Invalid shared bill');

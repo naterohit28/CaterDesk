@@ -1852,6 +1852,7 @@ async function orderAction(orderId) {
       ...(['prepared', 'opened'].includes(o.status) || o.menuChanged ? [{ label: 'I have sent it – पाठवले', value: 'sent', style: 'btn-secondary' }] : []),
       ...(['prepared', 'opened', 'sent'].includes(o.status) || o.menuChanged ? [{ label: 'Vendor confirmed – पक्के', value: 'confirmed', style: 'btn-secondary' }] : []),
       ...(o.status !== 'delivered' ? [{ label: 'Delivered · record bill – आले, बिल नोंदवा', value: 'delivered', style: 'btn-primary' }] : []),
+      ...(['opened', 'sent'].includes(o.status) && !o.menuChanged ? [{ label: 'Remind to confirm – आठवण द्या', value: 'remind', style: 'btn-secondary' }] : []),
       { label: 'Edit / send again – बदला', value: 'edit', style: 'btn-secondary' },
       ...((o.messages || []).length ? [{ label: `Message history (${o.messages.length}) – संदेशांचा इतिहास`, value: 'history', style: 'btn-secondary' }] : []),
       ...(o.status === 'delivered' && !orderBillOf(o) ? [{ label: 'Record / link its bill – बिल नोंदवा', value: 'bill', style: 'btn-primary' }] : []),
@@ -1860,6 +1861,7 @@ async function orderAction(orderId) {
   });
   if (!next) return;
   if (next === 'edit') { openOrderModal({ orderId }); return; }
+  if (next === 'remind') { await remindOrder(ev.id, orderId); return; }
   if (next === 'bill') { orderBill(ev, o); return; }
   if (next === 'history') {
     const MSG = { prepared: 'Not sent yet', opened: 'WhatsApp opened (not confirmed sent)', sent: 'Sent (you confirmed)', confirmed: 'Vendor confirmed' };
@@ -1868,9 +1870,7 @@ async function orderAction(orderId) {
     return;
   }
   // Marking it sent or vendor-confirmed is what clears a menu-change warning (the latest menu went out)
-  await patchEvent(ev.id, { orders: ev.orders.map(x => { if (x.id !== orderId) return x; const y = { ...x, status: next };
-    if (['sent', 'confirmed'].includes(next)) { delete y.menuChanged; if (y.messages?.length) y.messages = markOrderMessage(y.messages, next, new Date().toISOString()); }
-    return y; }) });
+  await setOrderStatus(ev, orderId, next);
   refreshCurrent();
   if (next !== 'delivered') return;
   // Outsourced: their charge was recorded when the event was booked; don't count it twice
@@ -1910,22 +1910,65 @@ async function cancelOrderFromSheet() {
 }
 
 // Home: orders due today or tomorrow that haven't arrived yet
+/* Home: deliveries today and tomorrow, and every order not yet confirmed by its vendor for the next 2 days, with a
+   one-tap reminder (WhatsApp opens with the order details; you send it) and Confirmed for when the vendor replies */
+const UNCONFIRMED = ['prepared', 'opened', 'sent'];
 function deliveriesCard() {
-  const t = today(), tm = addDays(t, 1);
-  const due = D.events.flatMap(ev => (ev.orders || []).filter(o => ACTIVE_ORDER.includes(o.status) && (o.date === t || o.date === tm)).map(o => ({ ev, o })))
+  const t = today(), tm = addDays(t, 1), t2 = addDays(t, 2);
+  const due = D.events.flatMap(ev => (ev.orders || []).filter(o => ACTIVE_ORDER.includes(o.status)
+      && (o.date === t || o.date === tm || (UNCONFIRMED.includes(o.status) && o.date === t2))).map(o => ({ ev, o })))
     .sort((a, b) => (a.o.date + (a.o.time || '')).localeCompare(b.o.date + (b.o.time || '')));
   if (!due.length) return '';
+  const open = due.filter(({ o }) => UNCONFIRMED.includes(o.status)).length;
+  const when = d => d === t ? tr('Today', 'आज') : d === tm ? tr('Tomorrow', 'उद्या') : esc(fmtDate(d));
   return `
-    <div class="sec"><span class="sec-title">Deliveries – पुरवठा</span><span class="meta">${due.length}</span></div>
+    <div class="sec"><span class="sec-title">Deliveries – पुरवठा</span><span class="meta">${due.length}${open ? tr(` · ${open} to confirm`, ` · ${open} पक्की करायची`) : ''}</span></div>
     <div class="card list" id="deliveries">${due.map(({ ev, o }) => {
-      const ven = D.vendors.find(v => v.id === o.venId), st = ORDER_STATUS[o.status];
+      const ven = D.vendors.find(v => v.id === o.venId), st = ORDER_STATUS[o.status], pending = UNCONFIRMED.includes(o.status), last = (o.reminded || []).at(-1);
       return `<div class="row" role="button" tabindex="0" data-action="evdetail" data-id="${esc(ev.id)}">
         <div class="row-ic">${icon('truck', 18)}</div>
-        <div class="row-body"><div class="title-sm trunc">${o.date === t ? tr('Today', 'आज') : tr('Tomorrow', 'उद्या')}${o.time ? ' ' + esc(o.time) : ''} · <span data-nl>${esc(ven?.name || '')}</span></div>
+        <div class="row-body"><div class="title-sm trunc">${when(o.date)}${o.time ? ' ' + esc(o.time) : ''} · <span data-nl>${esc(ven?.name || '')}</span></div>
           <div class="meta trunc">${esc(short(o.head))} · ${o.plates || ''} ${tr('plates', 'ताट')} · <span data-nl>${esc(ev.name)}</span></div></div>
         <span class="chip ${st.tone}">${tr(st.en, st.mr)}</span>
-      </div>`;
+      </div>${pending ? `<div class="dl-acts" data-order="${esc(o.id)}">
+        ${o.status === 'prepared' || o.menuChanged
+          ? `<button type="button" class="btn-sm" data-action="order-status" data-id="${esc(o.id)}" data-ev="${esc(ev.id)}">${icon('message', 16)}${tr(o.menuChanged ? 'Send new menu' : 'Send order', o.menuChanged ? 'नवा मेनू पाठवा' : 'ऑर्डर पाठवा')}</button>`
+          : `<button type="button" class="btn-sm" data-action="order-remind" data-id="${esc(o.id)}" data-ev="${esc(ev.id)}">${icon('message', 16)}${tr('Remind', 'आठवण')}</button>`}
+        <button type="button" class="btn-sm" data-action="order-confirm" data-id="${esc(o.id)}" data-ev="${esc(ev.id)}">${icon('check', 16)}${tr('Confirmed', 'पक्के')}</button>
+        ${last ? `<span class="meta">${tr(`Reminded ${fmtDate(last.slice(0, 10))} ${last.slice(11, 16)}`, `आठवण ${fmtDate(last.slice(0, 10))}`)}</span>` : ''}
+      </div>` : ''}`;
     }).join('')}</div>`;
+}
+// The reminder: the same order details, asking the vendor to confirm (WhatsApp opens; nothing is sent by the app)
+function reminderMessage(ev, o, ven) {
+  const all = eventServices(ev).services, s = o.svc ? all.find(x => x.id === o.svc) : null;
+  const meal = s ? svcLabel(ev, s, all) : ev.meals?.length ? mealLabel(ev) : '', items = orderItems(ev, o).join(', ');
+  return `Namaste ${ven.name}! A reminder for ${ev.name}:\n`
+    + `Date: ${fmtDate(o.date)}${o.time ? ', ' + o.time : ''}${meal ? ' (' + meal + ')' : ''}\nVenue: ${ev.venue || '-'}\n`
+    + (ev.outsourced ? `Full event catering for ${o.plates || '-'} guests\n` : `${short(o.head)} for ${o.plates || '-'} plates\n`)
+    + (items ? `${ev.outsourced ? 'Menu' : 'Items'}: ${items}\n` : '') + (o.basis?.guests && !ev.outsourced ? `Guests: ${o.basis.guests}\n` : '')
+    + `\nPlease confirm everything is on track. Thank you!`;
+}
+async function remindOrder(evId, orderId) {
+  const ev = D.events.find(e => e.id === evId), o = ev?.orders?.find(x => x.id === orderId); if (!o) return;
+  const ven = D.vendors.find(v => v.id === o.venId), phone = phoneDigits(ven?.phone);
+  if (!phone) { showToast(`${ven?.name || 'This vendor'} has no phone number – add it to send a reminder on WhatsApp.`, 'error'); return; }
+  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(reminderMessage(ev, o, ven))}`, '_blank', 'noopener');
+  await patchEvent(ev.id, { orders: ev.orders.map(x => x.id === orderId ? { ...x, reminded: [...(x.reminded || []), new Date().toISOString()].slice(-20) } : x) });
+  showToast(`WhatsApp opened with a reminder for ${ven.name}. Tap Confirmed when they reply – उत्तर आल्यावर पक्के करा`);
+  refreshCurrent();
+}
+// Vendor confirmed: the same step as in the order's status sheet (it also clears a menu-change warning)
+async function setOrderStatus(ev, orderId, next) {
+  await patchEvent(ev.id, { orders: ev.orders.map(x => { if (x.id !== orderId) return x; const y = { ...x, status: next };
+    if (['sent', 'confirmed'].includes(next)) { delete y.menuChanged; if (y.messages?.length) y.messages = markOrderMessage(y.messages, next, new Date().toISOString()); }
+    return y; }) });
+}
+async function confirmOrder(evId, orderId) {
+  const ev = D.events.find(e => e.id === evId), o = ev?.orders?.find(x => x.id === orderId); if (!o) return;
+  await setOrderStatus(ev, orderId, 'confirmed');
+  showToast(`${D.vendors.find(v => v.id === o.venId)?.name || 'Vendor'} confirmed – पक्के`);
+  refreshCurrent();
 }
 
 // Quiet comparison, per category, of this event's cost per plate with the usual for its menu/type
@@ -5107,7 +5150,9 @@ function bindAllEvents() {
       case 'lab-edit':     openLabModal(); break;
       case 'dish-assign':  assignDish(Number(id)); break;
       case 'order-new':    openOrderModal({ head: id, svc: el.dataset.svc || '' }); break;
-      case 'order-status': orderAction(id); break;
+      case 'order-remind': remindOrder(el.dataset.ev, id); break;
+      case 'order-confirm': confirmOrder(el.dataset.ev, id); break;
+      case 'order-status': if (el.dataset.ev && el.dataset.ev !== curRef) { await showEvDetail(el.dataset.ev); } orderAction(id); break;   // from Home: its event first
       case 'recon-open':   openReconModal(); break;
       case 'plan-edit':    openPlanModal(); break;
       case 'count-open':   openCountModal(); break;
