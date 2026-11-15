@@ -1607,7 +1607,7 @@ function menuOrdersCard(ev) {
   if (!dishes.length && !(ev.orders || []).length) return `
     <div class="sec"><span class="sec-title">Menu & orders – मेनू व ऑर्डर</span></div>
     <div class="card pad"><div class="meta">${tr('Add the dishes agreed with the client. Counter items become vendor orders you can send on WhatsApp.', 'ग्राहकाशी ठरलेले पदार्थ जोडा. काउंटरचे पदार्थ विक्रेत्यांना ऑर्डर म्हणून WhatsApp वर पाठवता येतात.')}</div>
-      <button type="button" class="btn-sm" style="margin-top:var(--s3)" data-action="menu-edit">${icon('plus', 16)}${tr('Add menu', 'मेनू जोडा')}</button></div>`;
+      <button type="button" class="btn-sm" style="margin-top:var(--s3)" data-action="menu-edit">${icon('plus', 16)}${tr('Add menu', 'मेनू जोडा')}</button></div>${buyCard(ev)}`;   // purchases already made stay reachable when the menu is emptied
   const groups = dishGroups(ev), rows = counterRows(ev);
   const orders = ev.orders || [];
   const counters = rows.map(r => {
@@ -2730,7 +2730,7 @@ const SRC_OPTS = [['@buy', 'Buy ready-made – तयार विकत'], ['@f
 const SRC_NAME = { kitchen: 'Our kitchen', buy: 'Buy ready-made', finish: 'Buy & finish', counter: 'Counter' };
 const whoValue = d => d.src ? '@' + d.src : d.head || '';
 function setWho(d, v) { if (v === '@buy' || v === '@finish') { d.src = v.slice(1); d.head = ''; } else { delete d.src; d.head = v; } d.manual = true; }
-const svcDishKey = list => list.map(d => JSON.stringify([d.name.trim(), d.cat || '', d.type || '', d.diet || [], d.head || ''])).join('\n');
+const svcDishKey = list => list.map(d => JSON.stringify([d.name.trim(), d.cat || '', d.type || '', d.diet || [], d.head || '', d.src || ''])).join('\n');
 function svcLabel(ev, s, all) {
   const repeat = all.filter(x => x.meal === s.meal).length > 1, other = s.date && s.date !== ev.date;
   return svcTitle(s, all) + (repeat || other ? ` · ${fmtDate(s.date || ev.date)}` : '');
@@ -3378,6 +3378,7 @@ async function saveSplit() {
   const dest = r => ({ evId: r.evId === STOCK ? '' : r.evId, amt: Number(r.amt) });
   const prevLog = before.find(x => x.allocLog)?.allocLog || [];
   const allocLog = [...prevLog, { at: new Date().toISOString(), from: before.map(x => ({ evId: x.evId || '', amt: x.amt })), parts: rows.map(dest) }].slice(-50);
+  let purchaseKept = false;   // a purchase's bill stays linked from one part only, on the purchase's own event
   const changes = rows.map((r, i) => {
     const old = r.id ? before.find(x => x.id === r.id) : null;
     const { evId, amt } = dest(r);
@@ -3387,6 +3388,7 @@ async function saveSplit() {
     if (r.evId === STOCK) rec.stock = true; else delete rec.stock;
     if (i === 0 && (shared || prevLog.length || r.evId === STOCK)) rec.allocLog = allocLog; else delete rec.allocLog;
     delete rec.logi;
+    if (rec.purchase) { if (!purchaseKept && (D.events.find(e => e.id === rec.evId)?.purchases || []).some(x => x.id === rec.purchase)) purchaseKept = true; else delete rec.purchase; }
     return { store: 'expenses', record: rec, expected: old || null };
   });
   const kept = new Set(changes.map(c => c.record.id));

@@ -167,6 +167,48 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     await p.evaluate(() => localStorage.setItem('ffv2_lang', 'en'));
   });
 
+  await test('a purchase bill split with another event keeps its link on one part only, and the backup still restores (Codex P1)', async () => {
+    await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest;
+      d.events.push({ id: 'e2', name: 'Sample Second Event', date: d.events[0].date, venue: 'Sample Hall', type: 'Wedding – लग्न', billing: 50000, guests: 80, photoIds: [] });
+      await db.importAllData(d, 'replace'); });
+    const water = (await ev()).purchases.find(x => x.item === 'Mineral Water'), bill = (await dump()).expenses.find(x => x.purchase === water.id);
+    await p.reload(); await p.waitForSelector('#kpi .card'); await p.locator('#n-expenses:visible').click();
+    await p.locator(`#exp-list [data-action="edit-exp"][data-id="${bill.id}"]:visible`).first().click(); await p.waitForSelector('#exp-modal.active');
+    await p.locator('#btn-share-exp').click(); await p.waitForSelector('#split-modal.active');
+    if (!(await p.locator('#split-rows [data-sp="1"]').count())) await p.locator('#btn-split-add').click();
+    await p.locator('#split-rows [data-sp="0"] [data-k="amt"]').fill('1200');
+    await p.locator('#split-rows [data-sp="1"] [data-k="evId"]').selectOption('e2'); await p.locator('#split-rows [data-sp="1"] [data-k="amt"]').fill('1200');
+    await p.locator('#btn-save-split').click(); await p.waitForTimeout(600);
+    if (await p.locator('#ask-modal.active').count()) await p.locator('#ask-actions button').first().click();
+    const d = await dump(), parts = d.expenses.filter(x => x.split);
+    assert.equal(parts.length, 2, 'split into two parts');
+    assert.deepEqual(parts.filter(x => x.purchase).map(x => x.evId), ['e1'], 'only the part on the purchase\'s event keeps the link');
+    const r = await p.evaluate(async () => { const db = await import('./db.js'); const x = await db.exportAllData(); delete x.manifest; try { await db.importAllData(x, 'replace'); return 'restored'; } catch (e) { return e.message; } });
+    assert.equal(r, 'restored');
+  });
+
+  await test('a sourcing-only edit in the meal sheet is not lost when switching meals (Codex P2)', async () => {
+    await openEvent();
+    await p.locator('.svc-card[data-meal-menu="dinner"] [data-action="svc-edit"]').click(); await p.waitForSelector('#svc-modal.active');
+    const sel = p.locator('#svc-dishes .svc-dish').filter({ has: p.locator('input[data-k="name"][value="Spring Rolls"]') }).locator('[data-k="head"]');
+    await sel.selectOption('@buy');
+    const meal = await p.locator('#svc-meal option').evaluateAll(o => o.map(x => x.value));
+    await p.selectOption('#svc-meal', meal.find(v => v.includes('lunch')));
+    await p.waitForTimeout(300);
+    assert.equal(await p.locator('#ask-modal.active').count(), 1, 'asks before discarding the change');
+    await p.keyboard.press('Escape'); await p.waitForTimeout(200);
+    await p.locator('#svc-modal [data-action="close-modal"]').first().click().catch(() => {});
+  });
+
+  await test('emptying the menu keeps purchases reachable, so a flagged one can still be reviewed (Codex P2)', async () => {
+    await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest;
+      const e = d.events.find(x => x.id === 'e1'); e.dishes = []; delete e._rev; await db.importAllData(d, 'replace'); });
+    await openEvent();
+    assert.equal(await p.locator('#buy-list').count(), 1);
+    assert.match(await p.locator('#buy-list').innerText(), /Gulab Jamun\nNot on the current menu/);
+    assert.ok(await p.locator('#buy-list [data-action="buy-status"]').count() >= 1, 'a status control to review or cancel');
+  });
+
   assert.deepEqual(errors, []);
   await browser.close();
   console.log(failed ? 'menu sourcing FAIL' : 'menu sourcing PASS');
