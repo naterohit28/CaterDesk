@@ -225,7 +225,10 @@ const INTERNAL = /Chaat|Tandoor|Barbeque|Our kitchen|cost|margin|contribution|ve
   await test('a menu sent at 01:00 in India reprints and is listed with that day\'s date, not the day before', async () => {
     const d0 = await dump(); delete d0.manifest;
     const e = d0.events.find(x => x.id === 'W'); delete e._rev;
-    e.menuDocs = [{ ...e.menuDocs[0], at: '2026-11-14T19:30:00.000Z' }];   // 15 Nov 2026, 01:00 IST
+    // 15 Nov 2026, 01:00 IST, kept without its stored date (as before 4.26.1): the day comes from the local time it was sent.
+    // (Spreading the doc made earlier today would carry today's date and make this test depend on the calendar.)
+    const { date: _today, ...sent } = e.menuDocs[0];
+    e.menuDocs = [{ ...sent, at: '2026-11-14T19:30:00.000Z' }];
     e.menuApproved = e.menuApproved.map((v, i) => i === 0 ? { ...v, at: '2026-11-14T19:30:00.000Z' } : v);
     const c2 = await browser.newContext({ ...devices['Pixel 5'], viewport: { width: 360, height: 780 }, timezoneId: 'Asia/Kolkata' });
     const q2 = await c2.newPage(); q2.setDefaultTimeout(10000); q2.on('pageerror', x => errors.push(x.message));
