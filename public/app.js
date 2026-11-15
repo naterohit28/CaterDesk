@@ -2189,7 +2189,8 @@ function dishCourses(dishes) {
     <div class="dish-pills">${groups.get(k).map(dishPill).join('')}</div></div>`).join('');
 }
 function mealMenuCard(ev) {
-  if (!(ev.meals || []).length) return '';
+  // No meals chosen: the dishes are one general menu, which can still be approved and sent
+  if (!(ev.meals || []).length) return approvalBar(ev);
   const { services, unassigned, changedElsewhere } = eventServices(ev);
   const shared = (services[0]?.dishes || []).filter(d => d.shared);
   const cards = services.map(s => {

@@ -148,6 +148,18 @@ const INTERNAL = /Chaat|Tandoor|Barbeque|Our kitchen|cost|margin|contribution|ve
     await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest; d.events = d.events.filter(e => e.id !== 'S'); await db.importAllData(d, 'replace'); });
   });
 
+  await test('an event with dishes but no meals chosen can still send its menu', async () => {
+    const N = { id: 'N', name: 'Sample No Meal Party', date: day(26), venue: 'Sample Hall', type: 'Wedding – लग्न', billing: 50000, guests: 80, photoIds: [],
+      dishes: [{ name: 'Sample Pulao', head: '' }, { name: 'Sample Kheer', head: '' }] };
+    await p.evaluate(async e => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest; d.events.push(e); await db.importAllData(d, 'replace'); }, N);
+    await p.reload(); await p.waitForSelector('#kpi .card'); await p.locator('#n-events:visible').click();
+    await p.locator('#ev-list [data-action="evdetail"][data-id="N"]:visible').click(); await p.waitForSelector('#tab-evdetail .detail-name'); await stub();
+    await p.locator('[data-action="menu-send"]').click(); await p.waitForSelector('#md-modal.active');
+    assert.match(await p.locator('#md-preview').innerText(), /Sample Pulao[\s\S]*Sample Kheer/);
+    await p.locator('#md-modal [data-action="close-modal"]').first().click();
+    await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest; d.events = d.events.filter(e => e.id !== 'N'); await db.importAllData(d, 'replace'); });
+  });
+
   await test('a quotation with a menu annexure never also lists the library menu\'s dishes; without one it does', async () => {
     const golden = await p.evaluate(async () => (await import('./utils.js')).menuById('golden').items);
     // A draft whose lunch line uses the Golden library menu, with "list each menu's dishes" on and the approved annexure
