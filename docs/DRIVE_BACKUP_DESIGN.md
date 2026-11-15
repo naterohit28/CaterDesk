@@ -137,10 +137,11 @@ production address and the local test server.
 - **Algorithm:** AES-256-GCM via the browser's Web Crypto API. No custom cryptography.
 - **Recovery key (approved):**
   - At setup the phone generates a random 256-bit key.
-  - It is shown **once** as 13 groups of 4 characters (Crockford base32 plus a checksum group), e.g. `CDRK-7Q2M-…-H4XD`.
+  - It is shown **once** as 14 groups of 4 characters: 13 groups of Crockford base32 for the 256 bits, plus 1 check
+    group, e.g. `5DNF-P234-…-9Y14`.
   - The owner writes or prints it and stores it away from the phone (password manager or sealed envelope).
 - **Full verification before setup completes:**
-  - The owner types the **entire** recovery key back.
+  - The owner types the **entire** recovery key back (all 14 groups).
   - The checksum group catches typing slips and says which group is wrong.
   - The app derives the key ID from what was typed and must match the generated key exactly.
   - Only then is setup marked complete and backups allowed. A partial match never completes setup.
@@ -160,14 +161,16 @@ production address and the local test server.
 
 ```
 "CDBK" | format 1 | header length | header JSON | chunk 1 | chunk 2 | … | chunk N
-header = { keyId, baseIv (12 random bytes), chunkSize: 4 MiB, chunks: N, createdAt, appVersion,
+header = { keyId, baseIv (12 random bytes), chunkSize: 4 MiB, createdAt, appVersion,
            compressed: "gzip", plainSha256 }
-chunk i = AES-256-GCM( key, iv = baseIv XOR i, aad = SHA-256(header bytes) || i || (i === N ? "last" : "more"),
+chunk i = AES-256-GCM( key, iv = baseIv XOR i, aad = SHA-256(header bytes) || i || (last chunk ? 1 : 0),
                        data = 4 MiB of gzip-compressed backup JSON )  → ciphertext + 16-byte tag
 ```
 
 - Each chunk is authenticated separately. Its index and the "last" flag in the AAD stop chunks being reordered,
   dropped or truncated.
+- The header does not record the number of chunks: encryption streams, so the count is not known when the header is
+  sealed. A file cut short ends on a chunk not marked "last", which fails.
 - Changing the header breaks every chunk.
 - `plainSha256` is checked after decryption and decompression.
 - Encryption and upload work chunk by chunk, so only a few chunks are in memory at once.
