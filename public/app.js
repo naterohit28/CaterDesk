@@ -5458,7 +5458,9 @@ function askRecoveryKey(keyId) {
       let raw;
       try { raw = await parseRecoveryKey(q('rki-typed').value); } catch (e) { q('rki-result').textContent = e.message; return; }
       if (await keyIdOf(raw) !== keyId) { q('rki-result').textContent = 'This backup was made with a different recovery key.'; return; }
-      const key = await importBackupKey(raw); closeOverlay().then(() => finish(key));
+      // Mark it answered before closing: closing the sheet runs its "cancelled" callback, which must not win
+      const key = await importBackupKey(raw); done = true; q('btn-rki-ok').onclick = null;
+      closeOverlay().then(() => resolve(key));
     };
     openSheet('rki-modal', () => finish(null));
   });

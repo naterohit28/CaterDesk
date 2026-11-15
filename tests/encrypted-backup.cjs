@@ -11,7 +11,16 @@ const DATA = { version: 'ffv2', cPays: [{ id: 'p1', evId: 'e1', amt: 25000, date
   vendors: [{ id: 'v1', name: 'Sample Secret Vendor', cat: 'Live Counter', phone: '9000000001' }],
   events: [{ id: 'e1', name: 'Sample Confidential Wedding', date: '2026-12-10', venue: 'Sample Hall', type: 'Wedding – लग्न', billing: 300000, guests: 300, photoIds: [], meals: ['dinner'],
     mealPlan: { dinner: { guests: 300, rate: 650 } }, dishes: [{ name: 'Sample Paneer Tikka', head: '', meal: 'dinner' }],
-    quotes: [{ v: 1, status: 'draft', lines: [{ kind: 'meal', meal: 'dinner', guests: 300, rate: 650 }], showRates: true, terms: '' }] }], photos: [] };
+    quotes: [{ v: 1, status: 'draft', lines: [{ kind: 'meal', meal: 'dinner', guests: 300, rate: 650 }], showRates: true, terms: '' }],
+    // Documents and orders the owner needs back on a new phone: approved menu, menu sent to the client, a vendor counter order, a purchase order
+    menuApproved: [{ id: 'ma1', n: 1, at: '2026-11-03T10:00:00.000Z', by: 'written', who: 'Sample Client', services: [{ id: 'svc-dinner', meal: 'dinner', guests: 300, rate: 650, dishes: [{ name: 'Sample Paneer Tikka', head: '' }] }], shared: [] }],
+    menuDocs: [{ id: 'md1', at: '2026-11-03T11:00:00.000Z', date: '2026-11-03', v: '1', layout: 1, text: 'Sample menu text', event: { name: 'Sample Confidential Wedding', date: '2026-12-10' },
+      menu: { v: '1', label: 'Approved menu 1', meals: [{ title: 'Dinner', when: '', guests: 300, dishes: [{ name: 'Sample Paneer Tikka' }] }], shared: [] } }],
+    orders: [{ id: 'o1', head: 'Chaat – चाट', venId: 'v1', plates: 300, date: '2026-12-10', time: '19:00', status: 'confirmed', at: '2026-11-04T10:00:00.000Z' }],
+    purchases: [{ id: 'PO1', item: 'Sample Mineral Water', src: 'buy', venId: 'v1', qty: 20, unit: 'carton', date: '2026-12-10', status: 'delivered', at: '2026-11-05T10:00:00.000Z',
+      basis: { item: 'Sample Mineral Water', src: 'buy' }, messages: [{ v: 1, text: 'Sample purchase order', status: 'sent', at: '2026-11-05T10:00:00.000Z' }] }] }], photos: [] };
+DATA.events[0].dishes.push({ name: 'Sample Mineral Water', head: '', src: 'buy' });
+DATA.expenses.push({ id: 'x2', evId: 'e1', cat: 'Raw Material', head: 'Water – पाणी', amt: 1800, date: '2026-11-06', pay: 'paid', mode: 'UPI', venId: 'v1', billIds: [], purchase: 'PO1' });
 
 (async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
@@ -119,6 +128,29 @@ const DATA = { version: 'ffv2', cPays: [{ id: 'p1', evId: 'e1', amt: 25000, date
     assert.match(await p3.locator('#toast-msg').innerText(), /damaged[\s\S]*Nothing was changed/);
     assert.equal(await snapshot(p3), keep);
     await ctx3.close();
+  });
+
+  await test('a multi-piece file: a changed header or tag, a dropped, swapped or cut-off piece each fail; the intact file opens', async () => {
+    const r = await p.evaluate(async () => { const c = await import('./backup-crypto.js');
+      const k = await c.newRecoveryKey(), key = await c.importBackupKey(k.raw), id = await c.keyIdOf(k.raw);
+      const rnd = new Uint8Array(7_000_000); for (let i = 0; i < rnd.length; i += 65536) crypto.getRandomValues(rnd.subarray(i, Math.min(rnd.length, i + 65536)));
+      let s = ''; for (let i = 0; i < rnd.length; i += 8192) s += String.fromCharCode(...rnd.subarray(i, i + 8192));
+      const json = JSON.stringify({ blob: btoa(s) });
+      const { parts } = await c.encryptBackup(key, id, json);
+      const join = ps => { const n = ps.reduce((a, x) => a + x.length, 0), out = new Uint8Array(n); let o = 0; for (const x of ps) { out.set(x, o); o += x.length; } return out; };
+      const [pre, ...chunks] = parts, out = { pieces: chunks.length };
+      const tryOpen = async bytes => { try { return (await c.decryptBackup(key, id, bytes)) === json ? 'opened' : 'different'; } catch (e) { return e.code; } };
+      const flip = (ps, at, off) => { const cp = ps.map(x => x.slice()); cp[at][off] ^= 1; return join(cp); };
+      out.intact = await tryOpen(join(parts));
+      out.header = await tryOpen(flip(parts, 0, pre.length - 3));
+      out.tag = await tryOpen(flip(parts, 1, chunks[0].length - 1));
+      out.dropped = await tryOpen(join([pre, chunks[0], ...chunks.slice(2)]));
+      out.swapped = await tryOpen(join([pre, chunks[1], chunks[0], ...chunks.slice(2)]));
+      out.cutOff = await tryOpen(join([pre, ...chunks.slice(0, -1)]));
+      out.shortened = await tryOpen(join(parts).slice(0, -1));
+      return out; });
+    assert.ok(r.pieces >= 3, `several pieces (${r.pieces})`);
+    assert.deepEqual({ ...r, pieces: 0 }, { pieces: 0, intact: 'opened', header: 'tampered', tag: 'tampered', dropped: 'tampered', swapped: 'tampered', cutOff: 'tampered', shortened: 'tampered' });
   });
 
   await test('on the phone that made it, an encrypted backup opens with the stored key without asking', async () => {
