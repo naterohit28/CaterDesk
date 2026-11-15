@@ -257,7 +257,8 @@ export function nextQuoteDraft(ev, { from = null, newOption = false } = {}) {
   const lines = last ? structuredClone(last.lines)
     : MEAL_ORDER.filter(m => ev.mealPlan?.[m]?.guests > 0).map(m => ({ kind: 'meal', meal: m, guests: ev.mealPlan[m].guests, rate: ev.mealPlan[m].rate, ...(ev.mealPlan[m].menu ? { menu: ev.mealPlan[m].menu } : {}) }));
   return { v: Math.max(0, ...qs.map(x => x.v)) + 1, status: 'draft', ...(option !== 'A' || newOption ? { option } : {}), lines: lines.length ? lines : [{ kind: 'meal', meal: 'dinner', guests: Number(ev.guests) || '', rate: '' }],
-    showRates: last ? last.showRates !== false : true, terms: last?.terms || '', ...(last?.gst ? { gst: { ...last.gst } } : {}) };
+    showRates: last ? last.showRates !== false : true, terms: last?.terms || '', ...(last?.gst ? { gst: { ...last.gst } } : {}),
+    ...(latestApproved(ev) ? { annex: latestApproved(ev).id } : last?.annex === 'draft' ? { annex: 'draft' } : {}) };
 }
 // A sent version is 'replaced' by a later sent/accepted version of the same option, and 'notchosen' once the client
 // accepted another option; '' while it is still open

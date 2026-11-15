@@ -492,6 +492,23 @@
   </div>
 </div>
 
+<!-- SEND THE MENU TO THE CLIENT: choose the approved version, print / WhatsApp, keep a copy of what was sent -->
+<div class="modal-ov" id="md-modal">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="md-mtitle">
+    <div class="s-handle"></div>
+    <div class="s-head"><div class="s-title" id="md-mtitle">Send menu to client – मेनू पाठवा</div><button type="button" class="icon-btn" data-action="close-modal" aria-label="Close"><i data-ic="x"></i></button></div>
+    <div class="field"><label for="md-ver">Menu – मेनू</label><select id="md-ver"></select></div>
+    <div class="meta" style="margin-bottom:var(--s2)">The client sees meals, dishes and diet marks only: no kitchens, vendors, rates or costs.</div>
+    <pre class="md-preview" id="md-preview"></pre>
+    <div class="btn-row" style="margin-top:var(--s3)">
+      <button type="button" class="btn btn-secondary" id="btn-md-print">Print / Save as PDF – PDF</button>
+      <button type="button" class="btn btn-wa" id="btn-md-wa">WhatsApp – पाठवा</button>
+    </div>
+    <button type="button" class="btn btn-primary" id="btn-md-sent" style="width:100%;margin-top:var(--s2)">I have sent it – keep a copy – पाठवले</button>
+    <div id="md-issued"></div>
+  </div>
+</div>
+
 <!-- VENDOR ORDER for one counter of an event, sent on WhatsApp -->
 <div class="modal-ov" id="ord-modal">
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="ord-mtitle">

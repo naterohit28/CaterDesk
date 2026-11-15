@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, learnedDishes, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, learnedDishes, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.24.0';
+const APP_BUILD = '4.25.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1937,6 +1937,8 @@ function quoteText(ev, q) {
   if (t.gstP) L.push('', `Subtotal: ${fmtCurrency(t.total)}`, `GST @ ${q.gst.rate}% on ${fmtCurrency(q.gst.taxable)}: ${fmtCurrency(t.gst)}`, `Total: ${fmtCurrency(t.grand)}`);
   else L.push('', `Total: ${fmtCurrency(t.total)} (before any applicable GST)`);
   if (q.terms?.trim()) L.push('', q.terms.trim());
+  const annex = q.annex ? q.snap?.annex || clientMenu(ev, q.annex) : null;
+  if (annex) L.push('', '— Menu —', clientMenuText(annex));
   return L.join('\n');
 }
 function renderQuote() {
@@ -1977,6 +1979,9 @@ function renderQuote() {
       </div>
       <label class="check-row"><input type="checkbox" id="quote-rates"${cur.showRates !== false ? ' checked' : ''}><span>${tr('Show per-plate rates to the client', 'ग्राहकाला प्रति ताट दर दाखवा')}</span></label>
       ${cur.lines.some(l => l.kind === 'meal' && l.menu) ? `<label class="check-row"><input type="checkbox" id="quote-items"${cur.showItems ? ' checked' : ''}><span>${tr('List each menu\'s dishes for the client', 'मेनूचे पदार्थ दाखवा')}</span></label>` : ''}
+      ${approvedMenus(ev).length || menuSnapshot(ev).services.some(s => s.dishes.length) ? `<div class="field"><label for="quote-annex">${tr('Menu annexure (pages after the quotation)', 'मेनू परिशिष्ट')}</label><select id="quote-annex">
+        <option value="">No menu annexure</option>${[...approvedMenus(ev)].reverse().map(v => `<option value="${esc(v.id)}"${cur.annex === v.id ? ' selected' : ''}>Menu version ${v.n} · approved ${fmtDate(String(v.at).slice(0, 10))}</option>`).join('')}
+        <option value="draft"${cur.annex === 'draft' ? ' selected' : ''}>Current menu – not yet approved</option></select></div>` : ''}
       <div class="field"><label for="quote-terms">${tr('Terms / note for the client', 'अटी / टीप')}</label><textarea id="quote-terms" maxlength="2000" placeholder="e.g. 50% advance to confirm; valid for 15 days">${esc(cur.terms || '')}</textarea></div>
       <div id="quote-total">${quoteTotalsHtml(cur)}</div>
       <div class="btn-row" style="margin-top:var(--s3)">
@@ -1994,6 +1999,7 @@ function renderQuote() {
     <div class="list" style="padding:0">${t.lines.map(l => `<div class="row" style="min-height:44px"><div class="row-body"><div class="title-sm">${l.kind === 'meal' ? MEALS[l.meal] : esc(l.label)}</div>
       ${l.kind === 'meal' ? `<div class="meta">${l.guests} × ${fmtCurrency(l.rate)}</div>` : ''}</div><div class="amt-sm">${l.kind === 'discount' ? '−' : ''}${fmtCurrency(Math.abs(l.total))}</div></div>`).join('')}</div>
     <div style="margin-top:var(--s2)">${quoteTotalsHtml(cur)}</div>
+    ${cur.annex ? `<div class="meta" style="margin-top:var(--s2)">${tr(`With menu annexure: ${esc((cur.snap?.annex || clientMenu(ev, cur.annex))?.label || '')}`, 'मेनू परिशिष्टासह')}</div>` : ''}
     <button type="button" class="btn btn-secondary" style="width:100%;margin-top:var(--s3)" data-action="quote-print">${icon('download', 18)}${tr('Print / Save as PDF', 'प्रिंट / PDF')}</button>
     <div class="meta" id="quote-status">${tr(`Sent ${when(cur.sentAt)}`, `पाठवले ${when(cur.sentAt)}`)}${cur.status === 'accepted' ? ` · ${tr(`accepted ${when(cur.acceptedAt)} · ${cur.evidence}${cur.by ? ` (${esc(cur.by)})` : ''}`, `मान्य ${when(cur.acceptedAt)}`)}` : cur.status === 'declined' ? ` · ${tr('declined', 'नाकारले')}` : ''}${sup === 'notchosen' ? ` · ${tr(`not chosen (client accepted Option ${quoteOption(acceptedOther)})`, 'निवडले नाही')}` : sup ? ` · ${tr('replaced by a later version', 'नंतरच्या आवृत्तीने बदलले')}` : ''}</div>
     ${cur.status === 'sent' && !sup ? `
@@ -2017,6 +2023,7 @@ function readQuoteForm() {
   if (!quoteDraft) return;
   quoteDraft.showRates = q('quote-rates')?.checked !== false;
   if (q('quote-items')) quoteDraft.showItems = q('quote-items').checked;
+  if (q('quote-annex')) { if (qv('quote-annex')) quoteDraft.annex = qv('quote-annex'); else delete quoteDraft.annex; }
   quoteDraft.terms = q('quote-terms')?.value || '';
 }
 async function saveQuotes(mutate, extra = {}) {
@@ -2056,7 +2063,7 @@ async function quoteAction(action) {
     const d = await saveQuoteDraft(); if (!d) return;
     const text = quoteText(D.events.find(e => e.id === ev.id), d);
     const prof = getProfile();
-    const ok = await saveQuotes(qs => { const x = qs.find(y => y.v === d.v); Object.assign(x, { status: 'sent', sentAt: now, text, snap: quoteSnapshot(ev, d), ...(Object.keys(prof).length ? { profile: prof } : {}) }); });
+    const ok = await saveQuotes(qs => { const x = qs.find(y => y.v === d.v); Object.assign(x, { status: 'sent', sentAt: now, text, snap: { ...quoteSnapshot(ev, d), ...(d.annex && clientMenu(ev, d.annex) ? { annex: clientMenu(ev, d.annex) } : {}), layout: DOC_LAYOUT }, ...(Object.keys(prof).length ? { profile: prof } : {}) }); });
     if (!ok) return;
     quoteDraft = null; refreshCurrent(); renderQuote(); showToast(`Quote v${d.v} locked as sent. Changes now make a new version. – पक्की`); return;
   }
@@ -2243,6 +2250,7 @@ function approvalBar(ev) {
   return `<div class="card pad ma-bar ${!last ? '' : st.count ? 'due-note' : 'ok-note'}" id="menu-approval" role="status">
     <div class="meta ma-text" data-nl>${!last ? '' : st.count ? '' : icon('check', 16)}${esc(text)}</div>
     <div class="row-btns">${!last || st.count ? `<button type="button" class="btn-sm" data-action="menu-approve">${tr(!last ? 'Mark approved' : 'Review & approve', !last ? 'मान्य झाले' : 'तपासा व मान्य')}</button>` : ''}
+      <button type="button" class="btn-sm" data-action="menu-send">${icon('message', 16)}${tr('Send menu', 'मेनू पाठवा')}</button>
       ${last ? `<button type="button" class="btn-sm" data-action="menu-versions">${tr(`Versions (${approvedMenus(ev).length})`, `आवृत्त्या (${approvedMenus(ev).length})`)}</button>` : ''}</div>
   </div>`;
 }
@@ -2285,6 +2293,115 @@ function openVersionsSheet() {
       <span class="meta">${fmtDate(String(v.at).slice(0, 10))} · ${esc(v.by)}${v.who ? ` (${esc(v.who)})` : ''} · ${v.services.reduce((k, s) => k + s.dishes.length, 0) + v.shared.length} dishes</span></summary>
       <div class="mv-diff">${prev ? `<div class="meta">${tr(`Changes from version ${prev.n}:`, `आवृत्ती ${prev.n} पासूनचे बदल:`)}</div>${menuDiffHtml(ev, d, v, prev)}` : menuDiffHtml(ev, d, v, null)}</div></details>`; }).join('');
   openSheet('mv-modal');
+}
+
+/* ── CLIENT DOCUMENTS: menu annexure to a quotation, menu on its own (PDF or WhatsApp) ── */
+/* A client document shows the menu from one approved version (or the current menu, clearly marked as a draft): each
+   meal with its date, time and guests, and the dish names with diet marks. Never the kitchen or counter that makes a
+   dish, vendors, costs, rates or margins. When it is marked sent, the exact content and layout are kept, so printing
+   it again later shows what went to the client. */
+const DOC_LAYOUT = 1;
+const clientDish = d => ({ name: d.name, ...(d.diet?.length ? { diet: [...d.diet] } : {}) });
+function menuSource(ev, v) {
+  if (v === 'draft') return { src: menuSnapshot(ev), label: 'Draft menu – not yet approved by the client' };
+  const ver = approvedMenus(ev).find(x => x.id === v);
+  return ver ? { src: ver, label: `Menu version ${ver.n} · approved ${fmtDate(String(ver.at).slice(0, 10))}` } : null;
+}
+function clientMenu(ev, v) {
+  const m = menuSource(ev, v); if (!m) return null;
+  return { v, label: m.label, meals: m.src.services.filter(s => s.dishes.length).map(s => ({ title: snapLabel(ev, m.src, s),
+      when: [s.date && s.date !== ev.date ? fmtDate(s.date) : '', s.time || ''].filter(Boolean).join(' · '), guests: s.guests || 0, dishes: s.dishes.map(clientDish) })),
+    shared: (m.src.shared || []).map(clientDish) };
+}
+const dietText = d => (d.diet || []).map(k => DIET_NAME[k] || k).join(', ');
+function clientMenuHtml(cm) {
+  return `<div class="pd-menu-label">${esc(cm.label)}</div>
+    ${cm.meals.map(m => `<section class="pd-meal"><h2>${esc(m.title)}</h2>${m.when || m.guests ? `<div class="pd-muted">${esc([m.when, m.guests ? `${m.guests} guests` : ''].filter(Boolean).join(' · '))}</div>` : ''}
+      <ul>${m.dishes.map(d => `<li>${esc(d.name)}${d.diet ? ` <span class="pd-muted">(${esc(dietText(d))})</span>` : ''}</li>`).join('')}</ul></section>`).join('')}
+    ${cm.shared.length ? `<section class="pd-meal"><h2>Served at every meal</h2><ul>${cm.shared.map(d => `<li>${esc(d.name)}${d.diet ? ` <span class="pd-muted">(${esc(dietText(d))})</span>` : ''}</li>`).join('')}</ul></section>` : ''}`;
+}
+function clientMenuText(cm) {
+  const L = [cm.label];
+  for (const m of cm.meals) { L.push('', `*${m.title}*${m.when ? ` · ${m.when}` : ''}${m.guests ? ` · ${m.guests} guests` : ''}`); for (const d of m.dishes) L.push(`• ${d.name}${d.diet ? ` (${dietText(d)})` : ''}`); }
+  if (cm.shared.length) { L.push('', '*Served at every meal*'); for (const d of cm.shared) L.push(`• ${d.name}${d.diet ? ` (${dietText(d)})` : ''}`); }
+  return L.join('\n');
+}
+// Business letterhead shared by the quotation and the menu
+function docHead(p) {
+  return `<header class="pd-head"><div><div class="pd-biz">${esc(p.name || 'Your business name')}</div>${p.tagline ? `<div class="pd-muted">${esc(p.tagline)}</div>` : ''}</div>
+      <div class="pd-contact">${[p.contact && `Contact: ${p.contact}`, p.address, p.phone, p.email].filter(Boolean).map(esc).join('<br>')}${p.gstin ? `<br>GSTIN ${esc(p.gstin)}` : ''}</div></header>`;
+}
+function menuDocHtml(ev, cm, profile, { date, draft = false, eventInfo }) {
+  const E = eventInfo || ev;
+  return `<div class="pd">
+    ${draft ? '<div class="pd-draft">DRAFT – menu not yet approved by the client</div>' : ''}
+    ${docHead(profile || {})}
+    <h1 class="pd-title">Menu</h1>
+    <div class="pd-meta"><div><b>${esc(E.name)}</b><br>${fmtDate(E.date)}${E.venue ? ` · ${esc(E.venue)}` : ''}</div><div class="n">Date ${fmtDate(date)}</div></div>
+    ${clientMenuHtml(cm)}
+    ${profile?.footer ? `<footer class="pd-foot">${esc(profile.footer)}</footer>` : ''}
+  </div>`;
+}
+function printDoc(html) {
+  q('print-doc').innerHTML = html;
+  document.body.classList.add('printing');
+  const done = () => { document.body.classList.remove('printing'); window.removeEventListener('afterprint', done); };
+  window.addEventListener('afterprint', done);
+  try { window.print(); } finally { setTimeout(done, 1500); }
+}
+function needProfile(profile, what) {
+  if (profile.name) return false;
+  askSheet({ title: 'Add your business details first – आधी व्यवसाय तपशील', message: `The ${what} shows your business name, address, phone and GSTIN at the top. None are saved yet, so the PDF would have no name on it. It takes a minute and is asked only once.`,
+    actions: [{ label: 'Add business details – तपशील भरा', value: true, style: 'btn-primary' }] }).then(ok => { if (ok) closeOverlay().then(openProfile); });
+  return true;
+}
+
+/* ── SEND THE MENU TO THE CLIENT (menu only) ── */
+function openMenuDocSheet() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const vers = [...approvedMenus(ev)].reverse();
+  q('md-ver').innerHTML = vers.map(v => `<option value="${esc(v.id)}">Version ${v.n} · approved ${fmtDate(String(v.at).slice(0, 10))}</option>`).join('')
+    + `<option value="draft">Current menu – not yet approved</option>`;
+  q('md-ver').value = vers[0]?.id || 'draft';
+  renderMenuDocSheet();
+  openSheet('md-modal');
+}
+function renderMenuDocSheet() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const cm = clientMenu(ev, qv('md-ver'));
+  q('md-preview').textContent = cm ? clientMenuText(cm) : '';
+  const issued = [...(ev.menuDocs || [])].reverse();
+  q('md-issued').innerHTML = issued.length ? `<div class="label" style="margin:var(--s3) 0 var(--s1)">${tr('Sent before', 'आधी पाठवलेले')}</div>`
+    + issued.map(d => `<div class="row" style="min-height:48px"><div class="row-body"><div class="title-sm">${esc(d.menu.label)}</div><div class="meta">${tr(`Sent ${fmtDate(String(d.at).slice(0, 10))}`, `पाठवले ${fmtDate(String(d.at).slice(0, 10))}`)}</div></div>
+        <button type="button" class="btn-sm" data-md-reprint="${esc(d.id)}">${icon('download', 16)}${tr('Print again', 'पुन्हा')}</button></div>`).join('') : '';
+}
+function printMenuDoc() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const profile = getProfile(); if (needProfile(profile, 'menu')) return;
+  const cm = clientMenu(ev, qv('md-ver')); if (!cm) return;
+  printDoc(menuDocHtml(ev, cm, profile, { date: today(), draft: cm.v === 'draft' }));   // an approved version prints clean; the current menu says DRAFT
+}
+function shareMenuDoc() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const cm = clientMenu(ev, qv('md-ver')); if (!cm) return;
+  const text = `Menu for ${ev.name} – ${fmtDate(ev.date)}\n\n${clientMenuText(cm)}`, phone = phoneDigits(ev.mobile);
+  window.open(phone ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+  showToast('WhatsApp opened. Tap "I have sent it" after you send it, to keep a copy – पाठवल्यावर नोंदवा');
+}
+async function markMenuDocSent() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const cm = clientMenu(ev, qv('md-ver')); if (!cm) return;
+  const prof = getProfile();
+  const doc = { id: uid('MD'), at: new Date().toISOString(), v: cm.v, layout: DOC_LAYOUT, menu: cm, text: clientMenuText(cm),
+    event: { name: ev.name, date: ev.date, venue: ev.venue || '' }, ...(Object.keys(prof).length ? { profile: prof } : {}) };
+  try { await patchEvent(ev.id, { menuDocs: [...(ev.menuDocs || []), doc] }); } catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
+  renderMenuDocSheet(); refreshCurrent();
+  showToast('Copy kept: printing it again shows exactly this menu – प्रत ठेवली');
+}
+function reprintMenuDoc(id) {
+  const ev = D.events.find(e => e.id === curRef); const d = ev?.menuDocs?.find(x => x.id === id); if (!d) return;
+  const profile = d.profile || getProfile(); if (needProfile(profile, 'menu')) return;
+  printDoc(menuDocHtml(ev, d.menu, profile, { date: String(d.at).slice(0, 10), eventInfo: d.event }));
 }
 
 /* ── ADD OR CHANGE A MEAL'S MENU ── */
@@ -2560,10 +2677,12 @@ function quoteDocHtml(ev, qt, profile) {
     ? line('Subtotal', '', fmtCurrency(t.total), 'pd-sub') + line(`GST @ ${qt.gst.rate}% on ${fmtCurrency(qt.gst.taxable)}`, '', fmtCurrency(t.gst), 'pd-sub') + line('<b>Total</b>', '', `<b>${fmtCurrency(t.grand)}</b>`, 'pd-total')
     : line('<b>Total</b> <span class="pd-muted">(before any applicable GST)</span>', '', `<b>${fmtCurrency(t.total)}</b>`, 'pd-total');
   const when = String(qt.sentAt || qt.at || new Date().toISOString()).slice(0, 10);
+  // The menu annexure: the frozen copy of a sent quote; a draft (or a quote sent before copies) uses the chosen version
+  const annex = qt.annex ? qt.snap?.annex || clientMenu(ev, qt.annex) : null;
   return `<div class="pd">
     ${qt.status === 'draft' ? '<div class="pd-draft">DRAFT – not yet sent to the client</div>' : ''}
-    <header class="pd-head"><div><div class="pd-biz">${esc(p.name || 'Your business name')}</div>${p.tagline ? `<div class="pd-muted">${esc(p.tagline)}</div>` : ''}</div>
-      <div class="pd-contact">${[p.contact && `Contact: ${p.contact}`, p.address, p.phone, p.email].filter(Boolean).map(esc).join('<br>')}${p.gstin ? `<br>GSTIN ${esc(p.gstin)}` : ''}</div></header>
+    ${qt.status !== 'draft' && !qt.snap ? '<div class="pd-draft pd-rebuilt">Rebuilt from current data: this quotation was sent before CaterDesk kept copies, so details may differ from what was sent.</div>' : ''}
+    ${docHead(p)}
     <h1 class="pd-title">Quotation</h1>
     <div class="pd-meta"><div><b>${esc(E.name)}</b><br>${fmtDate(E.date)}${E.venue ? ` · ${esc(E.venue)}` : ''}</div>
       <div class="n">${many ? `Option ${quoteOption(qt)} · ` : ''}Version ${qt.v}<br>Date ${fmtDate(when)}</div></div>
@@ -2571,7 +2690,12 @@ function quoteDocHtml(ev, qt, profile) {
     ${qt.terms?.trim() ? `<div class="pd-block"><b>Terms</b><div>${esc(qt.terms.trim()).replace(/\n/g, '<br>')}</div></div>` : ''}
     ${p.pay ? `<div class="pd-block"><b>Payment details</b><div>${esc(p.pay).replace(/\n/g, '<br>')}</div></div>` : ''}
     ${p.footer ? `<footer class="pd-foot">${esc(p.footer)}</footer>` : ''}
-  </div>`;
+  </div>${annex ? `<div class="pd pd-break">
+    ${docHead(p)}
+    <h1 class="pd-title">Menu – annexure to the quotation</h1>
+    <div class="pd-meta"><div><b>${esc(E.name)}</b><br>${fmtDate(E.date)}${E.venue ? ` · ${esc(E.venue)}` : ''}</div><div class="n">${many ? `Option ${quoteOption(qt)} · ` : ''}Version ${qt.v}</div></div>
+    ${clientMenuHtml(annex)}
+  </div>` : ''}`;
 }
 // Print it (Android: the print screen offers "Save as PDF"); a sent quote prints with the details it was sent with
 function printQuote() {
@@ -4908,6 +5032,7 @@ function bindAllEvents() {
       case 'svc-add':      openServiceSheet(); break;
       case 'menu-approve': openApproveSheet(); break;
       case 'menu-versions': openVersionsSheet(); break;
+      case 'menu-send':    openMenuDocSheet(); break;
       case 'svc-use':      useServiceTemplate(id); break;
       case 'lab-edit':     openLabModal(); break;
       case 'dish-assign':  assignDish(Number(id)); break;
@@ -5176,6 +5301,11 @@ function bindAllEvents() {
   q('svc-tpl').addEventListener('change', chooseServiceMenu);
   q('btn-save-svc').addEventListener('click', saveServiceSheet);
   q('btn-save-approval').addEventListener('click', saveApproval);
+  q('md-ver').addEventListener('change', renderMenuDocSheet);
+  q('btn-md-print').addEventListener('click', printMenuDoc);
+  q('btn-md-wa').addEventListener('click', shareMenuDoc);
+  q('btn-md-sent').addEventListener('click', markMenuDocSent);
+  q('md-issued').addEventListener('click', e => { const b = e.target.closest('[data-md-reprint]'); if (b) reprintMenuDoc(b.dataset.mdReprint); });
   q('svc-save').addEventListener('click', e => { const b = e.target.closest('[data-save]'); if (!b || !svcState?.id) return;
     if (b.dataset.save === 'event' && q('svc-tpl').value === '__new') q('svc-tpl').value = svcState.tpl0 === '__new' ? '' : svcState.tpl0;
     setServiceMode(b.dataset.save); renderServiceSheet(); });
