@@ -3485,7 +3485,7 @@ function rVen() {
       <div class="avatar" data-nl>${esc(initials(v.name))}</div>
       <div class="row-body">
         <div class="title-sm ven-name" data-nl>${esc(v.name)}</div>
-        <div class="meta trunc">${isPerson(v) ? tr('Other person', 'इतर व्यक्ती') : esc(v.cat || '') + (v.specialty ? ' · ' + esc(v.specialty) : '')}${v.gstin ? ' · GST' : ''}</div>
+        <div class="meta trunc">${isPerson(v) ? tr('Other person', 'इतर व्यक्ती') : esc(v.cat || '') + (v.specialty ? ' · ' + esc(v.specialty) : '')}</div>
       </div>
       <div class="row-end">${balanceView(b)}</div>
     </div>`;

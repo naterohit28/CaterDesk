@@ -91,7 +91,7 @@ function dataset(n = 45) {
     await search('90000 00012'); assert.deepEqual(await supNames(), ['Sample Vendor 012']);
     await search(g.slice(2, 9).toLowerCase()); assert.deepEqual(await supNames(), ['Sample Vendor 007'], 'part of the GSTIN, any case');
     await search('registered traders'); assert.deepEqual(await supNames(), ['Sample Vendor 007']);
-    assert.match(await p.locator('#ven-list [data-id="v7"]').innerText(), /· GST/);
+    assert.doesNotMatch(await p.locator('#ven-list [data-id="v7"]').innerText(), /GST/, 'the GSTIN is on the vendor page, not the list');
     await search('');
   });
 
