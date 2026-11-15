@@ -733,3 +733,6 @@ button.d-brand:focus-visible { outline: 2px solid var(--brand-text); outline-off
 .booked-row { display: flex; gap: var(--s2); align-items: center; margin-top: 6px; }
 .booked-row .btn { width: auto; flex: 0 0 auto; padding: 0 var(--s4); }
 .guests-miss { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); flex-wrap: wrap; }
+/* Recovery key: large, grouped, easy to copy by hand */
+.rk-key { font: 600 18px/1.7 ui-monospace, 'Cascadia Mono', Consolas, monospace; letter-spacing: .04em; word-spacing: .3em; background: var(--surface-2); border-radius: var(--r-md); padding: var(--s3); color: var(--text); overflow-wrap: anywhere; user-select: all; }
+#rk-typed, #rki-typed { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; letter-spacing: .04em; }

@@ -2,7 +2,7 @@
 const RELEASE = '4.28.0';
 const CACHE_NAME = 'flavor-fusion-v2-cache-v74';
 const CLIENT_RELEASES = 'caterdesk-client-releases';
-const PRECACHE = ['./', './index.html', './styles.css', './app.js', './register-sw.js', './error-reporter.js', './db.js', './utils.js', './icons.js', './i18n.js', './manifest.json', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png'];
+const PRECACHE = ['./', './index.html', './styles.css', './app.js', './register-sw.js', './error-reporter.js', './db.js', './utils.js', './backup-crypto.js', './icons.js', './i18n.js', './manifest.json', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png'];
 function clientKey(id) { return new Request(new URL('./__client_release__/' + encodeURIComponent(id), self.registration.scope)); }
 async function pinnedRelease(id) {
   if (!id) return null;

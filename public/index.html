@@ -114,6 +114,9 @@
       <p class="meta">Records are saved on this device. Keep a backup outside your phone; clearing browser data can remove records.</p><span class="label">Backup – बॅकअप <span class="meta" id="backup-meta" data-nl></span></span>
       <button type="button" class="d-item" id="btn-export"><i data-ic="upload"></i>Share / save backup – बॅकअप पाठवा</button>
       <button type="button" class="d-item" id="btn-import"><i data-ic="download"></i>Import backup – आयात</button>
+      <span class="label" style="margin-top:var(--s2)">Encrypted backup – सुरक्षित बॅकअप <span class="meta" id="enc-meta" data-nl></span></span>
+      <button type="button" class="d-item" id="btn-export-enc"><i data-ic="lock"></i>Save encrypted backup file – सुरक्षित बॅकअप</button>
+      <button type="button" class="d-item" id="btn-enc-setup"><i data-ic="lock"></i>Set up recovery key – रिकव्हरी की</button>
     </div>
 
     <div class="d-group">
@@ -140,7 +143,7 @@
   </div>
 </div>
 <!-- Phones often label a shared .json as text or octet-stream; accept those so the file isn't greyed out -->
-<input type="file" id="import-input" accept=".json,application/json,text/plain,application/octet-stream" hidden>
+<input type="file" id="import-input" accept=".json,.cdbk,application/json,text/plain,application/octet-stream" hidden>
 <input type="file" id="photo-input" accept="image/*" multiple hidden>
 <!-- Bill photos: camera opens directly; gallery for bills already on the phone (e.g. from WhatsApp) -->
 <input type="file" id="bill-cam" accept="image/*" capture="environment" hidden>
@@ -522,6 +525,36 @@
     </div>
     <button type="button" class="btn btn-primary" id="btn-md-sent" style="width:100%;margin-top:var(--s2)">I have sent it – keep a copy – पाठवले</button>
     <div id="md-issued"></div>
+<!-- RECOVERY KEY SETUP: shown once, then typed back in full before it is used -->
+<div class="modal-ov" id="rk-modal">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="rk-mtitle">
+    <div class="s-handle"></div>
+    <div class="s-head"><div class="s-title" id="rk-mtitle">Recovery key – रिकव्हरी की</div><button type="button" class="icon-btn" data-action="close-modal" aria-label="Close"><i data-ic="x"></i></button></div>
+    <div id="rk-step1">
+      <p class="meta">Encrypted backups open only with this key. Write it down exactly, or print it, and keep it away from this phone. It is shown once.</p>
+      <div class="rk-key" id="rk-key" data-nl></div>
+      <div class="card pad due-note" style="margin:var(--s3) 0">Without this key nobody can open your encrypted backups: not Google, not CaterDesk, not you. Lose this phone and the key, and those backups are gone.</div>
+      <label class="check-row"><input type="checkbox" id="rk-written"><span>I have written down the whole key and kept it safe – लिहून ठेवली</span></label>
+      <div class="s-foot"><button type="button" class="btn btn-primary" id="btn-rk-next" disabled>Next: type it back – पुढे</button></div>
+    </div>
+    <div id="rk-step2" hidden>
+      <p class="meta">Type the whole key from what you wrote down (14 groups). This checks it was copied correctly before any backup depends on it.</p>
+      <div class="field"><label for="rk-typed">Recovery key</label><textarea id="rk-typed" rows="3" autocomplete="off" autocapitalize="characters" spellcheck="false"></textarea></div>
+      <div class="meta due" id="rk-result" role="alert"></div>
+      <div class="s-foot"><button type="button" class="btn btn-primary" id="btn-rk-verify">Check and finish – तपासा</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- RECOVERY KEY TO OPEN AN ENCRYPTED BACKUP (e.g. on a new phone) -->
+<div class="modal-ov" id="rki-modal">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="rki-mtitle">
+    <div class="s-handle"></div>
+    <div class="s-head"><div class="s-title" id="rki-mtitle">Recovery key needed – रिकव्हरी की</div><button type="button" class="icon-btn" data-action="close-modal" aria-label="Close"><i data-ic="x"></i></button></div>
+    <p class="meta">This backup is encrypted. Type the recovery key it was made with.</p>
+    <div class="field"><label for="rki-typed">Recovery key</label><textarea id="rki-typed" rows="3" autocomplete="off" autocapitalize="characters" spellcheck="false"></textarea></div>
+    <div class="meta due" id="rki-result" role="alert"></div>
+    <div class="s-foot"><button type="button" class="btn btn-primary" id="btn-rki-ok">Open backup – उघडा</button></div>
   </div>
 </div>
 
