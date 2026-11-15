@@ -190,6 +190,25 @@ function dataset(n = 45) {
     assert.deepEqual(r, ['kept', 'old ok', ...Array(5).fill('Invalid vendor GSTIN')]);
   });
 
+  await test('upgrade from 4.26.0: vendors without GSTIN and sent menus without an issue date are kept exactly and still work', async () => {
+    const r = await p.evaluate(async () => { const db = await import('./db.js'), u = await import('./utils.js');
+      const old = { version: 'ffv2', photos: [], cPays: [], expenses: [], vPays: [],
+        vendors: [{ id: 'ov1', name: 'Sample Old Vendor', cat: 'Groceries', specialty: '', phone: '9000000077' }, { id: 'op1', name: 'Sample Old Lender', kind: 'person', cat: '', specialty: '' }],
+        events: [{ id: 'oe1', name: 'Sample Old Event', date: '2026-12-01', venue: 'Sample Hall', type: 'Wedding – लग्न', billing: 100000, guests: 100, photoIds: [], dishes: [{ name: 'Sample Rice', head: '' }],
+          orders: [{ id: 'oo1', head: 'Chaat – चाट', venId: 'ov1', plates: 100, date: '2026-12-01', status: 'sent', at: '2026-11-10T10:00:00.000Z' }],
+          menuDocs: [{ id: 'MD1', at: '2026-11-14T19:30:00.000Z', v: 'draft', layout: 1, text: 'Sample', event: { name: 'Sample Old Event', date: '2026-12-01', venue: '' },
+            menu: { v: 'draft', label: 'Current menu', meals: [], shared: [{ name: 'Sample Rice' }] } }] }] };
+      await db.importAllData(structuredClone(old), 'replace');
+      const now = await db.exportAllData(); const strip = x => { const y = structuredClone(x); delete y._rev; return y; };
+      const byId = a => [...a].sort((x, y) => x.id.localeCompare(y.id));
+      return { vendors: JSON.stringify(byId(now.vendors.map(strip))) === JSON.stringify(byId(old.vendors)), event: JSON.stringify(strip(now.events[0])) === JSON.stringify(old.events[0]),
+        day: u.localDay(old.events[0].menuDocs[0].at) }; });
+    assert.deepEqual([r.vendors, r.event], [true, true]);
+    await openVendors();
+    assert.match(await p.locator('#ven-sum').innerText(), /Total vendors\n1/); assert.match(await p.locator('#ven-list').innerText(), /Sample Old Vendor[\s\S]*Other people[\s\S]*Sample Old Lender/);
+    await load(dataset());
+  });
+
   await test('360px and 390px in English, Marathi and both: the tab and the vendor form fit, nothing cut off', async () => {
     for (const w of [360, 390]) for (const lang of ['en', 'mr', 'both']) {
       await p.setViewportSize({ width: w, height: 780 });
