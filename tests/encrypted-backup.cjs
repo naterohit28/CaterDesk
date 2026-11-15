@@ -24,7 +24,11 @@ const DATA = { version: 'ffv2', cPays: [{ id: 'p1', evId: 'e1', amt: 25000, date
   const snapshot = page => page.evaluate(async () => { const d = await (await import('./db.js')).exportAllData(); delete d.manifest; delete d.exportedAt; delete d.appVersion;
     for (const s of Object.keys(d)) if (Array.isArray(d[s])) d[s] = d[s].map(({ _rev, ...r }) => r).sort((a, b) => String(a.id).localeCompare(String(b.id))); return JSON.stringify(d); });
   const saveEncrypted = async page => { await drawer(page); const dl = page.waitForEvent('download', { timeout: 180000 });
-    await page.locator('#btn-export-enc').click(); const d = await dl; const file = path.join('test-artifacts', `enc-${Date.now()}.cdbk`); await d.saveAs(file); return file; };
+    await page.locator('#btn-export-enc').click();
+    // Phones that can share are asked Share or Save to phone (as for plain backups); choose Save to phone
+    const save = page.locator('#ask-modal.active #ask-actions button', { hasText: 'Save to phone' });
+    await save.waitFor({ timeout: 180000 }); await save.click();
+    const d = await dl; const file = path.join('test-artifacts', `enc-${Date.now()}.cdbk`); await d.saveAs(file); return file; };
   await p.goto(BASE_URL); await p.waitForSelector('#kpi .card');
   await p.evaluate(async d => { const db = await import('./db.js'); await db.importAllData(d); }, DATA);
   await p.reload(); await p.waitForSelector('#kpi .card');
