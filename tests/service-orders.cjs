@@ -152,6 +152,31 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     assert.doesNotMatch(await resend(), /Menu: version/, 'but the menu is no longer the approved one');
   });
 
+  await test('a counter at two meals plans each row for that meal\'s guests; moving a dish to another meal flags an older all-meals order', async () => {
+    const E2 = { id: 'e2', name: 'Sample Meal Move Party', date: day(20), venue: 'Sample Hall', type: 'Wedding – लग्न', billing: 200000, guests: 400, meals: ['lunch', 'dinner'], photoIds: [],
+      mealPlan: { lunch: { guests: 250, rate: 450 }, dinner: { guests: 300, rate: 650 } },
+      services: [{ id: 's2-lunch', meal: 'lunch' }, { id: 's2-dinner', meal: 'dinner' }],
+      counterPlan: { [CHAAT]: { takeUp: 50 } },
+      dishes: [{ name: 'Pani Puri', head: CHAAT, meal: 'lunch' }, { name: 'Jeera Rice', head: '', meal: 'lunch' }, { name: 'Sev Puri', head: CHAAT, meal: 'dinner' }],
+      orders: [{ id: 'old2', head: CHAAT, venId: 'v1', plates: 300, date: day(20), status: 'confirmed', at: '2026-11-01T10:00:00.000Z' }] };
+    await p.evaluate(async e => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest; d.events.push(e); await db.importAllData(d, 'replace'); }, E2);
+    const open2 = async () => { await p.reload(); await p.waitForSelector('#kpi .card'); await p.locator('#n-events:visible').click();
+      await p.locator('#ev-list [data-action="evdetail"]:visible', { hasText: 'Sample Meal Move Party' }).first().click(); await p.waitForSelector('#tab-evdetail .detail-name'); };
+    await open2();
+    assert.match(await row(`s2-lunch|${CHAAT}`).innerText(), /Plan 125 \(50% of 250\)/, 'lunch plans for lunch guests');
+    assert.match(await row(`s2-dinner|${CHAAT}`).innerText(), /Plan 150 \(50% of 300\)/, 'dinner plans for dinner guests');
+    // Move Pani Puri from lunch to dinner in one save: the older order covers both meals with the same dish names, but a meal changed
+    await p.locator('[data-action="menu-edit"]').first().click(); await p.waitForSelector('#menu-modal.active');
+    const text = await p.inputValue('#menu-text');
+    assert.match(text, /Lunch:\n[\s\S]*Pani Puri[\s\S]*Dinner:\n/, text);
+    await p.fill('#menu-text', text.replace(/Pani Puri\n/, '').replace('Dinner:\n', 'Dinner:\nPani Puri\n'));
+    await p.waitForTimeout(500); await p.locator('#btn-save-menu').click(); await p.waitForTimeout(600);
+    const e2 = (await dump()).events.find(e => e.id === 'e2');
+    assert.deepEqual(e2.dishes.filter(d => d.name === 'Pani Puri').map(d => [d.meal, d.head]), [['dinner', CHAAT]], 'moved, counter kept');
+    assert.equal(e2.orders.find(o => o.id === 'old2').menuChanged, true, 'the older all-meals order is flagged');
+    await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest; d.events = d.events.filter(e => e.id !== 'e2'); await db.importAllData(d, 'replace'); });
+  });
+
   await test('backups keep an order\'s meal, menu version and guests; malformed ones are refused', async () => {
     const r = await p.evaluate(async () => { const db = await import('./db.js'); const out = [];
       const d0 = await db.exportAllData(); delete d0.manifest;

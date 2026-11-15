@@ -1540,9 +1540,10 @@ function orderDishes(ev, o) {
   return o.svc ? [] : (ev.dishes || []).filter(d => (d.head || '') === o.head && !isUnassigned(ev, d));
 }
 /* Orders already with a vendor whose dishes changed between two versions of the event: a dish added or removed, or
-   its food type (veg → non-veg) or diet marks (Jain…) changed. Nothing is re-sent; the order is flagged. */
+   its food type (veg → non-veg) or diet marks (Jain…) changed, or it moved to another meal (an older order covers
+   every meal). Nothing is re-sent; the order is flagged. */
 function ordersHit(before, after) {
-  const key = (e, o) => orderDishes(e, o).map(d => JSON.stringify([String(d.name).trim().toLowerCase(), d.type || '', (d.diet || []).join()])).sort().join('\n');
+  const key = (e, o) => orderDishes(e, o).map(d => JSON.stringify([String(d.name).trim().toLowerCase(), d.meal || '', d.type || '', (d.diet || []).join()])).sort().join('\n');
   return (before.orders || []).filter(o => ACTIVE_ORDER.includes(o.status) && key(before, o) !== key(after, o)).map(o => o.id);
 }
 // Guests an order is planned for: its meal's guests when known, else the counter's guests as before
@@ -1569,10 +1570,10 @@ function counterVendor(head) {
   return rankVendors('Live Counter', head)[0][0]?.id || '';
 }
 
-// Counter row: planned portions and what was ordered; actual served is never inferred from the order
-function counterPlanLine(ev, head, o) {
+// Counter row: planned portions (for that meal's guests) and what was ordered; actual served is never inferred from the order
+function counterPlanLine(ev, head, o, svcId = '') {
   const plan = ev.counterPlan?.[head]; if (ev.outsourced || !plan?.takeUp) return '';
-  const { guests } = counterGuests(ev, head), s = counterSuggestion(guests, plan.takeUp, plan.minimum);
+  const { guests } = orderGuests(ev, head, svcId), s = counterSuggestion(guests, plan.takeUp, plan.minimum);
   if (!s) return '';
   return `<div class="meta">${tr(`Plan ${s.proposed} (${plan.takeUp}% of ${guests})${o?.plates && o.plates !== s.proposed ? ` · ordered ${o.plates}` : ''}${o?.belowMinimum ? ' · below minimum' : ''}`,
     `नियोजन ${s.proposed} (${guests} चे ${plan.takeUp}%)${o?.plates && o.plates !== s.proposed ? ` · ऑर्डर ${o.plates}` : ''}`)}</div>`;
@@ -1611,7 +1612,7 @@ function menuOrdersCard(ev) {
     return `<div class="row" style="min-height:56px" data-counter="${esc(r.key)}">
       <div class="row-ic">${icon('utensils', 18)}</div>
       <div class="row-body"><div class="title-sm trunc">${ev.outsourced ? tr('Whole event', 'संपूर्ण कार्यक्रम') : esc(short(head))}${r.label ? ` · ${esc(r.label)}` : ''}${ven ? ` · <span data-nl>${esc(ven.name)}</span>` : ''}</div>
-        <div class="meta trunc" data-nl>${esc(names.join(', '))}</div>${counterPlanLine(ev, head, o)}</div>
+        <div class="meta trunc" data-nl>${esc(names.join(', '))}</div>${counterPlanLine(ev, head, o, r.svcId)}</div>
       ${o ? `<button type="button" class="chip ${o.menuChanged ? 'due' : st.tone}" data-action="order-status" data-id="${esc(o.id)}">${o.menuChanged ? tr('Menu changed · resend', 'मेनू बदलला · पुन्हा पाठवा') : (x => tr(st.en + x, st.mr + x))(o.plates ? ' · ' + o.plates : '')}</button>`
           : `<button type="button" class="btn-sm" data-action="order-new" data-id="${esc(head)}" data-svc="${esc(r.svcId)}">${icon('message', 16)}${tr('Order', 'ऑर्डर')}</button>`}
     </div>`;
