@@ -113,7 +113,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [], 
     await tea.locator('[data-diet-toggle]').click();
     await sheetDish('Masala Tea').locator('[data-diet="jain"]').click();
     assert.equal(await sheetDish('Masala Tea').locator('[data-diet-toggle]').innerText(), 'Jain', 'the chosen mark shows on the button');
-    await sheetDish('Poha').locator('[data-k="head"]').selectOption({ index: 1 });
+    await sheetDish('Poha').locator('[data-k="head"]').selectOption({ index: 3 });
     const counter = await sheetDish('Poha').locator('[data-k="head"]').inputValue();
     await sheetDish('Upma').locator('[data-sd-del]').click();
     await p.fill('#svc-add', 'Idli, Medu Vada\nFruit Bowl'); await p.locator('#btn-svc-add').click();

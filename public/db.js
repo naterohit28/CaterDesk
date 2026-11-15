@@ -567,7 +567,9 @@ export async function prepareImport(payload) {
         || (d.cat !== undefined && (!str(d.cat, 40) || !d.cat.trim())) || (d.type !== undefined && !['veg', 'egg', 'nonveg'].includes(d.type))
         || (d.diet !== undefined && (!Array.isArray(d.diet) || new Set(d.diet).size !== d.diet.length || d.diet.some(x => !['jain', 'no_onion_garlic', 'vegan', 'gluten_free', 'nut_free'].includes(x))))
         || ((d.diet || []).some(x => ['jain', 'no_onion_garlic', 'vegan'].includes(x)) && (d.type === 'egg' || d.type === 'nonveg'))
-        || (d.manual !== undefined && typeof d.manual !== 'boolean'))) throw new Error('Invalid dish details');
+        || (d.manual !== undefined && typeof d.manual !== 'boolean')
+        // Bought dishes (4.28.0): ready-made or finished by us; never also a counter
+        || (d.src !== undefined && (!['buy', 'finish'].includes(d.src) || (d.head || '') !== '')))) throw new Error('Invalid dish details');
       if (row.services !== undefined && (!Array.isArray(row.services) || row.services.length > 30 || new Set(row.services.map(s => s?.id)).size !== row.services.length
         || row.services.some(s => !s || !str(s.id, 40) || !s.id || !MEAL_KEYS.includes(s.meal) || (s.date !== undefined && !validDate(s.date)) || (s.time !== undefined && !str(s.time, 10))
           || (s.guests !== undefined && (!Number.isSafeInteger(s.guests) || s.guests < 0)) || (s.rate !== undefined && (amount(s.rate, 'meal rate'), false))
@@ -575,7 +577,7 @@ export async function prepareImport(payload) {
       if (row.servicesSig !== undefined && !str(row.servicesSig, 16)) throw new Error('Invalid meal menus');
       // Client-approved menu versions (4.24.0): numbered 1, 2, … in order; each a copy of the meals and their dishes.
       // A copied dish is checked no more strictly than the event's own dishes (any name, any number), so approving never makes a backup unrestorable.
-      const badSnapDish = d => !d || typeof d.name !== 'string' || !d.name.trim() || (d.head !== undefined && !str(d.head, 120)) || (d.cat !== undefined && !str(d.cat, 40))
+      const badSnapDish = d => !d || typeof d.name !== 'string' || !d.name.trim() || (d.src !== undefined && !['buy', 'finish'].includes(d.src)) || (d.head !== undefined && !str(d.head, 120)) || (d.cat !== undefined && !str(d.cat, 40))
         || (d.type !== undefined && !['veg', 'egg', 'nonveg'].includes(d.type)) || (d.diet !== undefined && (!Array.isArray(d.diet) || d.diet.some(x => !['jain', 'no_onion_garlic', 'vegan', 'gluten_free', 'nut_free'].includes(x))));
       if (row.menuApproved !== undefined && (!Array.isArray(row.menuApproved) || row.menuApproved.length > 200
         || row.menuApproved.some((v, i) => !v || !str(v.id, 40) || !v.id || v.n !== i + 1 || typeof v.at !== 'string' || !['written', 'verbal'].includes(v.by) || (v.who !== undefined && !str(v.who, 200))

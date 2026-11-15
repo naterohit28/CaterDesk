@@ -1687,7 +1687,7 @@ function readMenuText() {
     const same = byName.get(name.toLowerCase());
     if (!meal && same) return { ...same, name };   // listed without a heading: keep the dish as it was
     const m = meal || (meals.length === 1 ? meals[0] : '');
-    return { name, head: same ? same.head || '' : dishCounter(name, learned), ...(same?.manual ? { manual: true } : {}), ...(m ? { meal: m } : {}) };
+    return { name, head: same ? same.head || '' : dishCounter(name, learned), ...(same?.src ? { src: same.src } : {}), ...(same?.manual ? { manual: true } : {}), ...(m ? { meal: m } : {}) };
   });
   renderMenuReview();
 }
@@ -1701,7 +1701,7 @@ function renderMenuReview() {
       <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--s2)"><span class="title-sm trunc" data-nl>${esc(d.name)}</span>
         <button type="button" class="icon-btn" data-md-del="${i}" aria-label="Remove dish">${icon('x', 16)}</button></div>
       <div style="display:flex;gap:var(--s2)">
-        ${ev.outsourced ? '' : sel(i, 'head', [['', 'Our kitchen – आपले किचन'], ...heads.map(h => [h, h])], d.head || '')}
+        ${ev.outsourced ? '' : sel(i, 'head', [['', 'Our kitchen – आपले किचन'], ...SRC_OPTS, ...heads.map(h => [h, h])], whoValue(d))}
         ${meals.length > 1 || isUnassigned(ev, d) ? sel(i, 'meal', [...(isUnassigned(ev, d) ? [[d.meal, `${MEALS[d.meal]} (not in this event) – choose`]] : []), ['', 'All meals – सर्व जेवण'], ...meals.map(m => [m, MEALS[m]])], d.meal || '') : ''}
       </div></div>`).join('') : '';
 }
@@ -2351,8 +2351,8 @@ function snapLabel(ev, snap, s) {
 const FACT = { date: 'Date', time: 'Time', guests: 'Guests', rate: '₹ / plate' };
 // One dish's change, in words: who makes it, its diet marks, its food type or its course
 function dishChangeText(c) {
-  const name = { type: v => TYPE_NAME[v] || 'not set', course: v => CAT_NAME[v] || v || 'not set', counter: v => short(v) || 'Our kitchen', diet: v => v || 'no marks' }[c.what];
-  return `${c.what === 'type' ? 'food type ' : c.what === 'course' ? 'course ' : ''}${esc(name(c.from))} → ${esc(name(c.to))}`;
+  const name = { type: v => TYPE_NAME[v] || 'not set', course: v => CAT_NAME[v] || v || 'not set', counter: v => short(v) || 'Our kitchen', diet: v => v || 'no marks', source: v => SRC_NAME[v] || v }[c.what];
+  return `${c.what === 'type' ? 'food type ' : c.what === 'course' ? 'course ' : c.what === 'source' ? 'sourcing ' : ''}${esc(name(c.from))} → ${esc(name(c.to))}${c.internal ? ` <span class="meta">(${tr('internal, not for the client', 'अंतर्गत')})</span>` : ''}`;
 }
 const factVal = (k, v) => v === '' ? '–' : k === 'date' ? fmtDate(v) : k === 'rate' ? fmtCurrency(v) : String(v);
 function menuDiffHtml(ev, diff, newer, older) {
@@ -2547,6 +2547,12 @@ function reprintMenuDoc(id) {
    saved until the Save button, which names the meal. */
 let svcState = null;
 const LIVE_HEADS = () => EXPENSE_HEADS['Live Counter'].filter(h => !/counter setup/i.test(h));
+/* Where a dish comes from (4.28.0): our kitchen (no counter), a vendor's live counter (its counter), bought ready-made
+   or bought and finished by us (`src`). One select in the menu editors; no supplier is asked here (that is the order). */
+const SRC_OPTS = [['@buy', 'Buy ready-made – तयार विकत'], ['@finish', 'Buy & finish – विकत, आपण तयार करू']];
+const SRC_NAME = { kitchen: 'Our kitchen', buy: 'Buy ready-made', finish: 'Buy & finish', counter: 'Counter' };
+const whoValue = d => d.src ? '@' + d.src : d.head || '';
+function setWho(d, v) { if (v === '@buy' || v === '@finish') { d.src = v.slice(1); d.head = ''; } else { delete d.src; d.head = v; } d.manual = true; }
 const svcDishKey = list => list.map(d => JSON.stringify([d.name.trim(), d.cat || '', d.type || '', d.diet || [], d.head || ''])).join('\n');
 function svcLabel(ev, s, all) {
   const repeat = all.filter(x => x.meal === s.meal).length > 1, other = s.date && s.date !== ev.date;
@@ -2636,7 +2642,7 @@ function renderServiceSheet() {
     return `<div class="svc-dish field" data-sd="${i}">
       <div class="svc-dish-h"><input type="text" data-k="name" value="${esc(x.name)}" maxlength="200" aria-label="Dish name"><button type="button" class="icon-btn" data-sd-del="${i}" aria-label="Remove ${esc(x.name)}">${icon('x', 16)}</button></div>
       <div class="svc-dish-who">
-        ${outsourced ? '' : `<select data-k="head" aria-label="${esc(x.name)}: prepared by"><option value="">Our kitchen – आपले किचन</option>${opt(LIVE_HEADS().map(h => [h, h]), x.head || '')}${x.head && !LIVE_HEADS().includes(x.head) ? opt([[x.head, x.head]], x.head) : ''}</select>`}
+        ${outsourced ? '' : `<select data-k="head" aria-label="${esc(x.name)}: prepared by"><option value="">Our kitchen – आपले किचन</option>${opt(SRC_OPTS, whoValue(x))}${opt(LIVE_HEADS().map(h => [h, h]), whoValue(x))}${x.head && !LIVE_HEADS().includes(x.head) ? opt([[x.head, x.head]], x.head) : ''}</select>`}
         <button type="button" class="f-chip svc-diet-btn" data-diet-toggle="${i}" aria-expanded="${!!open}">${esc(marks.length ? marks.join(', ') : 'Diet')}</button>
       </div>
       ${open ? `<div class="chips-row svc-diet" role="group" aria-label="${esc(x.name)}: diet marks">${DIET_TAGS.map(([k, label]) => {
@@ -5547,7 +5553,7 @@ function bindAllEvents() {
   let menuTimer;
   q('menu-text').addEventListener('input', () => { clearTimeout(menuTimer); menuTimer = setTimeout(readMenuText, 300); });
   q('menu-review').addEventListener('change', e => { const s = e.target.closest('[data-md]'); if (!s) return;
-    const d = menuDraft[Number(s.dataset.md)]; if (!d) return; d[s.dataset.k] = s.value; if (s.dataset.k === 'head') d.manual = true;
+    const d = menuDraft[Number(s.dataset.md)]; if (!d) return; if (s.dataset.k === 'head') setWho(d, s.value); else d[s.dataset.k] = s.value;
     // A dish moved to another meal moves under that meal's heading in the text box too
     if (s.dataset.k === 'meal') { if (!s.value) delete d.meal; const ev = D.events.find(x => x.id === curRef); if (ev) syncMenuText(ev); } });
   q('menu-review').addEventListener('click', e => { const b = e.target.closest('[data-md-del]'); if (!b) return;
@@ -5571,7 +5577,7 @@ function bindAllEvents() {
     if (!e.target.closest('#btn-svc-addtpl')) return; const t = menuById(q('svc-tpl').value); if (t) addServiceDishes(t.items || [], t.name); });
   q('svc-dishes').addEventListener('input', e => { const row = e.target.closest('[data-sd]'); if (!row || e.target.dataset.k !== 'name' || !svcState?.id) return; svcState.draft[Number(row.dataset.sd)].name = e.target.value; });
   q('svc-dishes').addEventListener('change', e => { const row = e.target.closest('[data-sd]'), k = e.target.dataset.k; if (!row || !k || k === 'name' || !svcState?.id) return;
-    const d = svcState.draft[Number(row.dataset.sd)]; d[k] = e.target.value; if (k === 'head') d.manual = true; if (k === 'type' || k === 'cat') renderServiceSheet(); });
+    const d = svcState.draft[Number(row.dataset.sd)]; if (k === 'head') setWho(d, e.target.value); else d[k] = e.target.value; if (k === 'type' || k === 'cat') renderServiceSheet(); });
   q('svc-dishes').addEventListener('click', e => { if (!svcState?.id) return;
     const del = e.target.closest('[data-sd-del]'); if (del) { const at = Number(del.dataset.sdDel); svcState.draft.splice(at, 1);
       svcState.dietOpen = new Set([...(svcState.dietOpen || [])].filter(i => i !== at).map(i => i > at ? i - 1 : i)); renderServiceSheet(); return; }
