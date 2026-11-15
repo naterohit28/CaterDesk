@@ -65,11 +65,11 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [], 
     await p.fill('#ev-mp-lunch-g', '260'); await p.locator('#btn-save-event').click(); await p.waitForTimeout(500);
     if (await p.locator('#ask-modal.active').count()) await p.locator('#ask-actions button').last().click();
     await openEvent();
-    assert.match(await bar(), /Changed since approved v1 · 4 changes/);
+    assert.match(await bar(), /Changed since approved v1 · 3 changes/, 'Jeera Rice moving to a counter is internal, not a client change');
     await p.locator('[data-action="menu-approve"]').click(); await p.waitForSelector('#ma-modal.active');
     const body = await p.locator('#ma-body').innerText();
     assert.match(body, /Changes since approved version 1:/);
-    assert.match(body, /Lunch\n~\nGuests 250 → 260\n\+\nGulab Jamun\n−\nPani Puri\n~\nJeera Rice: Our kitchen → Chaat/);
+    assert.match(body, /Lunch\n~\nGuests 250 → 260\n\+\nGulab Jamun\n−\nPani Puri\n~\nJeera Rice: sourcing Our kitchen → Counter \(internal, not for the client\)/);
     assert.doesNotMatch(body, /^Dinner$/m, "no dinner changes listed (dinner is only named as not included)");
     await p.selectOption('#ma-by', 'verbal'); await p.fill('#ma-who', 'Sample Client Father');
     assert.equal(await p.locator('#btn-save-approval').innerText(), 'Save approved version 2');

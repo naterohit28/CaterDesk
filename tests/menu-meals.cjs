@@ -150,7 +150,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     const chai = rows.filter({ hasText: 'Masala Chai' });
     assert.deepEqual([await chai.nth(0).locator('[data-k="meal"]').inputValue(), await chai.nth(1).locator('[data-k="meal"]').inputValue()], ['breakfast', 'dinner']);
     assert.equal(await rows.filter({ hasText: 'Veg Biryani' }).locator('[data-k="meal"]').inputValue(), 'lunch', 'a heading for a meal the event lacks keeps that meal (not served until chosen), never all meals');
-    await chai.nth(1).locator('[data-k="head"]').selectOption({ index: 1 });   // dinner chai from a counter; breakfast chai stays in our kitchen
+    await chai.nth(1).locator('[data-k="head"]').selectOption({ index: 3 });   // dinner chai from a counter; breakfast chai stays in our kitchen
     const counter = await chai.nth(1).locator('[data-k="head"]').inputValue();
     await p.locator('#btn-save-menu').click(); await p.waitForTimeout(500);
     const e = await ev('e1');
@@ -182,6 +182,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     for (const m of ['breakfast', 'lunch', 'hightea', 'dinner', 'latenight']) await p.locator(`#ev-meals [data-meal="${m}"]`).click();
     await p.locator('#ev-mp summary').click();
     assert.equal(await p.locator('#ev-mp-rows [data-mp]').count(), 5, 'five meals in a day');
+    for (const m of ['breakfast', 'hightea', 'latenight']) await p.fill(`#ev-mp-${m}-g`, '50');   // every meal's guests are required; these are not priced yet
     await p.fill('#ev-mp-dinner-g', '400'); await p.selectOption('#ev-mp-dinner-m', 'golden');
     assert.equal(await p.inputValue('#ev-mp-dinner-r'), '800', 'Golden for 400 guests: the 301+ slab');
     await p.fill('#ev-mp-lunch-g', '200'); await p.fill('#ev-mp-lunch-r', '700'); await p.selectOption('#ev-mp-lunch-m', 'golden');
@@ -190,7 +191,8 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     await p.locator('#btn-save-event').click(); await p.waitForTimeout(500);
     if (await p.locator('#ask-modal.active').count()) await p.locator('#ask-actions button').last().click();
     const saved = (await dump()).events.find(e => e.name === 'Sample Menu Per Meal');
-    assert.deepEqual(saved.mealPlan, { lunch: { guests: 200, rate: 700, menu: 'golden' }, dinner: { guests: 400, rate: 800, menu: 'golden' } });
+    assert.deepEqual(saved.mealPlan, { breakfast: { guests: 50, rate: 0 }, lunch: { guests: 200, rate: 700, menu: 'golden' }, hightea: { guests: 50, rate: 0 }, dinner: { guests: 400, rate: 800, menu: 'golden' }, latenight: { guests: 50, rate: 0 } },
+      'meal guests are kept before the meal is priced (rate 0)');
     await openEvent('Sample Menu Per Meal');
     assert.match(await p.locator('#meal-plan').innerText(), /Lunch\s*Golden\s*200 × ₹700\s*₹1,40,000\s*Dinner\s*Golden\s*400 × ₹800\s*₹3,20,000/);
     const text = await p.evaluate(async () => { const d = await (await import('./db.js')).exportAllData(); const e = d.events.find(x => x.name === 'Sample Menu Per Meal');

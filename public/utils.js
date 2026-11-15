@@ -255,7 +255,7 @@ export function nextQuoteDraft(ev, { from = null, newOption = false } = {}) {
   const last = from || qs.at(-1);
   const option = newOption ? 'ABCDEFGH'.split('').find(l => !quoteOptions(ev).includes(l)) || 'H' : quoteOption(last);
   const lines = last ? structuredClone(last.lines)
-    : MEAL_ORDER.filter(m => ev.mealPlan?.[m]?.guests > 0).map(m => ({ kind: 'meal', meal: m, guests: ev.mealPlan[m].guests, rate: ev.mealPlan[m].rate, ...(ev.mealPlan[m].menu ? { menu: ev.mealPlan[m].menu } : {}) }));
+    : MEAL_ORDER.filter(m => ev.mealPlan?.[m]?.guests > 0 && ev.mealPlan[m].rate > 0).map(m => ({ kind: 'meal', meal: m, guests: ev.mealPlan[m].guests, rate: ev.mealPlan[m].rate, ...(ev.mealPlan[m].menu ? { menu: ev.mealPlan[m].menu } : {}) }));
   return { v: Math.max(0, ...qs.map(x => x.v)) + 1, status: 'draft', ...(option !== 'A' || newOption ? { option } : {}), lines: lines.length ? lines : [{ kind: 'meal', meal: 'dinner', guests: Number(ev.guests) || '', rate: '' }],
     showRates: last ? last.showRates !== false : true, terms: last?.terms || '', ...(last?.gst ? { gst: { ...last.gst } } : {}),
     ...(latestApproved(ev) ? { annex: latestApproved(ev).id } : last?.annex === 'draft' ? { annex: 'draft' } : {}) };
@@ -588,7 +588,8 @@ export function applyServices(ev, services) {
   for (const m of [...meals, '']) {
     services.filter(s => s.meal === m).forEach((s, i) => {
       const main = i === 0, tpl = s.template?.id || s.template || '';
-      if (main && m && s.guests > 0 && s.rate > 0) mealPlan[m] = { guests: s.guests, rate: s.rate, ...(tpl ? { menu: tpl } : {}) };
+      // A meal's guests are kept even before it is priced (rate 0); only priced meals add to the bill
+      if (main && m && s.guests > 0) mealPlan[m] = { guests: s.guests, rate: s.rate > 0 ? s.rate : 0, ...(tpl ? { menu: tpl } : {}) };
       stored.push({ id: s.id, meal: m, ...(s.date && s.date !== ev.date ? { date: s.date } : {}), ...(s.time ? { time: s.time } : {}),
         ...(main ? (tpl && !mealPlan[m] ? { template: tplOf(tpl, s) } : {}) : { guests: s.guests || 0, rate: s.rate || 0, ...(tpl ? { template: tplOf(tpl, s) } : {}) }) });
       for (const d of s.dishes || []) {
@@ -622,7 +623,7 @@ export function syncServices(record) {
    to the client. Each meal keeps the date it was approved for (its own date, else the event's), so a later
    change of the event date shows as a change. */
 const named = d => String(d.name ?? '').trim() !== '';
-const snapDish = d => ({ name: d.name, head: d.head || '', ...(d.cat ? { cat: d.cat } : {}), ...(d.type ? { type: d.type } : {}), ...(d.diet?.length ? { diet: [...d.diet] } : {}) });
+const snapDish = d => ({ name: d.name, head: d.head || '', ...(d.src ? { src: d.src } : {}), ...(d.cat ? { cat: d.cat } : {}), ...(d.type ? { type: d.type } : {}), ...(d.diet?.length ? { diet: [...d.diet] } : {}) });
 export function menuSnapshot(ev) {
   const { services } = eventServices(ev);
   const shared = (services[0]?.dishes || []).filter(d => d.shared && named(d)).map(snapDish);
@@ -640,7 +641,7 @@ export const latestApproved = ev => approvedMenus(ev).at(-1) || null;
    number of differences. */
 export function menuDiff(older, newer) {
   const out = [], key = d => String(d.name).trim().toLowerCase();
-  const sig = d => JSON.stringify([d.head || '', (d.diet || []).join(), d.type || '', d.cat || '']);
+  const sig = d => JSON.stringify([d.head || '', d.src || '', (d.diet || []).join(), d.type || '', d.cat || '']);
   // Dishes are matched by name; two dishes with the same name (plain Rice and Jain Rice) are matched one by one, an
   // identical one first, so adding, removing or changing either is still seen.
   const sides = (a = [], b = []) => {
@@ -652,7 +653,10 @@ export function menuDiff(older, newer) {
     for (const d of rest) { const olds = byName.get(key(d)) || []; if (olds.length) pairs.push([olds.shift(), d]); else added.push(d.name); }
     const left = new Set([...byName.values()].flat()); for (const o of a) if (left.has(o)) removed.push(o.name);
     for (const [o, d] of pairs) {
-      if ((o.head || '') !== (d.head || '')) changed.push({ name: d.name, what: 'counter', from: o.head || '', to: d.head || '' });
+      // Sourcing (kitchen, counter, bought) is internal: listed, but not a change the client approves
+      const srcOf = x => x.src || (x.head ? 'counter' : 'kitchen');
+      if (srcOf(o) !== srcOf(d)) changed.push({ name: d.name, what: 'source', from: srcOf(o), to: srcOf(d), internal: true });
+      else if ((o.head || '') !== (d.head || '')) changed.push({ name: d.name, what: 'counter', from: o.head || '', to: d.head || '', internal: true });
       if ((o.diet || []).join() !== (d.diet || []).join()) changed.push({ name: d.name, what: 'diet', from: (o.diet || []).join(', '), to: (d.diet || []).join(', ') });
       // Food type (veg / egg / non-veg) and course matter to the client: either change needs approval again
       if ((o.type || '') !== (d.type || '')) changed.push({ name: d.name, what: 'type', from: o.type || '', to: d.type || '' });
@@ -668,7 +672,7 @@ export function menuDiff(older, newer) {
   for (const o of older?.services || []) if (!news.has(o.id)) out.push({ id: o.id, meal: o.meal, gone: true, added: [], removed: o.dishes.map(d => d.name), changed: [], facts: [] });
   const shared = sides(older?.shared, newer?.shared);
   if (shared.added.length || shared.removed.length || shared.changed.length) out.push({ id: '', meal: '', shared: true, ...shared, facts: [] });
-  const count = out.reduce((n, x) => n + x.added.length + x.removed.length + x.changed.length + x.facts.length + (x.isNew && !x.added.length ? 1 : 0) + (x.gone && !x.removed.length ? 1 : 0), 0);
+  const count = out.reduce((n, x) => n + x.added.length + x.removed.length + x.changed.filter(c => !c.internal).length + x.facts.length + (x.isNew && !x.added.length ? 1 : 0) + (x.gone && !x.removed.length ? 1 : 0), 0);
   return { meals: out, count };
 }
 // The current menu compared with the last approved version (or with nothing, before any approval)

@@ -544,6 +544,15 @@ export async function prepareImport(payload) {
         || (o.basis !== undefined && (!o.basis || !Number.isSafeInteger(o.basis.guests) || o.basis.guests < 0 || !['meal', 'event'].includes(o.basis.from)))
         || (o.reminded !== undefined && (!Array.isArray(o.reminded) || o.reminded.length > 20 || o.reminded.some(t => typeof t !== 'string' || t.length > 40)))))) throw new Error('Invalid order');
       if (row.orders?.some(o => o?.messages !== undefined && (!Array.isArray(o.messages) || o.messages.some(m => !m || typeof m.text !== 'string' || !['prepared', 'opened', 'sent', 'confirmed'].includes(m.status))))) throw new Error('Invalid order messages');
+      // Purchases of bought items (4.28.0)
+      if (row.purchases !== undefined && (!Array.isArray(row.purchases) || row.purchases.length > 500 || new Set(row.purchases.map(p => p?.id)).size !== row.purchases.length
+        || row.purchases.some(p => !p || typeof p.id !== 'string' || !p.id || p.id.length > 40 || typeof p.item !== 'string' || !p.item.trim() || !['buy', 'finish'].includes(p.src)
+          || (p.svc !== undefined && (typeof p.svc !== 'string' || !p.svc || p.svc.length > 40)) || (p.venId !== undefined && typeof p.venId !== 'string')
+          || typeof p.qty !== 'number' || !Number.isFinite(p.qty) || p.qty <= 0 || !['pcs', 'kg', 'litre', 'packet', 'bottle', 'carton', 'tub', 'box'].includes(p.unit)
+          || !validDate(p.date) || (p.time !== undefined && (typeof p.time !== 'string' || p.time.length > 10)) || (p.notes !== undefined && (typeof p.notes !== 'string' || p.notes.length > 500))
+          || (p.estCost !== undefined && (amount(p.estCost, 'estimated cost'), false)) || !['prepared', 'opened', 'sent', 'confirmed', 'delivered', 'cancelled'].includes(p.status)
+          || (p.changed !== undefined && p.changed !== true) || (p.messages !== undefined && (!Array.isArray(p.messages) || p.messages.some(m => !m || typeof m.text !== 'string' || !['prepared', 'opened', 'sent', 'confirmed'].includes(m.status))))
+          || (p.reminded !== undefined && (!Array.isArray(p.reminded) || p.reminded.length > 20 || p.reminded.some(t => typeof t !== 'string' || t.length > 40)))))) throw new Error('Invalid purchase');
       if (row.additional !== undefined && typeof row.additional !== 'boolean') throw new Error('Invalid extra flag');
       if (row.split !== undefined && (!row.split || typeof row.split.id !== 'string' || (amount(row.split.total, 'shared bill'), false))) throw new Error('Invalid shared bill');
       if (row.stock !== undefined && (row.stock !== true || name !== 'expenses' || row.evId)) throw new Error('Invalid common stock entry');
@@ -567,7 +576,9 @@ export async function prepareImport(payload) {
         || (d.cat !== undefined && (!str(d.cat, 40) || !d.cat.trim())) || (d.type !== undefined && !['veg', 'egg', 'nonveg'].includes(d.type))
         || (d.diet !== undefined && (!Array.isArray(d.diet) || new Set(d.diet).size !== d.diet.length || d.diet.some(x => !['jain', 'no_onion_garlic', 'vegan', 'gluten_free', 'nut_free'].includes(x))))
         || ((d.diet || []).some(x => ['jain', 'no_onion_garlic', 'vegan'].includes(x)) && (d.type === 'egg' || d.type === 'nonveg'))
-        || (d.manual !== undefined && typeof d.manual !== 'boolean'))) throw new Error('Invalid dish details');
+        || (d.manual !== undefined && typeof d.manual !== 'boolean')
+        // Bought dishes (4.28.0): ready-made or finished by us; never also a counter
+        || (d.src !== undefined && (!['buy', 'finish'].includes(d.src) || (d.head || '') !== '')))) throw new Error('Invalid dish details');
       if (row.services !== undefined && (!Array.isArray(row.services) || row.services.length > 30 || new Set(row.services.map(s => s?.id)).size !== row.services.length
         || row.services.some(s => !s || !str(s.id, 40) || !s.id || !MEAL_KEYS.includes(s.meal) || (s.date !== undefined && !validDate(s.date)) || (s.time !== undefined && !str(s.time, 10))
           || (s.guests !== undefined && (!Number.isSafeInteger(s.guests) || s.guests < 0)) || (s.rate !== undefined && (amount(s.rate, 'meal rate'), false))
@@ -575,7 +586,7 @@ export async function prepareImport(payload) {
       if (row.servicesSig !== undefined && !str(row.servicesSig, 16)) throw new Error('Invalid meal menus');
       // Client-approved menu versions (4.24.0): numbered 1, 2, … in order; each a copy of the meals and their dishes.
       // A copied dish is checked no more strictly than the event's own dishes (any name, any number), so approving never makes a backup unrestorable.
-      const badSnapDish = d => !d || typeof d.name !== 'string' || !d.name.trim() || (d.head !== undefined && !str(d.head, 120)) || (d.cat !== undefined && !str(d.cat, 40))
+      const badSnapDish = d => !d || typeof d.name !== 'string' || !d.name.trim() || (d.src !== undefined && !['buy', 'finish'].includes(d.src)) || (d.head !== undefined && !str(d.head, 120)) || (d.cat !== undefined && !str(d.cat, 40))
         || (d.type !== undefined && !['veg', 'egg', 'nonveg'].includes(d.type)) || (d.diet !== undefined && (!Array.isArray(d.diet) || d.diet.some(x => !['jain', 'no_onion_garlic', 'vegan', 'gluten_free', 'nut_free'].includes(x))));
       if (row.menuApproved !== undefined && (!Array.isArray(row.menuApproved) || row.menuApproved.length > 200
         || row.menuApproved.some((v, i) => !v || !str(v.id, 40) || !v.id || v.n !== i + 1 || typeof v.at !== 'string' || !['written', 'verbal'].includes(v.by) || (v.who !== undefined && !str(v.who, 200))
@@ -634,6 +645,8 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
               if ((required || row[field]) && !final[target].has(row[field])) throw new Error('Missing ' + target + ' reference in ' + store + ': ' + row.id);
             };
             if (store === 'expenses') { ref('evId', 'events', !row.draft && !row.stock); ref('venId', 'vendors'); }
+            // A bill linked to a purchase (4.28.0): that purchase exists on the bill's event, and the bill is not also an order's
+            if (store === 'expenses' && row.purchase !== undefined && (typeof row.purchase !== 'string' || row.order || !(final.events.get(row.evId)?.purchases || []).some(x => x.id === row.purchase))) throw new Error('Invalid purchase link in expenses: ' + row.id);
             if (store === 'cPays') ref('evId', 'events', true);
             if (store === 'vPays') { ref('venId', 'vendors', true); ref('evId', 'events'); }
             if (store === 'photos') { ref('eventId', 'events'); ref('expenseId', 'expenses'); }
@@ -655,7 +668,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.27.0';
+export const APP_VERSION = '4.28.0';
 const COUNT_METHOD_IDS = ['tokens', 'tally', 'gate', 'coupons', 'joint', 'other'];
 // v4.18.0 kept menus in their own store (database version 5): copy them into meta once and empty that store
 export async function migrateLegacyMenus() {
