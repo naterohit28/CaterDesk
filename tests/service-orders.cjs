@@ -191,6 +191,19 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest; d.events = d.events.filter(e => e.id !== 'e2'); await db.importAllData(d, 'replace'); });
   });
 
+  await test('an event with one meal on its own date and time: a new order takes that date and time', async () => {
+    const E3 = { id: 'e3', name: 'Sample Single Dinner', date: day(30), venue: 'Sample Hall', type: 'Wedding – लग्न', billing: 90000, guests: 150, meals: ['dinner'], photoIds: [],
+      mealPlan: { dinner: { guests: 150, rate: 600 } }, services: [{ id: 's3-dinner', meal: 'dinner', date: day(31), time: '19:30' }],
+      dishes: [{ name: 'Pani Puri', head: CHAAT, meal: 'dinner' }, { name: 'Jeera Rice', head: '', meal: 'dinner' }] };
+    await p.evaluate(async e => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest; d.events.push(e); await db.importAllData(d, 'replace'); }, E3);
+    await p.reload(); await p.waitForSelector('#kpi .card'); await p.locator('#n-events:visible').click();
+    await p.locator('#ev-list [data-action="evdetail"]:visible', { hasText: 'Sample Single Dinner' }).first().click(); await p.waitForSelector('#tab-evdetail .detail-name');
+    await p.locator(`#menu-orders [data-counter="${CHAAT}"] [data-action="order-new"]`).click(); await p.waitForSelector('#ord-modal.active');
+    assert.deepEqual([await p.inputValue('#ord-date'), await p.inputValue('#ord-time')], [day(31), '19:30']);
+    await p.locator('#ord-modal [data-action="close-modal"]').first().click();
+    await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest; d.events = d.events.filter(e => e.id !== 'e3'); await db.importAllData(d, 'replace'); });
+  });
+
   await test('backups keep an order\'s meal, menu version and guests; malformed ones are refused', async () => {
     const r = await p.evaluate(async () => { const db = await import('./db.js'); const out = [];
       const d0 = await db.exportAllData(); delete d0.manifest;

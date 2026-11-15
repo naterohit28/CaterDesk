@@ -1746,6 +1746,8 @@ function openOrderModal({ head, svc = '', orderId }) {
   const o = orderId ? (ev.orders || []).find(x => x.id === orderId) : null;
   head = o?.head || head; svc = o ? o.svc || '' : svc;
   const all = eventServices(ev).services, s = svc ? all.find(x => x.id === svc) : null;
+  // An event with one meal has no meal on its rows: that meal's own date and time still go on the order
+  const when = s || (svc ? null : rowOf(ev, { head })?.svc) || null;
   q('ord-id').value = o?.id || '';
   q('ord-head').value = head; q('ord-svc').value = svc;
   q('ord-mtitle').textContent = ev.outsourced ? 'Menu to caterer – केटररला मेनू' : `${short(head)} order${s ? ` · ${svcLabel(ev, s, all)}` : ''} – ऑर्डर`;
@@ -1765,8 +1767,8 @@ function openOrderModal({ head, svc = '', orderId }) {
   updateCounterPlan();
   // No plan: start from this counter's guests (its meal's count if known), still replaceable by a plan
   if (!q('ord-plates').value) { const g = orderGuests(ev, head, svc).guests || ''; q('ord-plates').value = g; ordAuto = String(g); }
-  q('ord-date').value = o?.date || s?.date || ev.date;
-  q('ord-time').value = o?.time || s?.time || '';
+  q('ord-date').value = o?.date || when?.date || ev.date;
+  q('ord-time').value = o?.time || when?.time || '';
   q('ord-notes').value = o?.notes || '';
   q('btn-cancel-ord').hidden = !o;
   clearFieldErrors();
