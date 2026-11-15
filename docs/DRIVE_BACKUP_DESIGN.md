@@ -1,273 +1,319 @@
-# CaterDesk – Encrypted Google Drive backup and recovery (design)
+# CaterDesk – Encrypted Google Drive backup and recovery (design, revision 2)
 
-Status: **design for owner approval**. Nothing in this document is built, configured or deployed. No Google Cloud
-project, OAuth client, scope or credential exists for CaterDesk yet, and none will be created or added to the code
-without the owner's explicit approval in chat.
+**Status:** design for owner approval. Nothing in this document is built, configured or deployed. No Google Cloud
+project, OAuth client, scope or credential exists for CaterDesk yet. None will be created, requested or added to the
+code, and no live Drive access will be enabled, until the owner approves this revised implementation design in chat.
+
+**Owner decisions already given (15 Nov 2026):**
+
+- an owner-visible CaterDesk backup folder
+- the least-privilege `drive.file` scope
+- a random 256-bit recovery key
+- retention of 14 daily, 8 weekly and 12 monthly backups
+- narrowly scoped Google connections
+- an owner-controlled Google Cloud project and credentials
+
+**Revision 2 changes:**
+
+- Google Identity Services (GIS) token client instead of a hand-made `response_type=token` flow, with the minimal CSP
+  changes
+- full recovery-key verification before setup completes
+- accurate Drive bin limits
+- chunked encryption and tests for large backups with bill photos
+- foreground-assisted backup clearly separated from unattended backup
+- historical intelligence kept separate from cloud backup
+- Android verification as a gate
 
 ## 1. Goals and boundaries
 
-- **IndexedDB stays the authoritative database.** The app keeps working fully offline. Drive holds encrypted copies
-  only. Nothing is ever read back from Drive automatically.
-- **Backup, not sync.** A backup is a point-in-time encrypted snapshot. There is no live multi-device synchronisation,
-  no automatic merge and no background reconciliation. Restoring is a deliberate step on a device.
-- **Everything is included.** The backup is the existing verified backup file (`exportAllData()` plus the backed-up
-  preferences), which already holds:
-  - events, with their quotations, approved menu versions, menus sent to clients, vendor orders and meal services
+- **IndexedDB stays the authoritative database.** The app works fully offline. Drive holds encrypted copies only, and
+  nothing is ever read back from Drive automatically.
+- **Backup, not sync.** A backup is a point-in-time encrypted snapshot: no live multi-device synchronisation, no
+  automatic merge, no background reconciliation. Restoring is a deliberate step on one device.
+- **Everything is included.** The backup is the existing verified backup file (`exportAllData()` plus backed-up
+  preferences). It contains:
+  - events, with quotations, approved menu versions, menus sent to clients, vendor orders and reminders, and meal
+    services
   - expenses, vendors, client and vendor payments
   - bill photos and other attachments
   - the menu library and business details
   - the record-count and SHA-256 manifest
 
-  Restoring therefore goes through the same import checks that local backups already use.
+  Restore uses the same import checks as local backups.
 - **Encrypted before it leaves the phone.** Google receives only ciphertext. File names and Drive properties carry no
   client names, amounts or menu content.
-- **Owner-visible and narrowly scoped.** A `CaterDesk Backups` folder in the owner's own My Drive. The app's access
-  is limited to the files it creates (`drive.file`).
+- **Owner-visible and narrowly scoped.** A `CaterDesk Backups` folder in the owner's My Drive, with
+  `https://www.googleapis.com/auth/drive.file` only: the app can reach only the files it created.
 - **No secrets in the frontend.**
-  - The OAuth client ID is public by design: it identifies the app and grants nothing on its own. It is the only
-    Google value in the code, and only after approval.
-  - No client secret, API key, refresh token or recovery key is stored in the code, the repository, Vercel, CI or
-    browser storage in readable form.
-- **No AI services.** Backup content is never sent to any AI or analytics service. The only external destination is
-  the owner's Google Drive.
+  - The OAuth client ID is public by design; it identifies the app and grants nothing alone. It is the only Google
+    value in the code, added only after approval.
+  - No client secret, API key, refresh token, access token or recovery key is kept in readable form in the code,
+    repository, Vercel, CI, logs, the error reporter or browser storage.
+- **No AI or analytics services.** Backup content and business data are never sent to an AI or analytics service.
+  The only external destination is the owner's Google Drive, and only as ciphertext.
 
-## 2. Google Cloud setup (owner does this; about 15 minutes; free)
+## 2. Historical intelligence stays separate from cloud backup
 
-Use the owner's own Google account. No billing account is needed.
+- CaterDesk's learning features (price suggestions, counter take-up, dish-to-counter learning, cost vs usual) read
+  **only the local IndexedDB**. They never read Drive, never run on Google's servers, and never upload derived
+  figures.
+- Backups do not contain separate "intelligence" files. Any learned values are recomputed locally from the restored
+  records.
+- A restore puts records into the local database through the existing import, merging by record ID and revision. A
+  backup restored twice does not duplicate records, so history is not double-counted. There is no second database.
+- Drive is never used as a data source for reports, suggestions or comparisons.
 
-1. Open **console.cloud.google.com**. Create a project, for example `CaterDesk Backup`.
-2. **APIs & Services → Library → Google Drive API → Enable.** No other API is needed.
-3. **Google Auth Platform → Branding** (OAuth consent screen):
-   - App name: `CaterDesk`. User support email and developer contact: the owner's email.
-   - App domain / home page: `https://expense-calculator-kohl.vercel.app` (optional while in Testing).
-4. **Audience:** User type **External**, publishing status **Testing**. Add the owner's Gmail (and any staff account
-   that will restore) as **test users**.
-5. **Data access → Add or remove scopes:** add **only**
-   `https://www.googleapis.com/auth/drive.file`.
-   - Do **not** add `drive`, `drive.readonly`, `drive.metadata` or `drive.appdata`.
-   - `drive.file` is a non-sensitive scope: only files this app created or the user opened with it are reachable.
-6. **Clients → Create client → Web application**, name `CaterDesk web`.
-   - **Authorised JavaScript origins:** `https://expense-calculator-kohl.vercel.app`; `http://127.0.0.1:8790` for
-     local testing only. Remove it after testing if preferred.
-   - **Authorised redirect URIs:** `https://expense-calculator-kohl.vercel.app/oauth-return.html` and
-     `http://127.0.0.1:8790/oauth-return.html`.
-7. Copy the **Client ID** (ends in `.apps.googleusercontent.com`) and send it in chat when approving step 4 of the
-   rollout. **Do not send or download the client secret**; CaterDesk never uses it.
+## 3. Google Cloud setup (owner; about 15 minutes; free; after approval of this revision)
 
-Vercel preview deployments use changing domains and are deliberately **not** authorised. Drive backup works only on
-the production address and the local test server.
+Use the owner's Google account. No billing account is needed.
 
-## 3. OAuth architecture
+1. **console.cloud.google.com**: create a project, e.g. `CaterDesk Backup`.
+2. **APIs & Services → Library → Google Drive API → Enable.** No other API.
+3. **Google Auth Platform → Branding:**
+   - App name `CaterDesk`.
+   - Support email and developer contact: the owner's email.
+   - Home page `https://expense-calculator-kohl.vercel.app` (optional while in Testing).
+4. **Audience:**
+   - User type **External**, publishing status **Testing**.
+   - Add the owner's Gmail, and any staff account that will restore, as **test users**.
+5. **Data access:** add **only** `https://www.googleapis.com/auth/drive.file`. Do not add `drive`, `drive.readonly`,
+   `drive.metadata` or `drive.appdata`. `drive.file` is classed by Google as a non-sensitive scope.
+6. **Clients → Create client → Web application**, `CaterDesk web`:
+   - **Authorised JavaScript origins:** `https://expense-calculator-kohl.vercel.app`, plus `http://localhost:8790` for
+     local testing. Remove the local origin later if preferred.
+   - **Redirect URIs:** none. The GIS token client uses a popup and does not need them.
+7. Copy the **Client ID** (`….apps.googleusercontent.com`) and send it in chat when D3 is approved. **Never send or
+   download the client secret**; CaterDesk does not use it.
 
-**Recommended: browser-only OAuth 2.0 token flow, with no third-party script.**
+Vercel preview domains change on every deploy and are deliberately **not** authorised. Drive backup works only on the
+production address and the local test server.
 
-1. The owner taps **Connect Google Drive** or **Back up now**.
-2. CaterDesk opens a popup to `https://accounts.google.com/o/oauth2/v2/auth` with:
-   - `client_id`, `redirect_uri=…/oauth-return.html`, `response_type=token`, `scope=…/drive.file`
-   - `include_granted_scopes=false`, `prompt=` (consent only the first time)
-   - a random `state` kept in memory
-3. Google shows its own sign-in and consent screen. CaterDesk never sees the Google password.
-4. `oauth-return.html` (served by CaterDesk, same origin):
-   - reads the access token from the URL fragment
-   - checks `state`
-   - posts the token to the opener with `postMessage` restricted to the CaterDesk origin
-   - clears the fragment and closes itself
-5. The access token, valid for about 1 hour:
-   - lives **in memory only**: never in localStorage, IndexedDB, logs or the error reporter
-   - is dropped when the app closes
-   - no refresh token exists in this flow
-6. Drive calls go directly from the browser to `https://www.googleapis.com` with that token.
+## 4. Sign-in: Google Identity Services token client (browser-only)
 
-Why not Google's sign-in script (GIS)? CaterDesk's Content Security Policy allows only its own scripts
-(`script-src 'self'`). GIS would need `https://accounts.google.com` added to `script-src` and frames, which loosens
-the policy for the whole app. The token flow above needs only:
+**Flow:**
 
-- `connect-src` + `https://www.googleapis.com` (API and uploads)
-- the popup itself (a top-level window, not governed by this page's CSP)
+1. CaterDesk loads `https://accounts.google.com/gsi/client` **only when the owner opens Backup or taps Connect**, not
+   on every app start. Day-to-day use loads no Google code.
+2. `google.accounts.oauth2.initTokenClient({ client_id, scope: 'https://www.googleapis.com/auth/drive.file', callback })`.
+3. `requestAccessToken()` is called **inside the owner's tap** (Connect, Back up now), so the popup is not blocked.
+   - First time: Google's consent screen shows the `drive.file` permission only.
+   - Later, while signed in to Google: `prompt: ''` gives a token without showing consent again.
+4. GIS returns an access token, valid for about 1 hour:
+   - kept **in memory only**: never in localStorage, IndexedDB, logs or the error reporter
+   - dropped when the app closes
+   - no refresh token in this flow, so no long-lived Google access exists anywhere
+5. Drive calls go from the browser to `https://www.googleapis.com` with that token.
+6. **Disconnect** in CaterDesk calls `google.accounts.oauth2.revoke(token)`. The owner can also revoke at
+   `myaccount.google.com/permissions`, after which the app shows "Google Drive not connected" and keeps working
+   offline.
 
-The CSP change is reviewable on its own and limited to one origin.
+**Minimal CSP changes** (from the current `vercel.json` policy; nothing else changes):
 
-Why not a server with refresh tokens? It would let backups run while the app is closed, but:
+| Directive | Current | Add | Why |
+|---|---|---|---|
+| `script-src` | `'self'` | `https://accounts.google.com/gsi/client` | the GIS library (exact file, not the whole host) |
+| `connect-src` | `'self'` | `https://www.googleapis.com` | Drive API and uploads |
+| `connect-src` | | `https://accounts.google.com/gsi/` | GIS token-client calls |
+| `frame-src` | (inherits `'self'`) | `https://accounts.google.com/gsi/` only **if** the D2 CSP violation report shows the token client needs it | Google lists it for GIS; the button and One Tap use it, but CaterDesk does not |
+| `style-src` | unchanged | `https://accounts.google.com/gsi/style` only **if** needed | not expected (no Google button is rendered) |
 
-- the server would hold standing access to the owner's Drive and need the client secret in Vercel
-- a breach of the server would expose that access
-- the server would move from "static app" to "service holding credentials"
+- In D2 the policy first ships as **`Content-Security-Policy-Report-Only`** on the local test server to capture
+  exactly what GIS needs. Only the confirmed entries go into the enforced policy, and that change is a separate,
+  reviewable commit.
+- No `Cross-Origin-Opener-Policy` header is set today. If one is added later it must be
+  `same-origin-allow-popups`, or the GIS popup cannot return the token.
+- The service worker never caches Google responses; requests to other origins pass through untouched.
 
-Not recommended unless the owner later decides unattended backups are worth that risk.
+**Android (gate before relying on it):**
 
-**Android check (must pass before relying on it):** Google blocks sign-in inside embedded WebViews. If the installed
-Android wrapper is a Trusted Web Activity (Chrome), sign-in works. If it is a plain WebView, the **Connect** step must
-open in Chrome, after which backups continue in the browser tab. Acceptance test M2 checks this on the owner's phone.
+- Google blocks sign-in inside embedded WebViews (`disallowed_useragent`).
+- If the installed wrapper is a Trusted Web Activity (Chrome), GIS works.
+- If it is a WebView, **Connect** must open CaterDesk in Chrome. Backups then run in the Chrome tab, which shares no
+  database with the WebView, so the wrapper must be a TWA for Drive backup of the installed app's data.
+- Acceptance test M2 must pass on the owner's phone with the installed app before D3 is accepted.
 
-**Revoking:** the owner can remove CaterDesk at `myaccount.google.com/permissions` at any time. The app then shows
-"Google Drive not connected" and keeps working offline.
+## 5. Encryption and key recovery
 
-## 4. Encryption and key recovery
+- **Algorithm:** AES-256-GCM via the browser's Web Crypto API. No custom cryptography.
+- **Recovery key (approved):**
+  - At setup the phone generates a random 256-bit key.
+  - It is shown **once** as 13 groups of 4 characters (Crockford base32 plus a checksum group), e.g. `CDRK-7Q2M-…-H4XD`.
+  - The owner writes or prints it and stores it away from the phone (password manager or sealed envelope).
+- **Full verification before setup completes:**
+  - The owner types the **entire** recovery key back.
+  - The checksum group catches typing slips and says which group is wrong.
+  - The app derives the key ID from what was typed and must match the generated key exactly.
+  - Only then is setup marked complete and backups allowed. A partial match never completes setup.
+- **On the phone:**
+  - The key is imported as a **non-extractable** `CryptoKey` in IndexedDB (`meta`), so backups run without asking
+    for it, and no script can read its bytes.
+  - A key ID (first 8 bytes of SHA-256 of the key) is stored openly, so restore can say "this backup needs a
+    different recovery key".
+- **No recovery key, no restore.** Google cannot decrypt the backups, and nor can the owner without the key. Losing
+  the phone **and** the key makes the Drive backups unrecoverable. This is stated plainly at setup and accepted with
+  a tap.
+- **Changing the key:**
+  - A new key encrypts future backups. Older backups still need the old key; each backup lists its key ID.
+  - Changing the key requires the full verification again.
 
-**Algorithm:** AES-256-GCM via the browser's Web Crypto API. There is no custom cryptography.
-
-**Recovery key (recommended):**
-
-- When backup is first set up, the phone generates a random 256-bit key.
-- It is shown **once** as 13 groups of 4 characters (Crockford base32 with a checksum), for example
-  `CDRK-7Q2M-…-H4XD`.
-- The owner writes it down or prints it and stores it away from the phone. A password manager or a sealed envelope
-  both work.
-- The app asks the owner to type the last two groups back before backups start, so a mis-copied key is caught on
-  day one.
-
-**On the phone:**
-
-- The key is imported as a **non-extractable** `CryptoKey` and stored in IndexedDB (`meta`).
-- The app can then encrypt automatic backups without asking each time, but no script can read the key's bytes out.
-- A short key ID (first 8 bytes of SHA-256 of the key) is stored openly so restore can say "this backup needs a
-  different recovery key".
-
-**No recovery key, no restore.** Google cannot decrypt the backups, and neither can anyone else, including the owner
-without the key. Losing the phone **and** the recovery key means the Drive backups are unrecoverable. This is the
-price of the encryption and must be accepted explicitly at setup.
-
-**Alternative (owner's choice):** a passphrase instead of a random key, stretched with PBKDF2-SHA-256 at 600,000
-iterations and a random salt. It is easier to remember, but it is only as strong as the passphrase; a minimum of
-5 random words is enforced. **The recommendation is the random recovery key.**
-
-**Changing the key:** a new key encrypts future backups. Older backups still need the old key, so the app lists which
-key ID each backup uses.
-
-**File format (`.cdbk`):**
+**File format `.cdbk` (chunked, so large backups with many bill photos fit in phone memory):**
 
 ```
-magic "CDBK" | format version (1) | header length | header JSON | ciphertext (with 16-byte GCM tag)
-header = { keyId, iv (12 random bytes, base64), createdAt, appVersion, compressed: "gzip", plainSha256 }
+"CDBK" | format 1 | header length | header JSON | chunk 1 | chunk 2 | … | chunk N
+header = { keyId, baseIv (12 random bytes), chunkSize: 4 MiB, chunks: N, createdAt, appVersion,
+           compressed: "gzip", plainSha256 }
+chunk i = AES-256-GCM( key, iv = baseIv XOR i, aad = SHA-256(header bytes) || i || (i === N ? "last" : "more"),
+                       data = 4 MiB of gzip-compressed backup JSON )  → ciphertext + 16-byte tag
 ```
 
-- The header bytes are passed as GCM **additional authenticated data**, so any change to the header or the
-  ciphertext makes decryption fail.
-- `plainSha256` is the hash of the backup JSON before compression, checked after decryption.
-- The plaintext is the existing backup JSON, compressed with `CompressionStream('gzip')` before encryption.
+- Each chunk is authenticated separately. Its index and the "last" flag in the AAD stop chunks being reordered,
+  dropped or truncated.
+- Changing the header breaks every chunk.
+- `plainSha256` is checked after decryption and decompression.
+- Encryption and upload work chunk by chunk, so only a few chunks are in memory at once.
 
-## 5. Backup behaviour
+## 6. Backup behaviour
 
-**Manual:** **Back up now** in Settings → Backup.
+### 6.1 What "automatic" means here (foreground-assisted, not unattended)
 
-**Foreground-assisted automatic:**
+A web app on a phone **cannot run while it is closed**. CaterDesk will **not** promise a guaranteed daily backup at a
+fixed time. What it does:
 
-- A browser app cannot run while closed, so backups happen while CaterDesk is open.
-- A backup is **due** when the last *verified* Drive backup is older than 24 hours, or the data changed since it and
-  it is older than 6 hours.
-- When due, online and holding a valid token from a sign-in in the last hour, the backup starts on its own a few
-  seconds after the app becomes idle. It never interrupts typing or an open sheet.
-- When due but the token has expired, a quiet banner offers **Back up now (1 tap)**. The tap opens Google's popup.
-  The app never claims a backup ran when it did not.
+- **Foreground-assisted automatic backup.**
+  - A backup is *due* when the last **verified** backup is older than 24 hours, or the data changed since it and it
+    is older than 6 hours.
+  - When CaterDesk is open, online, idle and holds a Google token from the last hour, a due backup starts on its own.
+    It never interrupts typing or an open sheet.
+- **One-tap backup** when due but no token is held: a quiet banner, **Back up now**. The tap is needed because Google
+  requires a user action to open sign-in.
+- **Manual backup:** Settings → Backup → **Back up now**, any time.
+- **Honest wording:**
+  - The status never says "daily backup is on". It shows the last verified backup and whether one is due.
+  - If no verified backup exists for 3 days, Home shows a clear warning.
+- **Unattended backups** (while the app is closed) would need a server holding standing access to the owner's Drive
+  (refresh token plus client secret). That is out of scope and not recommended. It would be a separate decision.
 
-**Steps and honest status:**
+### 6.2 Steps, verification and status
 
 | Step | Shown as |
 |---|---|
 | Export and self-check (manifest) | Preparing backup… |
-| Encrypt and locally test-decrypt | Encrypting… |
-| Upload (resumable for large files; real byte progress) | Uploading 2.1 MB of 3.4 MB… |
-| Verify: Drive's `sha256Checksum` and `size` must equal the uploaded ciphertext | Checking upload… |
+| Encrypt chunk by chunk, and test-decrypt chunk 1 and the last chunk locally | Encrypting… |
+| Resumable upload with real byte progress; resumes after a dropped connection | Uploading 21 MB of 63 MB… |
+| Verify: Drive's `sha256Checksum` and `size` equal the uploaded ciphertext | Checking upload… |
 | Recorded | **Saved to Drive and verified** · time |
 
-**Two separate records**, never merged:
+**Two separate records, never merged:**
 
-- **Last backup attempt:** time, result, reason if failed (offline, sign-in needed, quota, mismatch).
-- **Last verified backup:** time, file, size, key ID.
+- **Last backup attempt:** time, result, reason if failed (offline, sign-in needed, storage full, checksum mismatch,
+  cancelled).
+- **Last verified backup:** time, file, size, key ID. A failed attempt never changes it.
 
-A failed attempt never changes "last verified".
+**Weekly deep check:** the app downloads the newest backup, decrypts it, and runs the full import check as a dry run
+that writes nothing. Only then is it marked **restore-tested**.
 
-**Weekly deep check:** once a week the app downloads the newest backup, decrypts it, and runs the full import check
-without writing anything (dry run). Only then is it marked **restore-tested**.
+### 6.3 Versions kept, and the Drive bin (accurate limits)
 
-**Versions kept:**
+- **Keep:** the last 14 daily, 8 weekly and 12 monthly backups, plus the 3 newest verified ones, which are never
+  pruned.
+- **Prune:** older backups are moved to **Drive's bin** (`trashed: true`). The app never deletes a file permanently.
+- **Limits of the bin:**
+  - Google permanently deletes items in the bin **after 30 days**.
+  - The owner (or anyone with access to the account) can **empty the bin sooner**.
+  - Items in the bin **still count against the owner's Drive storage** until they are gone.
+  - So a pruned backup is recoverable for **at most** 30 days, and possibly less. The 14/8/12 backups kept outside
+    the bin are the real retention.
+- **Storage:**
+  - Before uploading, the app checks the owner's free Drive storage (`about.get` → `storageQuota`, allowed under
+    `drive.file`).
+  - If the backup does not fit, it reports "Drive storage full". It never deletes or trashes anything to make room.
+- **Names and properties:**
+  - File name: `CaterDesk-backup-2026-11-15-2104-<random device tag>.cdbk`.
+  - `appProperties`: `caterdesk=1`, `format=1`, `keyId`, `createdAt`, `appVersion` only. No business data appears in
+    names or properties.
 
-- the last 14 daily, 8 weekly and 12 monthly backups
-- the 3 newest verified backups, never removed
+## 7. Restore on another device
 
-Older ones are moved to **Drive's bin** (recoverable for 30 days), never deleted permanently by the app.
+1. Open CaterDesk on the new device and choose **Restore from Google Drive**.
+2. Connect Google Drive with the same account. `drive.file` access belongs to the app, so the new device sees the
+   backups CaterDesk created.
+3. Pick a backup: date, size, app version, verified or restore-tested.
+4. Type the full recovery key. The key ID must match before anything is downloaded.
+5. Download chunk by chunk, checking each GCM tag. Then decompress, check `plainSha256`, and run the existing
+   `prepareImport` checks (manifest counts, store hashes, field validation).
+6. Preview the restore: counts of events, quotations, approved menus, orders, bills and photos.
+7. **Empty device:** restore everything. **Device with data:** the owner chooses **Replace** (a local safety backup
+   is saved first) or **Merge** (existing merge rules). There is no silent overwrite.
+8. Re-count every store against the manifest and show **Restored and checked**.
 
-**Names and properties:**
+## 8. Implementation in separate reviewable PRs
 
-- File name: `CaterDesk-backup-2026-11-15-2104-<random device tag>.cdbk`.
-- Drive `appProperties` hold only: `caterdesk=1`, `format=1`, `keyId`, `createdAt`, `appVersion`.
-- No business data appears in names or properties.
-
-## 6. Restore on another device
-
-1. Install or open CaterDesk on the new device and choose **Restore from Google Drive**.
-2. Connect Google Drive (same Google account).
-   - `drive.file` access belongs to the app, so the new device sees the backups this app created.
-3. Pick a backup. The list shows date, size, app version and whether it is verified or restore-tested.
-4. Type the recovery key. The key ID must match, otherwise the app says so before downloading.
-5. Download, then check:
-   - GCM authentication (any tampering fails here)
-   - decompress and check `plainSha256`
-   - the existing `prepareImport` checks: manifest counts, store hashes, field validation
-6. Preview what will be restored: events, quotations, approved menus, orders, bills and photos counts.
-7. **Empty device:** restore everything. **Device that already has data:** the owner must choose
-   **Replace** (after a local safety backup is saved) or **Merge** (existing merge rules). There is no silent
-   overwrite.
-8. After restoring, re-count every store against the manifest and show **Restored and checked**.
-
-## 7. Code changes (separate reviewable PRs, after approval)
-
-| PR | Contents | Needs Google? |
+| PR | Contents | Google? |
 |---|---|---|
-| D1 | `.cdbk` format: key generation, recovery-key display and confirmation, encrypt/decrypt, local "Save encrypted backup file" and "Restore from encrypted file". | No: fully testable offline |
-| D2 | Drive client: popup OAuth, `oauth-return.html`, folder, resumable upload, checksum verification, listing, retention to bin, restore from Drive. The client ID comes from a config value left **empty**, so the feature stays hidden. Tests use a mocked Drive API served locally. The CSP adds `connect-src https://www.googleapis.com`. | No: mocked |
-| D3 | Owner adds the approved client ID; manual tests M1–M6 with the real account. | Yes, after approval |
-| D4 | Due logic, banner, weekly deep check, status screen polish. | Mocked + manual |
+| **D1** (may start now) | `.cdbk` chunked format, key generation, recovery-key display and full verification, encrypt/decrypt, local **Save encrypted backup** and **Restore encrypted backup** (file on the phone). Tests with synthetic data, including large backups with bill photos. | No |
+| D2 | GIS token client loaded on demand, Drive client (folder, resumable upload, checksum verification, listing, retention to bin, storage check, restore from Drive). Client ID config left **empty**, so the feature stays hidden. Tests against a **mocked** Drive and GIS served locally. CSP report-only first, then the minimal enforced change in its own commit. | Mocked only |
+| D3 | Owner adds the approved client ID; manual tests M1–M7 with the real account and the installed Android app. | After approval |
+| D4 | Due logic, banner, weekly deep check, status screen. | Mocked + manual |
 
-## 8. Acceptance tests
+## 9. Acceptance tests
 
-**Automated** (Playwright on the local server, synthetic data, Drive mocked; no real Google account in CI):
+**Automated** (Playwright, local server, synthetic data, Drive and GIS mocked; no real Google account anywhere in
+tests or CI):
 
-1. **A1 Round trip:** encrypt the full synthetic backup (with photos, quotations, approved menus, orders), then
-   decrypt and import into a fresh profile. Every store must be byte-identical after normalising `_rev`.
-2. **A2 Wrong key:** a different recovery key fails with "This backup needs a different recovery key". Nothing is
-   written.
-3. **A3 Tamper:** flipping one byte in the ciphertext, the tag or the header makes decryption fail. Nothing is
-   written.
-4. **A4 Key confirmation:** setup refuses to start backups until the last two key groups are typed correctly.
-5. **A5 No plaintext leaves:** the bytes sent to the mocked Drive contain no event, client, vendor or dish name.
-   File names and `appProperties` contain only the allowed fields.
-6. **A6 Token hygiene:** after a backup, localStorage, IndexedDB, the error reporter queue and the URL contain no
-   access token. The popup's fragment is cleared.
-7. **A7 Scope:** the authorisation URL requests exactly `https://www.googleapis.com/auth/drive.file`.
-8. **A8 Upload verification:** if the mocked Drive returns a different `sha256Checksum` or size, the status is
-   "Upload could not be verified". *Last verified* is unchanged and the attempt is recorded as failed.
-9. **A9 Offline / expired token:** the attempt fails honestly and *last verified* is unchanged. When a backup is due,
-   the banner offers one-tap backup.
-10. **A10 Retention:** a pruning simulation over 120 days keeps 14/8/12 plus the 3 newest verified. Pruned files are
-    only trashed (`trashed: true`), never deleted.
-11. **A11 Restore safety:** restoring onto a device with data requires choosing Replace or Merge. Replace first saves
-    a local safety backup. Manifest re-count must pass.
-12. **A12 CSP:** the deployed CSP allows `connect-src https://www.googleapis.com` and nothing else new. No
-    third-party scripts are added.
-13. **A13 Old app versions:** a backup restored by this version, then opened by the released 4.21.1 app, still opens
-    (the existing compatibility test is extended).
+1. **A1 Round trip:** encrypt the full synthetic backup (photos, quotations, approved menus, orders, reminders), then
+   decrypt and import into a fresh profile. Every store must be identical after normalising `_rev`.
+2. **A2 Large backup:**
+   - Synthetic events with **300 bill photos totalling about 120 MB**: encrypt, decrypt and import round trip.
+   - Peak memory is measured (`performance.measureUserAgentSpecificMemory` where available, else the chunks held at
+     once) and must stay within a set ceiling.
+   - The upload must resume after a simulated drop mid-file.
+3. **A3 Wrong key:** "This backup needs a different recovery key". Nothing is written.
+4. **A4 Tamper:**
+   - flipping one byte in any chunk, its tag, or the header
+   - dropping, reordering or truncating chunks
 
-**Manual, by the owner on the real account** (after D3):
+   Each makes restore fail with nothing written.
+5. **A5 Full key verification:** setup refuses completion on any wrong, missing or swapped group, and says which group
+   is wrong. Only the full, exact key completes setup.
+6. **A6 No plaintext leaves:** bytes sent to the mocked Drive contain no event, client, vendor or dish name. File
+   names and `appProperties` contain only the allowed fields.
+7. **A7 Token hygiene:** after a backup, nothing in localStorage, IndexedDB, the error-reporter queue, URLs or logs
+   contains an access token.
+8. **A8 Scope:** the token client is created with exactly `https://www.googleapis.com/auth/drive.file`.
+9. **A9 GIS on demand:** opening the app, events, expenses and reports loads nothing from `accounts.google.com`.
+   Only opening Backup does.
+10. **A10 Upload verification:** a mismatched `sha256Checksum` or size shows "Upload could not be verified". *Last
+    verified* is unchanged and the attempt is recorded as failed.
+11. **A11 Offline / expired token / storage full:** each attempt fails honestly, *last verified* is unchanged, and
+    the due banner offers one-tap backup.
+12. **A12 Retention:** a 120-day pruning simulation keeps 14/8/12 plus the 3 newest verified. Pruned files are only
+    trashed, never deleted.
+13. **A13 Restore safety:** onto a device with data, Replace or Merge must be chosen, and Replace saves a local safety
+    backup first. The manifest re-count must pass.
+14. **A14 CSP:** the enforced policy differs from today's only by the entries confirmed in section 4. No other
+    third-party origins are added.
+15. **A15 Old app versions:** data restored by this version still opens in the released 4.21.1 app (the existing
+    compatibility test is extended).
+16. **A16 Intelligence stays local:** with Drive mocked and connected, opening reports and suggestions makes no
+    request to Google.
 
-- **M1** First connect shows Google's consent with only "See, edit, create and delete only the specific Google
-  Drive files that you use with this app".
-- **M2** On the Android phone (installed app), connect works. If the wrapper blocks sign-in, the documented Chrome
-  fallback works.
-- **M3** `CaterDesk Backups` appears in My Drive with `.cdbk` files. Opening one shows unreadable content.
-- **M4** Next day, opening the app triggers the backup, or the one-tap banner. The status shows separate *attempt*
-  and *verified* times.
-- **M5** On a second device or browser profile with no data, restore with the recovery key. Counts match; open a
-  quotation, an approved menu and a bill photo.
-- **M6** Revoke access at `myaccount.google.com/permissions`. The app shows "Google Drive not connected", keeps
+**Manual, by the owner** (after D3):
+
+- **M1** First Connect shows Google's consent with only the specific-files permission (`drive.file`).
+- **M2** **Installed Android app:** Connect works (TWA). If the wrapper turns out to be a WebView, the result is
+  recorded and Drive backup is not accepted for the installed app until fixed.
+- **M3** `CaterDesk Backups` appears in My Drive with `.cdbk` files. Downloading one shows unreadable content.
+- **M4** A backup with real bill photos completes on the phone over mobile data. Progress and size are shown, and a
+  network drop resumes.
+- **M5** Next day, opening the app runs the due backup, or offers the one-tap banner. *Last attempt* and *last
+  verified* are shown separately.
+- **M6** On a second device or browser profile with no data, restore with the recovery key. Counts match. Open a
+  quotation, an approved menu, a vendor order and a bill photo.
+- **M7** Revoke access at `myaccount.google.com/permissions`. The app shows "Google Drive not connected", keeps
   working, and local backups still work.
 
-## 9. Decisions needed from the owner
+## 10. Owner decisions still needed
 
-1. **Approve the `drive.file` scope** and the owner-visible `CaterDesk Backups` folder.
-2. **Recovery method:** random recovery key (recommended) or passphrase.
-3. **OAuth approach:** browser-only token flow without third-party scripts (recommended), GIS script with a wider
-   CSP, or a server with refresh tokens (not recommended).
-4. **Do the Google Cloud setup in section 2**, then send the Client ID (not the secret) to be added in D3.
-5. **Retention:** 14 daily / 8 weekly / 12 monthly, or different numbers.
-6. **CSP change:** allow `connect-src https://www.googleapis.com` (needed for any Drive access).
+1. **Approve this revised design**, in particular GIS loaded on demand and the minimal CSP additions in section 4.
+2. **After D1 and D2 are reviewed:** do the Google Cloud setup in section 3 and send the Client ID (never the secret)
+   for D3.
