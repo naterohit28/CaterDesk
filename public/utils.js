@@ -302,7 +302,10 @@ export function billingSplit(events, expenses, cPays) {
     pendingP: billed.reduce((s, e) => s + Math.max(0, clientDueP(e) - sumP(cPays.filter(p => p.evId === e.id), p => p.amt)), 0),
     margin: billP > 0 ? Math.round(contribP / billP * 100) : null };
 }
-export const clientDueP = ev => toPaise(ev?.billing || 0) + gstPaise(ev);
+// What the client owes in all (bill + recorded GST). Nothing while the bill is not set: GST recorded from an earlier
+// quote stays on the event for the record, but is never asked for, reminded about or shown as overdue (4.28.2, Codex P2).
+// A bill waived to ₹0 is a known bill, so its GST still counts as before.
+export const clientDueP = ev => billSet(ev) ? toPaise(ev?.billing || 0) + gstPaise(ev) : 0;
 export const clientDue = ev => fromPaise(clientDueP(ev));
 
 /* ── FINAL SETTLEMENT (spec §6.7, §10.3, G-35) ── */

@@ -1182,7 +1182,7 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
 
     <div class="card pad">
       <div class="metrics" style="margin:0;padding:0;border:0">
-        <div class="metric"><div class="label">Bill – बिल</div>${billSet(ev) ? `<div class="amt-md">${fmtCurrency(ev.billing)}</div>` : `<div class="amt-md muted" id="ev-bill-unset">${tr('Not set', 'ठरले नाही')}</div>`}${ev.gst?.amount ? `<div class="meta" id="ev-gst">${tr(`+ GST ${fmtCurrency(ev.gst.amount)}`, `+ जीएसटी ${fmtCurrency(ev.gst.amount)}`)}</div>` : ''}</div>
+        <div class="metric"><div class="label">Bill – बिल</div>${billSet(ev) ? `<div class="amt-md">${fmtCurrency(ev.billing)}</div>` : `<div class="amt-md muted" id="ev-bill-unset">${tr('Not set', 'ठरले नाही')}</div>`}${ev.gst?.amount ? `<div class="meta" id="ev-gst">${billSet(ev) ? tr(`+ GST ${fmtCurrency(ev.gst.amount)}`, `+ जीएसटी ${fmtCurrency(ev.gst.amount)}`) : tr(`GST ${fmtCurrency(ev.gst.amount)} on record, not due until the bill is set`, `जीएसटी ${fmtCurrency(ev.gst.amount)} नोंद; बिल ठरल्यावर देय`)}</div>` : ''}</div>
         <div class="metric"><div class="label">Received – मिळाले</div><div class="amt-md pos">${fmtCurrency(rec)}</div></div>
         <div class="metric"><div class="label">Pending – बाकी</div><div class="amt-md ${pend > 0 ? (pendingOverdue(ev) ? 'neg' : 'due') : 'muted'}" id="ev-pending">${billSet(ev) ? fmtCurrency(Math.max(0, pend)) : '—'}</div></div>
       </div>

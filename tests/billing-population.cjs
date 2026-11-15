@@ -142,6 +142,42 @@ const DATA = { version: 'ffv2', photos: [], vPays: [], vendors: [],
     assert.equal(await p.evaluate(async () => (await (await import('./db.js')).exportAllData()).events.find(e => e.id === 'c5').payPlan), undefined, 'removed');
   });
 
+  await test('a GST-bearing bill cleared later: no pending, overdue or reminder anywhere; the GST stays on record (Codex P2 on c05bef8)', async () => {
+    const GST = { version: 'ffv2', photos: [], vPays: [], vendors: [], cPays: [], expenses: [x('g1', 'g', 6000)],
+      events: [{ id: 'g', name: 'Sample GST Cleared', date: day(-4), venue: 'Sample Hall', type: 'Wedding – लग्न', billing: 100000, guests: 100, photoIds: [], mobile: '9000000043',
+          gst: { rate: 5, taxable: 100000, amount: 5000 }, billChanges: [{ at: '2026-11-01T10:00:00.000Z', from: 90000, to: 100000, reason: 'Quote v1 accepted' }] },
+        { id: 'w', name: 'Sample Waived With GST', date: day(-4), venue: 'Sample Hall', type: 'Party – पार्टी', billing: 0, guests: 40, photoIds: [],
+          gst: { rate: 5, taxable: 10000, amount: 500 }, billChanges: [{ at: '2026-11-10T10:00:00.000Z', from: 10000, to: 0, reason: 'Sample full waiver', kind: 'waiver', ack: 'written', taxReview: true }] }] };
+    await p.evaluate(async d => { await (await import('./db.js')).importAllData(d, 'replace'); }, GST);
+    // the owner clears the bill in the event form (as allowed from 4.28.2)
+    await openEv('g'); await p.locator('#hdr-edit').click();
+    await p.waitForSelector('#ev-modal.active'); await p.fill('#ev-billing', ''); await p.locator('#btn-save-event').click(); await p.waitForTimeout(600);
+    while (await p.locator('#ask-modal.active').count()) { await p.locator('#ask-actions button').first().click(); await p.waitForTimeout(300); }
+    const saved = await p.evaluate(async () => (await (await import('./db.js')).exportAllData()).events.find(e => e.id === 'g'));
+    assert.deepEqual([saved.billing, saved.gst], [0, { rate: 5, taxable: 100000, amount: 5000 }], 'bill cleared, GST kept on record');
+    // event page: nothing pending, no reminder, the GST is shown as on record only
+    await openEv('g');
+    assert.equal(await p.locator('#ev-pending').innerText(), '—');
+    assert.equal(await p.locator('#tab-evdetail a.btn-wa', { hasText: 'Remind' }).count(), 0, 'no WhatsApp payment reminder');
+    assert.match(await p.locator('#ev-gst').innerText(), /GST ₹5,000 on record, not due until the bill is set/);
+    // shared calculations: no amount due, overdue or receivable; Home insights ask for nothing
+    const r = await p.evaluate(async () => { const u = await import('./utils.js'), d = await (await import('./db.js')).exportAllData(), g = d.events.find(e => e.id === 'g'), w = d.events.find(e => e.id === 'w');
+      return { due: u.clientDue(g), pending: u.calcEventPL(g, d.cPays, d.expenses).pending, sched: u.paymentSchedule(g, d.cPays).overdue,
+        books: u.booksCheck(d.events, d.expenses, d.cPays, d.vPays).receivable, waivedDue: u.clientDue(w),
+        insights: u.generateInsights(d.events, d.cPays, d.expenses, d.vendors, d.vPays).map(i => i.en).join(' | ') }; });
+    assert.equal(r.due, 0); assert.ok(r.pending <= 0, 'no pending'); assert.equal(r.sched, 0);
+    assert.equal(r.books, 500, 'only the waived event\'s GST (a known bill) is receivable, as before');
+    assert.equal(r.waivedDue, 500, 'a fully waived bill keeps its GST due: unchanged');
+    assert.doesNotMatch(r.insights, /overdue from[^|]*Sample GST Cleared|5,000 overdue/);
+    await home(); assert.doesNotMatch(await p.locator('body').innerText(), /₹5,000 overdue/);
+    await p.locator('#n-summary:visible').click(); await p.waitForTimeout(400);
+    assert.doesNotMatch(await p.locator('#summary-content').innerText(), /₹5,000/, 'Reports never ask for the GST of a bill not set');
+    // backup: the GST and the bill history come back exactly
+    const back = await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); await db.importAllData(structuredClone(d), 'replace');
+      const g = (await db.exportAllData()).events.find(e => e.id === 'g'); return [g.billing, g.gst, g.billChanges.length]; });
+    assert.deepEqual(back, [0, { rate: 5, taxable: 100000, amount: 5000 }, 1]);
+  });
+
   assert.deepEqual(errors, []);
   await browser.close();
   console.log(failed ? 'billing population FAIL' : 'billing population PASS');
