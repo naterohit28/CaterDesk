@@ -618,13 +618,14 @@ export function syncServices(record) {
    how it was approved (written or verbal) and by whom. A kept version is never changed or removed; a later change to
    the menu is approved as a new version. A copy has only real dishes: a library menu shown but not yet used for a
    meal is listed under `pending`. The kitchen or counter for each dish is kept with it (for vendor orders), never shown
-   to the client. */
+   to the client. Each meal keeps the date it was approved for (its own date, else the event's), so a later
+   change of the event date shows as a change. */
 const snapDish = d => ({ name: d.name, head: d.head || '', ...(d.cat ? { cat: d.cat } : {}), ...(d.type ? { type: d.type } : {}), ...(d.diet?.length ? { diet: [...d.diet] } : {}) });
 export function menuSnapshot(ev) {
   const { services } = eventServices(ev);
   const shared = (services[0]?.dishes || []).filter(d => d.shared).map(snapDish);
   return {
-    services: services.map(s => ({ id: s.id, meal: s.meal, ...(s.date ? { date: s.date } : {}), ...(s.time ? { time: s.time } : {}), guests: s.guests || 0, rate: s.rate || 0,
+    services: services.map(s => ({ id: s.id, meal: s.meal, ...((s.date || ev.date) ? { date: s.date || ev.date } : {}), ...(s.time ? { time: s.time } : {}), guests: s.guests || 0, rate: s.rate || 0,
       ...(s.template ? { template: { id: s.template.id, name: s.template.name } } : {}), dishes: s.dishes.filter(d => !d.shared && !d.preview).map(snapDish) })),
     shared,
     pending: services.filter(s => s.fromTemplate).map(s => s.id)

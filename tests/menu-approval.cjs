@@ -117,6 +117,23 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [], 
     await p.locator('#ma-modal [data-action="close-modal"]').click();
   });
 
+  await test('moving the event to another date after approval needs approval again (each meal keeps the date it was approved for)', async () => {
+    await openEvent(); await p.locator('[data-action="menu-approve"]').click(); await p.waitForSelector('#ma-modal.active');
+    await p.selectOption('#ma-by', 'written'); await p.locator('#btn-save-approval').click(); await p.waitForTimeout(600);
+    await openEvent(); assert.match(await bar(), /Approved v4/);
+    const kept = (await ev('e1')).menuApproved.at(-1);
+    assert.deepEqual(kept.services.map(s => s.date), [day(9), day(9)], 'meals on the event date keep that date in the copy');
+    await p.evaluate(async nd => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest;
+      const e = d.events.find(x => x.id === 'e1'); e.date = nd; delete e._rev; await db.importAllData(d, 'replace'); }, day(12));
+    await openEvent();
+    assert.match(await bar(), /Changed since approved v4 · 2 changes/, 'a new event date is not "unchanged since approval"');
+    await p.locator('[data-action="menu-approve"]').click(); await p.waitForSelector('#ma-modal.active');
+    const body = await p.locator('#ma-body').innerText(), from = await fmt(day(9)), to = await fmt(day(12));
+    assert.ok(body.includes(`Date ${from} → ${to}`), body);
+    await p.locator('#ma-modal [data-action="close-modal"]').click();
+    assert.deepEqual((await ev('e1')).menuApproved.at(-1).services.map(s => s.date), [day(9), day(9)], 'the approved copy still has the old date');
+  });
+
   await test('backups keep approved versions; malformed ones are refused', async () => {
     const r = await p.evaluate(async () => { const db = await import('./db.js'); const out = [];
       const d0 = await db.exportAllData(); delete d0.manifest;
