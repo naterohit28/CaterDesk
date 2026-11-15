@@ -613,6 +613,62 @@ export function syncServices(record) {
   return { ...record, servicesSig: servicesSig(record) };
 }
 
+/* ── CLIENT-APPROVED MENU VERSIONS ── */
+/* When the client approves the menu, a copy of every meal's menu is kept in `menuApproved` (numbered 1, 2, …), with
+   how it was approved (written or verbal) and by whom. A kept version is never changed or removed; a later change to
+   the menu is approved as a new version. A copy has only real dishes: a library menu shown but not yet used for a
+   meal is listed under `pending`. The kitchen or counter for each dish is kept with it (for vendor orders), never shown
+   to the client. */
+const snapDish = d => ({ name: d.name, head: d.head || '', ...(d.cat ? { cat: d.cat } : {}), ...(d.type ? { type: d.type } : {}), ...(d.diet?.length ? { diet: [...d.diet] } : {}) });
+export function menuSnapshot(ev) {
+  const { services } = eventServices(ev);
+  const shared = (services[0]?.dishes || []).filter(d => d.shared).map(snapDish);
+  return {
+    services: services.map(s => ({ id: s.id, meal: s.meal, ...(s.date ? { date: s.date } : {}), ...(s.time ? { time: s.time } : {}), guests: s.guests || 0, rate: s.rate || 0,
+      ...(s.template ? { template: { id: s.template.id, name: s.template.name } } : {}), dishes: s.dishes.filter(d => !d.shared && !d.preview).map(snapDish) })),
+    shared,
+    pending: services.filter(s => s.fromTemplate).map(s => s.id)
+  };
+}
+export const approvedMenus = ev => Array.isArray(ev?.menuApproved) ? ev.menuApproved : [];
+export const latestApproved = ev => approvedMenus(ev).at(-1) || null;
+/* What changed between two menu copies (older may be null: everything is new), meal by meal: dishes added and
+   removed, a dish's kitchen/counter or diet marks changed, and the meal's date, time, guests or rate. `count` is the
+   number of differences. */
+export function menuDiff(older, newer) {
+  const out = [], key = d => String(d.name).trim().toLowerCase();
+  const sides = (a = [], b = []) => {
+    const A = new Map(a.map(d => [key(d), d])), B = new Map(b.map(d => [key(d), d]));
+    const added = b.filter(d => !A.has(key(d))).map(d => d.name), removed = a.filter(d => !B.has(key(d))).map(d => d.name);
+    const changed = [];
+    for (const d of b) { const o = A.get(key(d)); if (!o) continue;
+      if ((o.head || '') !== (d.head || '')) changed.push({ name: d.name, what: 'counter', from: o.head || '', to: d.head || '' });
+      if ((o.diet || []).join() !== (d.diet || []).join()) changed.push({ name: d.name, what: 'diet', from: (o.diet || []).join(', '), to: (d.diet || []).join(', ') }); }
+    return { added, removed, changed };
+  };
+  const olds = new Map((older?.services || []).map(s => [s.id, s])), news = new Map((newer?.services || []).map(s => [s.id, s]));
+  for (const s of newer?.services || []) {
+    const o = olds.get(s.id), d = sides(o?.dishes, s.dishes), facts = [];
+    if (o) for (const k of ['date', 'time', 'guests', 'rate']) if ((o[k] ?? '') !== (s[k] ?? '')) facts.push({ what: k, from: o[k] ?? '', to: s[k] ?? '' });
+    if (!o || d.added.length || d.removed.length || d.changed.length || facts.length) out.push({ id: s.id, meal: s.meal, isNew: !o, ...d, facts });
+  }
+  for (const o of older?.services || []) if (!news.has(o.id)) out.push({ id: o.id, meal: o.meal, gone: true, added: [], removed: o.dishes.map(d => d.name), changed: [], facts: [] });
+  const shared = sides(older?.shared, newer?.shared);
+  if (shared.added.length || shared.removed.length || shared.changed.length) out.push({ id: '', meal: '', shared: true, ...shared, facts: [] });
+  const count = out.reduce((n, x) => n + x.added.length + x.removed.length + x.changed.length + x.facts.length + (x.isNew && !x.added.length ? 1 : 0) + (x.gone && !x.removed.length ? 1 : 0), 0);
+  return { meals: out, count };
+}
+// The current menu compared with the last approved version (or with nothing, before any approval)
+export function menuSinceApproved(ev) {
+  const last = latestApproved(ev), now = menuSnapshot(ev);
+  return { last, now, ...menuDiff(last ? { services: last.services, shared: last.shared } : null, now) };
+}
+// A new approved version to add (the earlier ones are kept exactly as they are)
+export function approvedVersion(ev, { by, who = '', at = new Date().toISOString(), id }) {
+  const snap = menuSnapshot(ev), n = (latestApproved(ev)?.n || 0) + 1;
+  return { id: id || `MA${n}-${Date.now().toString(36)}`, n, at, by, ...(who ? { who } : {}), services: snap.services, shared: snap.shared, ...(snap.pending.length ? { pending: snap.pending } : {}) };
+}
+
 // Which menus suit a meal: those marked for it first, then menus not marked for any meal, then the rest
 export function menusForMeal(meal) {
   const list = allMenus(), fits = m => (m.meals || []).includes(meal), open = m => !(m.meals || []).length;

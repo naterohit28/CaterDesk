@@ -686,3 +686,16 @@ body::before {
 .svc-dish-who { display: flex; align-items: center; gap: var(--s2); }
 .svc-dish-who select { flex: 1; min-width: 0; }
 .svc-diet-btn { flex-shrink: 0; max-width: 45%; min-height: 40px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; line-height: 38px; }
+/* Client-approved menu: status bar, changes, versions */
+.ma-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2); }
+.ma-text { display: inline-flex; align-items: center; gap: 6px; color: var(--text); }
+.ok-note { border-color: var(--pos); background: var(--pos-soft); }
+.mv-meal { padding: var(--s2) 0; border-bottom: 1px solid var(--line); }
+.mv-meal:last-child { border-bottom: 0; }
+.mv-line { display: flex; gap: var(--s2); align-items: baseline; font-size: var(--fs-sm); padding: 2px 0; }
+.mv-line .sym { flex: none; width: 14px; font-weight: 700; text-align: center; }
+.mv-line .sym.p { color: var(--pos); } .mv-line .sym.m { color: var(--neg); } .mv-line .sym.c { color: var(--due); }
+.mv-ver { border-bottom: 1px solid var(--line); padding: var(--s2) 0; }
+.mv-ver summary { display: flex; flex-direction: column; gap: 2px; cursor: pointer; list-style: none; }
+.mv-ver summary::-webkit-details-marker { display: none; }
+.mv-diff { padding-top: var(--s2); }

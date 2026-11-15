@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, learnedDishes, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, learnedDishes, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -24,7 +24,7 @@ import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.23.1';
+const APP_BUILD = '4.24.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -2200,6 +2200,7 @@ function mealMenuCard(ev) {
   }).join('');
   return `<div class="sec"><span class="sec-title">Menu by meal – जेवणानुसार मेनू</span>
       <button type="button" class="btn-sm" data-action="svc-add">${icon('plus', 16)}${tr('Add menu', 'मेनू जोडा')}</button></div>
+    ${approvalBar(ev)}
     ${changedElsewhere ? `<div class="card pad due-note" role="status">${tr('This menu was changed in an older version of the app. Check each meal before sending it to the client or vendors.', 'हा मेनू जुन्या आवृत्तीत बदलला. पाठवण्याआधी प्रत्येक जेवण तपासा.')}</div>` : ''}
     <div class="svc-list" id="meal-menus">${cards}
       ${shared.length ? `<div class="meta svc-shared" data-nl>${tr('Every meal', 'सर्व जेवण')}: ${esc(shared.map(d => d.name).join(', '))}</div>` : ''}
@@ -2207,6 +2208,78 @@ function mealMenuCard(ev) {
         <div class="meta" data-nl>${esc(unassigned.map(d => `${d.name} (${MEALS[d.meal] || d.meal})`).join(', '))}</div>
         <div class="meta">${tr('Their meal is no longer in this event. They are kept, but not served or ordered. Choose a meal for them in Event menu.', 'त्यांचे जेवण आता कार्यक्रमात नाही. ठेवले आहेत, पण वाढले/ऑर्डर होत नाहीत.')}</div></div>` : ''}
     </div>`;
+}
+
+/* ── CLIENT-APPROVED MENU (event page) ── */
+// A meal's name in a kept copy: "Dinner 2 · 06 Dec 2026" when the copy has more than one dinner or its own date
+function snapLabel(ev, snap, s) {
+  const same = (snap.services || []).filter(x => x.meal === s.meal);
+  return (MEALS[s.meal] || 'Menu') + (same.length > 1 ? ` ${same.findIndex(x => x.id === s.id) + 1}` : '') + (same.length > 1 || (s.date && s.date !== ev.date) ? ` · ${fmtDate(s.date || ev.date)}` : '');
+}
+const FACT = { date: 'Date', time: 'Time', guests: 'Guests', rate: '₹ / plate' };
+const factVal = (k, v) => v === '' ? '–' : k === 'date' ? fmtDate(v) : k === 'rate' ? fmtCurrency(v) : String(v);
+function menuDiffHtml(ev, diff, newer, older) {
+  if (!diff.meals.length) return `<div class="meta">${tr('No changes.', 'बदल नाहीत.')}</div>`;
+  const lab = m => m.shared ? 'Every meal' : snapLabel(ev, m.gone ? older : newer, (m.gone ? older : newer).services.find(s => s.id === m.id) || m);
+  return diff.meals.map(m => `<div class="mv-meal"><div class="title-sm">${esc(lab(m))}${m.isNew ? ` <span class="meta">· ${tr('new', 'नवीन')}</span>` : ''}${m.gone ? ` <span class="meta">· ${tr('removed', 'काढले')}</span>` : ''}</div>
+    ${m.facts.map(f => `<div class="mv-line"><span class="sym c" aria-label="changed">~</span><span>${FACT[f.what]} ${esc(factVal(f.what, f.from))} → ${esc(factVal(f.what, f.to))}</span></div>`).join('')}
+    ${m.added.map(n => `<div class="mv-line"><span class="sym p" aria-label="added">+</span><span data-nl>${esc(n)}</span></div>`).join('')}
+    ${m.removed.map(n => `<div class="mv-line"><span class="sym m" aria-label="removed">−</span><span data-nl>${esc(n)}</span></div>`).join('')}
+    ${m.changed.map(c => `<div class="mv-line"><span class="sym c" aria-label="changed">~</span><span data-nl>${esc(c.name)}: ${c.what === 'counter' ? `${esc(short(c.from) || 'Our kitchen')} → ${esc(short(c.to) || 'Our kitchen')}` : `${esc(c.from || 'no marks')} → ${esc(c.to || 'no marks')}`}</span></div>`).join('')}
+  </div>`).join('');
+}
+function approvalBar(ev) {
+  const st = menuSinceApproved(ev), last = st.last;
+  if (!last && !st.now.services.some(s => s.dishes.length) && !st.now.shared.length) return '';
+  const when = last ? `${fmtDate(String(last.at).slice(0, 10))} · ${last.by}${last.who ? ` (${last.who})` : ''}` : '';
+  const text = !last ? tr('Not approved by the client yet', 'ग्राहकाने अजून मान्य केला नाही')
+    : !st.count ? tr(`Approved v${last.n} · ${when}`, `मान्य आवृत्ती ${last.n} · ${when}`)
+    : tr(`Changed since approved v${last.n} · ${st.count} change${st.count > 1 ? 's' : ''}`, `मान्य आवृत्ती ${last.n} नंतर ${st.count} बदल`);
+  return `<div class="card pad ma-bar ${!last ? '' : st.count ? 'due-note' : 'ok-note'}" id="menu-approval" role="status">
+    <div class="meta ma-text" data-nl>${!last ? '' : st.count ? '' : icon('check', 16)}${esc(text)}</div>
+    <div class="row-btns">${!last || st.count ? `<button type="button" class="btn-sm" data-action="menu-approve">${tr(!last ? 'Mark approved' : 'Review & approve', !last ? 'मान्य झाले' : 'तपासा व मान्य')}</button>` : ''}
+      ${last ? `<button type="button" class="btn-sm" data-action="menu-versions">${tr(`Versions (${approvedMenus(ev).length})`, `आवृत्त्या (${approvedMenus(ev).length})`)}</button>` : ''}</div>
+  </div>`;
+}
+function openApproveSheet() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const st = menuSinceApproved(ev), n = (st.last?.n || 0) + 1;
+  const dishes = st.now.services.reduce((k, s) => k + s.dishes.length, 0) + st.now.shared.length;
+  if (!dishes) { showToast('Add the dishes first – आधी पदार्थ जोडा', 'error'); return; }
+  const pending = st.now.pending.map(id => st.now.services.find(s => s.id === id)).filter(Boolean);
+  q('ma-mtitle').textContent = `Client approved the menu? · version ${n} – मान्य`;
+  q('ma-body').innerHTML = `
+    <div class="meta" style="margin-bottom:var(--s2)">${st.last ? tr(`Changes since approved version ${st.last.n}:`, `आवृत्ती ${st.last.n} नंतरचे बदल:`) : tr(`First approved version: ${st.now.services.length} meal${st.now.services.length > 1 ? 's' : ''}, ${dishes} dishes.`, `पहिली मान्य आवृत्ती.`)}</div>
+    ${st.last ? menuDiffHtml(ev, st, st.now, st.last) : ''}
+    ${pending.length ? `<div class="card pad due-note" style="margin-top:var(--s2)">${tr(`Not included: ${pending.map(s => snapLabel(ev, st.now, s)).join(', ')} only ${pending.length > 1 ? 'have' : 'has'} a library menu shown, not confirmed. Use its dishes first to include them.`, 'पक्के न केलेले मेनू समाविष्ट नाहीत.')}</div>` : ''}
+    <div class="meta" style="margin-top:var(--s3)">${tr('The approved copy is kept as it is; later changes are approved as a new version. Nothing is sent to anyone.', 'मान्य प्रत तशीच ठेवली जाते. काहीही पाठवले जात नाही.')}</div>`;
+  q('ma-by').value = ''; q('ma-who').value = '';
+  q('btn-save-approval').textContent = `Save approved version ${n} – जतन`;
+  clearFieldErrors();
+  openSheet('ma-modal');
+}
+async function saveApproval() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const by = qv('ma-by'), who = qv('ma-who').trim();
+  if (!by) { showFieldErrors({ 'ma-by': 'Written or verbal? – कसे मान्य केले?' }); return; }
+  if (by === 'verbal' && !who) { showFieldErrors({ 'ma-who': 'For a verbal approval, write who approved – कोणी?' }); return; }
+  const v = approvedVersion(ev, { by, who });
+  const btn = q('btn-save-approval'), label = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Saving… – जतन होत आहे';
+  try { await patchEvent(ev.id, { menuApproved: [...approvedMenus(ev), v] }); }
+  catch (e) { btn.disabled = false; btn.textContent = label; showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
+  btn.disabled = false; btn.textContent = label;
+  closeModals(); showToast(`Menu approved as version ${v.n} – मान्य आवृत्ती ${v.n}`); refreshCurrent();
+}
+function openVersionsSheet() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const list = approvedMenus(ev);
+  q('mv-body').innerHTML = [...list].reverse().map(v => {
+    const prev = list[v.n - 2] || null, d = menuDiff(prev, v);
+    return `<details class="mv-ver"${v.n === list.length ? ' open' : ''}><summary><span class="title-sm">${tr(`Version ${v.n}`, `आवृत्ती ${v.n}`)}</span>
+      <span class="meta">${fmtDate(String(v.at).slice(0, 10))} · ${esc(v.by)}${v.who ? ` (${esc(v.who)})` : ''} · ${v.services.reduce((k, s) => k + s.dishes.length, 0) + v.shared.length} dishes</span></summary>
+      <div class="mv-diff">${prev ? `<div class="meta">${tr(`Changes from version ${prev.n}:`, `आवृत्ती ${prev.n} पासूनचे बदल:`)}</div>${menuDiffHtml(ev, d, v, prev)}` : menuDiffHtml(ev, d, v, null)}</div></details>`; }).join('');
+  openSheet('mv-modal');
 }
 
 /* ── ADD OR CHANGE A MEAL'S MENU ── */
@@ -4828,6 +4901,8 @@ function bindAllEvents() {
       case 'menu-edit':    openMenuModal(); break;
       case 'svc-edit':     openServiceSheet(id); break;
       case 'svc-add':      openServiceSheet(); break;
+      case 'menu-approve': openApproveSheet(); break;
+      case 'menu-versions': openVersionsSheet(); break;
       case 'svc-use':      useServiceTemplate(id); break;
       case 'lab-edit':     openLabModal(); break;
       case 'dish-assign':  assignDish(Number(id)); break;
@@ -5095,6 +5170,7 @@ function bindAllEvents() {
   q('svc-meal').addEventListener('change', switchServiceMeal);
   q('svc-tpl').addEventListener('change', chooseServiceMenu);
   q('btn-save-svc').addEventListener('click', saveServiceSheet);
+  q('btn-save-approval').addEventListener('click', saveApproval);
   q('svc-save').addEventListener('click', e => { const b = e.target.closest('[data-save]'); if (!b || !svcState?.id) return;
     if (b.dataset.save === 'event' && q('svc-tpl').value === '__new') q('svc-tpl').value = svcState.tpl0 === '__new' ? '' : svcState.tpl0;
     setServiceMode(b.dataset.save); renderServiceSheet(); });
