@@ -109,6 +109,49 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     await p.locator('#ask-actions button', { hasText: 'Cancel' }).click();
   });
 
+  await test('approval-relevant changes and the order\'s approved-version reference: veg → non-veg, re-approval, a diet mark, a kitchen-only dish', async () => {
+    const TANDOOR = 'Barbeque / Tandoor – तंदूर';
+    const edit = fn => p.evaluate(async src => { const db = await import('./db.js'), u = await import('./utils.js'); const d = await db.exportAllData(); delete d.manifest;
+      const e = d.events.find(x => x.id === 'e9'); new Function('e', 'u', src)(e, u); delete e._rev; await db.importAllData(d, 'replace'); }, fn);
+    await p.evaluate(async T => { const db = await import('./db.js'), u = await import('./utils.js'); const d = await db.exportAllData(); delete d.manifest;
+      const e = { id: 'e9', name: 'Sample Single Dinner', date: new Date(Date.now() + 8 * 864e5).toISOString().slice(0, 10), venue: 'Sample Hall', type: 'Party – पार्टी', billing: 100000, guests: 120, meals: ['dinner'], photoIds: [],
+        mealPlan: { dinner: { guests: 120, rate: 600 } }, dishes: [{ name: 'Paneer Tikka', head: T, meal: 'dinner', type: 'veg' }, { name: 'Dal Makhani', head: '', meal: 'dinner' }] };
+      e.menuApproved = [u.approvedVersion(e, { by: 'written', id: 'MA1-e9' })]; d.events.push(e); await db.importAllData(d, 'replace'); }, TANDOOR);
+    const openE9 = async () => { await p.reload(); await p.waitForSelector('#kpi .card'); await p.locator('#n-events:visible').click();
+      await p.locator('#ev-list [data-action="evdetail"]:visible', { hasText: 'Sample Single Dinner' }).first().click(); await p.waitForSelector('#menu-orders');
+      await p.evaluate(() => { window.__opened = []; window.open = u => { window.__opened.push(u); return null; }; }); };
+    const send = async () => { await p.waitForSelector('#ord-modal.active'); await p.selectOption('#ord-ven', 'v2'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); return lastMessage(); };
+    const o9 = async () => (await dump()).events.find(e => e.id === 'e9').orders[0];
+    const resend = async () => { await openE9(); await p.locator('#menu-orders [data-action="order-status"]').first().click(); await p.waitForSelector('#ask-modal.active');
+      await p.locator('#ask-actions button', { hasText: 'Edit / send again' }).click(); return send(); };
+    // 1. Unchanged since approval: the order states version 1
+    await openE9(); await p.locator(`#menu-orders [data-counter="${TANDOOR}"] [data-action="order-new"]`).click();
+    assert.match(await send(), /Menu: version 1, approved by the client/); assert.equal((await o9()).menuVersion, 'MA1-e9');
+    // 2. Paneer Tikka becomes non-veg: the menu is no longer the approved one; a resend claims no approved version
+    await edit("e.dishes.find(d => d.name === 'Paneer Tikka').type = 'nonveg';");
+    assert.equal(await p.evaluate(async () => { const u = await import('./utils.js'), db = await import('./db.js'); return u.menuSinceApproved((await db.exportAllData()).events.find(e => e.id === 'e9')).count; }), 1);
+    const m2 = await resend(); assert.doesNotMatch(m2, /Menu: version/); assert.equal((await o9()).menuVersion, undefined);
+    // 3. Approved again as version 2: the next send states version 2
+    await edit("e.menuApproved.push(u.approvedVersion(e, { by: 'verbal', who: 'Sample Client', id: 'MA2-e9' }));");
+    assert.match(await resend(), /Menu: version 2, approved by the client/); assert.equal((await o9()).menuVersion, 'MA2-e9');
+    // 4. A diet mark added to the vendor's dish (through the meal sheet) flags the confirmed order; nothing is sent
+    await openE9(); await p.locator('#menu-orders [data-action="order-status"]').first().click(); await p.waitForSelector('#ask-modal.active');
+    await p.locator('#ask-actions button', { hasText: 'Vendor confirmed' }).click(); await p.waitForTimeout(400);
+    await openE9(); await p.locator('.svc-card [data-action="svc-edit"]').click(); await p.waitForSelector('#svc-modal.active');
+    const dish = p.locator('#svc-dishes .svc-dish').filter({ has: p.locator('input[value="Paneer Tikka"]') });
+    await dish.locator('[data-diet-toggle]').click(); await p.locator('#svc-dishes .svc-dish').filter({ has: p.locator('input[value="Paneer Tikka"]') }).locator('[data-diet="nut_free"]').click();
+    await p.locator('#btn-save-svc').click(); await p.waitForTimeout(600);
+    let o = await o9(); assert.equal(o.menuChanged, true, 'diet change on the vendor\'s dish flags the order'); assert.equal(o.status, 'confirmed');
+    assert.equal(await p.evaluate(() => window.__opened.length), 0, 'nothing sent');
+    // 5. A kitchen-only dish changes: the vendor's order is not flagged, but no approved version is claimed any more
+    await resend(); await openE9(); await p.locator('#menu-orders [data-action="order-status"]').first().click(); await p.waitForSelector('#ask-modal.active');
+    await p.locator('#ask-actions button', { hasText: 'Vendor confirmed' }).click(); await p.waitForTimeout(400);
+    await openE9(); await p.locator('.svc-card [data-action="svc-edit"]').click(); await p.waitForSelector('#svc-modal.active');
+    await p.fill('#svc-add', 'Jeera Rice'); await p.locator('#btn-svc-add').click(); await p.locator('#btn-save-svc').click(); await p.waitForTimeout(600);
+    o = await o9(); assert.equal(o.menuChanged, undefined, 'kitchen dish: the Tandoor order is not flagged');
+    assert.doesNotMatch(await resend(), /Menu: version/, 'but the menu is no longer the approved one');
+  });
+
   await test('backups keep an order\'s meal, menu version and guests; malformed ones are refused', async () => {
     const r = await p.evaluate(async () => { const db = await import('./db.js'); const out = [];
       const d0 = await db.exportAllData(); delete d0.manifest;

@@ -1515,12 +1515,12 @@ function dishGroups(ev) {
    orders had a meal belongs to its counter's row when that counter serves only one meal; otherwise it is listed as an
    older order for all meals. */
 function counterRows(ev) {
-  if (ev.outsourced) { const g = dishGroups(ev); return g.size ? [{ key: OUT_HEAD, head: OUT_HEAD, svcId: '', label: '', names: g.get(OUT_HEAD) }] : []; }
+  if (ev.outsourced) { const g = dishGroups(ev); return g.size ? [{ key: OUT_HEAD, head: OUT_HEAD, svcId: '', label: '', names: g.get(OUT_HEAD), dishes: (ev.dishes || []).filter(d => !isUnassigned(ev, d)) }] : []; }
   const all = eventServices(ev).services, many = all.length > 1, rows = [];
   for (const s of all) {
     const g = new Map();
-    for (const d of s.dishes) { if (d.preview || !d.head) continue; if (!g.has(d.head)) g.set(d.head, []); g.get(d.head).push(d.name); }
-    for (const [head, names] of g) rows.push({ key: many ? `${s.id}|${head}` : head, head, svcId: many ? s.id : '', svc: s, label: many ? svcLabel(ev, s, all) : '', names });
+    for (const d of s.dishes) { if (d.preview || !d.head) continue; if (!g.has(d.head)) g.set(d.head, []); g.get(d.head).push(d); }
+    for (const [head, ds] of g) rows.push({ key: many ? `${s.id}|${head}` : head, head, svcId: many ? s.id : '', svc: s, label: many ? svcLabel(ev, s, all) : '', names: ds.map(d => d.name), dishes: ds });
   }
   return rows;
 }
@@ -1534,9 +1534,15 @@ function orderItems(ev, o) {
   const r = rowOf(ev, o); if (r) return r.names;
   return o.svc ? [] : dishGroups(ev).get(o.head) || [];
 }
-// Orders already with a vendor whose dishes changed between two versions of the event (nothing is re-sent)
+// The dishes an order covers, with what matters to the vendor and the client: food type and diet marks
+function orderDishes(ev, o) {
+  const r = rowOf(ev, o); if (r) return r.dishes;
+  return o.svc ? [] : (ev.dishes || []).filter(d => (d.head || '') === o.head && !isUnassigned(ev, d));
+}
+/* Orders already with a vendor whose dishes changed between two versions of the event: a dish added or removed, or
+   its food type (veg → non-veg) or diet marks (Jain…) changed. Nothing is re-sent; the order is flagged. */
 function ordersHit(before, after) {
-  const key = (e, o) => orderItems(e, o).map(n => String(n).trim().toLowerCase()).sort().join('\n');
+  const key = (e, o) => orderDishes(e, o).map(d => JSON.stringify([String(d.name).trim().toLowerCase(), d.type || '', (d.diet || []).join()])).sort().join('\n');
   return (before.orders || []).filter(o => ACTIVE_ORDER.includes(o.status) && key(before, o) !== key(after, o)).map(o => o.id);
 }
 // Guests an order is planned for: its meal's guests when known, else the counter's guests as before
