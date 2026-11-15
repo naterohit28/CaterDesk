@@ -275,6 +275,9 @@ export function quoteSuperseded(ev, q) {
 /* The event's bill is the business's income before GST. GST (from an accepted quote) is added to what the client owes,
    never to income or contribution. */
 export const gstPaise = ev => toPaise(ev?.gst?.amount || 0);
+// A bill of 0 means "not set yet" (4.28.2): the form refuses 0 and every bill before 4.28.2 was at least ₹1, so a set
+// bill is never 0. An event without a bill has no contribution, margin, settlement or payment plan until it is set.
+export const billSet = ev => Number(ev?.billing) > 0;
 export const clientDueP = ev => toPaise(ev?.billing || 0) + gstPaise(ev);
 export const clientDue = ev => fromPaise(clientDueP(ev));
 
@@ -807,7 +810,7 @@ export const EVENT_RULES = {
   name:    { required: true, requiredMsg: 'Event name – नाव आवश्यक आहे' },
   date:    { required: true, date: true, requiredMsg: 'Date – दिनांक आवश्यक आहे' },
   venue:   { required: true, requiredMsg: 'Venue – ठिकाण आवश्यक आहे' },
-  billing: { numeric: true, min: 0, minMsg: 'Bill cannot be negative' },   // optional (4.28.2): often not known when the event is booked
+  billing: { numeric: true, min: 1, minMsg: 'Leave it empty if the bill is not known yet – माहीत नसल्यास रिकामे ठेवा' },   // optional (4.28.2): often not known when the event is booked
   budget:  { numeric: true, min: 0 },
   guests:  { numeric: true, integer: true, min: 0 },
   mobile:  { phone: true }
@@ -1120,6 +1123,7 @@ export function reconciledIds(events, expenses) {
 // What stops an event being reconciled right now (shown in the checklist; the ticks are the owner's to give)
 export function reconBlockers(ev, expenses, drafts = []) {
   const out = [];
+  if (!billSet(ev)) out.push({ en: 'The bill is not set yet', mr: 'बिल अजून ठरलेले नाही' });
   if (eventStage(ev) === 'upcoming') out.push({ en: 'The event has not happened yet', mr: 'कार्यक्रम अजून झालेला नाही' });
   if (!costRows(ev.id, expenses).length) out.push({ en: 'No costs are recorded for this event', mr: 'या कार्यक्रमाचा खर्च नोंदवलेला नाही' });
   const open = drafts.filter(d => d.evId === ev.id).length;

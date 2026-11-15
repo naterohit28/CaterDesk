@@ -6,7 +6,10 @@ const { chromium, devices } = require('playwright');
 const assert = require('node:assert/strict');
 
 const day = n => { const d = new Date(); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
-const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [], vendors: [],
+const DATA = { version: 'ffv2', photos: [], vPays: [], vendors: [],
+  cPays: [{ id: 'p1', evId: 'e1', amt: 25000, date: day(-2), mode: 'UPI' }],
+  expenses: [{ id: 'x1', evId: 'e1', cat: 'Raw Material', head: 'Vegetables – भाजी', amt: 4200, date: day(-1), pay: 'paid', mode: 'UPI', billIds: [] },
+    { id: 'x3', evId: 'e3', cat: 'Raw Material', head: 'Vegetables – भाजी', amt: 90000, date: day(-1), pay: 'paid', mode: 'UPI', billIds: [] }],
   events: [{ id: 'e1', name: 'Sample Guests No Rates', date: day(20), venue: 'Sample Hall', type: 'Wedding – लग्न', billing: 0, meals: ['lunch', 'dinner'], photoIds: [],
       mealPlan: { lunch: { guests: 250, rate: 0 }, dinner: { guests: 300, rate: 0 } } },
     { id: 'e2', name: 'Sample One Meal', date: day(25), venue: 'Sample Hall', type: 'Party – पार्टी', billing: 80000, guests: 120, meals: ['hightea'], photoIds: [] },
@@ -35,6 +38,50 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [], 
     await p.keyboard.press('Escape');
     await openQuote('e3'); assert.deepEqual(await quoteLines(), [['breakfast', '200', '150'], ['lunch', '400', '']]);
     await p.keyboard.press('Escape');
+  });
+
+  await test('missing rates stay missing: a quote without them cannot be saved, shared or sent, and nothing is kept', async () => {
+    await openQuote('e1');
+    await p.evaluate(() => { window.__opened = []; window.open = u => { window.__opened.push(u); return null; }; });
+    for (const act of ['quote-share', 'quote-save']) {
+      await p.locator(`#quote-modal [data-action="${act}"]`).click(); await p.waitForTimeout(300);
+      assert.match(await p.locator('#toast-msg').innerText(), /Each meal needs guests and a rate/, act);
+    }
+    await p.locator('#quote-modal [data-action="quote-sent"]').click(); await p.waitForTimeout(300);
+    assert.match(await p.locator('#toast-msg').innerText(), /Each meal needs guests and a rate/, 'I have sent it');
+    const r = await p.evaluate(async () => ({ quotes: (await (await import('./db.js')).exportAllData()).events.find(e => e.id === 'e1').quotes, opened: window.__opened.length }));
+    assert.deepEqual(r, { quotes: undefined, opened: 0 });
+    await p.keyboard.press('Escape');
+  });
+
+  await test('a bill not set is never read as a ₹0 bill: no contribution, margin, settlement, payment plan or reconciliation until it is set', async () => {
+    await openEvent('e1');
+    assert.equal(await p.locator('#ev-bill-unset').innerText(), 'Not set');
+    assert.equal(await p.locator('#ev-contrib-unset').innerText(), '—', 'no contribution against a missing bill');
+    assert.doesNotMatch(await p.locator('#tab-evdetail').innerText(), /more than the bill|Final settlement/, 'a payment is not "more than the bill"');
+    await p.locator('#tab-evdetail [data-action="plan-edit"]').first().click(); await p.waitForTimeout(300);
+    assert.equal(await p.locator('#plan-modal.active').count(), 0); assert.match(await p.locator('#toast-msg').innerText(), /Set the event.s total bill first/);
+    const blocked = await p.evaluate(async () => { const u = await import('./utils.js'), db = await import('./db.js'), d = await db.exportAllData();
+      return u.reconBlockers(d.events.find(e => e.id === 'e1'), d.expenses).map(b => b.en); });
+    assert.ok(blocked.includes('The bill is not set yet'), 'reconciliation waits for the bill');
+    // Home says how many events have no bill; Reports show them apart and keep them out of per-plate benchmarks
+    await p.locator('#n-home:visible').click().catch(() => {}); await p.reload(); await p.waitForSelector('#kpi .card');
+    assert.match(await p.locator('#kpi .hero').innerText(), /1 without a bill yet \(costs counted, bill not\)/);
+    await p.locator('#n-summary:visible').click(); await p.waitForTimeout(400);
+    const row = p.locator('#tab-summary .bar-row[data-action="evdetail"][data-id="e1"]');
+    assert.match(await row.innerText(), /no bill yet[\s\S]*—/);
+    // an event with a bill is unchanged
+    assert.match(await p.locator('#tab-summary .bar-row[data-action="evdetail"][data-id="e3"]').innerText(), /₹2,10,000/);
+  });
+
+  await test('a typed 0 is refused ("leave it empty"); an empty bill saves as not set', async () => {
+    await p.reload(); await p.waitForSelector('#kpi .card'); await p.locator('#n-events:visible').click(); await p.locator('#fab').click(); await p.waitForSelector('#ev-modal.active');
+    await p.fill('#ev-name', 'Sample Zero Bill'); await p.fill('#ev-date', day(45)); await p.fill('#ev-venue', 'Sample Hall'); await p.fill('#ev-guests', '50'); await p.fill('#ev-billing', '0');
+    await p.locator('#btn-save-event').click(); await p.waitForTimeout(400);
+    assert.match(await p.locator('#ev-modal').innerText(), /Leave it empty if the bill is not known yet/);
+    assert.equal(await p.evaluate(async () => (await (await import('./db.js')).exportAllData()).events.some(e => e.name === 'Sample Zero Bill')), false, 'not saved');
+    await p.keyboard.press('Escape'); await p.waitForTimeout(200);
+    if (await p.locator('#ask-modal.active').count()) await p.locator('#ask-actions button').last().click();
   });
 
   await test('the total bill is optional: an event saves without it, with an advance, and its page says "Not set"', async () => {
@@ -82,6 +129,10 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [], 
     assert.equal(await cam.element().evaluate(e => e.id), 'photo-cam');
     const [gal] = await Promise.all([p.waitForEvent('filechooser'), p.locator('#tab-evdetail [data-action="add-photo"]').click()]);
     assert.equal(await gal.element().evaluate(e => e.id), 'photo-input'); assert.equal(gal.isMultiple(), true);
+    // coming back from the camera without a photo (cancelled, or camera permission refused) changes nothing
+    const [none] = await Promise.all([p.waitForEvent('filechooser'), p.locator('#tab-evdetail [data-action="add-photo-cam"]').click()]);
+    await none.setFiles([]); await p.waitForTimeout(500);
+    assert.equal(await p.evaluate(async () => (await (await import('./db.js')).exportAllData()).events.find(e => e.id === 'e2').photoIds.length), 0, 'nothing added');
     // a photo taken with the camera is added to the event
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
     const [again] = await Promise.all([p.waitForEvent('filechooser'), p.locator('#tab-evdetail [data-action="add-photo-cam"]').click()]);
