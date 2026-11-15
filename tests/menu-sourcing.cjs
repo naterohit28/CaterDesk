@@ -47,9 +47,9 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     await openEvent();
     assert.deepEqual(await p.locator('#buy-list [data-buy]').evaluateAll(r => r.map(x => x.dataset.buy)),
       ['svc-lunch|gulab jamun', '*|mineral water', 'svc-dinner|ice cream', 'svc-dinner|spring rolls']);
-    assert.match(await buyRow('svc-lunch|gulab jamun').innerText(), /Gulab Jamun · Lunch\nBuy ready-made/);
-    assert.match(await buyRow('svc-dinner|spring rolls').innerText(), /Spring Rolls · Dinner\nBuy & finish/);
-    assert.match(await buyRow('*|mineral water').innerText(), /Mineral Water · Every meal/);
+    assert.match(await buyRow('svc-lunch|gulab jamun').innerText(), /Gulab Jamun\nLunch · Buy ready-made/);
+    assert.match(await buyRow('svc-dinner|spring rolls').innerText(), /Spring Rolls\nDinner · Buy & finish/);
+    assert.match(await buyRow('*|mineral water').innerText(), /Mineral Water\nEvery meal · Buy ready-made/);
     const kitchen = await p.locator('#menu-orders').innerText();
     assert.match(kitchen, /Our kitchen\nDal Tadka, Gulab Jamun/, 'Gulab Jamun at dinner is made by us; at lunch it is bought');
     assert.match(await p.locator(`#menu-orders [data-counter="svc-dinner|${CHAAT}"]`).innerText(), /Chaat · Dinner/, 'the counter is still a counter order');

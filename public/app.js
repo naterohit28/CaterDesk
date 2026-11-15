@@ -1682,7 +1682,7 @@ function buyCard(ev) {
       <div class="row-body"><div class="title-sm trunc" data-nl>${title}</div><div class="meta trunc" data-nl>${meta}</div></div>${end}</div>`;
   return `<div class="sec"><span class="sec-title">${tr('To buy', 'विकत घ्यायचे')}</span><span class="meta">${tr('bought ready-made or to finish', 'तयार / आपण पूर्ण करू')}</span></div>
     <div class="card list" id="buy-list">${rows.map(r => { const p = buyOf(ev, r.key), ven = p && D.vendors.find(v => v.id === p.venId);
-      return line(esc(r.name) + (r.label ? ` · ${esc(r.label)}` : ''), [SRC_NAME[r.src], p ? `${ven?.name || ''} · ${qtyText(p)}` : ''].filter(Boolean).map(esc).join(' · '),
+      return line(esc(r.name), [r.label, SRC_NAME[r.src], p ? `${ven?.name || ''} · ${qtyText(p)}` : ''].filter(Boolean).map(esc).join(' · '),
         p ? chip(p) : `<button type="button" class="btn-sm" data-action="buy-new" data-id="${esc(r.key)}">${icon('message', 16)}${tr('Order', 'ऑर्डर')}</button>`, r.key); }).join('')}
     ${[...off.values()].map(p => line(esc(p.item), `${tr('Not on the current menu', 'सध्याच्या मेनूत नाही')} · ${esc(qtyText(p))}`, chip(p))).join('')}</div>`;
 }
@@ -3136,13 +3136,13 @@ function renderCount() {
           <button type="button" class="btn btn-secondary" data-action="count-booked-save">${tr('Save', 'जतन')}</button></div>
           ${bookedGuests(ev, k) ? '' : `<div class="meta due" style="margin-top:6px">${tr('Not entered yet: enter the guests booked by the client', 'अजून नोंदलेले नाही')}</div>`}`}
     </div>
-    <div class="card pad" style="margin:0 0 var(--s3)">
+    ${s.started || bookedGuests(ev, k) ? `<div class="card pad" style="margin:0 0 var(--s3)" id="count-day">
       <div class="label">${tr(`${MEAL_NAME(k)} · contracted ${s.contracted} @ ${fmtCurrency(s.rate)}`, `करार ${s.contracted} @ ${fmtCurrency(s.rate)}`)}</div>
       <div class="meta" style="margin-top:4px">${s.counted == null ? tr('Not counted yet', 'अजून मोजले नाही') : tr(`Counted ${s.counted} (${fmtAt(s.last.at)})`, `मोजले ${s.counted}`)}${s.extra ? ` · <b>${tr(`${s.extra} over the contract (proposed, not billed)`, `${s.extra} जास्त (प्रस्तावित)`)}</b>` : ''}</div>
       ${s.counts.length > 1 ? `<details style="margin-top:6px"><summary class="meta" style="cursor:pointer">${tr(`Count history (${s.counts.length})`, `मोजणी इतिहास (${s.counts.length})`)}</summary>
         ${[...s.counts].reverse().map(x => `<div class="meta" data-nl>${fmtAt(x.at)} · ${x.n}${x.reason ? ` · ${tr('correction', 'दुरुस्ती')}: ${esc(x.reason)}` : x.note ? ` · ${esc(x.note)}` : ''}</div>`).join('')}</details>` : ''}
       ${reqRows}
-    </div>
+    </div>` : ''}
     <div class="f2"><div class="field"><label for="count-n">${tr('New count', 'नवीन मोजणी')}</label><input type="number" id="count-n" min="0" inputmode="numeric" placeholder="${s.counted ?? s.contracted}"></div>
       <div class="field"><label for="count-note">${tr(s.counted == null ? 'Note (optional)' : 'Reason if correcting', 'कारण')}</label><input type="text" id="count-note" placeholder="${s.counted == null ? 'e.g. plates issued at 9 pm' : 'e.g. recount at the gate'}"></div></div>
     <div class="btn-row">
