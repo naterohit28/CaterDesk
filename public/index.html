@@ -79,13 +79,14 @@
 <div class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="Settings">
   <div class="drawer-bg" id="drawer-bg"></div>
   <div class="drawer-panel">
-    <div class="d-brand">
+    <!-- Tapping the brand closes Settings and goes to Home -->
+    <button type="button" class="d-brand" id="drawer-home" aria-label="CaterDesk – go to Home">
       <img src="icons/icon-192.png" alt="">
       <div>
         <div class="title-sm">CaterDesk</div>
         <div class="meta">Every event. Every expense. Clear profit.</div>
       </div>
-    </div>
+    </button>
 
     <div class="d-group">
       <span class="label">Theme – थीम</span>
@@ -169,7 +170,7 @@
         <span class="qa-ic"><i data-ic="store"></i></span><span><span class="t-en">Add vendor</span><span class="t-mr">विक्रेता जोडा</span></span>
       </button>
     </div>
-    <div class="sec"><span class="sec-title">Pending collections – बाकी वसुली</span></div>
+    <div class="sec"><span class="sec-title">Pending collections – बाकी वसुली</span><span class="sec-amt due" id="od-total" hidden></span></div>
     <div id="od-list"></div>
   </div>
 

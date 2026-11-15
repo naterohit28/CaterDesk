@@ -820,6 +820,9 @@ function rHome() {
     .map(e => { const s = paymentSchedule(e, D.cPays); return { ...e, _p: s.outstanding, _late: s.overdue > 0, _due: s.dueNow, _od: s.overdue, _sched: s.scheduled }; })
     .filter(e => e._p > 0)
     .sort((a, b) => (b._late - a._late) || (b._p - a._p));
+  // The total still to collect, beside the heading (the sum of the amounts listed below)
+  const odTotal = od.reduce((s, e) => s + toPaise(e._p), 0) / 100;
+  q('od-total').textContent = odTotal ? fmtCurrency(odTotal) : ''; q('od-total').hidden = !odTotal;
 
   q('od-list').innerHTML = od.length ? `<div class="card list">${od.map(e => `
     <div class="row" role="button" tabindex="0" data-action="evdetail" data-id="${esc(e.id)}">
@@ -5311,6 +5314,8 @@ function bindAllEvents() {
   // Settings panel / FAB
   q('drawer-toggle').addEventListener('click', openDrawer);
   q('drawer-bg').addEventListener('click', () => closeOverlay());
+  // The brand at the top of Settings: close Settings (its history entry goes with it), then Home as the Home tab does
+  q('drawer-home').addEventListener('click', () => closeOverlay().then(() => go('home')));
   q('fab').addEventListener('click', () => FAB[CT]?.run());
 
   // Bottom nav
