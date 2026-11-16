@@ -4,7 +4,7 @@
 
 An offline-first app for catering events, expenses, vendor credit, client collections, menus and vendor orders. Business records stay in the device's browser storage; the hosted app also sends limited error diagnostics to its server.
 
-**Current source and hosted web build: v4.28.2.** Documentation checked on **14 November 2026**.
+**Current source and hosted web build: v4.29.0.** Documentation checked on **14 November 2026**.
 
 [Open the app](https://expense-calculator-kohl.vercel.app/) · [Download published packages](https://github.com/naterohit28/CaterDesk/releases) · [Historical reliability report](docs/RELIABILITY.md) · [Competitor/name research and Claude evaluation notes](docs/research/README.md) · [Report an issue](https://github.com/naterohit28/CaterDesk/issues)
 
@@ -31,16 +31,16 @@ The **APK wrapper version, hosted web version and bundled desktop version are in
 
 | Component | Verified state on 3 November 2026 | Meaning |
 | --- | --- | --- |
-| Source and hosted web app | **4.28.2** | Current UI, data/export version, service worker and error reporter |
+| Source and hosted web app | **4.29.0** | Current UI, data/export version, service worker and error reporter |
 | Service-worker release cache | `flavor-fusion-v2-cache-v25` | Installed web assets; this number is not the database schema version |
-| Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** | APK package inspected locally; launches the hosted app, which can run 4.28.2 |
+| Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** | APK package inspected locally; launches the hosted app, which can run 4.29.0 |
 | Android requirements for that local wrapper | min API **24**, target API **36** | Android 7.0+ and a compatible browser provider |
 | Latest GitHub Release with downloadable binaries | **2.4.7** | APK and desktop ZIP; later source tags do not imply newer binaries were uploaded |
 | Desktop package currently in the owner's `Apps/Desktop` folder | **2.4.7** | A static older bundle, not the current source build |
-| Desktop launcher source/instructions | **4.28.2** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
+| Desktop launcher source/instructions | **4.29.0** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
 | IndexedDB schema | **4** | Kept separate from application version changes |
 
-Do not relabel an older package as 4.28.2. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
+Do not relabel an older package as 4.29.0. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
 
 ## Current features
 
@@ -147,17 +147,17 @@ The APK is a **Trusted Web Activity** wrapper around the hosted site. It does no
 1. Keep a business-data backup.
 2. Obtain the intended APK from its actual release assets or the owner's prepared local package. Install over the existing app with the same package/signing identity.
 3. Open online to download updates. Check the **web build in Settings**, not just Android App info.
-4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **4.28.2**.
+4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **4.29.0**.
 
 A newer web release may reload automatically during the first 20 seconds of startup when no active form/save/overlay prevents it, at most once per release per session. Otherwise it waits for a later start or explicit reload. Refresh can also switch versions when no form/save is open. Service-worker cache mappings preserve matching assets for older open pages until navigation.
 
 Do not uninstall or clear browser/site storage to force an update. If Android rejects an APK, check package, versionCode and signing certificate before proceeding. The public certificate association is [`public/.well-known/assetlinks.json`](public/.well-known/assetlinks.json).
 
-The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **4.28.2**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
+The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **4.29.0**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
 
 ## Windows desktop testing
 
-Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v4.28.2 package.
+Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v4.29.0 package.
 
 1. Extract the entire ZIP; keep `app/` beside `CaterDesk-Desktop.exe`.
 2. Run the EXE. Microsoft Edge opens an app window; a tray icon provides **Open CaterDesk**, storage information and **Exit test server**.
@@ -236,12 +236,9 @@ From Windows PowerShell in the repository root:
 
 ```powershell
 .\desktop\build.ps1 -OutputDirectory C:\Temp\CaterDesk-Desktop
-# Required with the current helper: index.html and sw.js reference this asset,
-# but build.ps1 does not yet include it in its copy list.
-Copy-Item -LiteralPath .\public\error-reporter.js -Destination C:\Temp\CaterDesk-Desktop\app\error-reporter.js
 ```
 
-**Current packaging limitation:** omitting `error-reporter.js` causes a missing-script response and can prevent the service worker from completing its precache. Include the file even though the reporter itself skips local hosts. This README documents the workaround; the helper has not been changed as part of this documentation update.
+The build copies every file the app loads and the service worker caches (including `backup-crypto.js` and `error-reporter.js`); no manual copy is needed. [`tests/desktop-package.cjs`](tests/desktop-package.cjs) checks the copy list against the app's imports, `index.html` and the service-worker precache, and starts a package made from that list.
 
 The helper uses the Windows .NET Framework compiler and the CaterDesk icon. Distribute the whole output directory (`CaterDesk-Desktop.exe`, `README.txt`, `app/`), preferably as a ZIP. Do not include Edge profiles, customer backups or credentials. Inspect the bundled app build before naming/publishing the ZIP.
 
@@ -326,7 +323,7 @@ Commit from this Git checkout, not the outer Downloads folder. Generated `node_m
 | Event/vendor cannot be deleted | Linked accounting history must be resolved individually; deletion guards preserve balances |
 | Forgotten PIN | Keep storage intact. Privacy-help is not a PIN bypass; restore an existing export into a separate profile if needed |
 | Desktop still shows an older build | Exit the old tray server and use a complete newly built package. Website updates do not replace desktop bundle files |
-| Desktop missing-script/offline-install error | Check `app/error-reporter.js` exists; use the documented build workaround |
+| Desktop missing-script/offline-install error | Rebuild with the current `desktop/build.ps1`; check every file listed in `sw.js` is in `app/` |
 | Desktop cannot bind port 19891 | Exit the conflicting test server normally; changing the port changes the storage origin |
 | APK update is refused | Check signer, package and increasing versionCode; do not uninstall before protecting records |
 | No hosted error logs/alerts | Confirm the Vercel function/deployment and optional environment variable; local reporting is intentionally skipped |
@@ -339,6 +336,7 @@ This is a short source-feature history, not a list of available binary downloads
 
 | Version | Main changes |
 | --- | --- |
+| 4.29.0 | Encrypted backup file (D1): Settings can save an encrypted .cdbk backup (AES-256-GCM, compressed, in pieces) protected by a 14-group recovery key; restore asks for the key and refuses a wrong key or a changed file. The plain .txt backup is unchanged. |
 | 4.28.2 | Owner feedback: a first quote starts from the event's meals and booked guests; total bill optional (shows Not set); meal choice no longer scrolls; Save timings & setup is a visible button; event photos from the camera as well as the gallery |
 | 4.28.1 | Hotfix: a purchase's bill stays on the purchase's event (its event is locked in the expense sheet and refused on save). A backup from 4.28.0 with a moved bill restores in full: the bill is kept, only the impossible link is removed. |
 | 4.28.0 | **Guests first:** a new or upcoming event needs its guest count before it is saved (one box, or one per meal; a meal's guests are kept before it is priced). The Guest count sheet starts with **Booked guests**; a day-of count waits for them; the event page shows the guests or *Guest count not entered*. **Menu sourcing:** each dish is made in our kitchen, bought ready-made, bought and finished by us, or served by a vendor's counter (old dishes unchanged). Bought items get **purchase orders** (supplier, quantity and unit, delivery, instructions, optional estimate) with WhatsApp history; a delivered purchase's bill is recorded or linked once; nothing becomes an expense by itself. Sourcing changes are internal (no new client approval); a sent purchase whose item changes is flagged, never resent. |

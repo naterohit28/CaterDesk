@@ -22,9 +22,10 @@ import {
 
 import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
+import { newRecoveryKey, parseRecoveryKey, differingGroups, keyIdOf, importBackupKey, encryptBackup, decryptBackup, readHeader } from './backup-crypto.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.28.2';
+const APP_BUILD = '4.29.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -5412,6 +5413,123 @@ async function exportData() {
   if (CT === 'home') rHome();
 }
 
+/* ── ENCRYPTED BACKUP FILE (recovery key) ── */
+/* A backup can be saved as an encrypted file (.cdbk) that only the recovery key opens: the step before encrypted
+   Google Drive backups, and safe to keep anywhere. The key is made on this phone, shown once, and must be typed
+   back in full before it is used. This phone keeps it so it can encrypt without asking, as a key that can be used
+   but not read back out. It is never in a backup, never sent anywhere, and without it nobody can open the files. */
+let rkDraft = null;
+// The key and its id are one record, written in one step, so a backup can never be labelled with another key's id
+const keyPair = v => v && v.key instanceof CryptoKey && typeof v.id === 'string' && /^[0-9a-f]{16}$/.test(v.id) ? { key: v.key, id: v.id } : null;
+async function backupKey() {
+  const v = await getMeta('backup_key');
+  if (v instanceof CryptoKey) {
+    // Set up by an earlier 4.29.0 test build as two records: join them into one, in a single transaction
+    const id = await getMeta('backup_key_id'), pair = keyPair({ key: v, id });
+    if (!pair) return null;
+    await commitChanges([{ store: 'meta', record: { id: 'backup_key', value: pair } }, { store: 'meta', id: 'backup_key_id' }]);
+    return pair;
+  }
+  return keyPair(v);
+}
+async function refreshEncMeta() {
+  const k = await backupKey();
+  q('enc-meta').textContent = k ? `· recovery key set (${k.id.slice(0, 4).toUpperCase()}…)` : '· not set up';
+}
+// Forget every shown or typed copy of a key once its sheet is done: finished, closed, cancelled or Back
+function clearKeySetup() { rkDraft = null; q('rk-key').textContent = ''; q('rk-typed').value = ''; q('rk-result').textContent = ''; }
+async function openKeySetup() {
+  // Replacing a working key is a deliberate, confirmed step; the current key stays in use until the new one is verified
+  const k = await backupKey();
+  if (k && !await askSheet({ title: 'Replace the recovery key? – की बदलायची?',
+    message: `A recovery key is already set up (${k.id.slice(0, 4).toUpperCase()}…). Every encrypted backup saved so far opens only with that key, and after a change this phone will ask for it when restoring one of them. Keep the current key safe. It stays in use until the new key has been typed back correctly.`,
+    actions: [{ label: 'Make a new key – नवीन की', value: true, style: 'btn-danger' }] })) return;
+  rkDraft = await newRecoveryKey();
+  q('rk-key').textContent = rkDraft.text;
+  q('rk-step1').hidden = false; q('rk-step2').hidden = true;
+  q('rk-written').checked = false; q('btn-rk-next').disabled = true;
+  q('rk-typed').value = ''; q('rk-result').textContent = '';
+  openSheet('rk-modal', clearKeySetup);
+}
+function keySetupNext() { q('rk-step1').hidden = true; q('rk-step2').hidden = false; q('rk-key').textContent = ''; q('rk-typed').focus(); }
+async function keySetupVerify() {
+  if (!rkDraft) return;
+  const typed = q('rk-typed').value, wrong = differingGroups(rkDraft.text, typed);
+  if (wrong.length) {
+    q('rk-result').textContent = wrong.length > 4 ? 'This does not match the key shown. Check it against what you wrote down. – जुळत नाही'
+      : `Group${wrong.length > 1 ? 's' : ''} ${wrong.join(', ')} ${wrong.length > 1 ? 'do' : 'does'} not match what was shown. Correct ${wrong.length > 1 ? 'them' : 'it'} from what you wrote down. – जुळत नाही`;
+    return;
+  }
+  let raw;
+  try { raw = await parseRecoveryKey(typed); } catch (e) { q('rk-result').textContent = e.message; return; }
+  const id = await keyIdOf(raw);
+  if (id !== await keyIdOf(rkDraft.raw)) { q('rk-result').textContent = 'This does not match the key shown.'; return; }
+  // Typed in full and identical: keep it on this phone (usable, not readable) and forget the shown copy
+  const replaced = (await backupKey())?.id;
+  // One record, one write: if it fails or the app closes, the current key (or none) stays complete and in use
+  try { await setMeta('backup_key', { key: await importBackupKey(raw), id }); }
+  catch (e) { q('rk-result').textContent = `The new key could not be saved (${e.message || e}). ${replaced ? 'The current key is still in use.' : 'Try again.'}`; return; }
+  clearKeySetup();
+  closeModals(); await refreshEncMeta();
+  showToast(replaced && replaced !== id
+    ? 'New recovery key is in use. Keep the old key too: encrypted backups saved before today still need it. – नवीन की'
+    : 'Encrypted backup is set up. Keep the recovery key safe: without it, encrypted backups cannot be opened. – तयार');
+}
+// Save an encrypted backup file: the same backup as "Share / save backup", encrypted with the recovery key
+async function exportEncrypted() {
+  if (!launched || q('pin-screen').classList.contains('active')) { showToast('Unlock the app before exporting.', 'error'); return; }
+  const k = await backupKey();
+  if (!k) { openKeySetup(); return; }
+  let file;
+  showLoading(true);
+  try {
+    const json = JSON.stringify({ ...await exportAllData(), prefs: backupPrefs() });
+    const out = await encryptBackup(k.key, k.id, json, { appVersion: APP_BUILD });
+    const stamp = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
+    file = new File(out.parts, `caterdesk-backup-${stamp}.cdbk`, { type: 'application/octet-stream' });
+  } catch (e) { showToast(`The encrypted backup could not be made (${e.message || e}). Nothing was saved.`, 'error'); return; }
+  finally { showLoading(false); }
+  const size = file.size > 1048576 ? `${(file.size / 1048576).toFixed(1)} MB` : `${Math.ceil(file.size / 1024)} KB`;
+  let how = 'download';
+  if (navigator.canShare?.({ files: [file] })) {
+    const outcome = await askSheet({ title: 'Encrypted backup ready – तयार', message: `${size}. It opens only with your recovery key. Share sends it to another app (Drive, Files); Save to phone downloads it here.`,
+      actions: [{ label: 'Share – पाठवा', style: 'btn-primary', run: () => navigator.share({ files: [file], title: 'CaterDesk encrypted backup' }).then(() => 'shared', e => e?.name === 'AbortError' ? 'aborted' : 'download') },
+        { label: 'Save to phone – फोनवर जतन', value: 'download', style: 'btn-secondary' }] });
+    const r = await outcome; if (!r || r === 'aborted') return; how = r;
+  }
+  if (how === 'download') { const url = URL.createObjectURL(file), a = document.createElement('a'); a.href = url; a.download = file.name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
+  lastExport = new Date().toISOString(); await setMeta('last_export', lastExport); await setMeta('last_export_how', how);
+  showToast(how === 'shared' ? `Encrypted backup handed to the app you chose (${size}). Check it arrived there.` : `Encrypted backup download started (${size}). Copy it outside the phone too.`);
+}
+// Ask for the recovery key (restoring on any device). Resolves with the key, or null if cancelled.
+function askRecoveryKey(keyId) {
+  return new Promise(resolve => {
+    q('rki-typed').value = ''; q('rki-result').textContent = '';
+    let done = false;
+    // The typed key is never left in the page once the prompt is answered, closed, cancelled or Back
+    const forget = () => { q('rki-typed').value = ''; q('rki-result').textContent = ''; };
+    const finish = v => { forget(); if (done) return; done = true; q('btn-rki-ok').onclick = null; resolve(v); };
+    q('btn-rki-ok').onclick = async () => {
+      let raw;
+      try { raw = await parseRecoveryKey(q('rki-typed').value); } catch (e) { q('rki-result').textContent = e.message; return; }
+      if (await keyIdOf(raw) !== keyId) { q('rki-result').textContent = 'This backup was made with a different recovery key.'; return; }
+      // Mark it answered before closing: closing the sheet runs its "cancelled" callback, which must not win
+      const key = await importBackupKey(raw); done = true; q('btn-rki-ok').onclick = null; forget();
+      closeOverlay().then(() => resolve(key));
+    };
+    openSheet('rki-modal', () => finish(null));
+  });
+}
+// An encrypted backup file → the backup JSON text (the stored key if it is the one used, else the typed one)
+async function openEncrypted(bytes) {
+  const { header } = readHeader(bytes);
+  const k = await backupKey();
+  const key = k && k.id === header.keyId ? k.key : await askRecoveryKey(header.keyId);
+  if (!key) return null;
+  showLoading(true);
+  try { return await decryptBackup(key, header.keyId, bytes); } finally { showLoading(false); }
+}
+
 async function handleImport(file) {
   if (!launched || q('pin-screen').classList.contains('active')) return;
   if (!file) return;
@@ -5420,8 +5538,13 @@ async function handleImport(file) {
   const reader = new FileReader();
   reader.onload = async e => {
     try {
-      let payload;
-      try { payload = JSON.parse(e.target.result); }
+      let payload, text;
+      const bytes = new Uint8Array(e.target.result);
+      if (bytes[0] === 0x43 && bytes[1] === 0x44 && bytes[2] === 0x42 && bytes[3] === 0x4b) {   // "CDBK": encrypted
+        text = await openEncrypted(bytes);
+        if (text === null) return;   // no key given: nothing changed
+      } else text = new TextDecoder().decode(bytes);
+      try { payload = JSON.parse(text); }
       catch { throw new Error('This file is not a CaterDesk backup, or it is cut off. Your data was not changed.'); }
       const info = await inspectBackup(payload);   // throws a plain-language reason; nothing is changed
       const c = info.counts;
@@ -5454,13 +5577,14 @@ async function handleImport(file) {
       q('import-input').value = '';
     }
   };
-  reader.readAsText(file);
+  reader.readAsArrayBuffer(file);
 }
 
 /* ── SETTINGS PANEL ──────────────────────────────── */
 function openDrawer() {
   const days = lastExport ? daysSince(lastExport.slice(0, 10)) : null;
   q('backup-meta').textContent = days === null ? '· never' : days === 0 ? '· today' : `· ${days}d ago`;
+  refreshEncMeta();
   q('drawer').classList.add('active');
   q('drawer-toggle').setAttribute('aria-expanded', 'true');
   openOverlay(() => {
@@ -5619,6 +5743,11 @@ function bindAllEvents() {
     if (billTarget === 'snap') snapBills(files); else addBillsToSheet(files);
   }));
   q('import-input').addEventListener('change', function () { handleImport(this.files[0]); });
+  q('btn-export-enc').addEventListener('click', exportEncrypted);
+  q('btn-enc-setup').addEventListener('click', openKeySetup);
+  q('rk-written').addEventListener('change', () => { q('btn-rk-next').disabled = !q('rk-written').checked; });
+  q('btn-rk-next').addEventListener('click', keySetupNext);
+  q('btn-rk-verify').addEventListener('click', keySetupVerify);
 
   // Expense sheet controls
   q('exp-cats').addEventListener('click', e => {
