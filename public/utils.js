@@ -279,7 +279,14 @@ export const gstPaise = ev => toPaise(ev?.gst?.amount || 0);
 // bill is never 0. An event without a bill has no contribution, margin, settlement or payment plan until it is set.
 // A bill brought to 0 by a recorded change (a full waiver or write-off at settlement) is a known ₹0 bill: its loss
 // counts and its settlement stands. Only a 0 with no such history means "not set" (Codex P2 on #68).
-export const billSet = ev => Number(ev?.billing) > 0 || (Number(ev?.billing) === 0 && Number((ev?.billChanges || []).at(-1)?.to) === 0 && (ev?.billChanges || []).length > 0);
+// The current state wins over history: a bill cleared by hand on the event form after that change (billClearedAt) is
+// "not set" again, while the waiver itself stays in billChanges for the record (Codex P2 on c00549c).
+export const billSet = ev => {
+  if (Number(ev?.billing) > 0) return true;
+  const last = (ev?.billChanges || []).at(-1);
+  if (Number(ev?.billing) !== 0 || !last || Number(last.to) !== 0) return false;
+  return !(ev.billClearedAt && Date.parse(ev.billClearedAt) >= Date.parse(last.at || 0));
+};
 /* One population for money summaries (Home, Reports): contribution, margin and receivables use only events whose bill
    is set. Costs of events without a bill stay recorded and visible, counted apart as "awaiting billing"; their
    payments stay in Received but never reduce what billed events still owe. Pending is added up event by event. Expenses on no event (common stock,

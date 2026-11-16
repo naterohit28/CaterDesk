@@ -6,7 +6,11 @@ An event's `billing` is the agreed total bill, before GST.
 |---|---|---|
 | **Set** | `billing` ≥ ₹1 | The bill is agreed. Contribution, margin, pending and settlement use it. |
 | **Set, then reduced to ₹0** | `billing: 0` with a last `billChanges` entry whose `to` is 0 | The bill was agreed, then fully waived or written off at settlement. This is a known ₹0 bill: the loss counts, and the adjustment and its tax review are kept. |
-| **Not set** | `billing: 0` with no such history | The bill isn't known yet; meals, guests or rates are still being decided. |
+| **Not set** | `billing: 0` with no such history, or with `billClearedAt` later than that last change | The bill isn't known yet; meals, guests or rates are still being decided. |
+
+**Today's bill wins over history.** If a bill was waived to ₹0, later set again (say ₹12,000) and then cleared on the event form, the form records `billClearedAt`. That makes the bill *not set* again, while the old waiver stays in `billChanges` for the record and the accountant. A genuinely waived bill that's only edited for other details (venue, notes) keeps its known ₹0 state.
+
+**Opening an event never changes its bill.** Meal rates or a package menu fill an empty bill only after a pricing change in that sheet: meals, guests, menu or rate. A new event fills it as before.
 | **Complimentary** *(not built)* | — | A deliberately free event. This needs the owner's approval before it is added. |
 
 ## Why 0 means "not set" today

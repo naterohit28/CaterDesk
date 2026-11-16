@@ -178,6 +178,63 @@ const DATA = { version: 'ffv2', photos: [], vPays: [], vendors: [],
     assert.deepEqual(back, [0, { rate: 5, taxable: 100000, amount: 5000 }, 1]);
   });
 
+  // Codex P2s on c00549c: opening an event never sets its bill; today's bill wins over an older waiver in its history
+  const saveEvForm = async () => { await p.locator('#btn-save-event').click(); await p.waitForTimeout(600);
+    while (await p.locator('#ask-modal.active').count()) { await p.locator('#ask-actions button').first().click(); await p.waitForTimeout(300); } };
+  const stored = id => p.evaluate(async id => { const u = await import('./utils.js'), d = await (await import('./db.js')).exportAllData(), ev = d.events.find(e => e.id === id);
+    return { billing: ev.billing, set: u.billSet(ev), venue: ev.venue, changes: (ev.billChanges || []).map(c => [c.from, c.to, c.kind || '']), cleared: !!ev.billClearedAt,
+      due: u.clientDue(ev), outstanding: u.settlementStatus(ev, d.cPays).outstanding, taxReview: u.settlementStatus(ev, d.cPays).taxReview,
+      blocked: u.reconBlockers(ev, d.expenses).map(b => b.en).includes('The bill is not set yet') }; }, id);
+  const EDITS = { version: 'ffv2', photos: [], vPays: [], vendors: [], expenses: [x('e1', 'r', 3000)], cPays: [],
+    events: [
+      { id: 'm', name: 'Sample Priced Meals', date: day(-3), venue: 'Sample Hall', type: 'Party – पार्टी', billing: 0, guests: 100, photoIds: [],
+        meals: ['dinner'], mealPlan: { dinner: { guests: 100, rate: 200 } } },
+      { id: 'n', name: 'Sample Package Menu', date: day(-3), venue: 'Sample Hall', type: 'Party – पार्टी', billing: 0, guests: 120, photoIds: [], menu: 'party' },
+      { id: 'r', name: 'Sample Waived Then Repriced', date: day(-3), venue: 'Sample Hall', type: 'Party – पार्टी', billing: 0, guests: 40, photoIds: [],
+        gst: { rate: 5, taxable: 10000, amount: 500 }, billChanges: [{ at: '2026-11-10T10:00:00.000Z', from: 10000, to: 0, reason: 'Sample full waiver', kind: 'waiver', ack: 'written', taxReview: true }] },
+      { id: 'k', name: 'Sample Still Waived', date: day(-3), venue: 'Sample Hall', type: 'Party – पार्टी', billing: 0, guests: 40, photoIds: [],
+        billChanges: [{ at: '2026-11-10T10:00:00.000Z', from: 10000, to: 0, reason: 'Sample full waiver', kind: 'waiver', ack: 'written', taxReview: true }] }] };
+
+  await test('opening an unbilled event with priced meals or a package menu leaves the bill empty; editing the venue keeps it unbilled', async () => {
+    await p.evaluate(async d => { await (await import('./db.js')).importAllData(d, 'replace'); }, EDITS);
+    for (const id of ['m', 'n']) {
+      await openEv(id); await p.locator('#hdr-edit').click(); await p.waitForSelector('#ev-modal.active');
+      assert.equal(await p.inputValue('#ev-billing'), '', `${id}: opening the form does not fill the bill`);
+      await p.fill('#ev-venue', 'Sample New Hall'); await saveEvForm();
+      const s = await stored(id);
+      assert.deepEqual([s.billing, s.set, s.venue, s.cleared], [0, false, 'Sample New Hall', false], `${id}: still not set after an unrelated edit`);
+    }
+    // an explicit pricing change in the sheet still fills an empty bill, as before
+    await openEv('m'); await p.locator('#hdr-edit').click(); await p.waitForSelector('#ev-modal.active');
+    await p.fill('#ev-mp-dinner-r', '250'); assert.equal(await p.inputValue('#ev-billing'), '25000');
+    await home();
+    assert.equal((await stored('m')).billing, 0, 'nothing saved without Save');
+  });
+
+  await test('waived, repriced, then cleared: the bill is not set; the waiver stays on record; a still-waived bill is unchanged; backup keeps both', async () => {
+    await openEv('r'); await p.locator('#hdr-edit').click(); await p.waitForSelector('#ev-modal.active');
+    await p.fill('#ev-billing', '12000'); await saveEvForm();
+    assert.deepEqual((await stored('r')).set, true);
+    await openEv('r'); await p.locator('#hdr-edit').click(); await p.waitForSelector('#ev-modal.active');
+    await p.fill('#ev-billing', ''); await saveEvForm();
+    const r = await stored('r');
+    assert.deepEqual([r.billing, r.set, r.cleared], [0, false, true], 'cleared by hand: not set');
+    assert.deepEqual(r.changes, [[10000, 0, 'waiver']], 'the earlier waiver is kept');
+    assert.deepEqual([r.due, r.outstanding, r.blocked], [0, 0, true], 'no GST or balance asked for; reconciliation waits for the bill');
+    await openEv('r'); assert.equal(await p.locator('#ev-bill-unset').innerText(), 'Not set');
+    // a genuinely waived bill: an unrelated edit keeps it a known ₹0 bill with its loss, settlement and tax review
+    await openEv('k'); await p.locator('#hdr-edit').click(); await p.waitForSelector('#ev-modal.active');
+    assert.equal(await p.inputValue('#ev-billing'), '');
+    await p.fill('#ev-venue', 'Sample New Hall'); await saveEvForm();
+    const k = await stored('k');
+    assert.deepEqual([k.billing, k.set, k.cleared, k.taxReview, k.blocked], [0, true, false, true, false]);
+    assert.deepEqual(k.changes, [[10000, 0, 'waiver']]);
+    // backup and restore keep today's state and the history
+    const back = await p.evaluate(async () => { const db = await import('./db.js'), u = await import('./utils.js'); const d = await db.exportAllData(); await db.importAllData(structuredClone(d), 'replace');
+      const a = (await db.exportAllData()).events; return ['r', 'k'].map(id => { const e = a.find(x => x.id === id); return [u.billSet(e), e.billChanges.length, !!e.billClearedAt]; }); });
+    assert.deepEqual(back, [[false, 1, true], [true, 1, false]]);
+  });
+
   assert.deepEqual(errors, []);
   await browser.close();
   console.log(failed ? 'billing population FAIL' : 'billing population PASS');

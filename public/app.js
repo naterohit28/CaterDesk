@@ -4117,6 +4117,7 @@ function eventOptions() {
 function openEvModal(id) {
   const ev = id ? D.events.find(e => e.id === id) : null;
   formBase.ev = snapshot(ev);
+  billAutoOk = !ev;
   q('ev-id').value      = ev?.id      || '';
   q('ev-name').value    = ev?.name    || '';
   q('ev-date').value    = ev?.date    || '';
@@ -4252,7 +4253,11 @@ function mealPlanLine(ev) {
 }
 
 /* ── Price by meal in the event form (spec §6.4) ── */
-let mpAuto = '';   // the bill value last filled from the meal total, so a typed bill is never overwritten
+let mpAuto = '';
+// Opening an existing event never changes its bill: prices fill an empty bill only after a pricing change in this
+// sheet (meals, guests, menu or rate). A new event fills it as before (Codex P2 on c00549c).
+let billAutoOk = true;
+const pricing = fn => e => { billAutoOk = true; fn(e); };   // the bill value last filled from the meal total, so a typed bill is never overwritten
 function readMealPlan() {
   const plan = {};
   for (const m of MEAL_ORDER) {
@@ -4308,7 +4313,7 @@ function updateMealPlan() {
   q('ev-mp-total').innerHTML = t.lines.length ? mealTable(t) + `<div class="meta" style="margin-top:4px">${tr('Before tax', 'कराआधी')}</div>` : '';
   // The meal total fills the bill only if the bill is empty or still holds the last filled total
   const bill = q('ev-billing').value;
-  if (t.total > 0 && (!bill || bill === mpAuto || bill === evAuto.bill)) { q('ev-billing').value = String(t.total); mpAuto = String(t.total); evAuto.bill = ''; updateQuote(); }
+  if (billAutoOk && t.total > 0 && (!bill || bill === mpAuto || bill === evAuto.bill)) { q('ev-billing').value = String(t.total); mpAuto = String(t.total); evAuto.bill = ''; updateQuote(); }
 }
 
 /* ── Venue details in the event form (CD5-VEN-01) ── */
@@ -4420,7 +4425,7 @@ function updateMenuHint() {
   const past = menuCostPerPlate(menu.id, D.events, D.expenses, qv('ev-id'));
   const fill = (id, key, value) => {
     const cur = q(id).value;
-    if (value && (!cur || cur === evAuto[key])) { q(id).value = String(value); evAuto[key] = String(value); }
+    if (value && (!cur || cur === evAuto[key]) && (key !== 'bill' || billAutoOk)) { q(id).value = String(value); evAuto[key] = String(value); }
   };
   if (guests) {
     fill('ev-billing', 'bill', rate * guests);
@@ -4530,6 +4535,8 @@ async function saveEvent() {
     ...venueFields(),
     ...(Object.keys(mealPlanFields(meals)).length ? { mealPlan: mealPlanFields(meals) } : {}),
     billing:  Number(data.billing) || 0,
+    // A set bill cleared by hand: noted, so an older waiver to ₹0 in its history no longer counts as today's bill
+    ...(base && Number(base.billing) > 0 && !(Number(data.billing) > 0) ? { billClearedAt: new Date().toISOString() } : {}),
     mobile:   data.mobile,
     guests:   data.guests,
     budget:   data.budget,
@@ -5727,7 +5734,7 @@ function bindAllEvents() {
 
   // Dependent select
   q('ven-cat').addEventListener('change', () => loadVenSpecialty());
-  q('ev-menu').addEventListener('change', updateMenuHint);
+  q('ev-menu').addEventListener('change', pricing(updateMenuHint));
   q('ev-billing').addEventListener('input', updateQuote);
   q('ev-type').addEventListener('change', updateQuote);
   document.querySelectorAll('[data-contact]').forEach(b => {
@@ -5737,6 +5744,7 @@ function bindAllEvents() {
   // Meals toggle on and off; turning Lunch on also turns Breakfast on (banquet lunches include it)
   q('ev-meals').addEventListener('click', e => {
     const b = e.target.closest('[data-meal]'); if (!b) return;
+    billAutoOk = true;
     const on = b.getAttribute('aria-pressed') !== 'true';
     b.setAttribute('aria-pressed', String(on));
     if (on && b.dataset.meal === 'lunch') q('ev-meals').querySelector('[data-meal="breakfast"]').setAttribute('aria-pressed', 'true');
@@ -5754,7 +5762,7 @@ function bindAllEvents() {
   // 2. refresh: header button, and pull down at the top of a page
   initPullToRefresh();
   ['ev-billing', 'ev-out-charge'].forEach(id => q(id).addEventListener('input', updateOutHint));
-  q('ev-guests').addEventListener('input', updateMenuHint);
+  q('ev-guests').addEventListener('input', pricing(updateMenuHint));
   q('ven-kind').addEventListener('click', e => { const b = e.target.closest('[data-kind]'); if (b) setVenKind(b.dataset.kind); });
 
   // Settings
@@ -5801,15 +5809,15 @@ function bindAllEvents() {
     const d = svcState.draft[Number(chip.closest('[data-sd]').dataset.sd)], k = chip.dataset.diet, set = new Set(d.diet || []);
     if (set.has(k)) set.delete(k); else set.add(k);
     d.diet = DIET_TAGS.map(([x]) => x).filter(x => set.has(x)); renderServiceSheet(); });
-  q('ev-mp-rows').addEventListener('input', updateMealPlan);
-  q('ev-g-meals').addEventListener('input', updateMealPlan);
-  q('ev-mp-rows').addEventListener('change', e => {
+  q('ev-mp-rows').addEventListener('input', pricing(updateMealPlan));
+  q('ev-g-meals').addEventListener('input', pricing(updateMealPlan));
+  q('ev-mp-rows').addEventListener('change', pricing(e => {
     if (e.target.dataset.k !== 'menu') return;
     const row = e.target.closest('[data-mp]'), menu = menuById(e.target.value), rate = row.querySelector('[data-k="rate"]');
     const guests = qv(`ev-mp-${row.dataset.mp}-g`) || qv('ev-guests');
     if (menu && (!rate.value || rate.dataset.auto === rate.value)) { rate.value = String(menuRate(menu, guests)); rate.dataset.auto = rate.value; }
     updateMealPlan();
-  });
+  }));
   q('plan-rows').addEventListener('input', e => { const row = e.target.closest('[data-pm]'), k = e.target.dataset.k; if (!row || !k) return;
     const m = planDraft[Number(row.dataset.pm)]; if (k === 'amt') m.amtRaw = e.target.value; else m[k] = e.target.value; updatePlanSum(); });
   q('plan-rows').addEventListener('change', e => { const row = e.target.closest('[data-pm]'); if (!row || e.target.dataset.k !== 'when') return;

@@ -585,6 +585,7 @@ export async function prepareImport(payload) {
       if (row.gst !== undefined && (!row.gst || !(Number(row.gst.rate) > 0 && Number(row.gst.rate) <= 100) || (amount(row.gst.taxable, 'GST taxable amount'), amount(row.gst.amount, 'GST'), false)
         || (row.gst.from !== undefined && typeof row.gst.from !== 'string'))) throw new Error('Invalid GST');
       if (row.quotes?.some(qt => qt.gst !== undefined && (!qt.gst || !(Number(qt.gst.rate) > 0 && Number(qt.gst.rate) <= 100) || (amount(qt.gst.taxable, 'GST taxable amount'), false)))) throw new Error('Invalid quote');
+      if (row.billClearedAt !== undefined && (typeof row.billClearedAt !== 'string' || row.billClearedAt.length > 40 || Number.isNaN(Date.parse(row.billClearedAt)))) throw new Error('Invalid bill history');
       if (row.dispute !== undefined && (!row.dispute || typeof row.dispute.reason !== 'string' || !row.dispute.reason.trim() || typeof row.dispute.at !== 'string' || (amount(row.dispute.amt, 'disputed amount'), false))) throw new Error('Invalid dispute');
       // An order's meal, the approved menu it follows and the guests it was planned on (4.26.0)
       if (row.orders?.some(o => o && ((o.svc !== undefined && (typeof o.svc !== 'string' || !o.svc || o.svc.length > 40)) || (o.menuVersion !== undefined && (typeof o.menuVersion !== 'string' || o.menuVersion.length > 40))
