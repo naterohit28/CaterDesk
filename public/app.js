@@ -25,7 +25,7 @@ import { initLang, getLang, setLang } from './i18n.js';
 import { newRecoveryKey, parseRecoveryKey, differingGroups, keyIdOf, importBackupKey, encryptBackup, decryptBackup, readHeader } from './backup-crypto.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.28.2';
+const APP_BUILD = '4.29.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
