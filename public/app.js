@@ -5532,9 +5532,37 @@ async function openEncrypted(bytes) {
   try { return await decryptBackup(key, header.keyId, bytes); } finally { showLoading(false); }
 }
 
+/* Before a restore from Drive replaces this phone's data: if there is anything Replace would remove (events, bills,
+   drafts, vendors, payments, photos, the menu library or business details), the owner saves a copy of it first and
+   confirms that copy is saved. The browser cannot tell whether a download was kept, so nothing is replaced until
+   the owner says it is there. Resolves true to go ahead, false to stop (nothing changed). */
+async function safetyCopyFirst() {
+  const now = { ...await exportAllData(), prefs: backupPrefs() };
+  const records = Object.values(now.manifest?.counts || {}).reduce((n, c) => n + (Number(c) || 0), 0);
+  const profile = typeof now.prefs.ffv2_profile === 'string' && now.prefs.ffv2_profile.trim() && now.prefs.ffv2_profile.trim() !== '{}';
+  if (!records && !profile) return true;   // nothing on this phone that Replace would remove
+  const stamp = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
+  const name = `caterdesk-before-restore-${stamp}.json`;
+  const what = [records ? `${records} record${records > 1 ? 's' : ''}` : '', profile ? 'business details' : ''].filter(Boolean).join(' and ');
+  if (!await askSheet({ title: 'First, save a copy of this phone\'s data – आधी प्रत',
+    message: `Replace removes what is on this phone now (${what}). Save a copy first so it can be brought back.\n\nThe copy is a plain backup file, not encrypted: anyone who opens it can read your business records. Keep it private.`,
+    actions: [{ label: 'Save a copy to this phone – प्रत जतन', value: true, style: 'btn-primary' }] })) return false;
+  for (;;) {
+    const url = URL.createObjectURL(new File([JSON.stringify(now)], name, { type: 'application/json' }));
+    const a = document.createElement('a'); a.href = url; a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    const answer = await askSheet({ title: 'Is the copy saved? – प्रत जतन झाली?',
+      message: `Check that ${name} is in this phone's Downloads (or where your browser saves files). Only then replace. If it is not there, cancel: nothing will be replaced.`,
+      actions: [{ label: 'The copy is saved – replace now – बदला', value: 'go', style: 'btn-danger' },
+        { label: 'Save the copy again – पुन्हा', value: 'again', style: 'btn-secondary' }] });
+    if (answer === 'go') return true;
+    if (answer !== 'again') return false;
+  }
+}
+
 /* A backup's text (from a file or from Google Drive) → checked, previewed, then merged or replacing this phone's data.
    Throws a plain-language reason if it is not a usable backup; nothing is changed until the owner chooses. Restoring
-   from Drive with Replace first saves a copy of this phone's current data to Downloads. */
+   from Drive with Replace first asks for a confirmed copy of this phone's data (safetyCopyFirst). */
 async function restoreText(text, { safetyCopy = false } = {}) {
   let payload;
   try { payload = JSON.parse(text); }
@@ -5544,27 +5572,19 @@ async function restoreText(text, { safetyCopy = false } = {}) {
   const made = info.exportedAt ? `Made ${fmtDate(info.exportedAt.slice(0, 10))}${info.appVersion ? ` · CaterDesk v${info.appVersion}` : ''}` : 'Older backup';
   const counts = `${c.events} events · ${c.expenses} expenses · ${c.cPays} client payments · ${c.vendors} vendors · ${c.vPays} vendor payments · ${c.photos} photos`;
   const check = info.verified ? '✓ Checked: complete and undamaged' : 'Made by an older version: it cannot be checked for damage, but every record is still validated before import.';
-  const hasData = D.events.length + D.expenses.length + D.vendors.length + D.cPays.length + D.vPays.length > 0;
   const mode = await askSheet({
     title: 'Import backup – आयात',
-    message: `${made}\n${counts}\n${check}\n\nMerge keeps your current data. Replace deletes it first${safetyCopy && hasData ? ' (a copy of it is saved to Downloads before anything is replaced)' : ''}.`,
+    message: `${made}\n${counts}\n${check}\n\nMerge keeps your current data. Replace deletes it first${safetyCopy ? '; if this phone has data, you will save a copy of it before anything is replaced' : ''}.`,
     actions: [
       { label: 'Merge – जोडा', value: 'merge', style: 'btn-primary' },
       { label: 'Replace all data – सर्व बदला', value: 'replace', style: 'btn-danger' }
     ]
   });
   if (!mode) return false;
+  if (mode === 'replace' && safetyCopy && !await safetyCopyFirst()) { showToast('Not replaced. Your data was not changed.'); return false; }
 
   showLoading(true);
   try {
-    if (mode === 'replace' && safetyCopy && hasData) {
-      // Safety copy first: if it cannot be made, nothing is replaced
-      const now = { ...await exportAllData(), prefs: backupPrefs() };
-      const stamp = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
-      const url = URL.createObjectURL(new File([JSON.stringify(now)], `caterdesk-before-restore-${stamp}.json`, { type: 'application/json' }));
-      const a = document.createElement('a'); a.href = url; a.download = `caterdesk-before-restore-${stamp}.json`; a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    }
     const { repaired = 0 } = await importAllData(payload, mode) || {};
     if (mode === 'replace') restorePrefs(payload.prefs);   // merge keeps this phone's settings
     await loadAll();

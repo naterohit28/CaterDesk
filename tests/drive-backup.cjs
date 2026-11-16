@@ -304,20 +304,73 @@ function startServer() {
     await c2.close();
   });
 
-  await test('restore with Replace onto a device with data saves a copy of that data first', async () => {
+  // Restore the newest Drive backup with Replace, up to the point where a safety copy would be asked for
+  const replaceFromDrive = async page => {
+    await openDrive(page);
+    await page.locator('#btn-drive-restore').click(); await page.waitForSelector('#ask-modal.active');
+    await page.locator('#ask-actions button').first().click();
+    if (await page.locator('#rki-modal.active').count() || await page.waitForSelector('#rki-modal.active', { timeout: 3000 }).catch(() => null)) { await page.fill('#rki-typed', keyText); await page.locator('#btn-rki-ok').click(); }
+    await page.waitForSelector('#ask-modal.active #ask-actions button:has-text("Replace all data")', { timeout: 120000 });
+    assert.match(await page.locator('#ask-msg').innerText(), /you will save a copy of it before anything is replaced/);
+    await page.locator('#ask-actions button', { hasText: 'Replace all data' }).click();
+  };
+  const askTitle = page => page.waitForSelector('#ask-modal.active').then(() => page.locator('#ask-title').innerText());
+
+  await test('Replace from Drive: no copy confirmed, nothing replaced (closing, cancelling, or not confirming the saved copy)', async () => {
     await p.evaluate(async () => { const db = await import('./db.js'); await db.putOne('vendors', { id: 'v9', name: 'Sample Later Vendor', cat: 'Live Counter', phone: '9000000009' }); });
     await p.reload(); await p.waitForSelector('#kpi .card');
-    await openDrive(p);
-    await p.locator('#btn-drive-restore').click(); await p.waitForSelector('#ask-modal.active');
-    await p.locator('#ask-actions button').first().click();   // this phone's key made it: no key prompt
-    await p.waitForSelector('#ask-modal.active #ask-actions button:has-text("Replace all data")', { timeout: 120000 });
-    assert.match(await p.locator('#ask-msg').innerText(), /copy of it is saved to Downloads/);
+    const before = await snapshot(p);
+    // Cancel at "save a copy first"
+    await replaceFromDrive(p);
+    assert.match(await askTitle(p), /First, save a copy/);
+    assert.match(await p.locator('#ask-msg').innerText(), /not encrypted: anyone who opens it can read your business records/);
+    await p.locator('#ask-actions button', { hasText: 'Cancel' }).click();
+    await p.waitForSelector('#toast-msg:has-text("Not replaced")');
+    assert.equal(await snapshot(p), before);
+    // The copy is downloaded, but the owner does not confirm it is there (e.g. the phone blocked the download)
+    await replaceFromDrive(p);
+    await askTitle(p);
     const dl = p.waitForEvent('download');
-    await p.locator('#ask-actions button', { hasText: 'Replace all data' }).click();
-    const d = await dl; assert.match(d.suggestedFilename(), /^caterdesk-before-restore-.*\.json$/);
+    await p.locator('#ask-actions button', { hasText: 'Save a copy' }).click();
+    await dl; assert.match(await askTitle(p), /Is the copy saved/);
+    await p.goBack();   // Back, as on a phone
+    await p.waitForSelector('#toast-msg:has-text("Not replaced")');
+    assert.equal(await snapshot(p), before, 'nothing replaced without a confirmed copy');
+  });
+
+  await test('Replace from Drive onto a device with data: the copy is saved (again if needed) and confirmed, then replaced', async () => {
+    await replaceFromDrive(p);
+    await askTitle(p);
+    const dl1 = p.waitForEvent('download');
+    await p.locator('#ask-actions button', { hasText: 'Save a copy' }).click(); await dl1;
+    await askTitle(p);
+    const dl2 = p.waitForEvent('download');
+    await p.locator('#ask-actions button', { hasText: 'Save the copy again' }).click();
+    const d = await dl2; assert.match(d.suggestedFilename(), /^caterdesk-before-restore-.*\.json$/);
     const saved = JSON.parse(fs.readFileSync(await d.path(), 'utf8'));
-    assert.ok(saved.vendors.some(v => v.name === 'Sample Later Vendor'), 'the safety copy holds the data that is about to be replaced');
+    assert.ok(saved.vendors.some(v => v.name === 'Sample Later Vendor'), 'the copy holds the data that is about to be replaced');
+    assert.match(await askTitle(p), /Is the copy saved/);
+    await p.locator('#ask-actions button', { hasText: 'The copy is saved' }).click();
     await p.waitForSelector('#toast-msg:has-text("Imported")', { timeout: 120000 });
+    assert.equal(await p.evaluate(async () => (await (await import('./db.js')).getAll('vendors')).some(v => v.name === 'Sample Later Vendor')), false, 'replaced after confirmation');
+  });
+
+  await test('a device holding only custom menus, or only business details, is asked for a copy too (Replace removes them)', async () => {
+    for (const setup of ['menus', 'profile']) {
+      const { ctx: c3, page: p3 } = await phone();
+      await p3.evaluate(async setup => { const db = await import('./db.js');
+        if (setup === 'menus') await db.putOne('menus', { id: 'my1', name: 'Sample Custom Menu', meals: ['dinner'], slabs: [{ min: 100, rate: 500 }], items: ['Sample Dal'] });
+        else localStorage.setItem('ffv2_profile', JSON.stringify({ name: 'Sample Caterers', phone: '9000000010' })); }, setup);
+      await p3.reload(); await p3.waitForSelector('#kpi .card');
+      if (setup === 'menus') assert.equal(await p3.evaluate(async () => (await (await import('./db.js')).exportAllData()).menus.length), 1, 'a menu-library entry and nothing else');
+      await replaceFromDrive(p3);
+      assert.match(await askTitle(p3), /First, save a copy/, setup);
+      assert.match(await p3.locator('#ask-msg').innerText(), setup === 'menus' ? /\(1 record\)/ : /\(business details\)/);
+      await p3.locator('#ask-actions button', { hasText: 'Cancel' }).click();
+      await p3.waitForSelector('#toast-msg:has-text("Not replaced")');
+      if (setup === 'menus') assert.equal(await p3.evaluate(async () => (await (await import('./db.js')).exportAllData()).menus[0]?.name), 'Sample Custom Menu', 'the menu is kept');
+      await c3.close();
+    }
   });
 
   await test('Disconnect tells Google to forget the access and this phone forgets the token', async () => {
