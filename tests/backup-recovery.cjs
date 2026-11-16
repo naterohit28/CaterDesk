@@ -10,10 +10,13 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path');
 
 const DATA = { version: 'ffv2', cPays: [{ id: 'p1', evId: 'e1', amt: 25000, date: '2026-11-01', mode: 'UPI' }], vPays: [],
-  expenses: [{ id: 'x1', evId: 'e1', cat: 'Raw Material', head: 'Vegetables – भाजी', amt: 4200, date: '2026-11-02', pay: 'paid', mode: 'UPI', billIds: [] }],
+  expenses: [{ id: 'x1', evId: 'e1', cat: 'Raw Material', head: 'Vegetables – भाजी', amt: 4200, date: '2026-11-02', pay: 'paid', mode: 'UPI', billIds: ['ph1'] }],
   vendors: [{ id: 'v1', name: 'Sample Secret Vendor', cat: 'Live Counter', phone: '9000000001' }],
   events: [{ id: 'e1', name: 'Sample Confidential Wedding', date: '2026-12-10', venue: 'Sample Hall', type: 'Wedding – लग्न', billing: 300000, guests: 300, photoIds: [], meals: ['dinner'],
-    mealPlan: { dinner: { guests: 300, rate: 650 } }, dishes: [{ name: 'Sample Paneer Tikka', head: '', meal: 'dinner' }] }], photos: [] };
+    mealPlan: { dinner: { guests: 300, rate: 650 } }, dishes: [{ name: 'Sample Paneer Tikka', head: '', meal: 'dinner' }] }],
+  // A bill photo and a custom menu: restore must bring back money records, menus and photos alike
+  photos: [{ id: 'ph1', expenseId: 'x1', data: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', createdAt: '2026-11-02T10:00:00.000Z' }],
+  menus: [{ id: 'my1', name: 'Sample Custom Menu', meals: ['dinner'], slabs: [{ min: 100, rate: 500 }], items: ['Sample Dal'] }] };
 
 // Android's share menu, as Chrome on Android behaves: canShare/share accept only known file types (.txt yes, .cdbk no)
 const SHARE_SIM = () => {
@@ -154,6 +157,8 @@ const SHARE_SIM = () => {
       await p3.locator('#ask-actions button', { hasText: 'Replace all data' }).click();   // empty phone: no copy needed
       await p3.waitForSelector('#toast-msg:has-text("Imported")');
       assert.equal(await snapshot(p3), before, path.basename(file));
+      const back = JSON.parse(await snapshot(p3));
+      assert.deepEqual([back.events.length, back.expenses[0].amt, back.cPays[0].amt, back.photos.length, back.menus.map(m => m.name)], [1, 4200, 25000, 1, ['Sample Custom Menu']], 'records, amounts, the bill photo and the custom menu');
       await c3.close();
     }
     const accept = await p.locator('#import-input').getAttribute('accept');
