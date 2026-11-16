@@ -231,6 +231,8 @@ html.dark .btn-danger { background: #DC2626; }
 .search input { flex: 1; min-width: 0; height: 44px; border: 0; outline: 0; background: none; color: var(--text); font: inherit; font-size: 16px; }
 .search input::-webkit-search-cancel-button { filter: grayscale(1); }
 .chips-row { display: flex; gap: var(--s2); overflow-x: auto; margin: var(--s3) calc(-1 * var(--s4)) 0; padding: 0 var(--s4); }
+/* Chips that wrap onto more lines never need to scroll (4.28.2: the meal choice showed a small scroll bar) */
+.chips-row[style*="flex-wrap:wrap"] { overflow: visible; }
 .chips-row:empty { display: none; }
 /* Event tools: one wrapping row of equal small buttons */
 .tool-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); margin-top: var(--s3); }

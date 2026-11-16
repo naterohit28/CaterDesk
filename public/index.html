@@ -142,6 +142,7 @@
 <!-- Phones often label a shared .json as text or octet-stream; accept those so the file isn't greyed out -->
 <input type="file" id="import-input" accept=".json,application/json,text/plain,application/octet-stream" hidden>
 <input type="file" id="photo-input" accept="image/*" multiple hidden>
+<input type="file" id="photo-cam" accept="image/*" capture="environment" hidden>
 <!-- Bill photos: camera opens directly; gallery for bills already on the phone (e.g. from WhatsApp) -->
 <input type="file" id="bill-cam" accept="image/*" capture="environment" hidden>
 <input type="file" id="bill-gal" accept="image/*" multiple hidden>
@@ -289,7 +290,7 @@
     <div class="field"><label for="ev-menu">Menu – मेनू</label><select id="ev-menu"></select></div>
     <div class="meta" id="ev-menu-hint" data-nl hidden style="margin:-6px 0 var(--s3)"></div>
     <div class="f2">
-      <div class="field"><label for="ev-billing">Total bill ₹ – एकूण बिल <span class="req">*</span></label><input type="number" id="ev-billing" placeholder="0" min="1" inputmode="decimal" enterkeyhint="next"></div>
+      <div class="field"><label for="ev-billing">Total bill ₹ – एकूण बिल</label><input type="number" id="ev-billing" placeholder="if known" min="0" inputmode="decimal" enterkeyhint="next"></div>
       <div class="field"><label for="ev-budget">Expected cost ₹ – अंदाजे खर्च</label><input type="number" id="ev-budget" placeholder="optional" min="1" inputmode="decimal" enterkeyhint="next"></div>
     </div>
     <!-- Quote helper: your real cost per plate and margin, from your own past events -->
@@ -742,7 +743,7 @@
       <button type="button" class="btn btn-secondary" data-action="fs-copy">Copy – कॉपी</button>
       <button type="button" class="btn btn-primary" data-action="fs-share">Share – पाठवा</button>
     </div>
-    <button type="button" class="btn btn-ghost" style="width:100%;margin-top:var(--s2)" data-action="fs-save">Save timings & setup – जतन</button>
+    <button type="button" class="btn btn-secondary" style="width:100%;margin-top:var(--s2)" data-action="fs-save">Save timings & setup – जतन</button>
   </div>
 </div>
 

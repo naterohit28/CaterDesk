@@ -254,8 +254,11 @@ export function nextQuoteDraft(ev, { from = null, newOption = false } = {}) {
   const qs = ev.quotes || [];
   const last = from || qs.at(-1);
   const option = newOption ? 'ABCDEFGH'.split('').find(l => !quoteOptions(ev).includes(l)) || 'H' : quoteOption(last);
+  // A first quote starts from the event's own meals: each with its booked guests, and its rate where one is known (4.28.2)
+  const meals = MEAL_ORDER.filter(m => (ev.meals || []).includes(m) || ev.mealPlan?.[m]?.guests > 0);
   const lines = last ? structuredClone(last.lines)
-    : MEAL_ORDER.filter(m => ev.mealPlan?.[m]?.guests > 0 && ev.mealPlan[m].rate > 0).map(m => ({ kind: 'meal', meal: m, guests: ev.mealPlan[m].guests, rate: ev.mealPlan[m].rate, ...(ev.mealPlan[m].menu ? { menu: ev.mealPlan[m].menu } : {}) }));
+    : meals.map(m => { const mp = ev.mealPlan?.[m] || {};
+      return { kind: 'meal', meal: m, guests: mp.guests > 0 ? mp.guests : Number(ev.guests) || '', rate: mp.rate > 0 ? mp.rate : '', ...(mp.menu ? { menu: mp.menu } : {}) }; });
   return { v: Math.max(0, ...qs.map(x => x.v)) + 1, status: 'draft', ...(option !== 'A' || newOption ? { option } : {}), lines: lines.length ? lines : [{ kind: 'meal', meal: 'dinner', guests: Number(ev.guests) || '', rate: '' }],
     showRates: last ? last.showRates !== false : true, terms: last?.terms || '', ...(last?.gst ? { gst: { ...last.gst } } : {}),
     ...(latestApproved(ev) ? { annex: latestApproved(ev).id } : last?.annex === 'draft' ? { annex: 'draft' } : {}) };
@@ -272,7 +275,44 @@ export function quoteSuperseded(ev, q) {
 /* The event's bill is the business's income before GST. GST (from an accepted quote) is added to what the client owes,
    never to income or contribution. */
 export const gstPaise = ev => toPaise(ev?.gst?.amount || 0);
-export const clientDueP = ev => toPaise(ev?.billing || 0) + gstPaise(ev);
+// A bill of 0 means "not set yet" (4.28.2): the form refuses 0 and every bill before 4.28.2 was at least ₹1, so a set
+// bill is never 0. An event without a bill has no contribution, margin, settlement or payment plan until it is set.
+// A bill brought to 0 by a recorded change (a full waiver or write-off at settlement) is a known ₹0 bill: its loss
+// counts and its settlement stands. Only a 0 with no such history means "not set" (Codex P2 on #68).
+// The current state wins over history: a bill cleared by hand on the event form after that change (billClearedAt) is
+// "not set" again, while the waiver itself stays in billChanges for the record (Codex P2 on c00549c).
+export const billSet = ev => {
+  if (Number(ev?.billing) > 0) return true;
+  const last = (ev?.billChanges || []).at(-1);
+  if (Number(ev?.billing) !== 0 || !last || Number(last.to) !== 0) return false;
+  return !(ev.billClearedAt && Date.parse(ev.billClearedAt) >= Date.parse(last.at || 0));
+};
+/* One population for money summaries (Home, Reports): contribution, margin and receivables use only events whose bill
+   is set. Costs of events without a bill stay recorded and visible, counted apart as "awaiting billing"; their
+   payments stay in Received but never reduce what billed events still owe. Pending is added up event by event. Expenses on no event (common stock,
+   overheads) count as before. All in paise.
+   Unset bill vs complimentary (docs/BILLING_STATES.md): today billing 0 always means "not set". A free event would
+   need its own explicit marker (e.g. complimentary: true with billing 0), so the two can be told apart later. */
+export function billingSplit(events, expenses, cPays) {
+  const unbilled = new Set(events.filter(e => !billSet(e)).map(e => e.id));
+  const billed = events.filter(billSet);
+  const sumP = (rows, f) => rows.reduce((s, r) => s + toPaise(f(r) || 0), 0);
+  const expP = sumP(expenses, x => x.amt);
+  const awaitP = sumP(expenses.filter(x => unbilled.has(x.evId)), x => x.amt);
+  const billP = sumP(billed, e => e.billing);
+  const recP = sumP(cPays, p => p.amt);
+  const advP = sumP(cPays.filter(p => unbilled.has(p.evId)), p => p.amt);
+  const dueP = billed.reduce((s, e) => s + clientDueP(e), 0);
+  const contribP = billP - (expP - awaitP);
+  return { billed, unbilled: unbilled.size, billP, expP, awaitP, contribP, recP, advP, dueP,
+    // what each billed event still owes, added up: one client's overpayment never cancels another's balance
+    pendingP: billed.reduce((s, e) => s + Math.max(0, clientDueP(e) - sumP(cPays.filter(p => p.evId === e.id), p => p.amt)), 0),
+    margin: billP > 0 ? Math.round(contribP / billP * 100) : null };
+}
+// What the client owes in all (bill + recorded GST). Nothing while the bill is not set: GST recorded from an earlier
+// quote stays on the event for the record, but is never asked for, reminded about or shown as overdue (4.28.2, Codex P2).
+// A bill waived to ₹0 is a known bill, so its GST still counts as before.
+export const clientDueP = ev => billSet(ev) ? toPaise(ev?.billing || 0) + gstPaise(ev) : 0;
 export const clientDue = ev => fromPaise(clientDueP(ev));
 
 /* ── FINAL SETTLEMENT (spec §6.7, §10.3, G-35) ── */
@@ -285,7 +325,8 @@ export function settlementStatus(ev, cPays) {
   const changes = ev.billChanges || [];
   const billedP = clientDueP(ev), recP = cPays.filter(p => p.evId === ev.id).reduce((s, p) => s + toPaise(p.amt), 0);
   const adjustments = changes.filter(c => SETTLE_KINDS[c.kind]);
-  const outstandingP = billedP - recP;
+  // An unknown bill (not set) owes nothing yet and is never overpaid: its payments are advances (4.28.2)
+  const outstandingP = billSet(ev) ? billedP - recP : 0;
   const disputedP = ev.dispute && outstandingP > 0 ? Math.min(toPaise(ev.dispute.amt), outstandingP) : 0;
   return { original: changes.length ? changes[0].from : ev.billing, changes, adjustments,
     adjusted: fromPaise(adjustments.reduce((s, c) => s + toPaise(c.from) - toPaise(c.to), 0)),
@@ -306,6 +347,8 @@ export function paymentSchedule(ev, cPays, now = today()) {
   const outstandingP = Math.max(0, billP - recP);
   const plan = Array.isArray(ev.payPlan) ? ev.payPlan : [];
   const out = (o) => ({ ...o, billed: fromPaise(billP), received: fromPaise(recP), outstanding: fromPaise(outstandingP) });
+  // Bill not set (e.g. cleared after a plan was made): nothing is due or overdue; a plan is kept, paused (4.28.2)
+  if (!billSet(ev)) return { ...out({ scheduled: false, rows: [], dueNow: 0, overdue: 0, unscheduled: 0, overScheduled: 0 }), outstanding: 0, paused: plan.length > 0 };
   if (!plan.length) {   // no schedule: everything is due once the event is over (as before)
     const late = daysSince(ev.date) > 0;
     return out({ scheduled: false, rows: [], dueNow: late ? fromPaise(outstandingP) : 0, overdue: late ? fromPaise(outstandingP) : 0, unscheduled: 0, overScheduled: 0 });
@@ -804,7 +847,7 @@ export const EVENT_RULES = {
   name:    { required: true, requiredMsg: 'Event name – नाव आवश्यक आहे' },
   date:    { required: true, date: true, requiredMsg: 'Date – दिनांक आवश्यक आहे' },
   venue:   { required: true, requiredMsg: 'Venue – ठिकाण आवश्यक आहे' },
-  billing: { required: true, numeric: true, min: 1, requiredMsg: 'Billing amount – बिल रक्कम आवश्यक आहे', minMsg: 'Billing must be > 0' },
+  billing: { numeric: true, min: 1, minMsg: 'Leave it empty if the bill is not known yet – माहीत नसल्यास रिकामे ठेवा' },   // optional (4.28.2): often not known when the event is booked
   budget:  { numeric: true, min: 0 },
   guests:  { numeric: true, integer: true, min: 0 },
   mobile:  { phone: true }
@@ -1117,6 +1160,7 @@ export function reconciledIds(events, expenses) {
 // What stops an event being reconciled right now (shown in the checklist; the ticks are the owner's to give)
 export function reconBlockers(ev, expenses, drafts = []) {
   const out = [];
+  if (!billSet(ev)) out.push({ en: 'The bill is not set yet', mr: 'बिल अजून ठरलेले नाही' });
   if (eventStage(ev) === 'upcoming') out.push({ en: 'The event has not happened yet', mr: 'कार्यक्रम अजून झालेला नाही' });
   if (!costRows(ev.id, expenses).length) out.push({ en: 'No costs are recorded for this event', mr: 'या कार्यक्रमाचा खर्च नोंदवलेला नाही' });
   const open = drafts.filter(d => d.evId === ev.id).length;
@@ -1422,7 +1466,7 @@ export function generateInsights(events, cPays, expenses, vendors, vPays = []) {
   }
 
   // Loss-making events
-  const losses = evPL.filter(r => r.profit < 0).sort((a, c) => a.profit - c.profit).slice(0, 3);
+  const losses = evPL.filter(r => r.profit < 0 && billSet(r.ev)).sort((a, c) => a.profit - c.profit).slice(0, 3);
   if (losses.length) {
     const names = losses.map(r => b(esc(r.ev.name))).join(', ');
     insights.push({ type: 'alert', icon: 'warn',
