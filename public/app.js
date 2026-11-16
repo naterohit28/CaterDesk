@@ -5617,7 +5617,9 @@ async function refreshDriveMeta() {
   const days = v?.at ? daysSince(localDay(new Date(v.at))) : null;
   q('drive-meta').textContent = days === null ? '· no backup yet' : days === 0 ? '· verified today' : `· verified ${days}d ago`;
 }
+const driveButtons = () => ['btn-drive-backup', 'btn-drive-restore', 'btn-drive-connect', 'btn-drive-disconnect'].forEach(id => { q(id).disabled = driveBusy; });
 async function renderDrive() {
+  driveButtons();
   const [v, a] = await Promise.all([getMeta('drive_last_verified'), getMeta('drive_last_attempt')]);
   const lines = [drive.connected() ? 'Connected for this session.' : 'Not connected on this phone.',
     v ? `Last verified backup: ${driveWhen(v.at)} · ${mbText(v.size)} · key ${String(v.keyId).slice(0, 4).toUpperCase()}…` : 'No verified backup on Drive yet.'];
@@ -5625,7 +5627,6 @@ async function renderDrive() {
   q('drive-status').textContent = lines.join('\n');
   q('btn-drive-connect').hidden = drive.connected();
   q('btn-drive-disconnect').hidden = !drive.connected();
-  ['btn-drive-backup', 'btn-drive-restore', 'btn-drive-connect', 'btn-drive-disconnect'].forEach(id => { q(id).disabled = driveBusy; });
 }
 function openDrive() {
   if (!driveOn()) return;
@@ -5638,7 +5639,7 @@ function openDrive() {
 async function withDrive(job) {
   if (driveBusy) return;
   if (!launched || q('pin-screen').classList.contains('active')) { showToast('Unlock the app first.', 'error'); return; }
-  driveBusy = true; renderDrive();
+  driveBusy = true; driveButtons(); q('drive-progress').textContent = '';
   try {
     if (!drive.connected()) { q('drive-progress').textContent = 'Connecting to Google…'; await drive.loadGis(); await drive.signIn(DRIVE_CLIENT_ID); }
     await job();
@@ -5708,6 +5709,8 @@ async function driveRestore() {
     showLoading(true);
     try { text = await decryptBackup(key, pick.keyId, bytes); } finally { showLoading(false); }
     q('drive-progress').textContent = '';
+    // The import preview is shown on its own, and the app is on Home afterwards
+    if (q('drive-modal').classList.contains('active')) await closeOverlay();
     await restoreText(text, { safetyCopy: true });
   });
 }
