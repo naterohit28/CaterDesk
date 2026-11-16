@@ -137,7 +137,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     await p.keyboard.press('Escape');
   });
 
-  await test('backups keep purchases and links; old data restores unchanged; malformed purchases and double links are refused (scenario 10)', async () => {
+  await test('backups keep purchases and links; old data restores unchanged; malformed purchases are refused, impossible links removed with the bill kept (scenario 10)', async () => {
     const r = await p.evaluate(async old => { const db = await import('./db.js'); const out = [];
       const d0 = await db.exportAllData(); delete d0.manifest;
       await db.importAllData(structuredClone(d0), 'replace');
@@ -147,11 +147,13 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
       out.push(JSON.stringify((await db.exportAllData()).events.map(strip)) === JSON.stringify(old.events) ? 'old unchanged' : 'old changed');
       const tries = [d => { d.events[0].purchases[0].unit = 'crate'; }, d => { d.events[0].purchases[0].qty = 0; }, d => { d.events[0].purchases[0].src = 'counter'; },
         d => { d.events[0].dishes[0].head = 'Chaat – चाट'; }, d => { d.expenses[0].order = 'x1'; }, d => { d.expenses[0].purchase = 'nope'; }];
-      for (const t of tries) { const d = structuredClone(d0); t(d); try { await db.importAllData(d, 'replace'); out.push('accepted'); } catch (e) { out.push(e.message.split(/[.:]/)[0]); } }
+      // A link that cannot be right (also an order's, or a purchase not on its event) is removed on restore; the bill is kept (4.28.1)
+      for (const t of tries) { const d = structuredClone(d0); t(d); try { const { repaired } = await db.importAllData(d, 'replace'); const x = (await db.exportAllData()).expenses[0];
+        out.push(repaired ? `kept bill, link removed: ${repaired} ${x.amt === d0.expenses[0].amt && x.purchase === undefined}` : 'accepted'); } catch (e) { out.push(e.message.split(/[.:]/)[0]); } }
       await db.importAllData(d0, 'replace'); return out; },
       { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [], vendors: [], events: [{ id: 'old', name: 'Sample Old Event', date: day(40), venue: 'Sample Hall', type: 'Wedding – लग्न', billing: 100000, guests: 100, photoIds: [],
         dishes: [{ name: 'Sample Rice', head: '' }, { name: 'Sample Chaat', head: CHAAT }], orders: [{ id: 'o1', head: CHAAT, venId: 'v', plates: 100, date: day(40), status: 'sent', at: '2026-11-01T10:00:00.000Z' }] }] });
-    assert.deepEqual(r, ['kept', 'old unchanged', 'Invalid purchase', 'Invalid purchase', 'Invalid purchase', 'Invalid dish details', 'Invalid purchase link in expenses', 'Invalid purchase link in expenses']);
+    assert.deepEqual(r, ['kept', 'old unchanged', 'Invalid purchase', 'Invalid purchase', 'Invalid purchase', 'Invalid dish details', 'kept bill, link removed: 1 true', 'kept bill, link removed: 1 true']);
   });
 
   await test('360px: the To buy list and the purchase sheet fit in English, Marathi and both', async () => {
