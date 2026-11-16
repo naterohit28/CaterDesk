@@ -118,6 +118,20 @@ export function readHeader(bytes) {
   return { header, headerBytes, body: bytes.subarray(9 + len) };
 }
 
+/* Before an encrypted backup leaves the phone: decrypt its first and last pieces with the key, so a file that could
+   not be opened is never uploaded (the whole file is decrypted only when restoring). Throws BackupError if not. */
+export async function checkEnds(key, keyId, bytes) {
+  const { header, headerBytes, body } = readHeader(bytes);
+  if (header.keyId !== keyId) throw new BackupError('key', 'This backup was made with a different recovery key.');
+  const hh = await sha256(headerBytes), base = unb64(header.baseIv), size = CHUNK + TAG;
+  const count = Math.max(1, Math.ceil(body.length / size));
+  for (const i of new Set([0, count - 1])) {
+    const part = body.subarray(i * size, Math.min(body.length, (i + 1) * size));
+    try { await crypto.subtle.decrypt({ name: 'AES-GCM', iv: ivFor(base, i), additionalData: aadFor(hh, i, i === count - 1) }, key, part); }
+    catch { throw new BackupError('tampered', 'The encrypted backup did not check out on this phone. Nothing was uploaded.'); }
+  }
+}
+
 // .cdbk bytes + key → the backup JSON (string). Any change to the file, or the wrong key, fails before anything is used.
 export async function decryptBackup(key, keyId, bytes) {
   const { header, headerBytes, body } = readHeader(bytes);
