@@ -5424,13 +5424,20 @@ async function refreshEncMeta() {
   const k = await backupKey();
   q('enc-meta').textContent = k ? `· recovery key set (${k.id.slice(0, 4).toUpperCase()}…)` : '· not set up';
 }
+// Forget every shown or typed copy of a key once its sheet is done: finished, closed, cancelled or Back
+function clearKeySetup() { rkDraft = null; q('rk-key').textContent = ''; q('rk-typed').value = ''; q('rk-result').textContent = ''; }
 async function openKeySetup() {
+  // Replacing a working key is a deliberate, confirmed step; the current key stays in use until the new one is verified
+  const k = await backupKey();
+  if (k && !await askSheet({ title: 'Replace the recovery key? – की बदलायची?',
+    message: `A recovery key is already set up (${k.id.slice(0, 4).toUpperCase()}…). Every encrypted backup saved so far opens only with that key, and after a change this phone will ask for it when restoring one of them. Keep the current key safe. It stays in use until the new key has been typed back correctly.`,
+    actions: [{ label: 'Make a new key – नवीन की', value: true, style: 'btn-danger' }] })) return;
   rkDraft = await newRecoveryKey();
   q('rk-key').textContent = rkDraft.text;
   q('rk-step1').hidden = false; q('rk-step2').hidden = true;
   q('rk-written').checked = false; q('btn-rk-next').disabled = true;
   q('rk-typed').value = ''; q('rk-result').textContent = '';
-  openSheet('rk-modal');
+  openSheet('rk-modal', clearKeySetup);
 }
 function keySetupNext() { q('rk-step1').hidden = true; q('rk-step2').hidden = false; q('rk-key').textContent = ''; q('rk-typed').focus(); }
 async function keySetupVerify() {
@@ -5446,10 +5453,13 @@ async function keySetupVerify() {
   const id = await keyIdOf(raw);
   if (id !== await keyIdOf(rkDraft.raw)) { q('rk-result').textContent = 'This does not match the key shown.'; return; }
   // Typed in full and identical: keep it on this phone (usable, not readable) and forget the shown copy
+  const replaced = await getMeta('backup_key_id');
   await setMeta('backup_key', await importBackupKey(raw)); await setMeta('backup_key_id', id);
-  rkDraft = null; q('rk-typed').value = '';
+  clearKeySetup();
   closeModals(); await refreshEncMeta();
-  showToast('Encrypted backup is set up. Keep the recovery key safe: without it, encrypted backups cannot be opened. – तयार');
+  showToast(replaced && replaced !== id
+    ? 'New recovery key is in use. Keep the old key too: encrypted backups saved before today still need it. – नवीन की'
+    : 'Encrypted backup is set up. Keep the recovery key safe: without it, encrypted backups cannot be opened. – तयार');
 }
 // Save an encrypted backup file: the same backup as "Share / save backup", encrypted with the recovery key
 async function exportEncrypted() {
@@ -5482,13 +5492,15 @@ function askRecoveryKey(keyId) {
   return new Promise(resolve => {
     q('rki-typed').value = ''; q('rki-result').textContent = '';
     let done = false;
-    const finish = v => { if (done) return; done = true; q('btn-rki-ok').onclick = null; resolve(v); };
+    // The typed key is never left in the page once the prompt is answered, closed, cancelled or Back
+    const forget = () => { q('rki-typed').value = ''; q('rki-result').textContent = ''; };
+    const finish = v => { forget(); if (done) return; done = true; q('btn-rki-ok').onclick = null; resolve(v); };
     q('btn-rki-ok').onclick = async () => {
       let raw;
       try { raw = await parseRecoveryKey(q('rki-typed').value); } catch (e) { q('rki-result').textContent = e.message; return; }
       if (await keyIdOf(raw) !== keyId) { q('rki-result').textContent = 'This backup was made with a different recovery key.'; return; }
       // Mark it answered before closing: closing the sheet runs its "cancelled" callback, which must not win
-      const key = await importBackupKey(raw); done = true; q('btn-rki-ok').onclick = null;
+      const key = await importBackupKey(raw); done = true; q('btn-rki-ok').onclick = null; forget();
       closeOverlay().then(() => resolve(key));
     };
     openSheet('rki-modal', () => finish(null));

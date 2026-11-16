@@ -63,6 +63,33 @@ DATA.expenses.push({ id: 'x2', evId: 'e1', cat: 'Raw Material', head: 'Water –
     await drawer(p); assert.match(await p.locator('#enc-meta').innerText(), /recovery key set/);
   });
 
+  // No shown or typed key is left anywhere in the page (hidden sheets included)
+  const keyLeft = page => page.evaluate(() => { const el = id => document.getElementById(id);
+    return el('rk-key').textContent + el('rk-typed').value + el('rki-typed').value; });
+  const storedId = page => page.evaluate(async () => (await import('./db.js')).getMeta('backup_key_id'));
+
+  await test('an existing key is replaced only on purpose; closing setup or pressing Back keeps the current key and leaves no key in the page', async () => {
+    const id0 = await storedId(p);
+    await drawer(p); await p.locator('#btn-enc-setup').click(); await p.waitForSelector('#ask-modal.active');
+    assert.match(await p.locator('#ask-msg').innerText(), /already set up[\s\S]*opens only with that key[\s\S]*stays in use until the new key/);
+    await p.locator('#ask-actions button', { hasText: 'Cancel' }).click(); await p.waitForTimeout(400);
+    assert.equal(await p.locator('#rk-modal.active').count(), 0, 'cancel: no new key made');
+    // Make a new key, then close the sheet while it is on screen
+    await drawer(p); await p.locator('#btn-enc-setup').click(); await p.locator('#ask-actions button', { hasText: 'Make a new key' }).click();
+    await p.waitForSelector('#rk-modal.active'); const shown = await p.locator('#rk-key').innerText();
+    assert.notEqual(shown, keyText, 'a new key');
+    await p.locator('#rk-modal [data-action="close-modal"]').click(); await p.waitForTimeout(400);
+    assert.equal(await keyLeft(p), '', 'closed: the shown key is cleared');
+    // Again, type part of it back, then press Back
+    await drawer(p); await p.locator('#btn-enc-setup').click(); await p.locator('#ask-actions button', { hasText: 'Make a new key' }).click();
+    await p.waitForSelector('#rk-modal.active'); const shown2 = await p.locator('#rk-key').innerText();
+    await p.locator('#rk-written').check(); await p.locator('#btn-rk-next').click(); await p.fill('#rk-typed', shown2.slice(0, 30));
+    await p.goBack(); await p.waitForTimeout(600);
+    assert.equal(await p.locator('#rk-modal.active').count(), 0);
+    assert.equal(await keyLeft(p), '', 'Back: the typed key is cleared');
+    assert.equal(await storedId(p), id0, 'the current key is still the one in use');
+  });
+
   await test('the key stays on this phone, usable but not readable, and is never in a backup', async () => {
     const r = await p.evaluate(async () => { const db = await import('./db.js'); const k = await db.getMeta('backup_key');
       let exported = 'refused'; try { await crypto.subtle.exportKey('raw', k); exported = 'exported'; } catch {}
@@ -121,6 +148,7 @@ DATA.expenses.push({ id: 'x2', evId: 'e1', cat: 'Raw Material', head: 'Water –
     assert.match(await p3.locator('#rki-result').innerText(), /made with a different recovery key/);
     await p3.locator('#rki-modal [data-action="close-modal"]').click(); await p3.waitForTimeout(400);
     assert.equal(await snapshot(p3), keep, 'cancelled: nothing changed');
+    assert.equal(await keyLeft(p3), '', 'cancelled: the typed key is cleared');
     // a changed byte deep in the file
     const bad = path.join('test-artifacts', 'enc-tampered.cdbk'), b = fs.readFileSync(small); b[b.length - 40] ^= 1; fs.writeFileSync(bad, b);
     await p3.locator('#import-input').setInputFiles(bad); await p3.waitForSelector('#rki-modal.active');
@@ -157,6 +185,24 @@ DATA.expenses.push({ id: 'x2', evId: 'e1', cat: 'Raw Material', head: 'Water –
     await p.locator('#import-input').setInputFiles(small); await p.waitForSelector('#ask-modal.active');
     assert.equal(await p.locator('#rki-modal.active').count(), 0, 'no key prompt');
     assert.match(await p.locator('#ask-msg').innerText(), /1 events[\s\S]*Checked: complete and undamaged/);
+    await p.locator('#ask-actions button').last().click(); await p.waitForTimeout(400);
+  });
+
+  await test('replacing the key: the new key is used after it is verified, and older backups still open with the old key, which is then cleared from the page', async () => {
+    await drawer(p); await p.locator('#btn-enc-setup').click(); await p.locator('#ask-actions button', { hasText: 'Make a new key' }).click();
+    await p.waitForSelector('#rk-modal.active'); const newKey = await p.locator('#rk-key').innerText();
+    await p.locator('#rk-written').check(); await p.locator('#btn-rk-next').click();
+    await p.fill('#rk-typed', newKey); await p.locator('#btn-rk-verify').click(); await p.waitForTimeout(500);
+    assert.match(await p.locator('#toast-msg').innerText(), /New recovery key is in use[\s\S]*Keep the old key/);
+    assert.equal(await keyLeft(p), '', 'finished: no key left in the page');
+    // A backup saved with the old key: this phone now asks for it. Back first (cancel), then the old key.
+    await p.locator('#import-input').setInputFiles(small); await p.waitForSelector('#rki-modal.active');
+    await p.fill('#rki-typed', keyText); await p.goBack(); await p.waitForTimeout(600);
+    assert.equal(await keyLeft(p), '', 'Back: the typed key is cleared');
+    await p.locator('#import-input').setInputFiles(small); await p.waitForSelector('#rki-modal.active');
+    await p.fill('#rki-typed', keyText); await p.locator('#btn-rki-ok').click(); await p.waitForSelector('#ask-modal.active');
+    assert.match(await p.locator('#ask-msg').innerText(), /Checked: complete and undamaged/, 'the old backup opens with the old key');
+    assert.equal(await keyLeft(p), '', 'answered: the typed key is cleared');
     await p.locator('#ask-actions button').last().click();
   });
 
