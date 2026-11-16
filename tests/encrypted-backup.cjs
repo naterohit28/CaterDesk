@@ -57,7 +57,7 @@ DATA.expenses.push({ id: 'x2', evId: 'e1', cat: 'Raw Material', head: 'Water –
     assert.match(await p.locator('#rk-result').innerText(), /^Group 3 does not match/);
     await p.fill('#rk-typed', groups.slice(0, 13).join('-')); await p.locator('#btn-rk-verify').click();
     assert.match(await p.locator('#rk-result').innerText(), /Group 14 does not match/, 'a partial key never completes setup');
-    assert.equal(await p.evaluate(async () => (await import('./db.js')).getMeta('backup_key_id')), null, 'nothing stored yet');
+    assert.equal(await p.evaluate(async () => (await import('./db.js')).getMeta('backup_key')), null, 'nothing stored yet');
     await p.fill('#rk-typed', keyText.toLowerCase().replace(/-/g, ' ')); await p.locator('#btn-rk-verify').click(); await p.waitForTimeout(500);
     assert.match(await p.locator('#toast-msg').innerText(), /Encrypted backup is set up/);
     await drawer(p); assert.match(await p.locator('#enc-meta').innerText(), /recovery key set/);
@@ -66,7 +66,7 @@ DATA.expenses.push({ id: 'x2', evId: 'e1', cat: 'Raw Material', head: 'Water –
   // No shown or typed key is left anywhere in the page (hidden sheets included)
   const keyLeft = page => page.evaluate(() => { const el = id => document.getElementById(id);
     return el('rk-key').textContent + el('rk-typed').value + el('rki-typed').value; });
-  const storedId = page => page.evaluate(async () => (await import('./db.js')).getMeta('backup_key_id'));
+  const storedId = page => page.evaluate(async () => (await (await import('./db.js')).getMeta('backup_key'))?.id);
 
   await test('an existing key is replaced only on purpose; closing setup or pressing Back keeps the current key and leaves no key in the page', async () => {
     const id0 = await storedId(p);
@@ -91,7 +91,7 @@ DATA.expenses.push({ id: 'x2', evId: 'e1', cat: 'Raw Material', head: 'Water –
   });
 
   await test('the key stays on this phone, usable but not readable, and is never in a backup', async () => {
-    const r = await p.evaluate(async () => { const db = await import('./db.js'); const k = await db.getMeta('backup_key');
+    const r = await p.evaluate(async () => { const db = await import('./db.js'); const k = (await db.getMeta('backup_key')).key;
       let exported = 'refused'; try { await crypto.subtle.exportKey('raw', k); exported = 'exported'; } catch {}
       return { type: k?.constructor?.name, extractable: k.extractable, exported, inBackup: JSON.stringify(await db.exportAllData()).includes('backup_key') }; });
     assert.deepEqual(r, { type: 'CryptoKey', extractable: false, exported: 'refused', inBackup: false });
@@ -104,7 +104,7 @@ DATA.expenses.push({ id: 'x2', evId: 'e1', cat: 'Raw Material', head: 'Water –
     assert.equal(bytes.subarray(0, 4).toString(), 'CDBK');
     for (const secret of ['Sample Confidential Wedding', 'Sample Secret Vendor', 'Sample Paneer Tikka', '9000000001', '300000']) assert.equal(bytes.includes(Buffer.from(secret)), false, secret);
     const same = await p.evaluate(async b64 => { const c = await import('./backup-crypto.js'), db = await import('./db.js');
-      const bytes = Uint8Array.from(atob(b64), x => x.charCodeAt(0)); const json = await c.decryptBackup(await db.getMeta('backup_key'), await db.getMeta('backup_key_id'), bytes);
+      const bytes = Uint8Array.from(atob(b64), x => x.charCodeAt(0)); const json = await c.decryptBackup(...Object.values(await db.getMeta('backup_key')), bytes);
       const a = JSON.parse(json), now = await db.exportAllData(); return a.events.length === now.events.length && a.events[0].name === now.events[0].name && a.manifest.counts.events === 1; }, bytes.toString('base64'));
     assert.equal(same, true);
   });
@@ -188,9 +188,10 @@ DATA.expenses.push({ id: 'x2', evId: 'e1', cat: 'Raw Material', head: 'Water –
     await p.locator('#ask-actions button').last().click(); await p.waitForTimeout(400);
   });
 
+  let newKey;
   await test('replacing the key: the new key is used after it is verified, and older backups still open with the old key, which is then cleared from the page', async () => {
     await drawer(p); await p.locator('#btn-enc-setup').click(); await p.locator('#ask-actions button', { hasText: 'Make a new key' }).click();
-    await p.waitForSelector('#rk-modal.active'); const newKey = await p.locator('#rk-key').innerText();
+    await p.waitForSelector('#rk-modal.active'); newKey = await p.locator('#rk-key').innerText();
     await p.locator('#rk-written').check(); await p.locator('#btn-rk-next').click();
     await p.fill('#rk-typed', newKey); await p.locator('#btn-rk-verify').click(); await p.waitForTimeout(500);
     assert.match(await p.locator('#toast-msg').innerText(), /New recovery key is in use[\s\S]*Keep the old key/);
@@ -204,6 +205,54 @@ DATA.expenses.push({ id: 'x2', evId: 'e1', cat: 'Raw Material', head: 'Water –
     assert.match(await p.locator('#ask-msg').innerText(), /Checked: complete and undamaged/, 'the old backup opens with the old key');
     assert.equal(await keyLeft(p), '', 'answered: the typed key is cleared');
     await p.locator('#ask-actions button').last().click();
+  });
+
+  // Opens a saved .cdbk in the page with a typed key text; returns its keyId and whether it opened
+  const openWith = (page, file, text) => page.evaluate(async ([b64, text]) => { const c = await import('./backup-crypto.js');
+    const bytes = Uint8Array.from(atob(b64), x => x.charCodeAt(0)), raw = await c.parseRecoveryKey(text), { header } = c.readHeader(bytes);
+    try { await c.decryptBackup(await c.importBackupKey(raw), await c.keyIdOf(raw), bytes); return { keyId: header.keyId, rawId: await c.keyIdOf(raw), opened: true }; }
+    catch (e) { return { keyId: header.keyId, rawId: await c.keyIdOf(raw), opened: e.code || e.message }; } }, [fs.readFileSync(file).toString('base64'), text]);
+
+  await test('a failed or interrupted key replacement never leaves a key with another key\'s id; the key and its id are one record', async () => {
+    await p.evaluate(async d => { await (await import('./db.js')).importAllData(d, 'replace'); }, DATA);   // back to the small data set
+    await p.reload(); await p.waitForSelector('#kpi .card');
+    const before = await p.evaluate(async () => { const v = await (await import('./db.js')).getMeta('backup_key'); return { id: v.id, isKey: v.key instanceof CryptoKey, legacyId: await (await import('./db.js')).getMeta('backup_key_id') }; });
+    assert.deepEqual({ ...before, id: typeof before.id }, { id: 'string', isKey: true, legacyId: null }, 'one record holds both');
+    // The write of the new key fails (as if the app closed mid-save)
+    await p.evaluate(() => { const put = IDBObjectStore.prototype.put; window.__restorePut = () => { IDBObjectStore.prototype.put = put; };
+      IDBObjectStore.prototype.put = function (v, ...a) { if (v?.id === 'backup_key') throw new DOMException('Simulated interruption', 'AbortError'); return put.call(this, v, ...a); }; });
+    await drawer(p); await p.locator('#btn-enc-setup').click(); await p.locator('#ask-actions button', { hasText: 'Make a new key' }).click();
+    await p.waitForSelector('#rk-modal.active'); const lost = await p.locator('#rk-key').innerText();
+    await p.locator('#rk-written').check(); await p.locator('#btn-rk-next').click(); await p.fill('#rk-typed', lost); await p.locator('#btn-rk-verify').click(); await p.waitForTimeout(400);
+    assert.match(await p.locator('#rk-result').innerText(), /could not be saved[\s\S]*current key is still in use/);
+    await p.evaluate(() => window.__restorePut());
+    await p.locator('#rk-modal [data-action="close-modal"]').click(); await p.waitForTimeout(400);
+    assert.equal(await storedId(p), before.id, 'the current key and its id, unchanged');
+    // A backup made now carries the id of the key that encrypted it, and opens with that key's text
+    const f = await saveEncrypted(p), r = await openWith(p, f, newKey);
+    assert.deepEqual(r, { keyId: before.id, rawId: before.id, opened: true });
+    // Interrupted after the key is written but before a separate id write (the reported failure): a separate
+    // id write must not exist, so the replacement is whole and its backups open with the new key
+    await p.evaluate(() => { const put = IDBObjectStore.prototype.put; window.__restorePut = () => { IDBObjectStore.prototype.put = put; };
+      IDBObjectStore.prototype.put = function (v, ...a) { if (v?.id === 'backup_key_id') throw new DOMException('Simulated interruption', 'AbortError'); return put.call(this, v, ...a); }; });
+    await drawer(p); await p.locator('#btn-enc-setup').click(); await p.locator('#ask-actions button', { hasText: 'Make a new key' }).click();
+    await p.waitForSelector('#rk-modal.active'); const next = await p.locator('#rk-key').innerText();
+    await p.locator('#rk-written').check(); await p.locator('#btn-rk-next').click(); await p.fill('#rk-typed', next); await p.locator('#btn-rk-verify').click(); await p.waitForTimeout(500);
+    await p.evaluate(() => window.__restorePut());
+    if (await p.locator('#rk-modal.active').count()) { await p.locator('#rk-modal [data-action="close-modal"]').click(); await p.waitForTimeout(400); }
+    const f2 = await saveEncrypted(p), r2 = await openWith(p, f2, next);
+    assert.equal(r2.keyId, r2.rawId, 'the backup is labelled with the id of the key that encrypted it');
+    assert.equal(r2.opened, true, 'and opens with that key');
+    newKey = next;
+  });
+
+  await test('a key set up by an earlier test build (two records) is joined into one record, and its backups open with its key', async () => {
+    const legacy = await p.evaluate(async () => { const c = await import('./backup-crypto.js'), db = await import('./db.js'); const k = await c.newRecoveryKey();
+      await db.setMeta('backup_key', await c.importBackupKey(k.raw)); await db.setMeta('backup_key_id', await c.keyIdOf(k.raw)); return { text: k.text, id: await c.keyIdOf(k.raw) }; });
+    const f = await saveEncrypted(p);
+    const after = await p.evaluate(async () => { const db = await import('./db.js'), v = await db.getMeta('backup_key'); return { id: v?.id, isKey: v?.key instanceof CryptoKey, legacyId: await db.getMeta('backup_key_id') }; });
+    assert.deepEqual(after, { id: legacy.id, isKey: true, legacyId: null }, 'one record, old id record removed');
+    assert.deepEqual(await openWith(p, f, legacy.text), { keyId: legacy.id, rawId: legacy.id, opened: true });
   });
 
   assert.deepEqual(errors, []);

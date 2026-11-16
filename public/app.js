@@ -5419,7 +5419,19 @@ async function exportData() {
    back in full before it is used. This phone keeps it so it can encrypt without asking, as a key that can be used
    but not read back out. It is never in a backup, never sent anywhere, and without it nobody can open the files. */
 let rkDraft = null;
-async function backupKey() { const [key, id] = await Promise.all([getMeta('backup_key'), getMeta('backup_key_id')]); return key && id ? { key, id } : null; }
+// The key and its id are one record, written in one step, so a backup can never be labelled with another key's id
+const keyPair = v => v && v.key instanceof CryptoKey && typeof v.id === 'string' && /^[0-9a-f]{16}$/.test(v.id) ? { key: v.key, id: v.id } : null;
+async function backupKey() {
+  const v = await getMeta('backup_key');
+  if (v instanceof CryptoKey) {
+    // Set up by an earlier 4.29.0 test build as two records: join them into one, in a single transaction
+    const id = await getMeta('backup_key_id'), pair = keyPair({ key: v, id });
+    if (!pair) return null;
+    await commitChanges([{ store: 'meta', record: { id: 'backup_key', value: pair } }, { store: 'meta', id: 'backup_key_id' }]);
+    return pair;
+  }
+  return keyPair(v);
+}
 async function refreshEncMeta() {
   const k = await backupKey();
   q('enc-meta').textContent = k ? `· recovery key set (${k.id.slice(0, 4).toUpperCase()}…)` : '· not set up';
@@ -5453,8 +5465,10 @@ async function keySetupVerify() {
   const id = await keyIdOf(raw);
   if (id !== await keyIdOf(rkDraft.raw)) { q('rk-result').textContent = 'This does not match the key shown.'; return; }
   // Typed in full and identical: keep it on this phone (usable, not readable) and forget the shown copy
-  const replaced = await getMeta('backup_key_id');
-  await setMeta('backup_key', await importBackupKey(raw)); await setMeta('backup_key_id', id);
+  const replaced = (await backupKey())?.id;
+  // One record, one write: if it fails or the app closes, the current key (or none) stays complete and in use
+  try { await setMeta('backup_key', { key: await importBackupKey(raw), id }); }
+  catch (e) { q('rk-result').textContent = `The new key could not be saved (${e.message || e}). ${replaced ? 'The current key is still in use.' : 'Try again.'}`; return; }
   clearKeySetup();
   closeModals(); await refreshEncMeta();
   showToast(replaced && replaced !== id
