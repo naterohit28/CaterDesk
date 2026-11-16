@@ -44,15 +44,13 @@ WhatsApp messages require the user to send them. Contact picking, phone camera
 and native sharing depend on the device/browser and may be unavailable here.
 See the repository README for full workflows and current limitations.
 
-BUILD / PACKAGING CAVEAT
+BUILD / PACKAGING
 From the repository root in Windows PowerShell:
   .\desktop\build.ps1 -OutputDirectory C:\Temp\CaterDesk-Desktop
-  Copy-Item -LiteralPath .\public\error-reporter.js -Destination C:\Temp\CaterDesk-Desktop\app\error-reporter.js
 
-The current build helper omits error-reporter.js from its copy list, although
-index.html references it and sw.js precaches it. Include it with the command
-above: otherwise a missing-script response can prevent offline precaching.
-This is a documented workaround; the helper is unchanged by this README update.
+The build copies every file the app loads and caches for offline use
+(including backup-crypto.js and error-reporter.js); no manual copy is needed.
+tests/desktop-package.cjs checks the copy list against the app.
 
 Distribute the complete output folder (EXE, README.txt and app/) as one ZIP.
 Inspect the actual bundled version; do not relabel an old package as 4.29.0.

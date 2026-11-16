@@ -236,12 +236,9 @@ From Windows PowerShell in the repository root:
 
 ```powershell
 .\desktop\build.ps1 -OutputDirectory C:\Temp\CaterDesk-Desktop
-# Required with the current helper: index.html and sw.js reference this asset,
-# but build.ps1 does not yet include it in its copy list.
-Copy-Item -LiteralPath .\public\error-reporter.js -Destination C:\Temp\CaterDesk-Desktop\app\error-reporter.js
 ```
 
-**Current packaging limitation:** omitting `error-reporter.js` causes a missing-script response and can prevent the service worker from completing its precache. Include the file even though the reporter itself skips local hosts. This README documents the workaround; the helper has not been changed as part of this documentation update.
+The build copies every file the app loads and the service worker caches (including `backup-crypto.js` and `error-reporter.js`); no manual copy is needed. [`tests/desktop-package.cjs`](tests/desktop-package.cjs) checks the copy list against the app's imports, `index.html` and the service-worker precache, and starts a package made from that list.
 
 The helper uses the Windows .NET Framework compiler and the CaterDesk icon. Distribute the whole output directory (`CaterDesk-Desktop.exe`, `README.txt`, `app/`), preferably as a ZIP. Do not include Edge profiles, customer backups or credentials. Inspect the bundled app build before naming/publishing the ZIP.
 
@@ -326,7 +323,7 @@ Commit from this Git checkout, not the outer Downloads folder. Generated `node_m
 | Event/vendor cannot be deleted | Linked accounting history must be resolved individually; deletion guards preserve balances |
 | Forgotten PIN | Keep storage intact. Privacy-help is not a PIN bypass; restore an existing export into a separate profile if needed |
 | Desktop still shows an older build | Exit the old tray server and use a complete newly built package. Website updates do not replace desktop bundle files |
-| Desktop missing-script/offline-install error | Check `app/error-reporter.js` exists; use the documented build workaround |
+| Desktop missing-script/offline-install error | Rebuild with the current `desktop/build.ps1`; check every file listed in `sw.js` is in `app/` |
 | Desktop cannot bind port 19891 | Exit the conflicting test server normally; changing the port changes the storage origin |
 | APK update is refused | Check signer, package and increasing versionCode; do not uninstall before protecting records |
 | No hosted error logs/alerts | Confirm the Vercel function/deployment and optional environment variable; local reporting is intentionally skipped |
