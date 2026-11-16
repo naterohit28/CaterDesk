@@ -22,10 +22,12 @@ import {
 
 import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
-import { newRecoveryKey, parseRecoveryKey, differingGroups, keyIdOf, importBackupKey, encryptBackup, decryptBackup, readHeader } from './backup-crypto.js';
+import { newRecoveryKey, parseRecoveryKey, differingGroups, keyIdOf, importBackupKey, encryptBackup, decryptBackup, readHeader, checkEnds } from './backup-crypto.js';
+import * as drive from './drive-backup.js';
+import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.29.0';
+const APP_BUILD = '4.30.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -5530,6 +5532,50 @@ async function openEncrypted(bytes) {
   try { return await decryptBackup(key, header.keyId, bytes); } finally { showLoading(false); }
 }
 
+/* A backup's text (from a file or from Google Drive) → checked, previewed, then merged or replacing this phone's data.
+   Throws a plain-language reason if it is not a usable backup; nothing is changed until the owner chooses. Restoring
+   from Drive with Replace first saves a copy of this phone's current data to Downloads. */
+async function restoreText(text, { safetyCopy = false } = {}) {
+  let payload;
+  try { payload = JSON.parse(text); }
+  catch { throw new Error('This file is not a CaterDesk backup, or it is cut off. Your data was not changed.'); }
+  const info = await inspectBackup(payload);   // throws a plain-language reason; nothing is changed
+  const c = info.counts;
+  const made = info.exportedAt ? `Made ${fmtDate(info.exportedAt.slice(0, 10))}${info.appVersion ? ` · CaterDesk v${info.appVersion}` : ''}` : 'Older backup';
+  const counts = `${c.events} events · ${c.expenses} expenses · ${c.cPays} client payments · ${c.vendors} vendors · ${c.vPays} vendor payments · ${c.photos} photos`;
+  const check = info.verified ? '✓ Checked: complete and undamaged' : 'Made by an older version: it cannot be checked for damage, but every record is still validated before import.';
+  const hasData = D.events.length + D.expenses.length + D.vendors.length + D.cPays.length + D.vPays.length > 0;
+  const mode = await askSheet({
+    title: 'Import backup – आयात',
+    message: `${made}\n${counts}\n${check}\n\nMerge keeps your current data. Replace deletes it first${safetyCopy && hasData ? ' (a copy of it is saved to Downloads before anything is replaced)' : ''}.`,
+    actions: [
+      { label: 'Merge – जोडा', value: 'merge', style: 'btn-primary' },
+      { label: 'Replace all data – सर्व बदला', value: 'replace', style: 'btn-danger' }
+    ]
+  });
+  if (!mode) return false;
+
+  showLoading(true);
+  try {
+    if (mode === 'replace' && safetyCopy && hasData) {
+      // Safety copy first: if it cannot be made, nothing is replaced
+      const now = { ...await exportAllData(), prefs: backupPrefs() };
+      const stamp = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
+      const url = URL.createObjectURL(new File([JSON.stringify(now)], `caterdesk-before-restore-${stamp}.json`, { type: 'application/json' }));
+      const a = document.createElement('a'); a.href = url; a.download = `caterdesk-before-restore-${stamp}.json`; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+    const { repaired = 0 } = await importAllData(payload, mode) || {};
+    if (mode === 'replace') restorePrefs(payload.prefs);   // merge keeps this phone's settings
+    await loadAll();
+    changesChannel?.postMessage('changed');
+    go('home');
+    renderPage('home');
+    showToast(repaired ? `Imported. ${repaired} bill${repaired > 1 ? 's were' : ' was'} linked to a purchase on another event; the bill${repaired > 1 ? 's are' : ' is'} kept, the link removed. – आयात झाली` : 'Imported – आयात झाली');
+  } finally { showLoading(false); }
+  return true;
+}
+
 async function handleImport(file) {
   if (!launched || q('pin-screen').classList.contains('active')) return;
   if (!file) return;
@@ -5538,37 +5584,13 @@ async function handleImport(file) {
   const reader = new FileReader();
   reader.onload = async e => {
     try {
-      let payload, text;
+      let text;
       const bytes = new Uint8Array(e.target.result);
       if (bytes[0] === 0x43 && bytes[1] === 0x44 && bytes[2] === 0x42 && bytes[3] === 0x4b) {   // "CDBK": encrypted
         text = await openEncrypted(bytes);
         if (text === null) return;   // no key given: nothing changed
       } else text = new TextDecoder().decode(bytes);
-      try { payload = JSON.parse(text); }
-      catch { throw new Error('This file is not a CaterDesk backup, or it is cut off. Your data was not changed.'); }
-      const info = await inspectBackup(payload);   // throws a plain-language reason; nothing is changed
-      const c = info.counts;
-      const made = info.exportedAt ? `Made ${fmtDate(info.exportedAt.slice(0, 10))}${info.appVersion ? ` · CaterDesk v${info.appVersion}` : ''}` : 'Older backup';
-      const counts = `${c.events} events · ${c.expenses} expenses · ${c.cPays} client payments · ${c.vendors} vendors · ${c.vPays} vendor payments · ${c.photos} photos`;
-      const check = info.verified ? '✓ Checked: complete and undamaged' : 'Made by an older version: it cannot be checked for damage, but every record is still validated before import.';
-      const mode = await askSheet({
-        title: 'Import backup – आयात',
-        message: `${made}\n${counts}\n${check}\n\nMerge keeps your current data. Replace deletes it first.`,
-        actions: [
-          { label: 'Merge – जोडा', value: 'merge', style: 'btn-primary' },
-          { label: 'Replace all data – सर्व बदला', value: 'replace', style: 'btn-danger' }
-        ]
-      });
-      if (!mode) return;
-
-      showLoading(true);
-      const { repaired = 0 } = await importAllData(payload, mode) || {};
-      if (mode === 'replace') restorePrefs(payload.prefs);   // merge keeps this phone's settings
-      await loadAll();
-      changesChannel?.postMessage('changed');
-      go('home');
-      renderPage('home');
-      showToast(repaired ? `Imported. ${repaired} bill${repaired > 1 ? 's were' : ' was'} linked to a purchase on another event; the bill${repaired > 1 ? 's are' : ' is'} kept, the link removed. – आयात झाली` : 'Imported – आयात झाली');
+      await restoreText(text);
     } catch (err) {
       showToast(err.message || 'Import failed. Existing data was kept. – आयात अयशस्वी', 'error');
       console.error(err);
@@ -5580,11 +5602,128 @@ async function handleImport(file) {
   reader.readAsArrayBuffer(file);
 }
 
+/* ── GOOGLE DRIVE BACKUP (design D2) ── */
+/* Hidden until the owner's Google client ID is set (drive-config.js) on a registered address. The Google sign-in
+   library is loaded only when this sheet opens. Two records are kept apart: the last attempt (any result) and the
+   last verified backup; a failed attempt never changes the verified one. Drive is never read automatically. */
+const driveOn = () => drive.driveAvailable(DRIVE_CLIENT_ID, DRIVE_ORIGINS);
+let driveBusy = false;
+const mbText = n => n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.ceil(n / 1024))} KB`;
+const driveWhen = iso => { const d = new Date(iso); return `${fmtDate(localDay(d))}, ${d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}`; };
+async function refreshDriveMeta() {
+  q('btn-drive').hidden = !driveOn();
+  if (!driveOn()) return;
+  const v = await getMeta('drive_last_verified');
+  const days = v?.at ? daysSince(localDay(new Date(v.at))) : null;
+  q('drive-meta').textContent = days === null ? '· no backup yet' : days === 0 ? '· verified today' : `· verified ${days}d ago`;
+}
+async function renderDrive() {
+  const [v, a] = await Promise.all([getMeta('drive_last_verified'), getMeta('drive_last_attempt')]);
+  const lines = [drive.connected() ? 'Connected for this session.' : 'Not connected on this phone.',
+    v ? `Last verified backup: ${driveWhen(v.at)} · ${mbText(v.size)} · key ${String(v.keyId).slice(0, 4).toUpperCase()}…` : 'No verified backup on Drive yet.'];
+  if (a && !a.ok && (!v || a.at > v.at)) lines.push(`Last attempt ${driveWhen(a.at)} failed: ${a.reason}`);
+  q('drive-status').textContent = lines.join('\n');
+  q('btn-drive-connect').hidden = drive.connected();
+  q('btn-drive-disconnect').hidden = !drive.connected();
+  ['btn-drive-backup', 'btn-drive-restore', 'btn-drive-connect', 'btn-drive-disconnect'].forEach(id => { q(id).disabled = driveBusy; });
+}
+function openDrive() {
+  if (!driveOn()) return;
+  q('drive-progress').textContent = '';
+  openSheet('drive-modal');
+  renderDrive();
+  drive.loadGis().catch(() => {});   // ready before the owner taps Connect (Google opens its popup only inside a tap)
+}
+// Run Drive work, signing in first if needed (called straight from a tap). One job at a time.
+async function withDrive(job) {
+  if (driveBusy) return;
+  if (!launched || q('pin-screen').classList.contains('active')) { showToast('Unlock the app first.', 'error'); return; }
+  driveBusy = true; renderDrive();
+  try {
+    if (!drive.connected()) { q('drive-progress').textContent = 'Connecting to Google…'; await drive.loadGis(); await drive.signIn(DRIVE_CLIENT_ID); }
+    await job();
+  } catch (e) {
+    q('drive-progress').textContent = e.message || String(e);
+    if (!(e instanceof drive.DriveError) || e.code !== 'cancelled') showToast(e.message || String(e), 'error');
+    if (!(e instanceof drive.DriveError)) console.error(e);
+  } finally { driveBusy = false; renderDrive(); refreshDriveMeta(); }
+}
+const hexOf = buf => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+async function driveBackupNow() {
+  if (driveBusy) return;
+  const k = await backupKey();
+  if (!k) { closeModals(); showToast('Set up the recovery key first: Drive backups are encrypted with it.'); openKeySetup(); return; }
+  await withDrive(async () => {
+    const at = new Date().toISOString(), say = t => { q('drive-progress').textContent = t; };
+    try {
+      say('Preparing backup…');
+      const json = JSON.stringify({ ...await exportAllData(), prefs: backupPrefs() });
+      say('Encrypting…');
+      const out = await encryptBackup(k.key, k.id, json, { appVersion: APP_BUILD, createdAt: at });
+      const blob = new Blob(out.parts, { type: 'application/octet-stream' });
+      let bytes = new Uint8Array(await blob.arrayBuffer());
+      await checkEnds(k.key, k.id, bytes);   // never upload a file this key cannot open
+      const sha256 = hexOf(await crypto.subtle.digest('SHA-256', bytes)); bytes = null;
+      say('Checking Google Drive…');
+      const folder = await drive.ensureFolder();
+      if (await drive.freeSpace() < blob.size) throw new drive.DriveError('full', `Google Drive storage is full: this backup needs ${mbText(blob.size)}. Free some space in Drive; nothing was deleted.`);
+      let tag = await getMeta('drive_device');
+      if (!tag) { tag = hexOf(crypto.getRandomValues(new Uint8Array(3))); await setMeta('drive_device', tag); }
+      const d = new Date(at), pad = n => String(n).padStart(2, '0');
+      const name = `CaterDesk-backup-${localDay(d)}-${pad(d.getHours())}${pad(d.getMinutes())}-${tag}.cdbk`;
+      const file = await drive.uploadBackup(folder, blob, { name, sha256,
+        appProperties: { caterdesk: '1', format: '1', keyId: k.id, createdAt: at, appVersion: APP_BUILD },
+        onProgress: (sent, total) => say(sent < total ? `Uploading ${mbText(sent)} of ${mbText(total)}…` : 'Checking upload…') });
+      await setMeta('drive_last_verified', { at, id: file.id, name: file.name, size: file.size, keyId: k.id });
+      await setMeta('drive_last_attempt', { at, ok: true });
+      // Tidy older copies into Drive's bin; a backup that is saved and verified stays a success even if this fails
+      let moved = 0;
+      try { for (const id of drive.toPrune(await drive.listBackups(folder))) { await drive.trash(id); moved++; } } catch { /* tried again next time */ }
+      say(`Saved to Drive and verified · ${driveWhen(at)}`);
+      showToast(`Saved to Google Drive and verified (${mbText(file.size)}).${moved ? ` ${moved} older cop${moved > 1 ? 'ies' : 'y'} moved to Drive's bin.` : ''} – ड्राइव्हवर जतन`);
+    } catch (e) {
+      await setMeta('drive_last_attempt', { at, ok: false, reason: e.message || String(e) });
+      throw e;
+    }
+  });
+}
+async function driveRestore() {
+  await withDrive(async () => {
+    q('drive-progress').textContent = 'Looking for backups…';
+    const folder = await drive.ensureFolder({ create: false });
+    const files = folder ? await drive.listBackups(folder) : [];
+    if (!files.length) { q('drive-progress').textContent = 'No CaterDesk backups were found on this Google Drive.'; return; }
+    q('drive-progress').textContent = '';
+    const pick = await askSheet({ title: 'Restore from Google Drive – परत आणा',
+      message: `${files.length} backup${files.length > 1 ? 's' : ''} on Drive${files.length > 8 ? '; the 8 newest are shown' : ''}. Pick one. Nothing changes until you choose Merge or Replace.`,
+      actions: files.slice(0, 8).map((f, i) => ({ label: `${driveWhen(f.createdAt)} · ${mbText(f.size)}${f.appVersion ? ` · v${f.appVersion}` : ''}`, value: f, style: i ? 'btn-secondary' : 'btn-primary' })) });
+    if (!pick) return;
+    // The key is checked before anything is downloaded: this phone's key if it made the backup, else the typed one
+    const k = await backupKey();
+    const key = k && k.id === pick.keyId ? k.key : await askRecoveryKey(pick.keyId);
+    if (!key) return;
+    q('drive-progress').textContent = `Downloading ${mbText(pick.size)}…`;
+    const bytes = await drive.downloadBackup(pick.id, MAX_BACKUP_BYTES);
+    let text;
+    showLoading(true);
+    try { text = await decryptBackup(key, pick.keyId, bytes); } finally { showLoading(false); }
+    q('drive-progress').textContent = '';
+    await restoreText(text, { safetyCopy: true });
+  });
+}
+function driveDisconnect() {
+  drive.signOut();
+  q('drive-progress').textContent = '';
+  renderDrive();
+  showToast('Google Drive disconnected on this phone. Backups already on Drive stay there.');
+}
+
 /* ── SETTINGS PANEL ──────────────────────────────── */
 function openDrawer() {
   const days = lastExport ? daysSince(lastExport.slice(0, 10)) : null;
   q('backup-meta').textContent = days === null ? '· never' : days === 0 ? '· today' : `· ${days}d ago`;
   refreshEncMeta();
+  refreshDriveMeta();
   q('drawer').classList.add('active');
   q('drawer-toggle').setAttribute('aria-expanded', 'true');
   openOverlay(() => {
@@ -5745,6 +5884,11 @@ function bindAllEvents() {
   q('import-input').addEventListener('change', function () { handleImport(this.files[0]); });
   q('btn-export-enc').addEventListener('click', exportEncrypted);
   q('btn-enc-setup').addEventListener('click', openKeySetup);
+  q('btn-drive').addEventListener('click', () => { closeOverlay().then(openDrive); });
+  q('btn-drive-backup').addEventListener('click', driveBackupNow);
+  q('btn-drive-restore').addEventListener('click', driveRestore);
+  q('btn-drive-connect').addEventListener('click', () => withDrive(async () => { q('drive-progress').textContent = 'Connected. – जोडले'; }));
+  q('btn-drive-disconnect').addEventListener('click', driveDisconnect);
   q('rk-written').addEventListener('change', () => { q('btn-rk-next').disabled = !q('rk-written').checked; });
   q('btn-rk-next').addEventListener('click', keySetupNext);
   q('btn-rk-verify').addEventListener('click', keySetupVerify);

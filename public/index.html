@@ -117,6 +117,8 @@
       <span class="label" style="margin-top:var(--s2)">Encrypted backup – सुरक्षित बॅकअप <span class="meta" id="enc-meta" data-nl></span></span>
       <button type="button" class="d-item" id="btn-export-enc"><i data-ic="lock"></i>Save encrypted backup file – सुरक्षित बॅकअप</button>
       <button type="button" class="d-item" id="btn-enc-setup"><i data-ic="lock"></i>Set up recovery key – रिकव्हरी की</button>
+      <!-- Shown only once the owner's Google client ID is configured (drive-config.js) -->
+      <button type="button" class="d-item" id="btn-drive" hidden><i data-ic="upload"></i>Google Drive backup – ड्राइव्ह <span class="meta" id="drive-meta" data-nl></span></button>
     </div>
 
     <div class="d-group">
@@ -527,6 +529,23 @@
     </div>
     <button type="button" class="btn btn-primary" id="btn-md-sent" style="width:100%;margin-top:var(--s2)">I have sent it – keep a copy – पाठवले</button>
     <div id="md-issued"></div>
+  </div>
+</div>
+
+<!-- GOOGLE DRIVE BACKUP: encrypted on this phone, then uploaded to the owner's Drive and checked -->
+<div class="modal-ov" id="drive-modal">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="drive-mtitle">
+    <div class="s-handle"></div>
+    <div class="s-head"><div class="s-title" id="drive-mtitle">Google Drive backup – ड्राइव्ह</div><button type="button" class="icon-btn" data-action="close-modal" aria-label="Close"><i data-ic="x"></i></button></div>
+    <p class="meta">Each backup is encrypted on this phone with your recovery key, then saved in a "CaterDesk Backups" folder in your Google Drive. Google cannot read it.</p>
+    <div class="meta" id="drive-status" data-nl style="margin:var(--s3) 0"></div>
+    <div class="meta" id="drive-progress" role="status" aria-live="polite"></div>
+    <div class="s-foot" style="display:grid;gap:var(--s2)">
+      <button type="button" class="btn btn-primary" id="btn-drive-backup">Back up now – आता बॅकअप</button>
+      <button type="button" class="btn btn-secondary" id="btn-drive-restore">Restore from Drive – परत आणा</button>
+      <button type="button" class="btn btn-secondary" id="btn-drive-connect">Connect Google Drive – जोडा</button>
+      <button type="button" class="btn btn-ghost" id="btn-drive-disconnect">Disconnect – काढा</button>
+    </div>
   </div>
 </div>
 
