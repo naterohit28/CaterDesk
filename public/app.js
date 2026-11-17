@@ -12,7 +12,7 @@ import {
 
 import {
   EXPENSE_HEADS, EVENT_TYPES, VENUE_TYPES, LOGISTICS, venueTypeLabel, logisticsPrompts, venueSuggestion, PAY_MODES, PERIODS, PERIOD_SHORT, MENUS, allMenus, setSavedMenus, menusForMeal, cleanSlabs, isEditedStarter, menuById, menuRate, menuCostPerPlate, costChecklist,
-  uid, today, localDay, daysSince, fmtDate, fmtCurrency, esc,
+  uid, today, localDay, localTime, localStamp, daysSince, fmtDate, fmtCurrency, esc,
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, billSet, billingSplit, calcVendorBalance, normGstin, gstinValid, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.31.0';
+const APP_BUILD = '4.31.1';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -790,7 +790,7 @@ function rHome() {
 
   // Nudges: events with no costs recorded, and an overdue backup
   const missing = eventsMissingCosts(D.events, D.expenses);
-  const backupDays = lastExport ? daysSince(lastExport.slice(0, 10)) : null;
+  const backupDays = lastExport ? daysSince(localDay(lastExport)) : null;
   const needBackup = D.events.length && (backupDays === null || backupDays >= 7);
   q('nudges').innerHTML = deliveriesCard() + draftsCard() + payVendorsCard() + checkCostsCard() +
     (missing.length ? `
@@ -2063,7 +2063,7 @@ async function orderAction(orderId) {
   if (next === 'history') {
     const MSG = { prepared: 'Not sent yet', opened: 'WhatsApp opened (not confirmed sent)', sent: 'Sent (you confirmed)', confirmed: 'Vendor confirmed' };
     await askSheet({ title: `${short(o.head)} · messages – संदेश`,
-      message: [...o.messages].reverse().map(m => `Version ${m.v} · ${fmtDate(m.at.slice(0, 10))} ${m.at.slice(11, 16)} · ${MSG[m.status]}\n${m.text}`).join('\n\n— — —\n\n'), actions: [] });
+      message: [...o.messages].reverse().map(m => `Version ${m.v} · ${fmtDate(localDay(m.at))} ${localTime(m.at)} · ${MSG[m.status]}\n${m.text}`).join('\n\n— — —\n\n'), actions: [] });
     return;
   }
   // Marking it sent or vendor-confirmed is what clears a menu-change warning (the latest menu went out)
@@ -2132,7 +2132,7 @@ function deliveriesCard() {
           ? `<button type="button" class="btn-sm" data-action="order-status" data-id="${esc(o.id)}" data-ev="${esc(ev.id)}">${icon('message', 16)}${tr(o.menuChanged ? 'Send new menu' : 'Send order', o.menuChanged ? 'नवा मेनू पाठवा' : 'ऑर्डर पाठवा')}</button>`
           : `<button type="button" class="btn-sm" data-action="order-remind" data-id="${esc(o.id)}" data-ev="${esc(ev.id)}">${icon('message', 16)}${tr('Remind', 'आठवण')}</button>`}
         <button type="button" class="btn-sm" data-action="order-confirm" data-id="${esc(o.id)}" data-ev="${esc(ev.id)}">${icon('check', 16)}${tr('Confirmed', 'पक्के')}</button>
-        ${last ? `<span class="meta">${tr(`Reminded ${fmtDate(last.slice(0, 10))} ${last.slice(11, 16)}`, `आठवण ${fmtDate(last.slice(0, 10))}`)}</span>` : ''}
+        ${last ? `<span class="meta">${tr(`Reminded ${fmtDate(localDay(last))} ${localTime(last)}`, `आठवण ${fmtDate(localDay(last))}`)}</span>` : ''}
       </div>` : ''}`;
     }).join('')}</div>`;
 }
@@ -2301,7 +2301,7 @@ function renderQuote() {
   }
   const sup = cur.status === 'sent' && quoteSuperseded(ev, cur);
   const acceptedOther = sup === 'notchosen' ? (ev.quotes || []).find(o => o.status === 'accepted') : null;
-  const when = at => at ? fmtDate(String(at).slice(0, 10)) : '';
+  const when = at => at ? fmtDate(localDay(at)) : '';
   q('quote-body').innerHTML = `
     <div class="list" style="padding:0">${t.lines.map(l => `<div class="row" style="min-height:44px"><div class="row-body"><div class="title-sm">${l.kind === 'meal' ? MEALS[l.meal] : esc(l.label)}</div>
       ${l.kind === 'meal' ? `<div class="meta">${l.guests} × ${fmtCurrency(l.rate)}</div>` : ''}</div><div class="amt-sm">${l.kind === 'discount' ? '−' : ''}${fmtCurrency(Math.abs(l.total))}</div></div>`).join('')}</div>
@@ -3003,7 +3003,7 @@ function quoteDocHtml(ev, qt, profile) {
   const totals = t.gstP
     ? line('Subtotal', '', fmtCurrency(t.total), 'pd-sub') + line(`GST @ ${qt.gst.rate}% on ${fmtCurrency(qt.gst.taxable)}`, '', fmtCurrency(t.gst), 'pd-sub') + line('<b>Total</b>', '', `<b>${fmtCurrency(t.grand)}</b>`, 'pd-total')
     : line('<b>Total</b> <span class="pd-muted">(before any applicable GST)</span>', '', `<b>${fmtCurrency(t.total)}</b>`, 'pd-total');
-  const when = String(qt.sentAt || qt.at || new Date().toISOString()).slice(0, 10);
+  const when = qt.sentAt || qt.at ? localDay(qt.sentAt || qt.at) : today();
   return `<div class="pd">
     ${qt.status === 'draft' ? '<div class="pd-draft">DRAFT – not yet sent to the client</div>' : ''}
     ${qt.status !== 'draft' && !qt.snap ? '<div class="pd-draft pd-rebuilt">Rebuilt from current data: this quotation was sent before CaterDesk kept copies, so details may differ from what was sent.</div>' : ''}
@@ -3047,7 +3047,7 @@ function renderSettle() {
   const row = (l, v, cls = '') => `<div style="display:flex;justify-content:space-between;gap:var(--s2);margin-top:6px"><span class="meta">${l}</span><span class="amt-sm ${cls}">${v}</span></div>`;
   q('settle-body').innerHTML = `
     ${st.changes.length ? row(tr('Bill as agreed', 'मूळ बिल'), fmtCurrency(st.original)) : ''}
-    ${st.changes.map(c => row(`${c.kind ? SETTLE_KINDS[c.kind][0] : tr('Change', 'बदल')} · <span data-nl>${esc(c.reason)}</span> · ${fmtDate(String(c.at).slice(0, 10))}${c.ack ? ` · ${c.ack === 'none' ? tr('client not acknowledged', 'ग्राहकाची संमती नाही') : tr(`client ${c.ack}`, c.ack)}` : ''}`,
+    ${st.changes.map(c => row(`${c.kind ? SETTLE_KINDS[c.kind][0] : tr('Change', 'बदल')} · <span data-nl>${esc(c.reason)}</span> · ${fmtDate(localDay(c.at))}${c.ack ? ` · ${c.ack === 'none' ? tr('client not acknowledged', 'ग्राहकाची संमती नाही') : tr(`client ${c.ack}`, c.ack)}` : ''}`,
       `${c.to >= c.from ? '+' : '−'}${fmtCurrency(Math.abs(c.to - c.from))}`)).join('')}
     ${st.gst ? row(tr('Bill (before GST)', 'बिल (जीएसटीशिवाय)'), fmtCurrency(ev.billing)) + row(tr(`GST ${ev.gst.rate}%`, 'जीएसटी'), fmtCurrency(st.gst)) : ''}
     ${row(st.gst ? tr('Client pays', 'ग्राहकाने द्यायचे') : tr('Bill now', 'आताचे बिल'), fmtCurrency(st.billed))}
@@ -3123,7 +3123,7 @@ function renderCount() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const keys = countKeys(ev), k = countMeal, s = guestCountStatus(ev, k);
   q('count-meals').innerHTML = keys.length > 1 ? keys.map(m => `<button type="button" class="f-chip" data-count-meal="${m}" aria-pressed="${m === k}">${MEALS[m]}</button>`).join('') : '';
-  const fmtAt = at => `${fmtDate(at.slice(0, 10))} ${at.slice(11, 16)}`;
+  const fmtAt = at => `${fmtDate(localDay(at))} ${localTime(at)}`;
   const reqRows = s.requests.map(r => `<div class="meta" style="margin-top:6px" data-req="${esc(r.id)}">
     ${tr(`Asked ${r.qty} extra @ ${fmtCurrency(r.rate)} on ${fmtAt(r.at)}`, `${r.qty} जास्त @ ${fmtCurrency(r.rate)} विचारले`)}${r.forOlderCount ? ` · <span class="due">${tr('made for an earlier count', 'आधीच्या मोजणीसाठी')}</span>` : ''}
     ${r.status === 'requested'
@@ -3429,7 +3429,7 @@ function reconHistoryList(ev) {
     ? tr(`Reconciled · costs ${fmtCurrency((e.costPaise || 0) / 100)} · bill ${fmtCurrency((e.billPaise || 0) / 100)}`, `जुळवले · खर्च ${fmtCurrency((e.costPaise || 0) / 100)}`)
     : (e.changes?.length ? tr('Reopened: ', 'पुन्हा उघडले: ') + e.changes.map(changeText).join(', ') : tr('Reopened by you', 'तुम्ही पुन्हा उघडले'));
   return `<details style="margin-top:var(--s3)"><summary class="meta" style="cursor:pointer">${tr(`History (${h.length})`, `इतिहास (${h.length})`)}</summary>
-    ${[...h].reverse().map(e => `<div class="meta" style="margin-top:4px">${fmtDate(String(e.at || '').slice(0, 10))} · ${line(e)}</div>`).join('')}</details>`;
+    ${[...h].reverse().map(e => `<div class="meta" style="margin-top:4px">${fmtDate(e.at ? localDay(e.at) : '')} · ${line(e)}</div>`).join('')}</details>`;
 }
 
 function reconCard(ev, recon) {
@@ -3437,14 +3437,14 @@ function reconCard(ev, recon) {
   const head = (chip, text) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:var(--s2)">${chip}${text}</div>`;
   if (recon.state === 'reconciled') return `<div class="card pad" id="recon-card">
     ${head(`<span class="chip pos">${tr('Reconciled', 'जुळवले')}</span>`, `<button type="button" class="btn-sm" data-action="recon-reopen">${tr('Reopen', 'पुन्हा उघडा')}</button>`)}
-    <div class="meta" style="margin-top:var(--s2)">${tr(`All costs confirmed on ${fmtDate(String(recon.at).slice(0, 10))}. This contribution is final for the event (before overheads).`, `${fmtDate(String(recon.at).slice(0, 10))} रोजी सर्व खर्च निश्चित. हे योगदान अंतिम आहे.`)}</div>
+    <div class="meta" style="margin-top:var(--s2)">${tr(`All costs confirmed on ${fmtDate(localDay(recon.at))}. This contribution is final for the event (before overheads).`, `${fmtDate(localDay(recon.at))} रोजी सर्व खर्च निश्चित. हे योगदान अंतिम आहे.`)}</div>
     ${reconHistoryList(ev)}</div>`;
   const reopened = recon.state === 'reopened';
   return `<div class="card pad" id="recon-card">
     ${head(`<span class="chip ${reopened ? 'neg' : 'due'}">${reopened ? tr('Changed after reconciling', 'जुळवल्यानंतर बदल') : tr('Costs pending', 'खर्च बाकी')}</span>`,
       `<button type="button" class="btn-sm" data-action="recon-open">${reopened ? tr('Review', 'तपासा') : tr('Reconcile', 'जुळवा')}</button>`)}
     <div class="meta" style="margin-top:var(--s2)">${reopened
-      ? `${recon.changes.map(changeText).join(' · ')} · ${tr(`since you reconciled on ${fmtDate(String(recon.at).slice(0, 10))}. The contribution is provisional again until you review it.`, 'पुन्हा तपासेपर्यंत योगदान अंदाजे.')}`
+      ? `${recon.changes.map(changeText).join(' · ')} · ${tr(`since you reconciled on ${fmtDate(localDay(recon.at))}. The contribution is provisional again until you review it.`, 'पुन्हा तपासेपर्यंत योगदान अंदाजे.')}`
       : tr('The contribution is provisional until you confirm every bill is in. Unpaid bills count as costs.', 'सर्व बिले आल्याचे निश्चित करेपर्यंत योगदान अंदाजे आहे. न भरलेली बिलेही खर्चच.')}</div>
     ${reconHistoryList(ev)}</div>`;
 }
@@ -5496,7 +5496,7 @@ async function exportEncrypted(target = 'phone') {
   try {
     const json = JSON.stringify({ ...await exportAllData(), prefs: backupPrefs() });
     const out = await encryptBackup(k.key, k.id, json, { appVersion: APP_BUILD });
-    const stamp = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
+    const stamp = localStamp();
     file = target === 'drive'
       ? new File(out.parts, `caterdesk-backup-${stamp}.cdbk.txt`, { type: 'text/plain' })
       : new File(out.parts, `caterdesk-backup-${stamp}.cdbk`, { type: 'application/octet-stream' });
@@ -5561,7 +5561,7 @@ async function safetyCopyFirst() {
   const records = Object.values(now.manifest?.counts || {}).reduce((n, c) => n + (Number(c) || 0), 0);
   const profile = typeof now.prefs.ffv2_profile === 'string' && now.prefs.ffv2_profile.trim() && now.prefs.ffv2_profile.trim() !== '{}';
   if (!records && !profile) return true;   // nothing on this phone that Replace would remove
-  const stamp = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
+  const stamp = localStamp();
   const name = `caterdesk-before-restore-${stamp}.json`;
   const what = [records ? `${records} record${records > 1 ? 's' : ''}` : '', profile ? 'business details' : ''].filter(Boolean).join(' and ');
   if (!await askSheet({ title: 'First, save a copy of this phone\'s data – आधी प्रत',
@@ -5589,7 +5589,7 @@ async function restoreText(text, { safetyCopy = false } = {}) {
   catch { throw new Error('This file is not a CaterDesk backup, or it is cut off. Your data was not changed.'); }
   const info = await inspectBackup(payload);   // throws a plain-language reason; nothing is changed
   const c = info.counts;
-  const made = info.exportedAt ? `Made ${fmtDate(info.exportedAt.slice(0, 10))}${info.appVersion ? ` · CaterDesk v${info.appVersion}` : ''}` : 'Older backup';
+  const made = info.exportedAt ? `Made ${fmtDate(localDay(info.exportedAt))}${info.appVersion ? ` · CaterDesk v${info.appVersion}` : ''}` : 'Older backup';
   const counts = `${c.events} events · ${c.expenses} expenses · ${c.cPays} client payments · ${c.vendors} vendors · ${c.vPays} vendor payments · ${c.photos} photos`;
   const check = info.verified ? '✓ Checked: complete and undamaged' : 'Made by an older version: it cannot be checked for damage, but every record is still validated before import.';
   const mode = await askSheet({
@@ -5763,7 +5763,7 @@ function driveDisconnect() {
 
 /* ── SETTINGS PANEL ──────────────────────────────── */
 function openDrawer() {
-  const days = lastExport ? daysSince(lastExport.slice(0, 10)) : null;
+  const days = lastExport ? daysSince(localDay(lastExport)) : null;
   q('backup-meta').textContent = days === null ? '· never' : days === 0 ? '· today' : `· ${days}d ago`;
   refreshEncMeta();
   refreshDriveMeta();

@@ -764,9 +764,20 @@ export function today() {
 // The local calendar day (YYYY-MM-DD) of a saved timestamp. Timestamps are kept in UTC, so cutting the text would give
 // the previous day for anything saved before 05:30 in India.
 export function localDay(ts) {
+  if (typeof ts === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(ts)) return ts;   // already a calendar day: keep it as written
   const d = new Date(ts);
   if (isNaN(d)) return String(ts ?? '').slice(0, 10);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// The local clock time (HH:MM) of a saved timestamp; '' if it is not a time.
+export function localTime(ts) {
+  const d = new Date(ts);
+  return isNaN(d) ? '' : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+// Local date and time for file names: YYYY-MM-DD-HHMM.
+export function localStamp(d = new Date()) {
+  return `${localDay(d)}-${localTime(d).replace(':', '')}`;
 }
 
 export function daysSince(d) {
