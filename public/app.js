@@ -7,24 +7,27 @@
 import {
   getAll, putOne, putChecked, commitChanges, deleteOne, getMeta, setMeta,
   savePhoto, saveEventPhotos, getPhotosForEvent, deletePhoto, saveBill, getBillsForExpense,
-  exportAllData, importAllData, inspectBackup, checkAndMigrate, migrateLegacyMenus
+  exportAllData, importAllData, inspectBackup, checkAndMigrate, migrateLegacyMenus, withoutPurchaseLink, REPAIR_REASONS
 } from './db.js';
 
 import {
   EXPENSE_HEADS, EVENT_TYPES, VENUE_TYPES, LOGISTICS, venueTypeLabel, logisticsPrompts, venueSuggestion, PAY_MODES, PERIODS, PERIOD_SHORT, MENUS, allMenus, setSavedMenus, menusForMeal, cleanSlabs, isEditedStarter, menuById, menuRate, menuCostPerPlate, costChecklist,
-  uid, today, daysSince, fmtDate, fmtCurrency, esc,
+  uid, today, localDay, localTime, localStamp, daysSince, fmtDate, fmtCurrency, esc,
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
-  calcEventReceived, calcEventPL, toPaise, calcVendorBalance, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
+  calcEventReceived, calcEventPL, toPaise, billSet, billingSplit, calcVendorBalance, normGstin, gstinValid, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, learnedDishes, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, learnedDishes, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
 import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
+import { newRecoveryKey, parseRecoveryKey, differingGroups, keyIdOf, importBackupKey, encryptBackup, decryptBackup, readHeader, checkEnds } from './backup-crypto.js';
+import * as drive from './drive-backup.js';
+import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.23.0';
+const APP_BUILD = '4.31.1';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -56,7 +59,7 @@ let lbOnDelete = null;            // what the lightbox Delete button does for th
 let expWork = { id: '', bills: [], added: [], removed: [], saved: false };
 
 // List filters (kept while the app is open)
-const F = { evQ: '', ev: 'all', expQ: '', exp: 'all', expEv: '', venQ: '' };
+const F = { evQ: '', ev: 'all', expQ: '', exp: 'all', expEv: '', venQ: '', ven: 'all', venSort: 'pay' };
 let period = 'all';
 
 /* ── SMALL HELPERS ───────────────────────────────── */
@@ -101,6 +104,10 @@ function editedRecord(base, fields, drop = []) {
   for (const k of drop) delete record[k];
   delete record._rev;   // the database assigns the next revision
   return record;
+}
+
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); showToast('Copied – कॉपी केले'); } catch { showToast('Could not copy – कॉपी झाले नाही', 'error'); }
 }
 
 function readPref(key, fallback) {
@@ -150,6 +157,7 @@ window.addEventListener('ffdb-update-needed', () => showToast('A storage update 
 window.addEventListener('pageshow', syncOverlayAccessibility);
 window.addEventListener('focus', syncOverlayAccessibility);
 window.addEventListener('ff-migration-error', e => showToast('Legacy data could not be migrated. Originals were kept. ' + e.detail, 'error'));
+window.addEventListener('ff-link-repair', e => showToast(`${e.detail} bill${e.detail > 1 ? 's were' : ' was'} linked to a purchase on another event. The link was removed; the bill, amount and photos are unchanged. Open the bill to see the note.`, 'error'));
 window.addEventListener('unhandledrejection', e => {
   e.preventDefault(); console.error(e.reason); showLoading(false);
   showToast(e.reason?.message || 'Operation failed. Your data has not been confirmed saved.', 'error');
@@ -189,6 +197,7 @@ async function boot() {
   initLang();
   syncSettingsUI();
   period = readPref('ffv2_period', 'all');
+  { const s = readPref('ffv2_ven_sort', 'pay'); F.venSort = typeof s === 'string' && Object.hasOwn(VEN_SORTS, s) ? s : 'pay'; }
   if (!PERIODS[period]) period = 'all';
   // Storage normally opens in well under a second. If it hasn't after 4s, an older copy
   // of the app is holding it (the browser only signals "blocked" to the first waiter),
@@ -588,10 +597,11 @@ function closeOverlay() {
     const finish = () => {
       if (done) return; done = true; clearTimeout(timer);
       const index = popWaiters.indexOf(finish); if (index >= 0) popWaiters.splice(index, 1);
-      if (history.state?.overlay) history.replaceState({ tab: CT, ref: curRef, depth: 0 }, '');
       o.after?.(); syncOverlayAccessibility(); res();
     };
-    const timer = setTimeout(finish, 600);
+    // A slow phone: the Back has not arrived in time. Carry on; when it lands it only takes history back to the
+    // page already shown (the entry keeps its real depth; it is never rewritten as the root).
+    const timer = setTimeout(() => { if (!done) lateBacks++; finish(); }, 600);
     popWaiters.push(finish);
     history.back();
   });
@@ -602,14 +612,24 @@ function dropOverlays() {
   while (overlays.length) { const o = overlays.pop(); o.hide(); o.after?.(); }
 }
 
+let lateBacks = 0;              // Backs of sheets already closed, still to arrive (slow phones)
+let homeUnwind = false, homeTimer = 0;
 function onPopState(e) {
   if (popWaiters.length) { popWaiters.shift()(); return; }
+  // A late Back of a sheet already closed: history has now caught up with the page shown; nothing else to do
+  if (lateBacks > 0) { lateBacks--; return; }
+  // Unwinding to Home: whatever entry this lands on becomes the root again, and Home stays shown
+  if (homeUnwind) { homeUnwind = false; clearTimeout(homeTimer); settleHome(); return; }
   if (overlays.length) { const o = overlays.pop(); o.hide(); o.after?.(); return; }
   const st = e.state;
   if (st?.overlay) { history.back(); return; }   // stale entry reached via Forward
   restorePage(st || { tab: 'home', ref: null });
 }
 
+function settleHome() {
+  if (history.state?.tab !== 'home' || history.state?.depth || history.state?.overlay) history.replaceState({ tab: 'home', ref: null, depth: 0 }, '');
+  if (CT !== 'home') go('home', { fromHistory: true });
+}
 function restorePage(st) {
   if (st.tab === 'evdetail' && st.ref)       showEvDetail(st.ref, { fromHistory: true });
   else if (st.tab === 'vendetail' && st.ref) showVenDetail(st.ref, { fromHistory: true });
@@ -640,9 +660,15 @@ function go(id, { ref = null, fromHistory = false } = {}) {
     const st = history.state || { depth: 0 };
     const depth = st.depth || 0;
     if (id === 'home' && depth > 0) {
-      // Home is the root: unwind to it so Back from Home exits, like a native app
+      // Home is the root: unwind to it so Back from Home exits, like a native app. Home shows now (and is remembered)
+      // without waiting for history; if the unwinding lands nowhere (depth miscounted), the entry is made the root.
       dropOverlays();
-      history.go(-depth);
+      homeUnwind = true; clearTimeout(homeTimer);
+      homeTimer = setTimeout(() => { if (homeUnwind) { homeUnwind = false; settleHome(); } }, 700);
+      go('home', { fromHistory: true });
+      // Late Backs still on their way take history part of the way; unwinding the rest must not go past the start
+      const steps = depth - lateBacks;
+      if (steps > 0) history.go(-steps);
       return;
     }
     const entry = { tab: id, ref };
@@ -729,16 +755,16 @@ function periodLabel() {
 function rHome() {
   renderPeriodSegs();
   const P = sliceByPeriod(D, period);
-  const tb = sumRupees(P.events, e => e.billing);
-  const te = sumRupees(P.expenses);
-  const rc = sumRupees(P.cPays);
-  const profit  = (Math.round(tb * 100) - Math.round(te * 100)) / 100;
+  // Contribution, margin and what is still owed: events with a bill only (billingSplit). Costs of events without a
+  // bill are shown apart as awaiting billing; their advances stay in Received.
+  const bs = billingSplit(P.events, P.expenses, P.cPays);
+  const tb = bs.billP / 100, te = bs.expP / 100, rc = bs.recP / 100, profit = bs.contribP / 100;
   const done = reconciledIds(P.events, P.expenses);
   const provisional = P.events.filter(e => !done.has(e.id)).length;
-  const due = sumRupees(P.events, e => clientDue(e));   // what clients pay, GST included where recorded
-  const pending = Math.max(0, due - rc);
-  const margin  = tb > 0 ? Math.round(profit / tb * 100) : 0;
-  const collected = due > 0 ? Math.min(100, rc / due * 100) : 0;
+  const noBill = bs.unbilled;
+  const pending = bs.pendingP / 100;
+  const margin  = bs.margin ?? 0;
+  const collected = bs.dueP > 0 ? Math.min(100, (bs.recP - bs.advP) / bs.dueP * 100) : 0;
   const pl = periodLabel();
 
   q('kpi').innerHTML = `
@@ -746,14 +772,15 @@ function rHome() {
       <div class="label">${tr(`Event contribution · ${pl.en}`, `कार्यक्रम योगदान · ${pl.mr}`)}</div>
       <div class="amt-xl ${profit < 0 ? 'neg' : ''}" style="margin-top:4px">${fmtCurrency(profit)}</div>
       <div class="hero-sub">${P.events.length ? tr(
-        `${margin}% margin on ${fmtCurrency(tb)} billed · ${P.events.length} event${P.events.length > 1 ? 's' : ''}${provisional ? ` · ${provisional} provisional` : ''}`,
-        `${fmtCurrency(tb)} बिलावर ${margin}% मार्जिन · ${P.events.length} कार्यक्रम${provisional ? ` · ${provisional} अंदाजे` : ''}`)
+        `${margin}% margin on ${fmtCurrency(tb)} billed · ${P.events.length} event${P.events.length > 1 ? 's' : ''}${provisional ? ` · ${provisional} provisional` : ''}${noBill ? ` · ${noBill} without a bill yet` : ''}`,
+        `${fmtCurrency(tb)} बिलावर ${margin}% मार्जिन · ${P.events.length} कार्यक्रम${provisional ? ` · ${provisional} अंदाजे` : ''}${noBill ? ` · ${noBill} बिलाशिवाय` : ''}`)
         : tr('No events in this period', 'या कालावधीत कार्यक्रम नाहीत')}</div>
       <div class="metrics">
         <div class="metric"><div class="label">Received – मिळाले</div><div class="amt-md pos">${fmtCurrency(rc)}</div></div>
         <div class="metric"><div class="label">Pending – बाकी</div><div class="amt-md ${pending > 0 ? 'due' : 'muted'}">${fmtCurrency(pending)}</div></div>
         <div class="metric"><div class="label">Expenses – खर्च</div><div class="amt-md">${fmtCurrency(te)}</div></div>
       </div>
+      ${noBill ? `<div class="meta" id="kpi-awaiting" style="margin-top:var(--s2)">${tr(`${fmtCurrency(bs.awaitP / 100)} of costs and ${fmtCurrency(bs.advP / 100)} received are on ${noBill} event${noBill > 1 ? 's' : ''} without a bill yet: not in contribution or pending until the bill is set.`, `बिल नसलेल्या ${noBill} कार्यक्रमांचा खर्च ${fmtCurrency(bs.awaitP / 100)} योगदानात नाही.`)}</div>` : ''}
       <div class="prog" style="margin-top:var(--s4)" aria-label="Collected ${Math.round(collected)}%"><span style="width:${collected}%"></span></div>
       <div class="meta" style="margin-top:6px">${tr(`${Math.round(collected)}% of billing collected`, `बिलाच्या ${Math.round(collected)}% वसुली`)}</div>
     </div>
@@ -763,7 +790,7 @@ function rHome() {
 
   // Nudges: events with no costs recorded, and an overdue backup
   const missing = eventsMissingCosts(D.events, D.expenses);
-  const backupDays = lastExport ? daysSince(lastExport.slice(0, 10)) : null;
+  const backupDays = lastExport ? daysSince(localDay(lastExport)) : null;
   const needBackup = D.events.length && (backupDays === null || backupDays >= 7);
   q('nudges').innerHTML = deliveriesCard() + draftsCard() + payVendorsCard() + checkCostsCard() +
     (missing.length ? `
@@ -803,6 +830,9 @@ function rHome() {
     .map(e => { const s = paymentSchedule(e, D.cPays); return { ...e, _p: s.outstanding, _late: s.overdue > 0, _due: s.dueNow, _od: s.overdue, _sched: s.scheduled }; })
     .filter(e => e._p > 0)
     .sort((a, b) => (b._late - a._late) || (b._p - a._p));
+  // The total still to collect, beside the heading (the sum of the amounts listed below)
+  const odTotal = od.reduce((s, e) => s + toPaise(e._p), 0) / 100;
+  q('od-total').textContent = odTotal ? fmtCurrency(odTotal) : ''; q('od-total').hidden = !odTotal;
 
   q('od-list').innerHTML = od.length ? `<div class="card list">${od.map(e => `
     <div class="row" role="button" tabindex="0" data-action="evdetail" data-id="${esc(e.id)}">
@@ -938,7 +968,7 @@ function draftsCard() {
 function eventStatus(ev) {
   const { received: rec, pending: pend } = calcEventPL(ev, D.cPays, D.expenses);
   const noCosts = isOverdue(ev) && !ev.outsourced && !D.expenses.some(x => x.evId === ev.id);
-  return { rec, pend, noCosts, overdue: paymentSchedule(ev, D.cPays).overdue > 0, noBill: clientDueP(ev) === 0 };   // no bill yet: not "paid"
+  return { rec, pend, noCosts, overdue: paymentSchedule(ev, D.cPays).overdue > 0, noBill: !billSet(ev) };   // no bill yet: not "paid" (a bill waived to ₹0 at settlement is a known bill)
 }
 
 function eventCard(ev) {
@@ -1091,10 +1121,10 @@ function receiptLink(ev, p) {
     + `Received: ${fmtCurrency(p.amt)} on ${fmtDate(p.date)} by ${mode}${p.notes ? ' · ' + p.notes : ''}
 
 `
-    + `Total bill: ${fmtCurrency(ev.billing)}
+    + `Total bill: ${billSet(ev) ? fmtCurrency(ev.billing) : 'to be confirmed'}
 Paid so far: ${fmtCurrency(received)}
 `
-    + (left ? `Balance: ${fmtCurrency(left)}` : `Fully paid – thank you!`) + `
+    + (!billSet(ev) ? `Received as an advance; the balance follows once the bill is confirmed.` : left ? `Balance: ${fmtCurrency(left)}` : `Fully paid – thank you!`) + `
 
 Thank you!
 
@@ -1155,9 +1185,9 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
 
     <div class="card pad">
       <div class="metrics" style="margin:0;padding:0;border:0">
-        <div class="metric"><div class="label">Bill – बिल</div><div class="amt-md">${fmtCurrency(ev.billing)}</div>${ev.gst?.amount ? `<div class="meta" id="ev-gst">${tr(`+ GST ${fmtCurrency(ev.gst.amount)}`, `+ जीएसटी ${fmtCurrency(ev.gst.amount)}`)}</div>` : ''}</div>
+        <div class="metric"><div class="label">Bill – बिल</div>${billSet(ev) ? `<div class="amt-md">${fmtCurrency(ev.billing)}</div>` : `<div class="amt-md muted" id="ev-bill-unset">${tr('Not set', 'ठरले नाही')}</div>`}${ev.gst?.amount ? `<div class="meta" id="ev-gst">${billSet(ev) ? tr(`+ GST ${fmtCurrency(ev.gst.amount)}`, `+ जीएसटी ${fmtCurrency(ev.gst.amount)}`) : tr(`GST ${fmtCurrency(ev.gst.amount)} on record, not due until the bill is set`, `जीएसटी ${fmtCurrency(ev.gst.amount)} नोंद; बिल ठरल्यावर देय`)}</div>` : ''}</div>
         <div class="metric"><div class="label">Received – मिळाले</div><div class="amt-md pos">${fmtCurrency(rec)}</div></div>
-        <div class="metric"><div class="label">Pending – बाकी</div><div class="amt-md ${pend > 0 ? (pendingOverdue(ev) ? 'neg' : 'due') : 'muted'}" id="ev-pending">${fmtCurrency(Math.max(0, pend))}</div></div>
+        <div class="metric"><div class="label">Pending – बाकी</div><div class="amt-md ${pend > 0 ? (pendingOverdue(ev) ? 'neg' : 'due') : 'muted'}" id="ev-pending">${billSet(ev) ? fmtCurrency(Math.max(0, pend)) : '—'}</div></div>
       </div>
       ${rec > 0 ? `<div class="prog" style="margin-top:var(--s3)" aria-label="Collected ${pct}%"><span style="width:${pct}%"></span></div>
       <div class="meta" style="margin-top:6px" id="ev-collected">${tr(`${Math.round(pct)}% of ${ev.gst?.amount ? `${fmtCurrency(clientDue(ev))} (incl. GST)` : 'the bill'} collected`, `बिलाच्या ${Math.round(pct)}% वसुली`)}</div>` : ''}
@@ -1169,7 +1199,7 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
       ${eventTools(ev)}
       <div class="metrics">
         <div class="metric"><div class="label">Expenses – खर्च</div><div class="amt-md">${fmtCurrency(exTot)}</div></div>
-        <div class="metric"><div class="label">${contributionLabel(ev, recon)}</div><div class="amt-md ${noCosts ? 'muted' : profit >= 0 ? 'pos' : 'neg'}">${fmtCurrency(profit)}</div></div>
+        <div class="metric"><div class="label">${contributionLabel(ev, recon)}</div>${billSet(ev) ? `<div class="amt-md ${noCosts ? 'muted' : profit >= 0 ? 'pos' : 'neg'}">${fmtCurrency(profit)}</div>` : `<div class="amt-md muted" id="ev-contrib-unset">—</div><div class="meta">${tr('bill not set', 'बिल ठरले नाही')}</div>`}</div>
         <div class="metric"><div class="label">Margin – मार्जिन</div><div class="amt-md ${noCosts ? 'muted' : profit >= 0 ? 'pos' : 'neg'}">${ev.billing > 0 ? margin + '%' : '—'}</div></div>
       </div>
       ${ev.outsourced ? '' : costingBlock(plFull, noCosts)}
@@ -1227,7 +1257,8 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
     <div class="card pad">
       <div class="photo-strip">
         ${photos.map(p => `<img class="photo-thumb" src="${esc(p.data)}" loading="lazy" alt="Event photo" role="button" tabindex="0" data-action="lightbox" data-photoid="${esc(p.id)}" data-evid="${esc(id)}">`).join('')}
-        <button type="button" class="photo-add" data-action="add-photo" data-id="${esc(id)}">${icon('camera', 22)}Add – जोडा</button>
+        <button type="button" class="photo-add" data-action="add-photo-cam" data-id="${esc(id)}">${icon('camera', 22)}<span class="t-en">Camera</span><span class="t-mr">कॅमेरा</span></button>
+        <button type="button" class="photo-add" data-action="add-photo" data-id="${esc(id)}">${icon('image', 22)}<span class="t-en">Gallery</span><span class="t-mr">गॅलरी</span></button>
       </div>
     </div>
   `;
@@ -1484,10 +1515,66 @@ function dishGroups(ev) {
   const groups = new Map();
   for (const d of ev.dishes || []) {
     if (isUnassigned(ev, d)) continue;   // its meal is no longer in the event: nothing is ordered for it
+    if (d.src) continue;                 // bought: under To buy, not the kitchen or a counter
     if (!groups.has(d.head || '')) groups.set(d.head || '', []);
     groups.get(d.head || '').push(d.name);
   }
   return groups;
+}
+
+/* Orders go to a counter for one meal: when two meals (or two dinners) use the same counter, each gets its own order,
+   with that meal's dishes, date and time. An event with one meal (or none) works as before. An order saved before
+   orders had a meal belongs to its counter's row when that counter serves only one meal; otherwise it is listed as an
+   older order for all meals. */
+function counterRows(ev) {
+  if (ev.outsourced) { const g = dishGroups(ev); return g.size ? [{ key: OUT_HEAD, head: OUT_HEAD, svcId: '', label: '', names: g.get(OUT_HEAD), dishes: (ev.dishes || []).filter(d => !isUnassigned(ev, d)) }] : []; }
+  const all = eventServices(ev).services, many = all.length > 1, rows = [];
+  for (const s of all) {
+    const g = new Map();
+    for (const d of s.dishes) { if (d.preview || !d.head) continue; if (!g.has(d.head)) g.set(d.head, []); g.get(d.head).push(d); }
+    for (const [head, ds] of g) rows.push({ key: many ? `${s.id}|${head}` : head, head, svcId: many ? s.id : '', svc: s, label: many ? svcLabel(ev, s, all) : '', names: ds.map(d => d.name), dishes: ds });
+  }
+  return rows;
+}
+function rowOf(ev, o, rows = counterRows(ev)) {
+  if (o.svc) return rows.find(r => r.head === o.head && (r.svcId === o.svc || (!r.svcId && r.svc?.id === o.svc))) || null;
+  const same = rows.filter(r => r.head === o.head);
+  return same.length === 1 ? same[0] : null;
+}
+// The dishes an order covers: its meal's dishes for that counter (an older order: the counter's dishes at every meal)
+function orderItems(ev, o) {
+  const r = rowOf(ev, o); if (r) return r.names;
+  return o.svc ? [] : dishGroups(ev).get(o.head) || [];
+}
+// The dishes an order covers, with what matters to the vendor and the client: food type and diet marks
+function orderDishes(ev, o) {
+  const r = rowOf(ev, o); if (r) return r.dishes;
+  return o.svc ? [] : (ev.dishes || []).filter(d => (d.head || '') === o.head && !isUnassigned(ev, d));
+}
+/* Orders already with a vendor whose dishes changed between two versions of the event: a dish added or removed, or
+   its food type (veg → non-veg) or diet marks (Jain…) changed, or it moved to another meal (an older order covers
+   every meal). Nothing is re-sent; the order is flagged. */
+function ordersHit(before, after) {
+  const key = (e, o) => orderDishes(e, o).map(d => JSON.stringify([String(d.name).trim().toLowerCase(), d.meal || '', d.type || '', (d.diet || []).join()])).sort().join('\n');
+  return (before.orders || []).filter(o => ACTIVE_ORDER.includes(o.status) && key(before, o) !== key(after, o)).map(o => o.id);
+}
+// Guests an order is planned for: its meal's guests when known, else the counter's guests as before
+function orderGuests(ev, head, svcId) {
+  const s = svcId ? eventServices(ev).services.find(x => x.id === svcId) : null;
+  if (s?.guests > 0) return { guests: s.guests, meal: s.meal, from: 'meal' };
+  const g = counterGuests(ev, head);
+  return { ...g, from: g.meal ? 'meal' : 'event' };
+}
+// What was recorded about the venue that a vendor needs to know
+function venueNotes(ev) {
+  return LOGISTICS.filter(l => ['gas', 'power', 'water', 'access'].includes(l.id) && ev.logistics?.[l.id])
+    .map(l => `${l.en}: ${(l.opts.find(x => x[0] === ev.logistics[l.id]) || [])[1] || ev.logistics[l.id]}`).join(' · ');
+}
+const ORDER_STEPS = [['prepared', 'Prepared'], ['opened', 'WhatsApp opened'], ['sent', 'Sent'], ['confirmed', 'Confirmed'], ['delivered', 'Delivered'], ['billed', 'Billed']];
+function orderSteps(o) {
+  if (o.status === 'cancelled') return 'Cancelled';
+  const reached = o.status === 'delivered' && orderBillOf(o) ? 5 : ORDER_STEPS.findIndex(x => x[0] === o.status);
+  return ORDER_STEPS.map(([, l], i) => i <= reached ? `✓ ${l}` : l).join(' → ');
 }
 
 // Usual vendor for a counter: listed speciality or who supplied it before. No guess beyond that.
@@ -1495,10 +1582,10 @@ function counterVendor(head) {
   return rankVendors('Live Counter', head)[0][0]?.id || '';
 }
 
-// Counter row: planned portions and what was ordered; actual served is never inferred from the order
-function counterPlanLine(ev, head, o) {
+// Counter row: planned portions (for that meal's guests) and what was ordered; actual served is never inferred from the order
+function counterPlanLine(ev, head, o, svcId = '') {
   const plan = ev.counterPlan?.[head]; if (ev.outsourced || !plan?.takeUp) return '';
-  const { guests } = counterGuests(ev, head), s = counterSuggestion(guests, plan.takeUp, plan.minimum);
+  const { guests } = orderGuests(ev, head, svcId), s = counterSuggestion(guests, plan.takeUp, plan.minimum);
   if (!s) return '';
   return `<div class="meta">${tr(`Plan ${s.proposed} (${plan.takeUp}% of ${guests})${o?.plates && o.plates !== s.proposed ? ` · ordered ${o.plates}` : ''}${o?.belowMinimum ? ' · below minimum' : ''}`,
     `नियोजन ${s.proposed} (${guests} चे ${plan.takeUp}%)${o?.plates && o.plates !== s.proposed ? ` · ऑर्डर ${o.plates}` : ''}`)}</div>`;
@@ -1506,17 +1593,17 @@ function counterPlanLine(ev, head, o) {
 
 // Orders whose counter is no longer on the menu (dishes removed): kept in view with their status or warning
 function offMenuOrders(ev) {
-  const onMenu = new Set(dishGroups(ev).keys());
-  const latest = new Map();
-  for (const o of ev.orders || []) if (!onMenu.has(o.head)) latest.set(o.head, o);   // the newest per counter
+  const rows = counterRows(ev), latest = new Map();
+  for (const o of ev.orders || []) if (!rowOf(ev, o, rows)) latest.set(`${o.svc || ''}|${o.head}`, o);   // the newest per counter and meal
   if (!latest.size) return '';
-  return `<div class="meta" style="padding:var(--s3) var(--s4) 0">${tr('Orders for counters no longer on the menu', 'मेनूत नसलेल्या काउंटरच्या ऑर्डर')}</div>`
+  const older = [...latest.values()].some(o => !o.svc && rows.some(r => r.head === o.head));
+  return `<div class="meta" style="padding:var(--s3) var(--s4) 0">${older ? tr('Other orders', 'इतर ऑर्डर') : tr('Orders for counters no longer on the menu', 'मेनूत नसलेल्या काउंटरच्या ऑर्डर')}</div>`
     + [...latest.values()].map(o => {
-      const ven = D.vendors.find(v => v.id === o.venId), st = orderStatus(o, ev);
+      const ven = D.vendors.find(v => v.id === o.venId), st = orderStatus(o, ev), allMeals = !o.svc && rows.some(r => r.head === o.head);
       return `<div class="row" style="min-height:56px" data-off-order="${esc(o.id)}">
         <div class="row-ic">${icon('utensils', 18)}</div>
         <div class="row-body"><div class="title-sm trunc">${esc(short(o.head))}${ven ? ` · <span data-nl>${esc(ven.name)}</span>` : ''}</div>
-          <div class="meta">${tr('Not on the current menu', 'सध्याच्या मेनूत नाही')}</div></div>
+          <div class="meta">${allMeals ? tr('Older order · all meals', 'जुनी ऑर्डर · सर्व जेवण') : tr('Not on the current menu', 'सध्याच्या मेनूत नाही')}</div></div>
         <button type="button" class="chip ${o.menuChanged ? 'due' : st.tone}" data-action="order-status" data-id="${esc(o.id)}">${o.menuChanged ? tr('Menu changed · resend', 'मेनू बदलला · पुन्हा पाठवा') : (x => tr(st.en + x, st.mr + x))(o.plates ? ' · ' + o.plates : '')}</button>
       </div>`; }).join('');
 }
@@ -1526,19 +1613,20 @@ function menuOrdersCard(ev) {
   if (!dishes.length && !(ev.orders || []).length) return `
     <div class="sec"><span class="sec-title">Menu & orders – मेनू व ऑर्डर</span></div>
     <div class="card pad"><div class="meta">${tr('Add the dishes agreed with the client. Counter items become vendor orders you can send on WhatsApp.', 'ग्राहकाशी ठरलेले पदार्थ जोडा. काउंटरचे पदार्थ विक्रेत्यांना ऑर्डर म्हणून WhatsApp वर पाठवता येतात.')}</div>
-      <button type="button" class="btn-sm" style="margin-top:var(--s3)" data-action="menu-edit">${icon('plus', 16)}${tr('Add menu', 'मेनू जोडा')}</button></div>`;
-  const groups = dishGroups(ev);
+      <button type="button" class="btn-sm" style="margin-top:var(--s3)" data-action="menu-edit">${icon('plus', 16)}${tr('Add menu', 'मेनू जोडा')}</button></div>${buyCard(ev)}`;   // purchases already made stay reachable when the menu is emptied
+  const groups = dishGroups(ev), rows = counterRows(ev);
   const orders = ev.orders || [];
-  const counters = [...groups].filter(([head]) => head).map(([head, names]) => {
-    const o = [...orders].reverse().find(x => x.head === head && x.status !== 'cancelled');
+  const counters = rows.map(r => {
+    const { head, names } = r;
+    const o = [...orders].reverse().find(x => x.status !== 'cancelled' && rowOf(ev, x, rows)?.key === r.key);
     const ven = D.vendors.find(v => v.id === (o?.venId || (ev.outsourced ? ev.outVenId : counterVendor(head))));
     const st = o && orderStatus(o, ev);
-    return `<div class="row" style="min-height:56px">
+    return `<div class="row" style="min-height:56px" data-counter="${esc(r.key)}">
       <div class="row-ic">${icon('utensils', 18)}</div>
-      <div class="row-body"><div class="title-sm trunc">${ev.outsourced ? tr('Whole event', 'संपूर्ण कार्यक्रम') : esc(short(head))}${ven ? ` · <span data-nl>${esc(ven.name)}</span>` : ''}</div>
-        <div class="meta trunc" data-nl>${esc(names.join(', '))}</div>${counterPlanLine(ev, head, o)}</div>
+      <div class="row-body"><div class="title-sm trunc">${ev.outsourced ? tr('Whole event', 'संपूर्ण कार्यक्रम') : esc(short(head))}${r.label ? ` · ${esc(r.label)}` : ''}${ven ? ` · <span data-nl>${esc(ven.name)}</span>` : ''}</div>
+        <div class="meta trunc" data-nl>${esc(names.join(', '))}</div>${counterPlanLine(ev, head, o, r.svcId)}</div>
       ${o ? `<button type="button" class="chip ${o.menuChanged ? 'due' : st.tone}" data-action="order-status" data-id="${esc(o.id)}">${o.menuChanged ? tr('Menu changed · resend', 'मेनू बदलला · पुन्हा पाठवा') : (x => tr(st.en + x, st.mr + x))(o.plates ? ' · ' + o.plates : '')}</button>`
-          : `<button type="button" class="btn-sm" data-action="order-new" data-id="${esc(head)}">${icon('message', 16)}${tr('Order', 'ऑर्डर')}</button>`}
+          : `<button type="button" class="btn-sm" data-action="order-new" data-id="${esc(head)}" data-svc="${esc(r.svcId)}">${icon('message', 16)}${tr('Order', 'ऑर्डर')}</button>`}
     </div>`;
   }).join('');
   const kitchen = groups.get('') || [];
@@ -1552,11 +1640,181 @@ function menuOrdersCard(ev) {
       ${ev.outsourced ? `<div class="meta" style="padding:var(--s3) var(--s4)">${tr('Outsourced event: the full menu goes to the caterer doing the event.', 'आउटसोर्स कार्यक्रम: संपूर्ण मेनू त्या केटररला जातो.')}</div>` : `<div style="padding:var(--s3) var(--s4)">
         <div class="meta" style="margin-bottom:var(--s2)">${tr('Tap a dish to change where it comes from', 'पदार्थ कुठून येतो ते बदलण्यासाठी टॅप करा')}</div>
         <div class="chips-row" style="margin:0;padding:0;flex-wrap:wrap">${dishes.map((d, i) =>
-          `<button type="button" class="f-chip" data-action="dish-assign" data-id="${i}" data-nl style="max-width:100%;overflow:hidden;text-overflow:ellipsis">${esc(d.name)}${d.head ? ` · ${esc(short(d.head))}` : ''}${d.meal ? ` · ${esc(MEALS[d.meal] || '')}${isUnassigned(ev, d) ? ' (not in this event)' : ''}` : ''}</button>`).join('')}</div>
+          `<button type="button" class="f-chip" data-action="dish-assign" data-id="${i}" data-nl style="max-width:100%;overflow:hidden;text-overflow:ellipsis">${esc(d.name)}${d.src ? ` · ${esc(SRC_NAME[d.src])}` : ''}${d.head ? ` · ${esc(short(d.head))}` : ''}${d.meal ? ` · ${esc(MEALS[d.meal] || '')}${isUnassigned(ev, d) ? ' (not in this event)' : ''}` : ''}</button>`).join('')}</div>
         ${dishes.some(d => isUnassigned(ev, d)) ? `<div class="meta" style="margin-top:var(--s2);color:var(--due)">${tr('Some dishes are for a meal no longer in this event. They are kept but not ordered: edit the menu to choose a meal for them.', 'काही पदार्थ आता नसलेल्या जेवणाचे आहेत. मेनू बदलून जेवण निवडा.')}</div>` : ''}
       </div>`}
       ${offMenuOrders(ev)}
-    </div>`;
+    </div>${buyCard(ev)}`;
+}
+
+/* ── PURCHASES (4.28.0): things bought ready-made, or bought and finished by us ──────────────
+   Kept apart from counter orders (ev.orders). One purchase is one item for one meal (or for every meal, when the dish
+   is served at every meal): supplier, quantity and unit, delivery date and time, instructions and an optional
+   estimated cost (never added to costs). WhatsApp messages are versioned like orders; nothing is resent by itself;
+   no expense is made by itself: the delivered purchase's bill is recorded or linked once (x.purchase). */
+const BUY_UNITS = [['pcs', 'pieces – नग'], ['kg', 'kg – किलो'], ['litre', 'litres – लिटर'], ['packet', 'packets – पाकीट'],
+  ['bottle', 'bottles – बाटल्या'], ['carton', 'cartons – खोके'], ['tub', 'tubs – टब'], ['box', 'boxes – बॉक्स']];
+const UNIT_NAME = Object.fromEntries(BUY_UNITS.map(([k, l]) => [k, l.split(' – ')[0]]));
+const buyKey = (svc, name) => `${svc || '*'}|${String(name).trim().toLowerCase()}`;
+// The bought dishes, one row per meal (a dish served at every meal: one row for all of them)
+function buyRows(ev) {
+  if (ev?.outsourced) return [];
+  const { services } = eventServices(ev), rows = [], seen = new Set();
+  for (const s of services) for (const d of s.dishes) {
+    if (!d.src || d.preview) continue;
+    const svc = d.shared ? '' : s.id, key = buyKey(svc, d.name);
+    if (seen.has(key)) continue; seen.add(key);
+    rows.push({ key, svc, name: d.name, src: d.src, meal: d.shared ? '' : s.meal,
+      label: d.shared ? (services.length > 1 ? 'Every meal' : '') : s.meal ? svcLabel(ev, s, services) : '' });
+  }
+  return rows;
+}
+const buyOf = (ev, key) => [...(ev.purchases || [])].reverse().find(p => p.status !== 'cancelled' && buyKey(p.svc, p.item) === key) || null;
+const purchaseBillOf = p => D.expenses.find(x => x.purchase === p.id) || null;
+function buyStatus(p) {
+  const st = ORDER_STATUS[p.status] || ORDER_STATUS.sent;
+  if (p.status !== 'delivered') return st;
+  return purchaseBillOf(p) ? { en: 'Delivered · billed', mr: 'आले · बिल', tone: 'pos' } : { en: 'Delivered · bill not in', mr: 'आले · बिल नाही', tone: 'due' };
+}
+const qtyText = p => `${p.qty} ${UNIT_NAME[p.unit] || p.unit}`;
+function buyCard(ev) {
+  const rows = buyRows(ev), keys = new Set(rows.map(r => r.key));
+  const off = new Map();
+  for (const p of ev.purchases || []) if (p.status !== 'cancelled' && !keys.has(buyKey(p.svc, p.item))) off.set(buyKey(p.svc, p.item), p);
+  if (!rows.length && !off.size) return '';
+  const chip = p => { const st = buyStatus(p), ven = D.vendors.find(v => v.id === p.venId);
+    return `<button type="button" class="chip ${p.changed ? 'due' : st.tone}" data-action="buy-status" data-id="${esc(p.id)}">${p.changed ? tr('Menu changed · review', 'मेनू बदलला · तपासा') : tr(st.en, st.mr)}</button>`; };
+  const line = (title, meta, end, key) => `<div class="row" style="min-height:56px"${key ? ` data-buy="${esc(key)}"` : ''}><div class="row-ic">${icon('basket', 18)}</div>
+      <div class="row-body"><div class="title-sm trunc" data-nl>${title}</div><div class="meta trunc" data-nl>${meta}</div></div>${end}</div>`;
+  return `<div class="sec"><span class="sec-title">${tr('To buy', 'विकत घ्यायचे')}</span><span class="meta">${tr('bought ready-made or to finish', 'तयार / आपण पूर्ण करू')}</span></div>
+    <div class="card list" id="buy-list">${rows.map(r => { const p = buyOf(ev, r.key), ven = p && D.vendors.find(v => v.id === p.venId);
+      return line(esc(r.name), [r.label, SRC_NAME[r.src], p ? `${ven?.name || ''} · ${qtyText(p)}` : ''].filter(Boolean).map(esc).join(' · '),
+        p ? chip(p) : `<button type="button" class="btn-sm" data-action="buy-new" data-id="${esc(r.key)}">${icon('message', 16)}${tr('Order', 'ऑर्डर')}</button>`, r.key); }).join('')}
+    ${[...off.values()].map(p => line(esc(p.item), `${tr('Not on the current menu', 'सध्याच्या मेनूत नाही')} · ${esc(qtyText(p))}`, chip(p))).join('')}</div>`;
+}
+// Purchases already given to a supplier whose item later left the menu, moved to another meal or changed sourcing
+function purchasesHit(before, after) {
+  const was = new Map(buyRows(before).map(r => [r.key, r])), now = new Map(buyRows(after).map(r => [r.key, r]));
+  return (before.purchases || []).filter(p => ['opened', 'sent', 'confirmed'].includes(p.status)).filter(p => {
+    const k = buyKey(p.svc, p.item); return was.has(k) && (!now.has(k) || now.get(k).src !== p.src); }).map(p => p.id);
+}
+const flagPurchases = (ev, after, patch) => { const hit = new Set(purchasesHit(ev, after)); if (hit.size) patch.purchases = ev.purchases.map(p => hit.has(p.id) ? { ...p, changed: true } : p); return hit.size; };
+
+function openBuyModal({ key = '', id = '' }) {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const p = id ? (ev.purchases || []).find(x => x.id === id) : null, row = p ? null : buyRows(ev).find(r => r.key === key);
+  if (!p && !row) return;
+  const item = p?.item || row.name, svc = p ? p.svc || '' : row.svc, src = p?.src || row.src;
+  const all = eventServices(ev).services, s = svc ? all.find(x => x.id === svc) : null;
+  q('buy-id').value = p?.id || ''; q('buy-svc').value = svc; q('buy-item').value = item; q('buy-src').value = src;
+  q('buy-mtitle').textContent = `${item}${s?.meal ? ` · ${svcLabel(ev, s, all)}` : ''}`;
+  q('buy-what').textContent = `${SRC_NAME[src]}${src === 'finish' ? ' – our kitchen finishes it' : ''}`;
+  const sup = D.vendors.filter(v => !isPerson(v)).sort((a, b) => a.name.localeCompare(b.name));
+  populateSelect('buy-ven', [{ v: '', l: 'Choose supplier – पुरवठादार निवडा' }, ...sup.map(v => ({ v: v.id, l: v.name + (v.gstin ? ` · ${v.gstin}` : '') + (v.phone ? '' : ' (no phone)') }))], p?.venId || '');
+  q('buy-qty').value = p?.qty || ''; populateSelect('buy-unit', BUY_UNITS.map(([v, l]) => ({ v, l })), p?.unit || 'pcs');
+  q('buy-date').value = p?.date || s?.date || ev.date; q('buy-time').value = p?.time || s?.time || '';
+  q('buy-notes').value = p?.notes || ''; q('buy-est').value = p?.estCost ?? '';
+  q('btn-cancel-buy').hidden = !p;
+  clearFieldErrors(); openSheet('buy-modal');
+}
+function buyMessage(ev, p, ven) {
+  const all = eventServices(ev).services, s = p.svc ? all.find(x => x.id === p.svc) : null, meal = s?.meal ? svcLabel(ev, s, all) : '';
+  return `Namaste ${ven.name}! Purchase order for ${ev.name}:\nItem: ${p.item}\nQuantity: ${qtyText(p)}\n`
+    + `Deliver: ${fmtDate(p.date)}${p.time ? ', ' + p.time : ''}${meal ? ' (' + meal + ')' : ''}\nVenue: ${ev.venue || '-'}\n`
+    + (p.notes ? `Note: ${p.notes}\n` : '') + `\nPlease confirm. Thank you!`;
+}
+async function sendBuy() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const venId = qv('buy-ven'), qty = Number(qv('buy-qty')), unit = qv('buy-unit'), date = qv('buy-date'), est = qv('buy-est');
+  const errs = {};
+  if (!venId) errs['buy-ven'] = 'Choose a supplier – पुरवठादार निवडा';
+  if (!(qty > 0) || Math.round(qty * 1000) !== qty * 1000) errs['buy-qty'] = 'Enter the quantity – संख्या लिहा';
+  if (!UNIT_NAME[unit]) errs['buy-unit'] = 'Choose a unit – एकक निवडा';
+  if (!date) errs['buy-date'] = 'Delivery date – दिनांक';
+  if (est !== '' && !(Number(est) >= 0 && Math.round(Number(est) * 100) === Number(est) * 100)) errs['buy-est'] = 'An amount in ₹ (up to 2 decimals) – रक्कम';
+  if (Object.keys(errs).length) { showFieldErrors(errs); return; }
+  const ven = D.vendors.find(v => v.id === venId), phoneOk = !!phoneDigits(ven?.phone);
+  const id = qv('buy-id') || uid('PO'), old = (ev.purchases || []).find(x => x.id === id);
+  const all = eventServices(ev).services, s = qv('buy-svc') ? all.find(x => x.id === qv('buy-svc')) : null;
+  const now = new Date().toISOString();
+  const status = !old || old.status === 'cancelled' ? (phoneOk ? 'opened' : 'prepared') : old.status === 'prepared' && phoneOk ? 'opened' : old.status;
+  const p = { ...(old || {}), id, item: qv('buy-item'), src: qv('buy-src'), venId, qty, unit, date, status, at: now,
+    basis: { item: qv('buy-item'), src: qv('buy-src'), meal: s?.meal || '' } };
+  if (qv('buy-svc')) p.svc = qv('buy-svc'); else delete p.svc;
+  for (const [k, v] of [['time', qv('buy-time')], ['notes', qv('buy-notes').trim()]]) if (v) p[k] = v; else delete p[k];
+  if (est !== '') p.estCost = Number(est); else delete p.estCost;
+  const versioned = addOrderMessage(old?.messages, buyMessage(ev, p, ven), phoneOk, now);
+  p.messages = versioned.messages;
+  // A changed instruction is not sent or confirmed yet; a menu-change warning stays until it is marked sent
+  if (versioned.changed && old && ['sent', 'confirmed'].includes(old.status)) p.status = phoneOk ? 'opened' : 'prepared';
+  await patchEvent(ev.id, { purchases: old ? ev.purchases.map(x => x.id === id ? p : x) : [...(ev.purchases || []), p] });
+  closeModals(); refreshCurrent();
+  const phone = phoneDigits(ven?.phone);
+  if (phone) window.open(`https://wa.me/${phone}?text=${encodeURIComponent(p.messages.at(-1).text)}`, '_blank', 'noopener');
+  else showToast(`Purchase saved. ${ven?.name || 'This supplier'} has no phone number – add it to send on WhatsApp.`, 'error');
+}
+async function setBuyStatus(ev, id, next) {
+  await patchEvent(ev.id, { purchases: ev.purchases.map(x => { if (x.id !== id) return x; const y = { ...x, status: next };
+    if (['sent', 'confirmed'].includes(next)) { delete y.changed; if (y.messages?.length) y.messages = markOrderMessage(y.messages, next, new Date().toISOString()); }
+    return y; }) });
+}
+async function buyAction(id) {
+  const ev = D.events.find(e => e.id === curRef); const p = ev?.purchases?.find(x => x.id === id); if (!p) return;
+  const ven = D.vendors.find(v => v.id === p.venId);
+  const next = await askSheet({ title: `${p.item} · ${ven?.name || ''} – ${buyStatus(p).en}`, message: `${qtyText(p)} · ${fmtDate(p.date)}${p.time ? ' ' + p.time : ''}${p.estCost != null ? ` · estimate ${fmtCurrency(p.estCost)}` : ''}\n${orderSteps(p)}`,
+    actions: [
+      ...(['prepared', 'opened'].includes(p.status) || p.changed ? [{ label: 'I have sent it – पाठवले', value: 'sent', style: 'btn-secondary' }] : []),
+      ...(['prepared', 'opened', 'sent'].includes(p.status) || p.changed ? [{ label: 'Supplier confirmed – पक्के', value: 'confirmed', style: 'btn-secondary' }] : []),
+      ...(p.status !== 'delivered' ? [{ label: 'Delivered · record bill – आले, बिल नोंदवा', value: 'delivered', style: 'btn-primary' }] : []),
+      ...(['opened', 'sent'].includes(p.status) && !p.changed ? [{ label: 'Remind to confirm – आठवण द्या', value: 'remind', style: 'btn-secondary' }] : []),
+      { label: 'Edit / send again – बदला', value: 'edit', style: 'btn-secondary' },
+      ...((p.messages || []).length ? [{ label: `Message history (${p.messages.length}) – संदेशांचा इतिहास`, value: 'history', style: 'btn-secondary' }] : []),
+      ...(p.status === 'delivered' && !purchaseBillOf(p) ? [{ label: 'Record / link its bill – बिल नोंदवा', value: 'bill', style: 'btn-primary' }] : []),
+      ...(p.status !== 'delivered' ? [{ label: 'Cancel purchase – रद्द', value: 'cancelled', style: 'btn-danger' }] : [])] });
+  if (!next) return;
+  if (next === 'edit') { openBuyModal({ id }); return; }
+  if (next === 'bill') { purchaseBill(ev, p); return; }
+  if (next === 'history') {
+    const MSG = { prepared: 'Not sent yet', opened: 'WhatsApp opened (not confirmed sent)', sent: 'Sent (you confirmed)', confirmed: 'Supplier confirmed' };
+    await askSheet({ title: `${p.item} · messages – संदेश`, message: [...p.messages].reverse().map(m => `Version ${m.v} · ${fmtDate(localDay(m.at))} · ${MSG[m.status]}\n${m.text}`).join('\n\n— — —\n\n'), actions: [] });
+    return;
+  }
+  if (next === 'remind') {
+    const phone = phoneDigits(ven?.phone);
+    if (!phone) { showToast(`${ven?.name || 'This supplier'} has no phone number – add it to send a reminder on WhatsApp.`, 'error'); return; }
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(`Namaste ${ven.name}! A reminder for ${ev.name}:\nItem: ${p.item}\nQuantity: ${qtyText(p)}\nDeliver: ${fmtDate(p.date)}${p.time ? ', ' + p.time : ''}\n\nPlease confirm everything is on track. Thank you!`)}`, '_blank', 'noopener');
+    await patchEvent(ev.id, { purchases: ev.purchases.map(x => x.id === id ? { ...x, reminded: [...(x.reminded || []), new Date().toISOString()].slice(-20) } : x) });
+    refreshCurrent(); return;
+  }
+  await setBuyStatus(ev, id, next);
+  refreshCurrent();
+  if (next === 'delivered') purchaseBill(D.events.find(e => e.id === ev.id) || ev, { ...p, status: 'delivered' });
+}
+/* Delivered: its bill. If this supplier already has an unlinked bill on the event (entered from the bill itself),
+   link it instead of recording it again; otherwise record it, linked. A bill is linked to one order or one purchase. */
+async function purchaseBill(ev, p) {
+  if (purchaseBillOf(p)) { showToast('Its bill is already recorded – बिल आधीच नोंदवले'); return; }
+  const ven = D.vendors.find(v => v.id === p.venId);
+  const open = D.expenses.filter(x => x.evId === ev.id && x.venId === p.venId && !x.order && !x.purchase && !x.draft).slice(0, 3);
+  if (open.length) {
+    const pick = await askSheet({ title: 'Bill already recorded? – बिल आधीच नोंदवले?',
+      message: `${ven?.name || 'This supplier'} already has ${open.length === 1 ? 'a bill' : 'bills'} on this event. If this delivery's bill is one of these, link it so it is not counted twice.`,
+      actions: [...open.map(x => ({ label: `Link: ${short(x.head || x.cat)} · ${fmtCurrency(x.split?.total ?? x.amt)} · ${fmtDate(x.date)}`, value: x.id, style: 'btn-primary' })),
+        { label: 'No, record a new bill – नवीन बिल', value: 'new', style: 'btn-secondary' }] });
+    if (!pick) return;
+    if (pick !== 'new') {
+      const x = D.expenses.find(e => e.id === pick); if (!x) return;
+      const { _rev, ...rec } = x;
+      await commitChanges([{ store: 'expenses', record: { ...rec, purchase: p.id }, expected: x }], { check: true, extraStores: ['events', 'vendors'] });
+      await loadAll(); refreshCurrent(); showToast('Bill linked to the purchase – बिल खरेदीला जोडले'); return;
+    }
+  }
+  openExpModal({ prefill: { evId: ev.id, cat: 'Raw Material', venId: p.venId, purchase: p.id, ...(p.estCost != null ? {} : {}) } });
+}
+async function cancelBuyFromSheet() {
+  const id = qv('buy-id'); const ev = D.events.find(e => e.id === curRef); if (!ev || !id) return;
+  await patchEvent(ev.id, { purchases: ev.purchases.map(x => x.id === id ? { ...x, status: 'cancelled' } : x) });
+  closeModals(); refreshCurrent();
 }
 
 // Save changed menu/orders on the event currently open
@@ -1606,7 +1864,7 @@ function readMenuText() {
     const same = byName.get(name.toLowerCase());
     if (!meal && same) return { ...same, name };   // listed without a heading: keep the dish as it was
     const m = meal || (meals.length === 1 ? meals[0] : '');
-    return { name, head: same ? same.head || '' : dishCounter(name, learned), ...(same?.manual ? { manual: true } : {}), ...(m ? { meal: m } : {}) };
+    return { name, head: same ? same.head || '' : dishCounter(name, learned), ...(same?.src ? { src: same.src } : {}), ...(same?.manual ? { manual: true } : {}), ...(m ? { meal: m } : {}) };
   });
   renderMenuReview();
 }
@@ -1620,7 +1878,7 @@ function renderMenuReview() {
       <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--s2)"><span class="title-sm trunc" data-nl>${esc(d.name)}</span>
         <button type="button" class="icon-btn" data-md-del="${i}" aria-label="Remove dish">${icon('x', 16)}</button></div>
       <div style="display:flex;gap:var(--s2)">
-        ${ev.outsourced ? '' : sel(i, 'head', [['', 'Our kitchen – आपले किचन'], ...heads.map(h => [h, h])], d.head || '')}
+        ${ev.outsourced ? '' : sel(i, 'head', [['', 'Our kitchen – आपले किचन'], ...SRC_OPTS, ...heads.map(h => [h, h])], whoValue(d))}
         ${meals.length > 1 || isUnassigned(ev, d) ? sel(i, 'meal', [...(isUnassigned(ev, d) ? [[d.meal, `${MEALS[d.meal]} (not in this event) – choose`]] : []), ['', 'All meals – सर्व जेवण'], ...meals.map(m => [m, MEALS[m]])], d.meal || '') : ''}
       </div></div>`).join('') : '';
 }
@@ -1639,8 +1897,9 @@ async function saveMenu() {
   if (changed && before.length) {
     // Keep the previous menu (G-11) and mark sent/confirmed orders whose counter's dishes changed; nothing is re-sent
     patch.menuVersions = [...(ev.menuVersions || []), { at: new Date().toISOString(), dishes: before }].slice(-20);
-    const hit = new Set(menuChangeImpact(before, dishes, ev.orders || []));
+    const hit = new Set(ordersHit(ev, { ...ev, dishes }));
     if (hit.size) patch.orders = ev.orders.map(o => hit.has(o.id) ? { ...o, menuChanged: true } : o);
+    flagPurchases(ev, { ...ev, dishes }, patch);
   }
   await patchEvent(ev.id, patch);
   closeModals();
@@ -1656,23 +1915,31 @@ async function assignDish(i) {
   const heads = EXPENSE_HEADS['Live Counter'].filter(h => !/counter setup/i.test(h));
   const head = await askSheet({
     title: `${d.name} – comes from?`,
-    actions: [{ label: 'Our kitchen – आपले किचन', value: '__kitchen', style: 'btn-secondary' },
+    actions: [{ label: 'Our kitchen – आपले किचन', value: '__kitchen', style: !d.src && !d.head ? 'btn-primary' : 'btn-secondary' },
+              ...SRC_OPTS.map(([v, l]) => ({ label: l, value: v, style: whoValue(d) === v ? 'btn-primary' : 'btn-secondary' })),
               ...heads.map(h => ({ label: h, value: h, style: h === d.head ? 'btn-primary' : 'btn-secondary' }))]
   });
   if (!head) return;
-  const dishes = ev.dishes.map((x, j) => j === i ? { ...x, head: head === '__kitchen' ? '' : head, manual: true } : x);
-  await patchEvent(ev.id, { dishes });
+  const dishes = ev.dishes.map((x, j) => { if (j !== i) return x; const y = { ...x }; setWho(y, head === '__kitchen' ? '' : head); return y; });
+  const patch = { dishes };
+  const hit = new Set(ordersHit(ev, { ...ev, dishes }));   // a counter order or purchase that lost this dish is flagged; nothing is resent
+  if (hit.size) patch.orders = ev.orders.map(o => hit.has(o.id) ? { ...o, menuChanged: true } : o);
+  flagPurchases(ev, { ...ev, dishes }, patch);
+  await patchEvent(ev.id, patch);
   refreshCurrent();
 }
 
-function openOrderModal({ head, orderId }) {
+function openOrderModal({ head, svc = '', orderId }) {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const o = orderId ? (ev.orders || []).find(x => x.id === orderId) : null;
-  head = o?.head || head;
+  head = o?.head || head; svc = o ? o.svc || '' : svc;
+  const all = eventServices(ev).services, s = svc ? all.find(x => x.id === svc) : null;
+  // An event with one meal has no meal on its rows: that meal's own date and time still go on the order
+  const when = s || (svc ? null : rowOf(ev, { head })?.svc) || null;
   q('ord-id').value = o?.id || '';
-  q('ord-head').value = head;
-  q('ord-mtitle').textContent = ev.outsourced ? 'Menu to caterer – केटररला मेनू' : `${short(head)} order – ऑर्डर`;
-  q('ord-items').textContent = (dishGroups(ev).get(head) || []).join(', ');
+  q('ord-head').value = head; q('ord-svc').value = svc;
+  q('ord-mtitle').textContent = ev.outsourced ? 'Menu to caterer – केटररला मेनू' : `${short(head)} order${s ? ` · ${svcLabel(ev, s, all)}` : ''} – ऑर्डर`;
+  q('ord-items').textContent = orderItems(ev, { head, svc }).join(', ');
   const [usual, inCat, others] = rankVendors('Live Counter', head);
   const opt = v => ({ v: v.id, l: v.name + (v.phone ? '' : ' (no phone)') });
   populateSelect('ord-ven', [{ v: '', l: 'Choose vendor – विक्रेता निवडा' }, ...[...usual, ...inCat, ...others].map(opt)],
@@ -1687,9 +1954,9 @@ function openOrderModal({ head, orderId }) {
   q('ord-plates').value = o?.plates || '';
   updateCounterPlan();
   // No plan: start from this counter's guests (its meal's count if known), still replaceable by a plan
-  if (!q('ord-plates').value) { const g = counterGuests(ev, head).guests || ''; q('ord-plates').value = g; ordAuto = String(g); }
-  q('ord-date').value = o?.date || ev.date;
-  q('ord-time').value = o?.time || '';
+  if (!q('ord-plates').value) { const g = orderGuests(ev, head, svc).guests || ''; q('ord-plates').value = g; ordAuto = String(g); }
+  q('ord-date').value = o?.date || when?.date || ev.date;
+  q('ord-time').value = o?.time || when?.time || '';
   q('ord-notes').value = o?.notes || '';
   q('btn-cancel-ord').hidden = !o;
   clearFieldErrors();
@@ -1701,23 +1968,30 @@ function updateCounterPlan() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const hint = q('ord-plan');
   if (ev.outsourced) { hint.hidden = true; return; }
-  const { guests, meal } = counterGuests(ev, qv('ord-head'));
+  const { guests, meal } = orderGuests(ev, qv('ord-head'), qv('ord-svc'));
   const s = counterSuggestion(guests, qv('ord-takeup'), qv('ord-min'));
   const plates = Number(qv('ord-plates')) || 0, min = Math.floor(Number(qv('ord-min')) || 0);
   if (s && (!qv('ord-plates') || qv('ord-plates') === ordAuto)) { q('ord-plates').value = String(s.proposed); ordAuto = String(s.proposed); }
   const parts = [];
   if (s) parts.push(tr(`${guests} ${meal ? MEALS[meal].toLowerCase() + ' ' : ''}guests × ${Number(qv('ord-takeup'))}% = ${s.forecast} suggested`, `${guests} पाहुणे × ${Number(qv('ord-takeup'))}% = ${s.forecast}`)
     + (s.minimumApplied ? tr(` · vendor minimum ${min}`, ` · किमान ${min}`) : ''));
+  if (!s && guests) parts.push(tr(`Based on ${guests} ${meal ? MEALS[meal].toLowerCase() + ' ' : ''}guests; change it if needed`, `${guests} पाहुण्यांवर आधारित`));
   if (min && plates && plates < min) parts.push(`<span class="due">${tr(`Below the vendor minimum of ${min}: add a note why`, `किमान ${min} पेक्षा कमी: कारण लिहा`)}</span>`);
   hint.innerHTML = parts.join('<br>'); hint.hidden = !parts.length;
 }
 
 function orderMessage(ev, o, ven) {
-  const items = (dishGroups(ev).get(o.head) || []).join(', ');
+  const items = orderItems(ev, o).join(', ');
+  const all = eventServices(ev).services, s = o.svc ? all.find(x => x.id === o.svc) : null;
+  const meal = s ? svcLabel(ev, s, all) : ev.meals?.length ? mealLabel(ev) : '';
+  const ver = o.menuVersion ? approvedMenus(ev).find(v => v.id === o.menuVersion) : null, venue = venueNotes(ev);
   return `Namaste ${ven.name}! Order for ${ev.name}:\n`
-    + `Date: ${fmtDate(o.date)}${o.time ? ', ' + o.time : ''}${ev.meals?.length ? ' (' + mealLabel(ev) + ')' : ''}\nVenue: ${ev.venue || '-'}\n`
+    + `Date: ${fmtDate(o.date)}${o.time ? ', ' + o.time : ''}${meal ? ' (' + meal + ')' : ''}\nVenue: ${ev.venue || '-'}\n`
     + (ev.outsourced ? `Full event catering for ${o.plates || '-'} guests\n` + (items ? `Menu: ${items}\n` : '')
                      : `${short(o.head)} for ${o.plates || '-'} plates\n` + (items ? `Items: ${items}\n` : ''))
+    + (o.basis?.guests && !ev.outsourced ? `Guests: ${o.basis.guests}\n` : '')
+    + (venue ? `At the venue: ${venue}\n` : '')
+    + (ver ? `Menu: version ${ver.n}, approved by the client\n` : '')
     + (o.notes ? `Note: ${o.notes}\n` : '') + `\nPlease confirm. Thank you!`;
 }
 
@@ -1738,6 +2012,10 @@ async function sendOrder() {
   const status = !old || old.status === 'cancelled' ? (phoneOk ? 'opened' : 'prepared') : old.status === 'prepared' && phoneOk ? 'opened' : old.status;
   const o = { ...(old || {}), id, head: qv('ord-head'), venId, plates: Number(qv('ord-plates')) || 0, date: qv('ord-date'), time: qv('ord-time'),
               notes: qv('ord-notes'), status, at: new Date().toISOString(), ...(phoneOk ? { openedAt: new Date().toISOString() } : {}) };
+  // The meal it is for, the approved menu it follows (only when the menu is unchanged since), the guests it is planned on
+  if (qv('ord-svc')) o.svc = qv('ord-svc'); else delete o.svc;
+  const ap = menuSinceApproved(ev); if (ap.last && !ap.count) o.menuVersion = ap.last.id; else delete o.menuVersion;
+  const g = orderGuests(ev, o.head, o.svc); if (g.guests && !ev.outsourced) o.basis = { guests: g.guests, from: g.from }; else delete o.basis;
   // Keep every different message sent for this order (G-26); the latest version starts as opened/prepared
   const now = new Date().toISOString();
   const versioned = addOrderMessage(old?.messages, orderMessage(ev, o, ven), phoneOk, now);
@@ -1747,7 +2025,7 @@ async function sendOrder() {
   const unproven = old && !(old.messages || []).length;
   if ((versioned.changed || unproven) && old && ['sent', 'confirmed'].includes(old.status)) o.status = phoneOk ? 'opened' : 'prepared';
   if (below) o.belowMinimum = minimum; else delete o.belowMinimum;
-  const sugg = ev.outsourced ? null : counterSuggestion(counterGuests(ev, o.head).guests, takeUp, minimum);
+  const sugg = ev.outsourced ? null : counterSuggestion(orderGuests(ev, o.head, o.svc).guests, takeUp, minimum);
   if (sugg) o.suggested = sugg.proposed; else delete o.suggested;   // what the plan proposed; the order (plates) is yours
   const orders = old ? ev.orders.map(x => x.id === id ? o : x) : [...(ev.orders || []), o];
   const patch = { orders };
@@ -1763,12 +2041,15 @@ async function sendOrder() {
 async function orderAction(orderId) {
   const ev = D.events.find(e => e.id === curRef); const o = ev?.orders?.find(x => x.id === orderId); if (!o) return;
   const ven = D.vendors.find(v => v.id === o.venId);
+  const all = eventServices(ev).services, s = o.svc ? all.find(x => x.id === o.svc) : null;
   const next = await askSheet({
-    title: `${short(o.head)} · ${ven?.name || ''} – ${ORDER_STATUS[o.status].en}`,
+    title: `${short(o.head)}${s ? ` · ${svcLabel(ev, s, all)}` : ''} · ${ven?.name || ''} – ${ORDER_STATUS[o.status].en}`,
+    message: orderSteps(o),
     actions: [
       ...(['prepared', 'opened'].includes(o.status) || o.menuChanged ? [{ label: 'I have sent it – पाठवले', value: 'sent', style: 'btn-secondary' }] : []),
       ...(['prepared', 'opened', 'sent'].includes(o.status) || o.menuChanged ? [{ label: 'Vendor confirmed – पक्के', value: 'confirmed', style: 'btn-secondary' }] : []),
       ...(o.status !== 'delivered' ? [{ label: 'Delivered · record bill – आले, बिल नोंदवा', value: 'delivered', style: 'btn-primary' }] : []),
+      ...(['opened', 'sent'].includes(o.status) && !o.menuChanged ? [{ label: 'Remind to confirm – आठवण द्या', value: 'remind', style: 'btn-secondary' }] : []),
       { label: 'Edit / send again – बदला', value: 'edit', style: 'btn-secondary' },
       ...((o.messages || []).length ? [{ label: `Message history (${o.messages.length}) – संदेशांचा इतिहास`, value: 'history', style: 'btn-secondary' }] : []),
       ...(o.status === 'delivered' && !orderBillOf(o) ? [{ label: 'Record / link its bill – बिल नोंदवा', value: 'bill', style: 'btn-primary' }] : []),
@@ -1777,17 +2058,16 @@ async function orderAction(orderId) {
   });
   if (!next) return;
   if (next === 'edit') { openOrderModal({ orderId }); return; }
+  if (next === 'remind') { await remindOrder(ev.id, orderId); return; }
   if (next === 'bill') { orderBill(ev, o); return; }
   if (next === 'history') {
     const MSG = { prepared: 'Not sent yet', opened: 'WhatsApp opened (not confirmed sent)', sent: 'Sent (you confirmed)', confirmed: 'Vendor confirmed' };
     await askSheet({ title: `${short(o.head)} · messages – संदेश`,
-      message: [...o.messages].reverse().map(m => `Version ${m.v} · ${fmtDate(m.at.slice(0, 10))} ${m.at.slice(11, 16)} · ${MSG[m.status]}\n${m.text}`).join('\n\n— — —\n\n'), actions: [] });
+      message: [...o.messages].reverse().map(m => `Version ${m.v} · ${fmtDate(localDay(m.at))} ${localTime(m.at)} · ${MSG[m.status]}\n${m.text}`).join('\n\n— — —\n\n'), actions: [] });
     return;
   }
   // Marking it sent or vendor-confirmed is what clears a menu-change warning (the latest menu went out)
-  await patchEvent(ev.id, { orders: ev.orders.map(x => { if (x.id !== orderId) return x; const y = { ...x, status: next };
-    if (['sent', 'confirmed'].includes(next)) { delete y.menuChanged; if (y.messages?.length) y.messages = markOrderMessage(y.messages, next, new Date().toISOString()); }
-    return y; }) });
+  await setOrderStatus(ev, orderId, next);
   refreshCurrent();
   if (next !== 'delivered') return;
   // Outsourced: their charge was recorded when the event was booked; don't count it twice
@@ -1802,7 +2082,7 @@ const orderBillOf = o => D.expenses.find(x => x.order === o.id) || null;
 async function orderBill(ev, o) {
   if (orderBillOf(o)) { showToast('Its bill is already recorded – बिल आधीच नोंदवले'); return; }
   const ven = D.vendors.find(v => v.id === o.venId);
-  const open = D.expenses.filter(x => x.evId === ev.id && x.venId === o.venId && !x.order && !x.draft).slice(0, 3);
+  const open = D.expenses.filter(x => x.evId === ev.id && x.venId === o.venId && !x.order && !x.purchase && !x.draft).slice(0, 3);
   if (open.length) {
     const pick = await askSheet({ title: 'Bill already recorded? – बिल आधीच नोंदवले?',
       message: `${ven?.name || 'This vendor'} already has ${open.length === 1 ? 'a bill' : 'bills'} on this event. If the delivery's bill is one of these, link it so it is not counted twice.`,
@@ -1827,22 +2107,65 @@ async function cancelOrderFromSheet() {
 }
 
 // Home: orders due today or tomorrow that haven't arrived yet
+/* Home: deliveries today and tomorrow, and every order not yet confirmed by its vendor for the next 2 days, with a
+   one-tap reminder (WhatsApp opens with the order details; you send it) and Confirmed for when the vendor replies */
+const UNCONFIRMED = ['prepared', 'opened', 'sent'];
 function deliveriesCard() {
-  const t = today(), tm = addDays(t, 1);
-  const due = D.events.flatMap(ev => (ev.orders || []).filter(o => ACTIVE_ORDER.includes(o.status) && (o.date === t || o.date === tm)).map(o => ({ ev, o })))
+  const t = today(), tm = addDays(t, 1), t2 = addDays(t, 2);
+  const due = D.events.flatMap(ev => (ev.orders || []).filter(o => ACTIVE_ORDER.includes(o.status)
+      && (o.date === t || o.date === tm || (UNCONFIRMED.includes(o.status) && o.date === t2))).map(o => ({ ev, o })))
     .sort((a, b) => (a.o.date + (a.o.time || '')).localeCompare(b.o.date + (b.o.time || '')));
   if (!due.length) return '';
+  const open = due.filter(({ o }) => UNCONFIRMED.includes(o.status)).length;
+  const when = d => d === t ? tr('Today', 'आज') : d === tm ? tr('Tomorrow', 'उद्या') : esc(fmtDate(d));
   return `
-    <div class="sec"><span class="sec-title">Deliveries – पुरवठा</span><span class="meta">${due.length}</span></div>
+    <div class="sec"><span class="sec-title">Deliveries – पुरवठा</span><span class="meta">${due.length}${open ? tr(` · ${open} to confirm`, ` · ${open} पक्की करायची`) : ''}</span></div>
     <div class="card list" id="deliveries">${due.map(({ ev, o }) => {
-      const ven = D.vendors.find(v => v.id === o.venId), st = ORDER_STATUS[o.status];
+      const ven = D.vendors.find(v => v.id === o.venId), st = ORDER_STATUS[o.status], pending = UNCONFIRMED.includes(o.status), last = (o.reminded || []).at(-1);
       return `<div class="row" role="button" tabindex="0" data-action="evdetail" data-id="${esc(ev.id)}">
         <div class="row-ic">${icon('truck', 18)}</div>
-        <div class="row-body"><div class="title-sm trunc">${o.date === t ? tr('Today', 'आज') : tr('Tomorrow', 'उद्या')}${o.time ? ' ' + esc(o.time) : ''} · <span data-nl>${esc(ven?.name || '')}</span></div>
+        <div class="row-body"><div class="title-sm trunc">${when(o.date)}${o.time ? ' ' + esc(o.time) : ''} · <span data-nl>${esc(ven?.name || '')}</span></div>
           <div class="meta trunc">${esc(short(o.head))} · ${o.plates || ''} ${tr('plates', 'ताट')} · <span data-nl>${esc(ev.name)}</span></div></div>
         <span class="chip ${st.tone}">${tr(st.en, st.mr)}</span>
-      </div>`;
+      </div>${pending ? `<div class="dl-acts" data-order="${esc(o.id)}">
+        ${o.status === 'prepared' || o.menuChanged
+          ? `<button type="button" class="btn-sm" data-action="order-status" data-id="${esc(o.id)}" data-ev="${esc(ev.id)}">${icon('message', 16)}${tr(o.menuChanged ? 'Send new menu' : 'Send order', o.menuChanged ? 'नवा मेनू पाठवा' : 'ऑर्डर पाठवा')}</button>`
+          : `<button type="button" class="btn-sm" data-action="order-remind" data-id="${esc(o.id)}" data-ev="${esc(ev.id)}">${icon('message', 16)}${tr('Remind', 'आठवण')}</button>`}
+        <button type="button" class="btn-sm" data-action="order-confirm" data-id="${esc(o.id)}" data-ev="${esc(ev.id)}">${icon('check', 16)}${tr('Confirmed', 'पक्के')}</button>
+        ${last ? `<span class="meta">${tr(`Reminded ${fmtDate(localDay(last))} ${localTime(last)}`, `आठवण ${fmtDate(localDay(last))}`)}</span>` : ''}
+      </div>` : ''}`;
     }).join('')}</div>`;
+}
+// The reminder: the same order details, asking the vendor to confirm (WhatsApp opens; nothing is sent by the app)
+function reminderMessage(ev, o, ven) {
+  const all = eventServices(ev).services, s = o.svc ? all.find(x => x.id === o.svc) : null;
+  const meal = s ? svcLabel(ev, s, all) : ev.meals?.length ? mealLabel(ev) : '', items = orderItems(ev, o).join(', ');
+  return `Namaste ${ven.name}! A reminder for ${ev.name}:\n`
+    + `Date: ${fmtDate(o.date)}${o.time ? ', ' + o.time : ''}${meal ? ' (' + meal + ')' : ''}\nVenue: ${ev.venue || '-'}\n`
+    + (ev.outsourced ? `Full event catering for ${o.plates || '-'} guests\n` : `${short(o.head)} for ${o.plates || '-'} plates\n`)
+    + (items ? `${ev.outsourced ? 'Menu' : 'Items'}: ${items}\n` : '') + (o.basis?.guests && !ev.outsourced ? `Guests: ${o.basis.guests}\n` : '')
+    + `\nPlease confirm everything is on track. Thank you!`;
+}
+async function remindOrder(evId, orderId) {
+  const ev = D.events.find(e => e.id === evId), o = ev?.orders?.find(x => x.id === orderId); if (!o) return;
+  const ven = D.vendors.find(v => v.id === o.venId), phone = phoneDigits(ven?.phone);
+  if (!phone) { showToast(`${ven?.name || 'This vendor'} has no phone number – add it to send a reminder on WhatsApp.`, 'error'); return; }
+  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(reminderMessage(ev, o, ven))}`, '_blank', 'noopener');
+  await patchEvent(ev.id, { orders: ev.orders.map(x => x.id === orderId ? { ...x, reminded: [...(x.reminded || []), new Date().toISOString()].slice(-20) } : x) });
+  showToast(`WhatsApp opened with a reminder for ${ven.name}. Tap Confirmed when they reply – उत्तर आल्यावर पक्के करा`);
+  refreshCurrent();
+}
+// Vendor confirmed: the same step as in the order's status sheet (it also clears a menu-change warning)
+async function setOrderStatus(ev, orderId, next) {
+  await patchEvent(ev.id, { orders: ev.orders.map(x => { if (x.id !== orderId) return x; const y = { ...x, status: next };
+    if (['sent', 'confirmed'].includes(next)) { delete y.menuChanged; if (y.messages?.length) y.messages = markOrderMessage(y.messages, next, new Date().toISOString()); }
+    return y; }) });
+}
+async function confirmOrder(evId, orderId) {
+  const ev = D.events.find(e => e.id === evId), o = ev?.orders?.find(x => x.id === orderId); if (!o) return;
+  await setOrderStatus(ev, orderId, 'confirmed');
+  showToast(`${D.vendors.find(v => v.id === o.venId)?.name || 'Vendor'} confirmed – पक्के`);
+  refreshCurrent();
 }
 
 // Quiet comparison, per category, of this event's cost per plate with the usual for its menu/type
@@ -1870,7 +2193,7 @@ function settleLine(ev) {
     ...(st.taxReview ? [`<span class="due">${tr('Tax / invoice review needed (ask your accountant)', 'कर / बिल तपासणी आवश्यक')}</span>`] : [])];
   return `<div style="margin-top:var(--s3)" id="settle-line">${lines.map(l => `<div class="meta">${l}</div>`).join('')}</div>`;
 }
-const settleDue = ev => { const st = settlementStatus(ev, D.cPays); return (ev.date <= today() || st.adjustments.length) && !!(st.outstanding || st.over || st.adjustments.length); };
+const settleDue = ev => { if (!billSet(ev)) return false; const st = settlementStatus(ev, D.cPays); return (ev.date <= today() || st.adjustments.length) && !!(st.outstanding || st.over || st.adjustments.length); };
 // The event's tools in one wrapping row of equal buttons (each opens its own sheet)
 function eventTools(ev) {
   const b = (action, ic, en, mr) => `<button type="button" class="btn-sm" data-action="${action}">${icon(ic, 16)}${tr(en, mr)}</button>`;
@@ -1911,7 +2234,8 @@ function quoteText(ev, q) {
   for (const l of t.lines) {
     // Rates hidden: each line shows its amount only (no guest count or per-plate rate)
     const mealName = l.kind === 'meal' ? MEALS[l.meal] + (l.menu && quoteMenu(q, l.menu) ? ` (${quoteMenu(q, l.menu).name} menu)` : '') : '';
-    const dishes = l.kind === 'meal' && q.showItems && l.menu ? (quoteMenu(q, l.menu)?.items || []) : [];
+    // With a menu annexure the dishes come from it alone (the approved event menu), never also from the library menu
+    const dishes = l.kind === 'meal' && q.showItems && l.menu && !q.annex ? (quoteMenu(q, l.menu)?.items || []) : [];
     if (l.kind === 'meal') L.push(q.showRates !== false ? `${mealName}: ${l.guests} guests × ${fmtCurrency(l.rate)} = ${fmtCurrency(l.total)}` : `${mealName}: ${fmtCurrency(l.total)}`);
     else if (l.kind === 'item') L.push(`${l.label}: ${fmtCurrency(l.amt)}`);
     else L.push(`${l.label}: −${fmtCurrency(l.amt)}`);
@@ -1920,6 +2244,8 @@ function quoteText(ev, q) {
   if (t.gstP) L.push('', `Subtotal: ${fmtCurrency(t.total)}`, `GST @ ${q.gst.rate}% on ${fmtCurrency(q.gst.taxable)}: ${fmtCurrency(t.gst)}`, `Total: ${fmtCurrency(t.grand)}`);
   else L.push('', `Total: ${fmtCurrency(t.total)} (before any applicable GST)`);
   if (q.terms?.trim()) L.push('', q.terms.trim());
+  const annex = q.annex ? q.snap?.annex || clientMenu(ev, q.annex) : null;
+  if (annex) L.push('', '— Menu —', clientMenuText(annex));
   return L.join('\n');
 }
 function renderQuote() {
@@ -1959,7 +2285,10 @@ function renderQuote() {
         ${cur.gst ? '' : `<button type="button" class="btn-sm" data-gst-add>+ ${tr('GST', 'जीएसटी')}</button>`}
       </div>
       <label class="check-row"><input type="checkbox" id="quote-rates"${cur.showRates !== false ? ' checked' : ''}><span>${tr('Show per-plate rates to the client', 'ग्राहकाला प्रति ताट दर दाखवा')}</span></label>
-      ${cur.lines.some(l => l.kind === 'meal' && l.menu) ? `<label class="check-row"><input type="checkbox" id="quote-items"${cur.showItems ? ' checked' : ''}><span>${tr('List each menu\'s dishes for the client', 'मेनूचे पदार्थ दाखवा')}</span></label>` : ''}
+      ${cur.lines.some(l => l.kind === 'meal' && l.menu) ? `<label class="check-row"><input type="checkbox" id="quote-items"${cur.showItems ? ' checked' : ''}><span>${tr('List each menu\'s dishes for the client (not used when a menu annexure is added: it lists the event\'s own dishes)', 'मेनूचे पदार्थ दाखवा')}</span></label>` : ''}
+      ${approvedMenus(ev).length || (m => m.shared.length || m.services.some(s => s.dishes.length))(menuSnapshot(ev)) ? `<div class="field"><label for="quote-annex">${tr('Menu annexure (pages after the quotation)', 'मेनू परिशिष्ट')}</label><select id="quote-annex">
+        <option value="">No menu annexure</option>${[...approvedMenus(ev)].reverse().map(v => `<option value="${esc(v.id)}"${cur.annex === v.id ? ' selected' : ''}>Menu version ${v.n} · approved ${fmtDate(localDay(v.at))}</option>`).join('')}
+        <option value="draft"${cur.annex === 'draft' ? ' selected' : ''}>Current menu – not yet approved</option></select></div>` : ''}
       <div class="field"><label for="quote-terms">${tr('Terms / note for the client', 'अटी / टीप')}</label><textarea id="quote-terms" maxlength="2000" placeholder="e.g. 50% advance to confirm; valid for 15 days">${esc(cur.terms || '')}</textarea></div>
       <div id="quote-total">${quoteTotalsHtml(cur)}</div>
       <div class="btn-row" style="margin-top:var(--s3)">
@@ -1972,11 +2301,12 @@ function renderQuote() {
   }
   const sup = cur.status === 'sent' && quoteSuperseded(ev, cur);
   const acceptedOther = sup === 'notchosen' ? (ev.quotes || []).find(o => o.status === 'accepted') : null;
-  const when = at => at ? fmtDate(String(at).slice(0, 10)) : '';
+  const when = at => at ? fmtDate(localDay(at)) : '';
   q('quote-body').innerHTML = `
     <div class="list" style="padding:0">${t.lines.map(l => `<div class="row" style="min-height:44px"><div class="row-body"><div class="title-sm">${l.kind === 'meal' ? MEALS[l.meal] : esc(l.label)}</div>
       ${l.kind === 'meal' ? `<div class="meta">${l.guests} × ${fmtCurrency(l.rate)}</div>` : ''}</div><div class="amt-sm">${l.kind === 'discount' ? '−' : ''}${fmtCurrency(Math.abs(l.total))}</div></div>`).join('')}</div>
     <div style="margin-top:var(--s2)">${quoteTotalsHtml(cur)}</div>
+    ${cur.annex ? `<div class="meta" style="margin-top:var(--s2)">${tr(`With menu annexure: ${esc((cur.snap?.annex || clientMenu(ev, cur.annex))?.label || '')}`, 'मेनू परिशिष्टासह')}</div>` : ''}
     <button type="button" class="btn btn-secondary" style="width:100%;margin-top:var(--s3)" data-action="quote-print">${icon('download', 18)}${tr('Print / Save as PDF', 'प्रिंट / PDF')}</button>
     <div class="meta" id="quote-status">${tr(`Sent ${when(cur.sentAt)}`, `पाठवले ${when(cur.sentAt)}`)}${cur.status === 'accepted' ? ` · ${tr(`accepted ${when(cur.acceptedAt)} · ${cur.evidence}${cur.by ? ` (${esc(cur.by)})` : ''}`, `मान्य ${when(cur.acceptedAt)}`)}` : cur.status === 'declined' ? ` · ${tr('declined', 'नाकारले')}` : ''}${sup === 'notchosen' ? ` · ${tr(`not chosen (client accepted Option ${quoteOption(acceptedOther)})`, 'निवडले नाही')}` : sup ? ` · ${tr('replaced by a later version', 'नंतरच्या आवृत्तीने बदलले')}` : ''}</div>
     ${cur.status === 'sent' && !sup ? `
@@ -2000,6 +2330,7 @@ function readQuoteForm() {
   if (!quoteDraft) return;
   quoteDraft.showRates = q('quote-rates')?.checked !== false;
   if (q('quote-items')) quoteDraft.showItems = q('quote-items').checked;
+  if (q('quote-annex')) { if (qv('quote-annex')) quoteDraft.annex = qv('quote-annex'); else delete quoteDraft.annex; }
   quoteDraft.terms = q('quote-terms')?.value || '';
 }
 async function saveQuotes(mutate, extra = {}) {
@@ -2039,7 +2370,7 @@ async function quoteAction(action) {
     const d = await saveQuoteDraft(); if (!d) return;
     const text = quoteText(D.events.find(e => e.id === ev.id), d);
     const prof = getProfile();
-    const ok = await saveQuotes(qs => { const x = qs.find(y => y.v === d.v); Object.assign(x, { status: 'sent', sentAt: now, text, snap: quoteSnapshot(ev, d), ...(Object.keys(prof).length ? { profile: prof } : {}) }); });
+    const ok = await saveQuotes(qs => { const x = qs.find(y => y.v === d.v); Object.assign(x, { status: 'sent', sentAt: now, text, snap: { ...quoteSnapshot(ev, d), ...(d.annex && clientMenu(ev, d.annex) ? { annex: clientMenu(ev, d.annex) } : {}), layout: DOC_LAYOUT }, ...(Object.keys(prof).length ? { profile: prof } : {}) }); });
     if (!ok) return;
     quoteDraft = null; refreshCurrent(); renderQuote(); showToast(`Quote v${d.v} locked as sent. Changes now make a new version. – पक्की`); return;
   }
@@ -2164,7 +2495,8 @@ function dishCourses(dishes) {
     <div class="dish-pills">${groups.get(k).map(dishPill).join('')}</div></div>`).join('');
 }
 function mealMenuCard(ev) {
-  if (!(ev.meals || []).length) return '';
+  // No meals chosen: the dishes are one general menu, which can still be approved and sent
+  if (!(ev.meals || []).length) return approvalBar(ev);
   const { services, unassigned, changedElsewhere } = eventServices(ev);
   const shared = (services[0]?.dishes || []).filter(d => d.shared);
   const cards = services.map(s => {
@@ -2183,6 +2515,7 @@ function mealMenuCard(ev) {
   }).join('');
   return `<div class="sec"><span class="sec-title">Menu by meal – जेवणानुसार मेनू</span>
       <button type="button" class="btn-sm" data-action="svc-add">${icon('plus', 16)}${tr('Add menu', 'मेनू जोडा')}</button></div>
+    ${approvalBar(ev)}
     ${changedElsewhere ? `<div class="card pad due-note" role="status">${tr('This menu was changed in an older version of the app. Check each meal before sending it to the client or vendors.', 'हा मेनू जुन्या आवृत्तीत बदलला. पाठवण्याआधी प्रत्येक जेवण तपासा.')}</div>` : ''}
     <div class="svc-list" id="meal-menus">${cards}
       ${shared.length ? `<div class="meta svc-shared" data-nl>${tr('Every meal', 'सर्व जेवण')}: ${esc(shared.map(d => d.name).join(', '))}</div>` : ''}
@@ -2190,6 +2523,203 @@ function mealMenuCard(ev) {
         <div class="meta" data-nl>${esc(unassigned.map(d => `${d.name} (${MEALS[d.meal] || d.meal})`).join(', '))}</div>
         <div class="meta">${tr('Their meal is no longer in this event. They are kept, but not served or ordered. Choose a meal for them in Event menu.', 'त्यांचे जेवण आता कार्यक्रमात नाही. ठेवले आहेत, पण वाढले/ऑर्डर होत नाहीत.')}</div></div>` : ''}
     </div>`;
+}
+
+/* ── CLIENT-APPROVED MENU (event page) ── */
+// A meal's name in a kept copy: "Dinner 2 · 06 Dec 2026" when the copy has more than one dinner or its own date
+function snapLabel(ev, snap, s) {
+  const same = (snap.services || []).filter(x => x.meal === s.meal);
+  return (MEALS[s.meal] || 'Menu') + (same.length > 1 ? ` ${same.findIndex(x => x.id === s.id) + 1}` : '') + (same.length > 1 || (s.date && s.date !== ev.date) ? ` · ${fmtDate(s.date || ev.date)}` : '');
+}
+const FACT = { date: 'Date', time: 'Time', guests: 'Guests', rate: '₹ / plate' };
+// One dish's change, in words: who makes it, its diet marks, its food type or its course
+function dishChangeText(c) {
+  const name = { type: v => TYPE_NAME[v] || 'not set', course: v => CAT_NAME[v] || v || 'not set', counter: v => short(v) || 'Our kitchen', diet: v => v || 'no marks', source: v => SRC_NAME[v] || v }[c.what];
+  return `${c.what === 'type' ? 'food type ' : c.what === 'course' ? 'course ' : c.what === 'source' ? 'sourcing ' : ''}${esc(name(c.from))} → ${esc(name(c.to))}${c.internal ? ` <span class="meta">(${tr('internal, not for the client', 'अंतर्गत')})</span>` : ''}`;
+}
+const factVal = (k, v) => v === '' ? '–' : k === 'date' ? fmtDate(v) : k === 'rate' ? fmtCurrency(v) : String(v);
+function menuDiffHtml(ev, diff, newer, older) {
+  if (!diff.meals.length) return `<div class="meta">${tr('No changes.', 'बदल नाहीत.')}</div>`;
+  const lab = m => m.shared ? 'Every meal' : snapLabel(ev, m.gone ? older : newer, (m.gone ? older : newer).services.find(s => s.id === m.id) || m);
+  return diff.meals.map(m => `<div class="mv-meal"><div class="title-sm">${esc(lab(m))}${m.isNew ? ` <span class="meta">· ${tr('new', 'नवीन')}</span>` : ''}${m.gone ? ` <span class="meta">· ${tr('removed', 'काढले')}</span>` : ''}</div>
+    ${m.facts.map(f => `<div class="mv-line"><span class="sym c" aria-label="changed">~</span><span>${FACT[f.what]} ${esc(factVal(f.what, f.from))} → ${esc(factVal(f.what, f.to))}</span></div>`).join('')}
+    ${m.added.map(n => `<div class="mv-line"><span class="sym p" aria-label="added">+</span><span data-nl>${esc(n)}</span></div>`).join('')}
+    ${m.removed.map(n => `<div class="mv-line"><span class="sym m" aria-label="removed">−</span><span data-nl>${esc(n)}</span></div>`).join('')}
+    ${m.changed.map(c => `<div class="mv-line"><span class="sym c" aria-label="changed">~</span><span data-nl>${esc(c.name)}: ${dishChangeText(c)}</span></div>`).join('')}
+  </div>`).join('');
+}
+function approvalBar(ev) {
+  const st = menuSinceApproved(ev), last = st.last;
+  if (!last && !st.now.services.some(s => s.dishes.length) && !st.now.shared.length) return '';
+  const when = last ? `${fmtDate(localDay(last.at))} · ${last.by}${last.who ? ` (${last.who})` : ''}` : '';
+  const text = !last ? tr('Not approved by the client yet', 'ग्राहकाने अजून मान्य केला नाही')
+    : !st.count ? tr(`Approved v${last.n} · ${when}`, `मान्य आवृत्ती ${last.n} · ${when}`)
+    : tr(`Changed since approved v${last.n} · ${st.count} change${st.count > 1 ? 's' : ''}`, `मान्य आवृत्ती ${last.n} नंतर ${st.count} बदल`);
+  return `<div class="card pad ma-bar ${!last ? '' : st.count ? 'due-note' : 'ok-note'}" id="menu-approval" role="status">
+    <div class="meta ma-text" data-nl>${!last ? '' : st.count ? '' : icon('check', 16)}${esc(text)}</div>
+    <div class="row-btns">${!last || st.count ? `<button type="button" class="btn-sm" data-action="menu-approve">${tr(!last ? 'Mark approved' : 'Review & approve', !last ? 'मान्य झाले' : 'तपासा व मान्य')}</button>` : ''}
+      <button type="button" class="btn-sm" data-action="menu-send">${icon('message', 16)}${tr('Send menu', 'मेनू पाठवा')}</button>
+      ${last ? `<button type="button" class="btn-sm" data-action="menu-versions">${tr(`Versions (${approvedMenus(ev).length})`, `आवृत्त्या (${approvedMenus(ev).length})`)}</button>` : ''}</div>
+  </div>`;
+}
+function openApproveSheet() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const st = menuSinceApproved(ev), n = (st.last?.n || 0) + 1;
+  const dishes = st.now.services.reduce((k, s) => k + s.dishes.length, 0) + st.now.shared.length;
+  if (!dishes) { showToast('Add the dishes first – आधी पदार्थ जोडा', 'error'); return; }
+  const pending = st.now.pending.map(id => st.now.services.find(s => s.id === id)).filter(Boolean);
+  q('ma-mtitle').textContent = `Client approved the menu? · version ${n} – मान्य`;
+  q('ma-body').innerHTML = `
+    <div class="meta" style="margin-bottom:var(--s2)">${st.last ? tr(`Changes since approved version ${st.last.n}:`, `आवृत्ती ${st.last.n} नंतरचे बदल:`) : tr(`First approved version: ${st.now.services.length} meal${st.now.services.length > 1 ? 's' : ''}, ${dishes} dishes.`, `पहिली मान्य आवृत्ती.`)}</div>
+    ${st.last ? menuDiffHtml(ev, st, st.now, st.last) : ''}
+    ${pending.length ? `<div class="card pad due-note" style="margin-top:var(--s2)">${tr(`Not included: ${pending.map(s => snapLabel(ev, st.now, s)).join(', ')} only ${pending.length > 1 ? 'have' : 'has'} a library menu shown, not confirmed. Use its dishes first to include them.`, 'पक्के न केलेले मेनू समाविष्ट नाहीत.')}</div>` : ''}
+    <div class="meta" style="margin-top:var(--s3)">${tr('The approved copy is kept as it is; later changes are approved as a new version. Nothing is sent to anyone.', 'मान्य प्रत तशीच ठेवली जाते. काहीही पाठवले जात नाही.')}</div>`;
+  q('ma-by').value = ''; q('ma-who').value = '';
+  q('btn-save-approval').textContent = `Save approved version ${n} – जतन`;
+  clearFieldErrors();
+  openSheet('ma-modal');
+}
+async function saveApproval() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const by = qv('ma-by'), who = qv('ma-who').trim();
+  if (!by) { showFieldErrors({ 'ma-by': 'Written or verbal? – कसे मान्य केले?' }); return; }
+  if (by === 'verbal' && !who) { showFieldErrors({ 'ma-who': 'For a verbal approval, write who approved – कोणी?' }); return; }
+  const v = approvedVersion(ev, { by, who });
+  const btn = q('btn-save-approval'), label = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Saving… – जतन होत आहे';
+  try { await patchEvent(ev.id, { menuApproved: [...approvedMenus(ev), v] }); }
+  catch (e) { btn.disabled = false; btn.textContent = label; showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
+  btn.disabled = false; btn.textContent = label;
+  closeModals(); showToast(`Menu approved as version ${v.n} – मान्य आवृत्ती ${v.n}`); refreshCurrent();
+}
+function openVersionsSheet() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const list = approvedMenus(ev);
+  q('mv-body').innerHTML = [...list].reverse().map(v => {
+    const prev = list[v.n - 2] || null, d = menuDiff(prev, v);
+    return `<details class="mv-ver"${v.n === list.length ? ' open' : ''}><summary><span class="title-sm">${tr(`Version ${v.n}`, `आवृत्ती ${v.n}`)}</span>
+      <span class="meta">${fmtDate(localDay(v.at))} · ${esc(v.by)}${v.who ? ` (${esc(v.who)})` : ''} · ${v.services.reduce((k, s) => k + s.dishes.length, 0) + v.shared.length} dishes</span></summary>
+      <div class="mv-diff">${prev ? `<div class="meta">${tr(`Changes from version ${prev.n}:`, `आवृत्ती ${prev.n} पासूनचे बदल:`)}</div>${menuDiffHtml(ev, d, v, prev)}` : menuDiffHtml(ev, d, v, null)}</div></details>`; }).join('');
+  openSheet('mv-modal');
+}
+
+/* ── CLIENT DOCUMENTS: menu annexure to a quotation, menu on its own (PDF or WhatsApp) ── */
+/* A client document shows the menu from one approved version (or the current menu, clearly marked as a draft): each
+   meal with its date, time and guests, and the dish names with diet marks. Never the kitchen or counter that makes a
+   dish, vendors, costs, rates or margins. When it is marked sent, the exact content and layout are kept, so printing
+   it again later shows what went to the client. */
+const DOC_LAYOUT = 1;
+const clientDish = d => ({ name: d.name, ...(d.diet?.length ? { diet: [...d.diet] } : {}) });
+function menuSource(ev, v) {
+  if (v === 'draft') return { src: menuSnapshot(ev), label: 'Draft menu – not yet approved by the client' };
+  const ver = approvedMenus(ev).find(x => x.id === v);
+  return ver ? { src: ver, label: `Menu version ${ver.n} · approved ${fmtDate(localDay(ver.at))}` } : null;
+}
+function clientMenu(ev, v) {
+  const m = menuSource(ev, v); if (!m) return null;
+  // A meal served only the dishes common to every meal is still listed (its dishes are under "Served at every meal")
+  const shared = m.src.shared || [];
+  return { v, label: m.label, meals: m.src.services.filter(s => s.dishes.length || shared.length).map(s => ({ title: snapLabel(ev, m.src, s),
+      when: [s.date && s.date !== ev.date ? fmtDate(s.date) : '', s.time || ''].filter(Boolean).join(' · '), guests: s.guests || 0, dishes: s.dishes.map(clientDish) })),
+    shared: shared.map(clientDish) };
+}
+const dietText = d => (d.diet || []).map(k => DIET_NAME[k] || k).join(', ');
+function clientMenuHtml(cm) {
+  return `<div class="pd-menu-label">${esc(cm.label)}</div>
+    ${cm.meals.map(m => `<section class="pd-meal"><h2>${esc(m.title)}</h2>${m.when || m.guests ? `<div class="pd-muted">${esc([m.when, m.guests ? `${m.guests} guests` : ''].filter(Boolean).join(' · '))}</div>` : ''}
+      ${m.dishes.length ? '' : '<div class="pd-muted">Dishes served at every meal (listed below)</div>'}<ul>${m.dishes.map(d => `<li>${esc(d.name)}${d.diet ? ` <span class="pd-muted">(${esc(dietText(d))})</span>` : ''}</li>`).join('')}</ul></section>`).join('')}
+    ${cm.shared.length ? `<section class="pd-meal"><h2>Served at every meal</h2><ul>${cm.shared.map(d => `<li>${esc(d.name)}${d.diet ? ` <span class="pd-muted">(${esc(dietText(d))})</span>` : ''}</li>`).join('')}</ul></section>` : ''}`;
+}
+function clientMenuText(cm) {
+  const L = [cm.label];
+  for (const m of cm.meals) { L.push('', `*${m.title}*${m.when ? ` · ${m.when}` : ''}${m.guests ? ` · ${m.guests} guests` : ''}`); if (!m.dishes.length) L.push('_Dishes served at every meal (listed below)_'); for (const d of m.dishes) L.push(`• ${d.name}${d.diet ? ` (${dietText(d)})` : ''}`); }
+  if (cm.shared.length) { L.push('', '*Served at every meal*'); for (const d of cm.shared) L.push(`• ${d.name}${d.diet ? ` (${dietText(d)})` : ''}`); }
+  return L.join('\n');
+}
+// Business letterhead shared by the quotation and the menu
+function docHead(p) {
+  return `<header class="pd-head"><div><div class="pd-biz">${esc(p.name || 'Your business name')}</div>${p.tagline ? `<div class="pd-muted">${esc(p.tagline)}</div>` : ''}</div>
+      <div class="pd-contact">${[p.contact && `Contact: ${p.contact}`, p.address, p.phone, p.email].filter(Boolean).map(esc).join('<br>')}${p.gstin ? `<br>GSTIN ${esc(p.gstin)}` : ''}</div></header>`;
+}
+function menuDocHtml(ev, cm, profile, { date, draft = false, eventInfo }) {
+  const E = eventInfo || ev;
+  return `<div class="pd">
+    ${draft ? '<div class="pd-draft">DRAFT – menu not yet approved by the client</div>' : ''}
+    ${docHead(profile || {})}
+    <h1 class="pd-title">Menu</h1>
+    <div class="pd-meta"><div><b>${esc(E.name)}</b><br>${fmtDate(E.date)}${E.venue ? ` · ${esc(E.venue)}` : ''}</div><div class="n">Date ${fmtDate(date)}</div></div>
+    ${clientMenuHtml(cm)}
+    ${profile?.footer ? `<footer class="pd-foot">${esc(profile.footer)}</footer>` : ''}
+  </div>`;
+}
+function printDoc(html) {
+  q('print-doc').innerHTML = html;
+  document.body.classList.add('printing');
+  const done = () => { document.body.classList.remove('printing'); window.removeEventListener('afterprint', done); };
+  window.addEventListener('afterprint', done);
+  try { window.print(); } finally { setTimeout(done, 1500); }
+}
+function needProfile(profile, what) {
+  if (profile.name) return false;
+  askSheet({ title: 'Add your business details first – आधी व्यवसाय तपशील', message: `The ${what} shows your business name, address, phone and GSTIN at the top. None are saved yet, so the PDF would have no name on it. It takes a minute and is asked only once.`,
+    actions: [{ label: 'Add business details – तपशील भरा', value: true, style: 'btn-primary' }] }).then(ok => { if (ok) closeOverlay().then(openProfile); });
+  return true;
+}
+
+/* ── SEND THE MENU TO THE CLIENT (menu only) ── */
+// The date on the PDF last printed from this sheet, for that exact menu: kept with the copy when it is marked sent, so a
+// menu printed before midnight and marked sent after it keeps the date the client saw
+let mdPrinted = null;
+const mdKey = cm => `${cm.v}
+${clientMenuText(cm)}`;
+function openMenuDocSheet() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  mdPrinted = null;
+  const vers = [...approvedMenus(ev)].reverse();
+  q('md-ver').innerHTML = vers.map(v => `<option value="${esc(v.id)}">Version ${v.n} · approved ${fmtDate(localDay(v.at))}</option>`).join('')
+    + `<option value="draft">Current menu – not yet approved</option>`;
+  q('md-ver').value = vers[0]?.id || 'draft';
+  renderMenuDocSheet();
+  openSheet('md-modal');
+}
+function renderMenuDocSheet() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const cm = clientMenu(ev, qv('md-ver'));
+  q('md-preview').textContent = cm ? clientMenuText(cm) : '';
+  const issued = [...(ev.menuDocs || [])].reverse();
+  q('md-issued').innerHTML = issued.length ? `<div class="label" style="margin:var(--s3) 0 var(--s1)">${tr('Sent before', 'आधी पाठवलेले')}</div>`
+    + issued.map(d => `<div class="row" style="min-height:48px"><div class="row-body"><div class="title-sm">${esc(d.menu.label)}</div><div class="meta">${tr(`Sent ${fmtDate(localDay(d.at))}`, `पाठवले ${fmtDate(localDay(d.at))}`)}</div></div>
+        <button type="button" class="btn-sm" data-md-reprint="${esc(d.id)}">${icon('download', 16)}${tr('Print again', 'पुन्हा')}</button></div>`).join('') : '';
+}
+function printMenuDoc() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const profile = getProfile(); if (needProfile(profile, 'menu')) return;
+  const cm = clientMenu(ev, qv('md-ver')); if (!cm) return;
+  const date = today(); mdPrinted = { key: mdKey(cm), date };
+  printDoc(menuDocHtml(ev, cm, profile, { date, draft: cm.v === 'draft' }));   // an approved version prints clean; the current menu says DRAFT
+}
+function shareMenuDoc() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const cm = clientMenu(ev, qv('md-ver')); if (!cm) return;
+  const text = `Menu for ${ev.name} – ${fmtDate(ev.date)}\n\n${clientMenuText(cm)}`, phone = phoneDigits(ev.mobile);
+  window.open(phone ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+  showToast('WhatsApp opened. Tap "I have sent it" after you send it, to keep a copy – पाठवल्यावर नोंदवा');
+}
+async function markMenuDocSent() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const cm = clientMenu(ev, qv('md-ver')); if (!cm) return;
+  const prof = getProfile();
+  const date = mdPrinted?.key === mdKey(cm) ? mdPrinted.date : today();
+  const doc = { id: uid('MD'), at: new Date().toISOString(), date, v: cm.v, layout: DOC_LAYOUT, menu: cm, text: clientMenuText(cm),
+    event: { name: ev.name, date: ev.date, venue: ev.venue || '' }, ...(Object.keys(prof).length ? { profile: prof } : {}) };
+  try { await patchEvent(ev.id, { menuDocs: [...(ev.menuDocs || []), doc] }); } catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
+  renderMenuDocSheet(); refreshCurrent();
+  showToast('Copy kept: printing it again shows exactly this menu – प्रत ठेवली');
+}
+function reprintMenuDoc(id) {
+  const ev = D.events.find(e => e.id === curRef); const d = ev?.menuDocs?.find(x => x.id === id); if (!d) return;
+  const profile = d.profile || getProfile(); if (needProfile(profile, 'menu')) return;
+  printDoc(menuDocHtml(ev, d.menu, profile, { date: d.date || localDay(d.at), eventInfo: d.event, draft: d.v === 'draft' }));   // the issue date kept with it (older copies: the local day kept); sent unapproved: still says DRAFT
 }
 
 /* ── ADD OR CHANGE A MEAL'S MENU ── */
@@ -2200,7 +2730,13 @@ function mealMenuCard(ev) {
    saved until the Save button, which names the meal. */
 let svcState = null;
 const LIVE_HEADS = () => EXPENSE_HEADS['Live Counter'].filter(h => !/counter setup/i.test(h));
-const svcDishKey = list => list.map(d => JSON.stringify([d.name.trim(), d.cat || '', d.type || '', d.diet || [], d.head || ''])).join('\n');
+/* Where a dish comes from (4.28.0): our kitchen (no counter), a vendor's live counter (its counter), bought ready-made
+   or bought and finished by us (`src`). One select in the menu editors; no supplier is asked here (that is the order). */
+const SRC_OPTS = [['@buy', 'Buy ready-made – तयार विकत'], ['@finish', 'Buy & finish – विकत, आपण तयार करू']];
+const SRC_NAME = { kitchen: 'Our kitchen', buy: 'Buy ready-made', finish: 'Buy & finish', counter: 'Counter' };
+const whoValue = d => d.src ? '@' + d.src : d.head || '';
+function setWho(d, v) { if (v === '@buy' || v === '@finish') { d.src = v.slice(1); d.head = ''; } else { delete d.src; d.head = v; } d.manual = true; }
+const svcDishKey = list => list.map(d => JSON.stringify([d.name.trim(), d.cat || '', d.type || '', d.diet || [], d.head || '', d.src || ''])).join('\n');
 function svcLabel(ev, s, all) {
   const repeat = all.filter(x => x.meal === s.meal).length > 1, other = s.date && s.date !== ev.date;
   return svcTitle(s, all) + (repeat || other ? ` · ${fmtDate(s.date || ev.date)}` : '');
@@ -2289,7 +2825,7 @@ function renderServiceSheet() {
     return `<div class="svc-dish field" data-sd="${i}">
       <div class="svc-dish-h"><input type="text" data-k="name" value="${esc(x.name)}" maxlength="200" aria-label="Dish name"><button type="button" class="icon-btn" data-sd-del="${i}" aria-label="Remove ${esc(x.name)}">${icon('x', 16)}</button></div>
       <div class="svc-dish-who">
-        ${outsourced ? '' : `<select data-k="head" aria-label="${esc(x.name)}: prepared by"><option value="">Our kitchen – आपले किचन</option>${opt(LIVE_HEADS().map(h => [h, h]), x.head || '')}${x.head && !LIVE_HEADS().includes(x.head) ? opt([[x.head, x.head]], x.head) : ''}</select>`}
+        ${outsourced ? '' : `<select data-k="head" aria-label="${esc(x.name)}: prepared by"><option value="">Our kitchen – आपले किचन</option>${opt(SRC_OPTS, whoValue(x))}${opt(LIVE_HEADS().map(h => [h, h]), whoValue(x))}${x.head && !LIVE_HEADS().includes(x.head) ? opt([[x.head, x.head]], x.head) : ''}</select>`}
         <button type="button" class="f-chip svc-diet-btn" data-diet-toggle="${i}" aria-expanded="${!!open}">${esc(marks.length ? marks.join(', ') : 'Diet')}</button>
       </div>
       ${open ? `<div class="chips-row svc-diet" role="group" aria-label="${esc(x.name)}: diet marks">${DIET_TAGS.map(([k, label]) => {
@@ -2348,13 +2884,14 @@ async function saveServiceSheet() {
       dishes: [...clean, ...s.dishes.filter(d => d.shared)] };
   });
   const patch = applyServices(ev, all);
-  const before = ev.dishes || [], sig = list => list.map(d => JSON.stringify([d.name, d.meal || '', d.svc || '', d.head || '', d.cat || '', d.type || '', d.diet || []])).sort().join('\n');
+  const before = ev.dishes || [], sig = list => list.map(d => JSON.stringify([d.name, d.meal || '', d.svc || '', d.head || '', d.src || '', d.cat || '', d.type || '', d.diet || []])).sort().join('\n');
   if (sig(before) === sig(patch.dishes)) patch.dishes = before;   // same dishes: kept in their order, no new menu version
   else if (before.length) {
     // Keep the previous menu and mark sent orders whose counter's dishes changed; nothing is re-sent
     patch.menuVersions = [...(ev.menuVersions || []), { at: new Date().toISOString(), dishes: before }].slice(-20);
-    const hit = new Set(menuChangeImpact(before, patch.dishes, ev.orders || []));
+    const hit = new Set(ordersHit(ev, { ...ev, ...patch }));
     if (hit.size) patch.orders = ev.orders.map(o => hit.has(o.id) ? { ...o, menuChanged: true } : o);
+    flagPurchases(ev, { ...ev, ...patch }, patch);
   }
   const btn = q('btn-save-svc'), label = btn.textContent;
   btn.disabled = true; btn.textContent = 'Saving… – जतन होत आहे';
@@ -2452,11 +2989,13 @@ const quoteEvent = (ev, qt) => qt.snap?.event || ev;
 const quoteMenu = (qt, id) => qt.snap ? qt.snap.menus?.[id] || null : menuById(id);
 // The quote as a printable A4 document: no costs, margins or internal notes
 function quoteDocHtml(ev, qt, profile) {
+  // The menu annexure: the frozen copy of a sent quote; a draft (or a quote sent before copies) uses the chosen version
+  const annex = qt.annex ? qt.snap?.annex || clientMenu(ev, qt.annex) : null;
   const t = quoteTotal(qt), p = profile || {}, many = quoteOptions({ quotes: [...(ev.quotes || []), qt] }).length > 1, E = quoteEvent(ev, qt);
   const line = (a, b, c, cls = '') => `<tr class="${cls}"><td>${a}</td><td class="n">${b}</td><td class="n">${c}</td></tr>`;
   const rows = t.lines.map(l => {
-    if (l.kind === 'meal') { const mn = l.menu && quoteMenu(qt, l.menu), dishes = qt.showItems && mn ? mn.items || [] : [];
-      return line(`<b>${MEALS[l.meal]}</b>${mn ? ` – ${esc(mn.name)} menu` : ''}${dishes.length ? `<div class="pd-dishes">${dishes.map(esc).join(' · ')}</div>` : ''}`,
+    if (l.kind === 'meal') { const mn = l.menu && quoteMenu(qt, l.menu), dishes = qt.showItems && mn && !annex ? mn.items || [] : [];
+      return line(`<b>${MEALS[l.meal]}</b>${mn ? ` – ${esc(mn.name)} menu` : ''}${dishes.length ? `<div class="pd-dishes">${dishes.map(esc).join(' · ')}</div>` : ''}${annex ? '<div class="pd-dishes">Dishes: see the menu annexure</div>' : ''}`,
         qt.showRates !== false ? `${l.guests} × ${fmtCurrency(l.rate)}` : '', fmtCurrency(l.total)); }
     if (l.kind === 'item') return line(esc(l.label), '', fmtCurrency(l.amt));
     return line(`${esc(l.label)} <span class="pd-muted">(discount)</span>`, '', `−${fmtCurrency(l.amt)}`);
@@ -2464,11 +3003,11 @@ function quoteDocHtml(ev, qt, profile) {
   const totals = t.gstP
     ? line('Subtotal', '', fmtCurrency(t.total), 'pd-sub') + line(`GST @ ${qt.gst.rate}% on ${fmtCurrency(qt.gst.taxable)}`, '', fmtCurrency(t.gst), 'pd-sub') + line('<b>Total</b>', '', `<b>${fmtCurrency(t.grand)}</b>`, 'pd-total')
     : line('<b>Total</b> <span class="pd-muted">(before any applicable GST)</span>', '', `<b>${fmtCurrency(t.total)}</b>`, 'pd-total');
-  const when = String(qt.sentAt || qt.at || new Date().toISOString()).slice(0, 10);
+  const when = qt.sentAt || qt.at ? localDay(qt.sentAt || qt.at) : today();
   return `<div class="pd">
     ${qt.status === 'draft' ? '<div class="pd-draft">DRAFT – not yet sent to the client</div>' : ''}
-    <header class="pd-head"><div><div class="pd-biz">${esc(p.name || 'Your business name')}</div>${p.tagline ? `<div class="pd-muted">${esc(p.tagline)}</div>` : ''}</div>
-      <div class="pd-contact">${[p.contact && `Contact: ${p.contact}`, p.address, p.phone, p.email].filter(Boolean).map(esc).join('<br>')}${p.gstin ? `<br>GSTIN ${esc(p.gstin)}` : ''}</div></header>
+    ${qt.status !== 'draft' && !qt.snap ? '<div class="pd-draft pd-rebuilt">Rebuilt from current data: this quotation was sent before CaterDesk kept copies, so details may differ from what was sent.</div>' : ''}
+    ${docHead(p)}
     <h1 class="pd-title">Quotation</h1>
     <div class="pd-meta"><div><b>${esc(E.name)}</b><br>${fmtDate(E.date)}${E.venue ? ` · ${esc(E.venue)}` : ''}</div>
       <div class="n">${many ? `Option ${quoteOption(qt)} · ` : ''}Version ${qt.v}<br>Date ${fmtDate(when)}</div></div>
@@ -2476,7 +3015,12 @@ function quoteDocHtml(ev, qt, profile) {
     ${qt.terms?.trim() ? `<div class="pd-block"><b>Terms</b><div>${esc(qt.terms.trim()).replace(/\n/g, '<br>')}</div></div>` : ''}
     ${p.pay ? `<div class="pd-block"><b>Payment details</b><div>${esc(p.pay).replace(/\n/g, '<br>')}</div></div>` : ''}
     ${p.footer ? `<footer class="pd-foot">${esc(p.footer)}</footer>` : ''}
-  </div>`;
+  </div>${annex ? `<div class="pd pd-break">
+    ${docHead(p)}
+    <h1 class="pd-title">Menu – annexure to the quotation</h1>
+    <div class="pd-meta"><div><b>${esc(E.name)}</b><br>${fmtDate(E.date)}${E.venue ? ` · ${esc(E.venue)}` : ''}</div><div class="n">${many ? `Option ${quoteOption(qt)} · ` : ''}Version ${qt.v}</div></div>
+    ${clientMenuHtml(annex)}
+  </div>` : ''}`;
 }
 // Print it (Android: the print screen offers "Save as PDF"); a sent quote prints with the details it was sent with
 function printQuote() {
@@ -2503,7 +3047,7 @@ function renderSettle() {
   const row = (l, v, cls = '') => `<div style="display:flex;justify-content:space-between;gap:var(--s2);margin-top:6px"><span class="meta">${l}</span><span class="amt-sm ${cls}">${v}</span></div>`;
   q('settle-body').innerHTML = `
     ${st.changes.length ? row(tr('Bill as agreed', 'मूळ बिल'), fmtCurrency(st.original)) : ''}
-    ${st.changes.map(c => row(`${c.kind ? SETTLE_KINDS[c.kind][0] : tr('Change', 'बदल')} · <span data-nl>${esc(c.reason)}</span> · ${fmtDate(String(c.at).slice(0, 10))}${c.ack ? ` · ${c.ack === 'none' ? tr('client not acknowledged', 'ग्राहकाची संमती नाही') : tr(`client ${c.ack}`, c.ack)}` : ''}`,
+    ${st.changes.map(c => row(`${c.kind ? SETTLE_KINDS[c.kind][0] : tr('Change', 'बदल')} · <span data-nl>${esc(c.reason)}</span> · ${fmtDate(localDay(c.at))}${c.ack ? ` · ${c.ack === 'none' ? tr('client not acknowledged', 'ग्राहकाची संमती नाही') : tr(`client ${c.ack}`, c.ack)}` : ''}`,
       `${c.to >= c.from ? '+' : '−'}${fmtCurrency(Math.abs(c.to - c.from))}`)).join('')}
     ${st.gst ? row(tr('Bill (before GST)', 'बिल (जीएसटीशिवाय)'), fmtCurrency(ev.billing)) + row(tr(`GST ${ev.gst.rate}%`, 'जीएसटी'), fmtCurrency(st.gst)) : ''}
     ${row(st.gst ? tr('Client pays', 'ग्राहकाने द्यायचे') : tr('Bill now', 'आताचे बिल'), fmtCurrency(st.billed))}
@@ -2553,9 +3097,18 @@ const fromPaiseLocal = p => p / 100;
 const MEAL_NAME = k => k === 'all' ? 'Guests' : MEALS[k];
 const countKeys = ev => ev.meals?.length ? COUNT_MEALS.filter(m => ev.meals.includes(m)) : ['all'];
 // Event page: one concise line per counted meal, plus the action
+// The guests registered for a meal ('all' = the event without meals): the meal's own number, else the event's (as counted)
+const bookedGuests = (ev, k) => k === 'all' ? Number(ev.guests) || 0 : Number(ev.mealPlan?.[k]?.guests) || Number(ev.guests) || 0;
+function guestsLine(ev) {
+  const keys = countKeys(ev), missing = keys.filter(k => !bookedGuests(ev, k) && !guestCountStatus(ev, k).started);
+  const known = keys.filter(k => bookedGuests(ev, k)).map(k => keys.length > 1 || k !== 'all' ? `${MEALS[k]} ${bookedGuests(ev, k)}` : `${bookedGuests(ev, k)}`);
+  if (missing.length && ev.date >= today()) return `<div class="guests-miss" id="guests-line"><span class="meta due">${tr(`Guest count not entered${keys.length > 1 || missing[0] !== 'all' ? ` (${missing.map(k => MEALS[k]).join(', ')})` : ''}`, 'पाहुण्यांची संख्या नोंदलेली नाही')}</span>
+    <button type="button" class="btn-sm" data-action="count-open">${tr('Enter guests', 'पाहुणे नोंदवा')}</button></div>`;
+  return known.length ? `<div class="meta" id="guests-line" data-nl>${tr(`Guests: ${known.join(' · ')}`, `पाहुणे: ${known.join(' · ')}`)}</div>` : '';
+}
 function countLine(ev) {
   const lines = countKeys(ev).map(k => ({ k, s: guestCountStatus(ev, k) })).filter(x => x.s.started);
-  return `<div style="margin-top:var(--s3)" id="count-line">${lines.map(({ k, s }) => `<div class="meta" data-nl>${MEAL_NAME(k)}: ${tr(`contracted ${s.contracted} · counted ${s.counted ?? '—'}${s.extra ? ` · extra ${s.extra}` : ''}${s.accepted ? ` · approved ${s.accepted}` : ''}${s.disputed ? ` · disputed ${s.disputed}` : ''}${s.billed ? ` · billed ${s.billed}` : ''}`,
+  return `<div style="margin-top:var(--s3)" id="count-line">${guestsLine(ev)}${lines.map(({ k, s }) => `<div class="meta" data-nl>${MEAL_NAME(k)}: ${tr(`contracted ${s.contracted} · counted ${s.counted ?? '—'}${s.extra ? ` · extra ${s.extra}` : ''}${s.accepted ? ` · approved ${s.accepted}` : ''}${s.disputed ? ` · disputed ${s.disputed}` : ''}${s.billed ? ` · billed ${s.billed}` : ''}`,
     `करार ${s.contracted} · मोजले ${s.counted ?? '—'}${s.extra ? ` · जास्त ${s.extra}` : ''}`)}</div>`).join('')}
     ${ev.date >= today() && !countPolicyAgreed(ev.countPolicy) ? `<div class="meta due" id="count-policy-flag">${tr('Count method not agreed with the client yet', 'मोजणीची पद्धत ग्राहकाशी ठरलेली नाही')}</div>` : ''}</div>`;
 }
@@ -2570,7 +3123,7 @@ function renderCount() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const keys = countKeys(ev), k = countMeal, s = guestCountStatus(ev, k);
   q('count-meals').innerHTML = keys.length > 1 ? keys.map(m => `<button type="button" class="f-chip" data-count-meal="${m}" aria-pressed="${m === k}">${MEALS[m]}</button>`).join('') : '';
-  const fmtAt = at => `${fmtDate(at.slice(0, 10))} ${at.slice(11, 16)}`;
+  const fmtAt = at => `${fmtDate(localDay(at))} ${localTime(at)}`;
   const reqRows = s.requests.map(r => `<div class="meta" style="margin-top:6px" data-req="${esc(r.id)}">
     ${tr(`Asked ${r.qty} extra @ ${fmtCurrency(r.rate)} on ${fmtAt(r.at)}`, `${r.qty} जास्त @ ${fmtCurrency(r.rate)} विचारले`)}${r.forOlderCount ? ` · <span class="due">${tr('made for an earlier count', 'आधीच्या मोजणीसाठी')}</span>` : ''}
     ${r.status === 'requested'
@@ -2582,7 +3135,28 @@ function renderCount() {
   </div>`).join('');
   const cp = ev.countPolicy || {}, agreed = countPolicyAgreed(cp);
   q('count-body').innerHTML = `
-    <details class="card pad" id="count-policy" style="margin:0 0 var(--s3)"${agreed || ev.date <= today() ? '' : ' open'}>
+    <div class="card pad" id="count-booked" style="margin:0 0 var(--s3)">
+      <div class="label">${tr(`Booked guests${k === 'all' ? '' : ` · ${MEALS[k]}`}`, 'नोंदलेले पाहुणे')}</div>
+      ${s.started ? `<div class="amt-md" style="margin-top:2px">${s.contracted}</div><div class="meta">${tr('Fixed when counting started', 'मोजणी सुरू झाल्यावर ठरले')}</div>`
+        : `<div class="booked-row"><div class="field" style="margin:0;flex:1"><input type="number" id="count-booked-n" min="1" inputmode="numeric" aria-label="Booked guests" placeholder="e.g. 300" value="${bookedGuests(ev, k) || ''}"></div>
+          <button type="button" class="btn btn-secondary" data-action="count-booked-save">${tr('Save', 'जतन')}</button></div>
+          ${bookedGuests(ev, k) ? '' : `<div class="meta due" style="margin-top:6px">${tr('Not entered yet: enter the guests booked by the client', 'अजून नोंदलेले नाही')}</div>`}`}
+    </div>
+    ${s.started || bookedGuests(ev, k) ? `<div class="card pad" style="margin:0 0 var(--s3)" id="count-day">
+      <div class="label">${tr(`${MEAL_NAME(k)} · contracted ${s.contracted} @ ${fmtCurrency(s.rate)}`, `करार ${s.contracted} @ ${fmtCurrency(s.rate)}`)}</div>
+      <div class="meta" style="margin-top:4px">${s.counted == null ? tr('Not counted yet', 'अजून मोजले नाही') : tr(`Counted ${s.counted} (${fmtAt(s.last.at)})`, `मोजले ${s.counted}`)}${s.extra ? ` · <b>${tr(`${s.extra} over the contract (proposed, not billed)`, `${s.extra} जास्त (प्रस्तावित)`)}</b>` : ''}</div>
+      ${s.counts.length > 1 ? `<details style="margin-top:6px"><summary class="meta" style="cursor:pointer">${tr(`Count history (${s.counts.length})`, `मोजणी इतिहास (${s.counts.length})`)}</summary>
+        ${[...s.counts].reverse().map(x => `<div class="meta" data-nl>${fmtAt(x.at)} · ${x.n}${x.reason ? ` · ${tr('correction', 'दुरुस्ती')}: ${esc(x.reason)}` : x.note ? ` · ${esc(x.note)}` : ''}</div>`).join('')}</details>` : ''}
+      ${reqRows}
+    </div>` : ''}
+    <div class="f2"><div class="field"><label for="count-n">${tr('New count', 'नवीन मोजणी')}</label><input type="number" id="count-n" min="0" inputmode="numeric" placeholder="${s.counted ?? s.contracted}"></div>
+      <div class="field"><label for="count-note">${tr(s.counted == null ? 'Note (optional)' : 'Reason if correcting', 'कारण')}</label><input type="text" id="count-note" placeholder="${s.counted == null ? 'e.g. plates issued at 9 pm' : 'e.g. recount at the gate'}"></div></div>
+    <div class="btn-row">
+      <button type="button" class="btn btn-secondary" data-action="count-save">${tr('Save count', 'मोजणी जतन')}</button>
+      ${s.unrequested ? `<button type="button" class="btn btn-secondary" data-action="count-request">${tr(`Ask approval for ${s.unrequested} extra`, `${s.unrequested} जास्त मान्यता`)}</button>` : ''}
+    </div>
+    ${s.unbilled ? `<button type="button" class="btn btn-primary" style="width:100%;margin-top:var(--s3)" data-action="count-bill">${tr(`Add ${s.unbilled} approved plates to the bill (+${fmtCurrency(s.requests.filter(r => r.unbilled).reduce((t, r) => t + toPaise(r.rate) * r.unbilled, 0) / 100)})`, `${s.unbilled} मान्य ताटे बिलात जोडा`)}</button>` : ''}
+    <details class="card pad" id="count-policy" style="margin:var(--s4) 0 0">
       <summary class="label" style="cursor:pointer">${agreed ? tr(`Count method: ${COUNT_METHODS.find(m => m.id === cp.method).en} · agreed`, `मोजणी: ${COUNT_METHODS.find(m => m.id === cp.method).mr} · ठरले`) : tr('Count method not agreed with the client yet', 'मोजणीची पद्धत ठरलेली नाही')}</summary>
       <div class="field" style="margin-top:var(--s2)"><label for="cp-method">${tr('How plates are counted', 'मोजणीची पद्धत')}</label><select id="cp-method"><option value="">Choose – निवडा</option>${COUNT_METHODS.map(m => `<option value="${m.id}"${m.id === cp.method ? ' selected' : ''}>${esc(m.en + ' – ' + m.mr)}</option>`).join('')}</select></div>
       <div class="field"><label for="cp-counter">${tr('Who counts, and where', 'कोण व कुठे मोजणार')}</label><input type="text" id="cp-counter" maxlength="200" value="${esc(cp.counter || '')}" placeholder="e.g. supervisor at plate counter"></div>
@@ -2591,21 +3165,7 @@ function renderCount() {
       <div class="field"><label for="cp-rules">${tr('Rules agreed', 'ठरलेले नियम')}</label><textarea id="cp-rules" rows="2" maxlength="1000" placeholder="Second servings, kids, staff and vendor meals, tolerance">${esc(cp.rules || '')}</textarea></div>
       <label class="check-row"><input type="checkbox" id="cp-confirmed"${cp.confirmed ? ' checked data-agreed="1"' : ''}><span>${tr('The client agreed to this method', 'ग्राहकाने ही पद्धत मान्य केली')}</span></label>
       <button type="button" class="btn btn-secondary" style="width:100%;margin-top:var(--s2)" data-action="count-policy-save">${tr('Save count method', 'पद्धत जतन')}</button>
-    </details>
-    <div class="card pad" style="margin:0 0 var(--s3)">
-      <div class="label">${tr(`${MEAL_NAME(k)} · contracted ${s.contracted} @ ${fmtCurrency(s.rate)}`, `करार ${s.contracted} @ ${fmtCurrency(s.rate)}`)}</div>
-      <div class="meta" style="margin-top:4px">${s.counted == null ? tr('Not counted yet', 'अजून मोजले नाही') : tr(`Counted ${s.counted} (${fmtAt(s.last.at)})`, `मोजले ${s.counted}`)}${s.extra ? ` · <b>${tr(`${s.extra} over the contract (proposed, not billed)`, `${s.extra} जास्त (प्रस्तावित)`)}</b>` : ''}</div>
-      ${s.counts.length > 1 ? `<details style="margin-top:6px"><summary class="meta" style="cursor:pointer">${tr(`Count history (${s.counts.length})`, `मोजणी इतिहास (${s.counts.length})`)}</summary>
-        ${[...s.counts].reverse().map(x => `<div class="meta" data-nl>${fmtAt(x.at)} · ${x.n}${x.reason ? ` · ${tr('correction', 'दुरुस्ती')}: ${esc(x.reason)}` : x.note ? ` · ${esc(x.note)}` : ''}</div>`).join('')}</details>` : ''}
-      ${reqRows}
-    </div>
-    <div class="f2"><div class="field"><label for="count-n">${tr('New count', 'नवीन मोजणी')}</label><input type="number" id="count-n" min="0" inputmode="numeric" placeholder="${s.counted ?? s.contracted}"></div>
-      <div class="field"><label for="count-note">${tr(s.counted == null ? 'Note (optional)' : 'Reason if correcting', 'कारण')}</label><input type="text" id="count-note" placeholder="${s.counted == null ? 'e.g. plates issued at 9 pm' : 'e.g. recount at the gate'}"></div></div>
-    <div class="btn-row">
-      <button type="button" class="btn btn-secondary" data-action="count-save">${tr('Save count', 'मोजणी जतन')}</button>
-      ${s.unrequested ? `<button type="button" class="btn btn-secondary" data-action="count-request">${tr(`Ask approval for ${s.unrequested} extra`, `${s.unrequested} जास्त मान्यता`)}</button>` : ''}
-    </div>
-    ${s.unbilled ? `<button type="button" class="btn btn-primary" style="width:100%;margin-top:var(--s3)" data-action="count-bill">${tr(`Add ${s.unbilled} approved plates to the bill (+${fmtCurrency(s.requests.filter(r => r.unbilled).reduce((t, r) => t + toPaise(r.rate) * r.unbilled, 0) / 100)})`, `${s.unbilled} मान्य ताटे बिलात जोडा`)}</button>` : ''}`;
+    </details>`;
 }
 async function saveGuestCounts(mutate, extra = {}) {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return null;
@@ -2619,6 +3179,8 @@ async function saveGuestCounts(mutate, extra = {}) {
 async function countAction(action, id) {
   const now = new Date().toISOString();
   if (action === 'count-save') {
+    { const ev = D.events.find(e => e.id === curRef);   // counting is measured against the guests booked: register them first
+      if (ev && !guestCountStatus(ev, countMeal).started && !bookedGuests(ev, countMeal)) { showFieldErrors({ 'count-booked-n': 'Enter the booked guests first – आधी पाहुणे नोंदवा' }); return; } }
     const raw = qv('count-n'), n = Math.floor(Number(raw)), note = qv('count-note');
     if (raw === '' || !(n >= 0)) { showFieldErrors({ 'count-n': 'Enter the count – संख्या लिहा' }); return; }
     const had = guestCountStatus(D.events.find(e => e.id === curRef), countMeal).counted;
@@ -2662,6 +3224,20 @@ async function countAction(action, id) {
   refreshCurrent(); renderCount();
 }
 
+async function saveBookedGuests() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const k = countMeal, raw = qv('count-booked-n'), n = Number(raw);
+  if (guestCountStatus(ev, k).started) return;
+  if (!(Number.isInteger(n) && n >= 1)) { showFieldErrors({ 'count-booked-n': 'Enter the guests booked (1 or more) – पाहुण्यांची संख्या लिहा' }); return; }
+  let patch;
+  if (k === 'all') patch = { guests: n };
+  else {
+    const plan = { ...(ev.mealPlan || {}), [k]: { ...(ev.mealPlan?.[k] || { rate: 0 }), guests: n } };
+    patch = { mealPlan: plan };   // the meal's own guests; meals are never added up into the event's number
+  }
+  try { await patchEvent(ev.id, patch); } catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
+  refreshCurrent(); renderCount(); showToast('Guests saved – पाहुणे नोंदवले');
+}
 async function saveCountPolicy() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const p = { method: qv('cp-method'), counter: qv('cp-counter'), rep: qv('cp-rep'), repPhone: qv('cp-rep-phone'), rules: qv('cp-rules') };
@@ -2705,12 +3281,22 @@ function functionSheetText(ev, extra = ev.functionSheet || {}) {
   if (cp.rules) L.push(`- Rules: ${cp.rules}`);
   const groups = dishGroups(ev), menu = menuById(ev.menu);
   L.push('', 'MENU');
-  if (groups.size) for (const [head, names] of groups) {
-    if (!head) { L.push(`- Our kitchen: ${names.join(', ')}`); continue; }
-    const o = [...(ev.orders || [])].reverse().find(x => x.head === head && x.status !== 'cancelled');
-    const ven = D.vendors.find(v => v.id === o?.venId);
-    L.push(`- ${ev.outsourced ? 'Whole event' : short(head)}: ${names.join(', ')}`);
-    L.push(`  ${ven ? `${ven.name}${ven.phone ? ' (' + ven.phone + ')' : ''}` : 'No vendor order yet'}${o ? ` · ${o.plates ? o.plates + ' plates · ' : ''}${ORDER_STATUS[o.status]?.en || o.status}` : ''}`);
+  const bought = buyRows(ev);
+  if (groups.size || bought.length) {
+    // One line per counter and meal, each with its own order (vendor, plates, status); an older order made for every
+    // meal is shown where a meal has no order of its own
+    if (groups.has('')) L.push(`- Our kitchen: ${groups.get('').join(', ')}`);
+    const rows = counterRows(ev), live = [...(ev.orders || [])].reverse().filter(x => x.status !== 'cancelled');
+    for (const r of rows) {
+      const own = live.find(x => rowOf(ev, x, rows)?.key === r.key), o = own || live.find(x => !x.svc && x.head === r.head);
+      const ven = D.vendors.find(v => v.id === o?.venId);
+      L.push(`- ${ev.outsourced ? 'Whole event' : short(r.head)}${r.label ? ` · ${r.label}` : ''}: ${r.names.join(', ')}`);
+      L.push(`  ${ven ? `${ven.name}${ven.phone ? ' (' + ven.phone + ')' : ''}` : 'No vendor order yet'}${o ? ` · ${o.plates ? o.plates + ' plates · ' : ''}${ORDER_STATUS[o.status]?.en || o.status}${own ? '' : ' (older order, all meals)'}` : ''}`);
+    }
+    // Bought items: ready-made, or bought and finished in our kitchen, with their purchase
+    for (const r of bought) { const pu = buyOf(ev, r.key), sv = pu && D.vendors.find(v => v.id === pu.venId);
+      L.push(`- ${SRC_NAME[r.src]}${r.label ? ` · ${r.label}` : ''}: ${r.name}`);
+      L.push(`  ${pu ? `${sv?.name || 'Supplier'}${sv?.phone ? ' (' + sv.phone + ')' : ''} · ${qtyText(pu)} · ${ORDER_STATUS[pu.status]?.en || pu.status}` : 'No purchase order yet'}`); }
   } else if (menu) L.push(`- ${menu.name}: ${menu.items.join(', ')}`);
   else L.push('- Not entered');
   const staff = (ev.labour?.rows || []).map(labRow).filter(r => !isExtra(r) && heads(r));
@@ -2798,6 +3384,7 @@ async function saveSplit() {
   const dest = r => ({ evId: r.evId === STOCK ? '' : r.evId, amt: Number(r.amt) });
   const prevLog = before.find(x => x.allocLog)?.allocLog || [];
   const allocLog = [...prevLog, { at: new Date().toISOString(), from: before.map(x => ({ evId: x.evId || '', amt: x.amt })), parts: rows.map(dest) }].slice(-50);
+  let purchaseKept = false;   // a purchase's bill stays linked from one part only, on the purchase's own event
   const changes = rows.map((r, i) => {
     const old = r.id ? before.find(x => x.id === r.id) : null;
     const { evId, amt } = dest(r);
@@ -2807,6 +3394,7 @@ async function saveSplit() {
     if (r.evId === STOCK) rec.stock = true; else delete rec.stock;
     if (i === 0 && (shared || prevLog.length || r.evId === STOCK)) rec.allocLog = allocLog; else delete rec.allocLog;
     delete rec.logi;
+    if (rec.purchase) { if (!purchaseKept && (D.events.find(e => e.id === rec.evId)?.purchases || []).some(x => x.id === rec.purchase)) purchaseKept = true; else delete rec.purchase; }
     return { store: 'expenses', record: rec, expected: old || null };
   });
   const kept = new Set(changes.map(c => c.record.id));
@@ -2841,7 +3429,7 @@ function reconHistoryList(ev) {
     ? tr(`Reconciled · costs ${fmtCurrency((e.costPaise || 0) / 100)} · bill ${fmtCurrency((e.billPaise || 0) / 100)}`, `जुळवले · खर्च ${fmtCurrency((e.costPaise || 0) / 100)}`)
     : (e.changes?.length ? tr('Reopened: ', 'पुन्हा उघडले: ') + e.changes.map(changeText).join(', ') : tr('Reopened by you', 'तुम्ही पुन्हा उघडले'));
   return `<details style="margin-top:var(--s3)"><summary class="meta" style="cursor:pointer">${tr(`History (${h.length})`, `इतिहास (${h.length})`)}</summary>
-    ${[...h].reverse().map(e => `<div class="meta" style="margin-top:4px">${fmtDate(String(e.at || '').slice(0, 10))} · ${line(e)}</div>`).join('')}</details>`;
+    ${[...h].reverse().map(e => `<div class="meta" style="margin-top:4px">${fmtDate(e.at ? localDay(e.at) : '')} · ${line(e)}</div>`).join('')}</details>`;
 }
 
 function reconCard(ev, recon) {
@@ -2849,14 +3437,14 @@ function reconCard(ev, recon) {
   const head = (chip, text) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:var(--s2)">${chip}${text}</div>`;
   if (recon.state === 'reconciled') return `<div class="card pad" id="recon-card">
     ${head(`<span class="chip pos">${tr('Reconciled', 'जुळवले')}</span>`, `<button type="button" class="btn-sm" data-action="recon-reopen">${tr('Reopen', 'पुन्हा उघडा')}</button>`)}
-    <div class="meta" style="margin-top:var(--s2)">${tr(`All costs confirmed on ${fmtDate(String(recon.at).slice(0, 10))}. This contribution is final for the event (before overheads).`, `${fmtDate(String(recon.at).slice(0, 10))} रोजी सर्व खर्च निश्चित. हे योगदान अंतिम आहे.`)}</div>
+    <div class="meta" style="margin-top:var(--s2)">${tr(`All costs confirmed on ${fmtDate(localDay(recon.at))}. This contribution is final for the event (before overheads).`, `${fmtDate(localDay(recon.at))} रोजी सर्व खर्च निश्चित. हे योगदान अंतिम आहे.`)}</div>
     ${reconHistoryList(ev)}</div>`;
   const reopened = recon.state === 'reopened';
   return `<div class="card pad" id="recon-card">
     ${head(`<span class="chip ${reopened ? 'neg' : 'due'}">${reopened ? tr('Changed after reconciling', 'जुळवल्यानंतर बदल') : tr('Costs pending', 'खर्च बाकी')}</span>`,
       `<button type="button" class="btn-sm" data-action="recon-open">${reopened ? tr('Review', 'तपासा') : tr('Reconcile', 'जुळवा')}</button>`)}
     <div class="meta" style="margin-top:var(--s2)">${reopened
-      ? `${recon.changes.map(changeText).join(' · ')} · ${tr(`since you reconciled on ${fmtDate(String(recon.at).slice(0, 10))}. The contribution is provisional again until you review it.`, 'पुन्हा तपासेपर्यंत योगदान अंदाजे.')}`
+      ? `${recon.changes.map(changeText).join(' · ')} · ${tr(`since you reconciled on ${fmtDate(localDay(recon.at))}. The contribution is provisional again until you review it.`, 'पुन्हा तपासेपर्यंत योगदान अंदाजे.')}`
       : tr('The contribution is provisional until you confirm every bill is in. Unpaid bills count as costs.', 'सर्व बिले आल्याचे निश्चित करेपर्यंत योगदान अंदाजे आहे. न भरलेली बिलेही खर्चच.')}</div>
     ${reconHistoryList(ev)}</div>`;
 }
@@ -3072,7 +3660,22 @@ function balanceView({ balance: bal, entries }) {
   return `<span class="chip pos">${tr('Settled', 'पूर्ण')}</span>`;
 }
 
+/* The Vendors tab: what you owe suppliers and the advances you have given them (people who lent money or paid a bill
+   for you are kept apart, in their own section and total), then the list. Balances come from calcVendorBalance(),
+   the same figure as the vendor's own page; nothing here changes a bill or a payment. */
+const VEN_STEP = 30;
+const VEN_FILTERS = [['all', 'All', 'सर्व'], ['pay', 'To pay', 'देणे'], ['adv', 'Advances', 'आगाऊ'], ['settled', 'Settled', 'पूर्ण'], ['none', 'No activity', 'नोंद नाही']];
+const VEN_SORTS = { pay: 'Highest payable – जास्त देणे', name: 'Name A–Z – नाव अ–ज्ञ', recent: 'Recently used – अलीकडे वापरलेले' };
+let venShown = VEN_STEP;
+const venState = b => !b.entries ? 'none' : b.balance > 0 ? 'pay' : b.balance < 0 ? 'adv' : 'settled';
+// Suppliers' totals in paise: only what you owe counts as payable; advances are kept separate
+function vendorTotals(rows) {
+  let payP = 0, advP = 0;
+  for (const { b } of rows) { const p = toPaise(b.balance); if (p > 0) payP += p; else advP -= p; }
+  return { pay: payP / 100, adv: advP / 100 };
+}
 function rVen() {
+  q('ven-sum').innerHTML = ''; q('ven-tools').hidden = !D.vendors.length;
   if (!D.vendors.length) {
     q('ven-list').innerHTML = emptyState({
       ic: 'store', text: 'No vendors yet – विक्रेते नाही',
@@ -3080,29 +3683,54 @@ function rVen() {
     });
     return;
   }
-  const list = D.vendors
-    .filter(v => matches(F.venQ, v.name, v.cat, v.specialty, v.phone))
-    .map(v => ({ v, b: calcVendorBalance(v.id, D.expenses, D.vPays) }))
-    // Vendors you owe come first, then by name
-    .sort((a, b) => (Math.max(0, b.b.balance) - Math.max(0, a.b.balance)) || a.v.name.localeCompare(b.v.name));
-  if (!list.length) {
-    q('ven-list').innerHTML = emptyState({ ic: 'search', text: 'No matching vendors – काहीही सापडले नाही' });
-    return;
-  }
+  // When each vendor was last used: their latest bill or payment
+  const last = new Map(), seen = (id, d) => { if (id && d && d > (last.get(id) || '')) last.set(id, d); };
+  for (const x of D.expenses) seen(x.venId, x.date);
+  for (const p of D.vPays) seen(p.venId, p.date);
+  const all = D.vendors.map(v => ({ v, b: calcVendorBalance(v.id, D.expenses, D.vPays), last: last.get(v.id) || '' }));
+  const suppliers = all.filter(r => !isPerson(r.v)), people = all.filter(r => isPerson(r.v));
+  const t = vendorTotals(suppliers);
+  q('ven-sum').innerHTML = `<div class="card pad ven-sum"><div class="metrics" style="margin:0;padding:0;border:0">
+    <div class="metric"><div class="label">Total payable – एकूण देणे</div><div class="amt-md ${t.pay > 0 ? 'due' : 'muted'}">${fmtCurrency(t.pay)}</div></div>
+    <div class="metric"><div class="label">Vendor advances – आगाऊ दिले</div><div class="amt-md ${t.adv > 0 ? 'info' : 'muted'}">${fmtCurrency(t.adv)}</div></div>
+    <div class="metric"><div class="label">Total vendors – एकूण विक्रेते</div><div class="amt-md">${suppliers.length}</div></div></div></div>`;
+
+  const digits = s => String(s || '').replace(/\D/g, '');
+  const qDigits = digits(F.venQ);
+  const found = all.filter(({ v }) => matches(F.venQ, v.name, v.legalName, v.cat, v.specialty, v.phone, v.gstin)
+    || (qDigits.length >= 3 && qDigits === F.venQ.replace(/[\s+-]/g, '') && digits(v.phone).includes(qDigits)));
+  const count = k => found.filter(r => k === 'all' || venState(r.b) === k).length;
+  q('ven-filters').innerHTML = VEN_FILTERS.map(([k, en, mr]) =>
+    `<button type="button" class="f-chip" data-action="ven-filter" data-id="${k}" aria-pressed="${F.ven === k}">${tr(en, mr)}<span class="n">${count(k)}</span></button>`).join('');
+  const sortSel = q('ven-sort'); if (sortSel.value !== F.venSort) sortSel.value = F.venSort;
+
+  const list = found.filter(r => F.ven === 'all' || venState(r.b) === F.ven);
+  const byName = (a, b) => a.v.name.localeCompare(b.v.name, 'en', { sensitivity: 'base' });
+  const sorter = { pay: (a, b) => (Math.max(0, b.b.balance) - Math.max(0, a.b.balance)) || byName(a, b),
+    name: byName, recent: (a, b) => (b.last > a.last ? 1 : b.last < a.last ? -1 : 0) || byName(a, b) }[F.venSort] || byName;
+  const sup = list.filter(r => !isPerson(r.v)).sort(sorter), ppl = list.filter(r => isPerson(r.v)).sort(sorter);
   const row = ({ v, b }) => `
     <div class="row" role="button" tabindex="0" data-action="vendetail" data-id="${esc(v.id)}">
       <div class="avatar" data-nl>${esc(initials(v.name))}</div>
       <div class="row-body">
-        <div class="title-sm trunc" data-nl>${esc(v.name)}</div>
-        <div class="meta trunc">${isPerson(v) ? tr('Other person', 'इतर व्यक्ती') : esc(v.cat) + (v.specialty ? ' · ' + esc(v.specialty) : '')}</div>
+        <div class="title-sm ven-name" data-nl>${esc(v.name)}</div>
+        <div class="meta trunc">${isPerson(v) ? tr('Other person', 'इतर व्यक्ती') : esc(v.cat || '') + (v.specialty ? ' · ' + esc(v.specialty) : '')}</div>
       </div>
       <div class="row-end">${balanceView(b)}</div>
     </div>`;
-  const vendors = list.filter(r => !isPerson(r.v)), people = list.filter(r => isPerson(r.v));
+  if (!list.length) {
+    q('ven-list').innerHTML = emptyState({ ic: 'search', text: 'No matching vendors – काहीही सापडले नाही',
+      action: F.ven !== 'all' ? `<button type="button" class="btn btn-secondary" data-action="ven-filter" data-id="all">${tr('Show all', 'सर्व दाखवा')}</button>` : '' });
+    return;
+  }
+  const shown = sup.slice(0, venShown), more = sup.length - shown.length;
+  const owedPeople = vendorTotals(people).pay;
   q('ven-list').innerHTML =
-    (vendors.length ? `<div class="card list">${vendors.map(row).join('')}</div>` : '') +
-    (people.length ? `<div class="sec"><span class="sec-title">Other people – इतर व्यक्ती</span><span class="meta">${tr('lent or paid for you', 'उधार / तुमच्यासाठी भरले')}</span></div>
-      <div class="card list">${people.map(row).join('')}</div>` : '');
+    (sup.length ? `<div class="sec"><span class="sec-title">${tr('Vendors', 'विक्रेते')}</span><span class="meta" role="status">${more > 0 ? tr(`${shown.length} of ${sup.length}`, `${sup.length} पैकी ${shown.length}`) : sup.length}</span></div>
+      <div class="card list" id="ven-sup">${shown.map(row).join('')}</div>
+      ${more > 0 ? `<button type="button" class="btn btn-secondary ven-more" data-action="ven-more">${tr(`Show more (${more} more)`, `आणखी दाखवा (${more})`)}</button>` : ''}` : '') +
+    (ppl.length ? `<div class="sec"><span class="sec-title">Other people – इतर व्यक्ती</span>${owedPeople > 0 ? `<span class="sec-amt due"><small>${tr('you owe', 'देणे')}</small>${fmtCurrency(owedPeople)}</span>` : `<span class="meta">${tr('lent or paid for you', 'उधार / तुमच्यासाठी भरले')}</span>`}</div>
+      <div class="card list" id="ven-ppl">${ppl.map(row).join('')}</div>` : '');
 }
 
 /* ── VENDOR DETAIL ───────────────────────────────── */
@@ -3125,6 +3753,13 @@ function showVenDetail(id, { fromHistory = false } = {}) {
         </div>
       </div>
     </div>
+    ${!isPerson(vn) && (vn.gstin || vn.legalName) ? `<div class="card pad" id="ven-gst">
+      ${vn.legalName ? `<div class="label">Registered name – नोंदणीकृत नाव</div><div class="title-sm" data-nl style="overflow-wrap:anywhere">${esc(vn.legalName)}</div>` : ''}
+      ${vn.gstin ? `<div class="label"${vn.legalName ? ' style="margin-top:var(--s3)"' : ''}>GSTIN</div>
+        <div class="gstin-row"><span class="gstin" data-nl>${esc(vn.gstin)}</span>
+          <button type="button" class="btn-sm" data-action="copy-gstin" data-id="${esc(vn.gstin)}" aria-label="Copy GSTIN">${icon('clipboard', 16)}${tr('Copy', 'कॉपी')}</button></div>
+        <a class="meta gst-link" href="https://services.gst.gov.in/services/searchtp" target="_blank" rel="noopener noreferrer">${tr('Check on the official GST portal (paste the GSTIN there)', 'अधिकृत जीएसटी पोर्टलवर तपासा')} ↗</a>` : ''}
+    </div>` : ''}
     ${vn.notes ? `<div class="card pad"><div class="label">Notes – नोंदी</div><div class="notes-text" data-nl>${esc(vn.notes)}</div></div>` : ''}
 
     <div class="card pad">
@@ -3238,7 +3873,7 @@ function perPlateReport(P, missing) {
   const done = reconciledIds(D.events, D.expenses);
   const rows = P.events
     .map(ev => ({ ev, ...calcEventPL(ev, P.cPays, P.expenses), final: done.has(ev.id) }))
-    .filter(r => r.guests && !r.ev.outsourced && !missing.has(r.ev.id) && r.expTotal > 0);
+    .filter(r => r.guests && !r.ev.outsourced && !missing.has(r.ev.id) && r.expTotal > 0 && billSet(r.ev));
   const finals = rows.filter(r => r.final);   // menu and type benchmarks: reconciled events only (G-22)
   if (!rows.length) {
     return `<div class="card pad"><div class="chart-title">${icon('utensils', 18)}Per plate – प्रति ताट</div>
@@ -3295,9 +3930,9 @@ function booksCard(b) {
 function rSummary() {
   renderPeriodSegs();
   const P = sliceByPeriod(D, period);
-  const totalBill = sumRupees(P.events, e => e.billing);
-  const totalExp  = sumRupees(P.expenses);
-  const profit    = (Math.round(totalBill * 100) - Math.round(totalExp * 100)) / 100;
+  const bs = billingSplit(P.events, P.expenses, P.cPays);   // contribution and margin: events with a bill only
+  const totalBill = bs.billP / 100;
+  const profit    = bs.contribP / 100;
   const done      = reconciledIds(P.events, P.expenses);
   const noData    = t => `<div class="list-empty">${t}</div>`;
   const missing   = new Set(eventsMissingCosts(P.events, P.expenses).map(e => e.id));
@@ -3313,15 +3948,15 @@ function rSummary() {
       <div class="bar-val">${fmtCurrency(amt)}</div>
     </div>`).join('') || noData('No data – माहिती नाही');
 
-  const evPL = P.events.map(ev => ({ ev, ...calcEventPL(ev, P.cPays, P.expenses) })).sort((a, b) => b.profit - a.profit);
-  // Bar length is the size of the profit (or loss) relative to the largest one
-  const maxAbsPL = Math.max(...evPL.map(r => Math.abs(r.profit)), 1);
+  const evPL = P.events.map(ev => ({ ev, ...calcEventPL(ev, P.cPays, P.expenses) })).sort((a, b) => billSet(b.ev) - billSet(a.ev) || b.profit - a.profit);
+  // Bar length is the size of the profit (or loss) relative to the largest one; events without a bill have none
+  const maxAbsPL = Math.max(...evPL.filter(r => billSet(r.ev)).map(r => Math.abs(r.profit)), 1);
   const plRows = evPL.map(r => `
     <div class="bar-row" role="button" tabindex="0" data-action="evdetail" data-id="${esc(r.ev.id)}">
       <div style="min-width:0"><div class="bar-label trunc" style="color:var(--text)" data-nl>${esc(r.ev.name)}</div>
-        <div class="meta">${missing.has(r.ev.id) ? `<span class="neg">${tr('no costs', 'खर्च नाही')}</span>` : fmtDate(r.ev.date) + (done.has(r.ev.id) ? '' : tr(' · provisional', ' · अंदाजे'))}</div></div>
-      <div class="bar-track"><div class="bar-fill" style="width:${Math.abs(r.profit) / maxAbsPL * 100}%;background:var(${missing.has(r.ev.id) ? '--line-strong' : r.profit >= 0 ? '--pos' : '--neg'})"></div></div>
-      <div class="bar-val ${missing.has(r.ev.id) ? 'muted' : r.profit >= 0 ? 'pos' : 'neg'}">${fmtCurrency(r.profit)}</div>
+        <div class="meta">${!billSet(r.ev) ? `<span class="due">${tr('no bill yet', 'बिल नाही')}</span>` : missing.has(r.ev.id) ? `<span class="neg">${tr('no costs', 'खर्च नाही')}</span>` : fmtDate(r.ev.date) + (done.has(r.ev.id) ? '' : tr(' · provisional', ' · अंदाजे'))}</div></div>
+      <div class="bar-track"><div class="bar-fill" style="width:${billSet(r.ev) ? Math.abs(r.profit) / maxAbsPL * 100 : 0}%;background:var(${missing.has(r.ev.id) ? '--line-strong' : r.profit >= 0 ? '--pos' : '--neg'})"></div></div>
+      <div class="bar-val ${!billSet(r.ev) || missing.has(r.ev.id) ? 'muted' : r.profit >= 0 ? 'pos' : 'neg'}">${billSet(r.ev) ? fmtCurrency(r.profit) : '—'}</div>
     </div>`).join('') || noData('No events – कार्यक्रम नाही');
 
   const byMode = {};
@@ -3334,7 +3969,7 @@ function rSummary() {
       <div class="bar-val">${fmtCurrency(a)}</div>
     </div>`).join('') || noData('No data – माहिती नाही');
 
-  const board = [...P.events].sort((a, b) => b.billing - a.billing).slice(0, 10).map((e, i) => `
+  const board = P.events.filter(billSet).sort((a, b) => b.billing - a.billing).slice(0, 10).map((e, i) => `
     <div class="row" role="button" tabindex="0" data-action="evdetail" data-id="${esc(e.id)}">
       <div class="rank ${i < 3 ? 'top' : ''}">${i + 1}</div>
       <div class="row-body"><div class="title-sm trunc" data-nl>${esc(e.name)}</div><div class="meta trunc">${fmtDate(e.date)} · <span data-nl>${esc(e.venue)}</span></div></div>
@@ -3344,10 +3979,11 @@ function rSummary() {
   q('summary-content').innerHTML = `
     <div class="metric-tiles">
       <div class="card"><div class="label">Contribution – योगदान</div><div class="amt-lg ${profit >= 0 ? 'pos' : 'neg'}">${fmtCurrency(profit)}</div>
-        ${P.events.length ? `<div class="meta" id="contrib-final">${tr(`${done.size} of ${P.events.length} final · before overheads`, `${P.events.length} पैकी ${done.size} अंतिम`)}</div>` : ''}</div>
+        ${P.events.length ? `<div class="meta" id="contrib-final">${tr(`${done.size} of ${P.events.length} final · before overheads`, `${P.events.length} पैकी ${done.size} अंतिम`)}</div>` : ''}
+        ${bs.unbilled ? `<div class="meta due" id="contrib-awaiting">${tr(`${fmtCurrency(bs.awaitP / 100)} of costs awaiting billing (${bs.unbilled} event${bs.unbilled > 1 ? 's' : ''} without a bill): not included`, `बिल नसलेल्या कार्यक्रमांचा खर्च ${fmtCurrency(bs.awaitP / 100)} समाविष्ट नाही`)}</div>` : ''}</div>
       <div class="card"><div class="label">Margin – मार्जिन</div><div class="amt-lg ${totalBill > 0 ? (profit >= 0 ? 'pos' : 'neg') : 'muted'}">${totalBill > 0 ? Math.round(profit / totalBill * 100) + '%' : '—'}</div></div>
       <div class="card"><div class="label">Billed – बिल</div><div class="amt-lg">${fmtCurrency(totalBill)}</div></div>
-      <div class="card"><div class="label">Events – कार्यक्रम</div><div class="amt-lg">${P.events.length}</div></div>
+      <div class="card"><div class="label">Events – कार्यक्रम</div><div class="amt-lg">${P.events.length}</div>${bs.unbilled ? `<div class="meta">${tr(`${bs.unbilled} without a bill`, `${bs.unbilled} बिलाशिवाय`)}</div>` : ''}</div>
     </div>
     ${missing.size ? `<div class="card" style="margin-top:var(--s3)"><div class="note alert"><span class="note-ic">${icon('receipt', 16)}</span>
       <div>${tr(`${missing.size} event${missing.size > 1 ? 's have' : ' has'} no expenses, so contribution here is overstated.`, `${missing.size} कार्यक्रमांचा खर्च नोंदवलेला नाही, त्यामुळे नफा जास्त दिसतो.`)}</div></div></div>` : ''}
@@ -3484,6 +4120,7 @@ function eventOptions() {
 function openEvModal(id) {
   const ev = id ? D.events.find(e => e.id === id) : null;
   formBase.ev = snapshot(ev);
+  billAutoOk = !ev;
   q('ev-id').value      = ev?.id      || '';
   q('ev-name').value    = ev?.name    || '';
   q('ev-date').value    = ev?.date    || '';
@@ -3533,6 +4170,10 @@ function whenText(r) {
 }
 function scheduleBlock(ev) {
   const s = paymentSchedule(ev, D.cPays);
+  if (s.paused) return `<div id="pay-schedule" style="margin-top:var(--s4);padding-top:var(--s4);border-top:1px solid var(--line)">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:var(--s2)">
+      <span class="meta" id="pay-paused">${tr(`Payment plan paused until the bill is set (${(ev.payPlan || []).length} milestone${(ev.payPlan || []).length > 1 ? 's' : ''} kept)`, 'बिल ठरेपर्यंत हप्ते थांबवले')}</span>
+      <button type="button" class="btn-sm" data-action="plan-edit">${icon('pencil', 16)}${tr('Edit', 'बदला')}</button></div></div>`;
   if (!s.scheduled) return '';   // its button sits in the event's action row
   return `<div id="pay-schedule" style="margin-top:var(--s4);padding-top:var(--s4);border-top:1px solid var(--line)">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:var(--s2)">
@@ -3548,6 +4189,7 @@ function scheduleBlock(ev) {
 let planDraft = [];
 function openPlanModal() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  if (!billSet(ev) && !(ev.payPlan || []).length) { showToast('Set the event\u2019s total bill first: a payment plan divides the bill. – आधी बिल भरा', 'error'); return; }
   planDraft = (ev.payPlan || []).map(m => ({ ...m }));
   if (!planDraft.length) planDraft = [{ id: uid('PM'), label: 'Advance', when: 'booking', amt: '' }];
   renderPlanRows();
@@ -3590,6 +4232,8 @@ async function savePlan() {
       showToast('Each milestone needs an amount (₹ or % of the bill) and when it is due – रक्कम व तारीख लिहा', 'error'); return;
     }
   }
+  // Bill not set: the paused plan can only be removed; milestones wait for the bill
+  if (!billSet(ev) && rows.length) { showToast('Set the bill before changing the plan. To remove it, clear every milestone and save. – आधी बिल भरा', 'error'); return; }
   const total = rows.reduce((s, r) => s + (r.pct != null ? Math.round(toPaise(ev.billing) * r.pct / 100) : toPaise(r.amt)), 0);
   if (total > toPaise(ev.billing)) { showToast('The schedule is more than the bill – हप्ते बिलापेक्षा जास्त', 'error'); return; }
   try { await patchEvent(ev.id, { payPlan: rows }, rows.length ? [] : ['payPlan']); } catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
@@ -3612,15 +4256,22 @@ function mealPlanLine(ev) {
 }
 
 /* ── Price by meal in the event form (spec §6.4) ── */
-let mpAuto = '';   // the bill value last filled from the meal total, so a typed bill is never overwritten
+let mpAuto = '';
+// Opening an existing event never changes its bill: prices fill an empty bill only after a pricing change in this
+// sheet (meals, guests, menu or rate). A new event fills it as before (Codex P2 on c00549c).
+let billAutoOk = true;
+const pricing = fn => e => { billAutoOk = true; fn(e); };   // the bill value last filled from the meal total, so a typed bill is never overwritten
 function readMealPlan() {
   const plan = {};
-  document.querySelectorAll('#ev-mp-rows [data-mp]').forEach(row => {
-    const g = row.querySelector('[data-k="guests"]').value, r = row.querySelector('[data-k="rate"]').value, mn = row.querySelector('[data-k="menu"]').value;
-    if (g || r || mn) plan[row.dataset.mp] = { guests: g === '' ? 0 : Math.max(0, Math.floor(Number(g))), rate: r === '' ? 0 : Number(r), ...(mn ? { menu: mn } : {}) };
-  });
+  for (const m of MEAL_ORDER) {
+    const gIn = document.querySelector(`#ev-g-meals [data-gm="${m}"]`), row = document.querySelector(`#ev-mp-rows [data-mp="${m}"]`);
+    if (!gIn && !row) continue;
+    const g = gIn?.value || '', r = row?.querySelector('[data-k="rate"]').value || '', mn = row?.querySelector('[data-k="menu"]').value || '';
+    if (g || r || mn) plan[m] = { guests: g === '' ? 0 : Math.max(0, Math.floor(Number(g))), rate: r === '' ? 0 : Number(r), ...(mn ? { menu: mn } : {}) };
+  }
   return plan;
 }
+
 // A meal's menu choices: menus marked for that meal first, then general ones, then the rest (a hidden menu already chosen stays)
 function mealMenuOptions(meal, sel) {
   const g = menusForMeal(meal), opt = x => `<option value="${esc(x.id)}"${x.id === sel ? ' selected' : ''}>${esc(x.name)}</option>`;
@@ -3634,11 +4285,17 @@ function renderMealPlan(values) {
   q('ev-mp').hidden = !meals.length;
   q('ev-menu').closest('.field').hidden = !!meals.length;   // with meals, each meal has its own menu
   if (meals.length) q('ev-menu-hint').hidden = true;
-  // One row per meal: its own menu, guests and rate (a day can have breakfast, lunch, high tea, dinner, late night)
-  q('ev-mp-rows').innerHTML = `<div class="q-head mp-head" aria-hidden="true"><span>${tr('Meal · menu', 'जेवण · मेनू')}</span><span>${tr('Guests', 'पाहुणे')}</span><span>${tr('₹ / plate', '₹ / ताट')}</span></div>`
+  // Guests: with meals, one required box per meal (an older event's guest number is only a hint: saving unchanged adds
+  // nothing); else one box
+  const hint = meals.length ? Number(qv('ev-guests')) || '' : '';
+  q('ev-guests').hidden = !!meals.length;
+  q('ev-g-lbl').htmlFor = meals.length ? `ev-mp-${meals[0]}-g` : 'ev-guests';
+  q('ev-g-meals').innerHTML = meals.map(m => `<div class="g-meal"><label for="ev-mp-${m}-g">${MEALS[m]}</label>
+    <input type="number" id="ev-mp-${m}-g" data-gm="${m}" min="1" inputmode="numeric" placeholder="${hint ? esc(String(hint)) : 'Guests'}" value="${values[m]?.guests || ''}"></div>`).join('');
+  // Menu and rate per meal (optional; a day can have breakfast, lunch, high tea, dinner, late night)
+  q('ev-mp-rows').innerHTML = `<div class="q-head mp-head" aria-hidden="true"><span>${tr('Meal · menu', 'जेवण · मेनू')}</span><span>${tr('₹ / plate', '₹ / ताट')}</span></div>`
     + meals.map(m => `<div class="mp-row" data-mp="${m}"><div class="mp-name">${MEALS[m]}</div>
     <div class="field" style="margin:0"><select id="ev-mp-${m}-m" data-k="menu" aria-label="${MEALS[m]} menu"><option value="">No menu – मेनू नाही</option>${mealMenuOptions(m, values[m]?.menu)}</select></div>
-    <div class="field" style="margin:0"><input type="number" id="ev-mp-${m}-g" data-k="guests" min="0" inputmode="numeric" aria-label="${MEALS[m]} guests" placeholder="${esc(qv('ev-guests') || '0')}" value="${values[m]?.guests || ''}"></div>
     <div class="field" style="margin:0"><input type="number" id="ev-mp-${m}-r" data-k="rate" min="0" inputmode="decimal" aria-label="${MEALS[m]} rate per plate" placeholder="0" value="${values[m]?.rate || ''}"></div></div>`).join('');
   updateMealPlan();
 }
@@ -3648,10 +4305,10 @@ function mainMealMenu() {
   const best = Object.entries(plan).filter(([, v]) => v.menu).sort((a, b) => b[1].guests * b[1].rate - a[1].guests * a[1].rate)[0];
   return best ? best[1].menu : '';
 }
-// Only meals still ticked, with both guests and a rate, are kept
+// Meals still ticked with their guests are kept (a rate is optional: 0 until priced; only priced meals add to the bill)
 function mealPlanFields(meals) {
   const plan = readMealPlan(), out = {};
-  for (const m of meals) if (plan[m]?.guests > 0 && plan[m]?.rate > 0) out[m] = { guests: plan[m].guests, rate: Math.round(plan[m].rate * 100) / 100, ...(plan[m].menu ? { menu: plan[m].menu } : {}) };
+  for (const m of meals) if (plan[m]?.guests > 0) out[m] = { guests: plan[m].guests, rate: plan[m].rate > 0 ? Math.round(plan[m].rate * 100) / 100 : 0, ...(plan[m].menu ? { menu: plan[m].menu } : {}) };
   return out;
 }
 function updateMealPlan() {
@@ -3659,7 +4316,7 @@ function updateMealPlan() {
   q('ev-mp-total').innerHTML = t.lines.length ? mealTable(t) + `<div class="meta" style="margin-top:4px">${tr('Before tax', 'कराआधी')}</div>` : '';
   // The meal total fills the bill only if the bill is empty or still holds the last filled total
   const bill = q('ev-billing').value;
-  if (t.total > 0 && (!bill || bill === mpAuto || bill === evAuto.bill)) { q('ev-billing').value = String(t.total); mpAuto = String(t.total); evAuto.bill = ''; updateQuote(); }
+  if (billAutoOk && t.total > 0 && (!bill || bill === mpAuto || bill === evAuto.bill)) { q('ev-billing').value = String(t.total); mpAuto = String(t.total); evAuto.bill = ''; updateQuote(); }
 }
 
 /* ── Venue details in the event form (CD5-VEN-01) ── */
@@ -3715,7 +4372,9 @@ function useVenueOffer() {
 }
 
 let expLogi = '';
-let expOrder = '';
+let expOrder = '', expPurchase = '';
+// A bill's purchase link is valid only on the purchase's own event, and never together with an order link
+const purchaseOwned = x => !x.order && (D.events.find(e => e.id === x.evId)?.purchases || []).some(p => p.id === x.purchase);
 
 // Values the menu last filled in, so a changed menu or guest count updates them
 // but never overwrites a figure typed by hand
@@ -3743,7 +4402,7 @@ function updateQuote() {
   const byMenu = menu ? costed.filter(e => e.menu === menu.id) : [];
   const basis = byMenu.length ? menu.name : (type || '').split(' – ')[0];
   const cost = avg(byMenu.length ? byMenu : costed.filter(e => e.type === type), e => spent.get(e.id));
-  const billed = menu ? avg(peers.filter(e => e.menu === menu.id), e => e.billing) : null;
+  const billed = menu ? avg(peers.filter(e => e.menu === menu.id && billSet(e)), e => e.billing) : null;
   const lines = [];
   if (cost) {
     lines.push(`${esc(basis)} usually costs you <b>${fmtCurrency(cost.perPlate)}/plate</b> (${cost.n} reconciled event${cost.n > 1 ? 's' : ''})`);
@@ -3769,7 +4428,7 @@ function updateMenuHint() {
   const past = menuCostPerPlate(menu.id, D.events, D.expenses, qv('ev-id'));
   const fill = (id, key, value) => {
     const cur = q(id).value;
-    if (value && (!cur || cur === evAuto[key])) { q(id).value = String(value); evAuto[key] = String(value); }
+    if (value && (!cur || cur === evAuto[key]) && (key !== 'bill' || billAutoOk)) { q(id).value = String(value); evAuto[key] = String(value); }
   };
   if (guests) {
     fill('ev-billing', 'bill', rate * guests);
@@ -3839,22 +4498,32 @@ async function saveEvent() {
     name:    qv('ev-name'),
     date:    qv('ev-date'),
     venue:   qv('ev-venue'),
-    billing: qf('ev-billing'),
+    billing: qv('ev-billing') === '' ? '' : Number(qv('ev-billing')),   // empty: not set yet (stored as 0); a typed 0 is refused
     mobile:  qv('ev-mobile'),
     budget: qf('ev-budget'),
     guests: qf('ev-guests')
   };
   const id = qv('ev-id');
+  // Guests are registered first: required (per meal when meals are chosen) for a new or upcoming event; a past event
+  // can still be corrected without them
+  const chosen = MEAL_ORDER.filter(m => evMeals().includes(m)), guestErrs = {}, needGuests = !id || !data.date || data.date >= today();
+  if (chosen.length) {
+    // an event that already has a guest number (used for each meal) is not blocked; a new one needs each meal's guests
+    if (needGuests && !(Number(qv('ev-guests')) >= 1)) for (const m of chosen) { const v = Number(qv(`ev-mp-${m}-g`)); if (!(Number.isInteger(v) && v >= 1)) guestErrs[`mp-${m}-g`] = `${MEALS[m]}: guests – पाहुणे आवश्यक`; }
+  }
   const adv = id || !qv('ev-adv') ? '' : qf('ev-adv');   // optional: blank means no advance
-  const { valid, errors } = validate({ ...EVENT_RULES, adv: { numeric: true, min: 1, minMsg: 'Advance must be > 0' } }, { ...data, adv });
-  if (!errors.adv && !errors.billing && adv !== '' && Number(adv) > Number(data.billing)) errors.adv = 'Advance is more than the total bill – अॅडव्हान्स बिलापेक्षा जास्त';
+  const { valid: rulesOk, errors } = validate({ ...EVENT_RULES, adv: { numeric: true, min: 1, minMsg: 'Advance must be > 0' } }, { ...data, adv });
+  if (needGuests && !chosen.length && !errors.guests && !(Number(data.guests) >= 1)) errors.guests = 'Guests – पाहुण्यांची संख्या आवश्यक';
+  Object.assign(errors, guestErrs);
+  const valid = rulesOk && !errors.guests && !Object.keys(guestErrs).length;
+  if (!errors.adv && !errors.billing && adv !== '' && Number(data.billing) > 0 && Number(adv) > Number(data.billing)) errors.adv = 'Advance is more than the total bill – अॅडव्हान्स बिलापेक्षा जास्त';
   // Rule keys are field names; the inputs are ev-<name>
   const out = q('ev-handling').dataset.value === 'out';
   const outVenId = out ? qv('ev-out-ven') : '';
   const charge = out && !id && qv('ev-out-charge') ? qf('ev-out-charge') : '';
   if (out && !outVenId) errors['out-ven'] = 'Choose who does the event – विक्रेता निवडा';
   if (charge !== '' && !(charge > 0)) errors['out-charge'] = 'Enter their charge – रक्कम लिहा';
-  else if (charge !== '' && !errors.billing && charge > Number(data.billing)) errors['out-charge'] = 'Their charge is more than the bill – बिलापेक्षा जास्त';
+  else if (charge !== '' && !errors.billing && Number(data.billing) > 0 && charge > Number(data.billing)) errors['out-charge'] = 'Their charge is more than the bill – बिलापेक्षा जास्त';
   if (!valid || errors.adv || errors['out-ven'] || errors['out-charge']) { showFieldErrors(Object.fromEntries(Object.entries(errors).map(([k, v]) => ['ev-' + k, v]))); return; }
 
   const base = id ? formBase.ev : null;
@@ -3868,7 +4537,9 @@ async function saveEvent() {
     venue:    data.venue,
     ...venueFields(),
     ...(Object.keys(mealPlanFields(meals)).length ? { mealPlan: mealPlanFields(meals) } : {}),
-    billing:  data.billing,
+    billing:  Number(data.billing) || 0,
+    // A set bill cleared by hand: noted, so an older waiver to ₹0 in its history no longer counts as today's bill
+    ...(base && Number(base.billing) > 0 && !(Number(data.billing) > 0) ? { billClearedAt: new Date().toISOString() } : {}),
     mobile:   data.mobile,
     guests:   data.guests,
     budget:   data.budget,
@@ -4042,7 +4713,7 @@ function openExpModal(arg) {
   const ex   = arg && typeof arg === 'object' && !pre ? arg : null;
   formBase.exp = snapshot(ex);   // an expense or bill draft being edited; null for a new entry
   expLogi = pre?.logi || '';
-  expOrder = pre?.order || '';   // the delivered order this new bill is for (G-23)     // which venue reminder a new expense answers (one expense per reminder)
+  expOrder = pre?.order || ''; expPurchase = pre?.purchase || '';   // the delivered order this new bill is for (G-23)     // which venue reminder a new expense answers (one expense per reminder)
   expTouched = { item: !!(ex || pre?.head), pay: !!(ex || arg?.resume) };
   const evId = ex?.evId || pre?.evId || (typeof arg === 'string' && arg) || defaultEventId();
   const last = readPref('ffv2_lastexp', {});
@@ -4067,8 +4738,13 @@ function openExpModal(arg) {
   q('btn-del-exp').hidden       = !ex;
   // A part of a shared bill: its amount and event come from the split; change them with "Share bill"
   const part = ex?.split ? splitParts(D.expenses, ex.split.id) : null;
-  q('exp-amt').disabled = !!part; q('exp-ev').disabled = !!part || !!ex?.stock;
+  // A purchase's bill stays on the purchase's event (4.28.1): its event cannot be changed here
+  q('exp-amt').disabled = !!part; q('exp-ev').disabled = !!part || !!ex?.stock || !!(ex?.purchase || (!ex && expPurchase));
   q('exp-split-note').hidden = !part && !ex?.stock;
+  // A purchase link removed by the 4.28.1 repair: say when and why, so the bill's history is never a mystery
+  const fix = ex?.linkRepair;
+  q('exp-repair-note').hidden = !fix;
+  q('exp-repair-note').textContent = fix ? `Purchase link removed on ${fmtDate(localDay(fix.at))} (${fix.from === 'restore' ? 'when a backup was restored' : fix.from === 'edit' ? 'when this bill was saved' : 'by the app’s data check'}): ${REPAIR_REASONS[fix.reason] || 'it was not valid'}. The bill and amount were not changed.` : '';
   q('exp-split-note').innerHTML = part && ex.stock ? tr(`Shared bill: the common-stock part of ${fmtCurrency(ex.split.total)}, on no event yet. To use it for an event, move it with Split bill; the bill total stays the same.`,
     `वाटलेले बिल: ${fmtCurrency(ex.split.total)} पैकी साठ्याचा भाग.`)
     : part ? tr(`Shared bill: this event's part of ${fmtCurrency(ex.split.total)} across ${part.length} events. Changes to vendor, item, date or payment apply to every part.`,
@@ -4200,6 +4876,7 @@ async function saveExpense({ next = false } = {}) {
   const base = formBase.exp && formBase.exp.id === expWork.id ? formBase.exp : null;
   if (base?.split) { data.amt = base.amt; data.evId = base.evId; }   // set by the split, not this form
   if (base?.stock) data.evId = '';                                   // common stock moves to an event only through the split
+  if (base?.purchase && purchaseOwned(base)) data.evId = base.evId;  // a purchase's bill stays on the purchase's event
   const { errors } = validate(EXPENSE_RULES, data);
   if (base?.stock) delete errors.evId;
   const venId = qv('exp-vendor').startsWith('__new') ? '' : qv('exp-vendor');
@@ -4235,6 +4912,7 @@ async function saveExpense({ next = false } = {}) {
   const record = editedRecord(base, {
     ...(!base && expLogi ? { logi: expLogi } : {}),
     ...(!base && expOrder ? { order: expOrder } : {}),
+    ...(!base && expPurchase ? { purchase: expPurchase } : {}),
     id:    expWork.id,
     evId:  data.evId,
     cat:   qv('exp-cat'),
@@ -4250,10 +4928,12 @@ async function saveExpense({ next = false } = {}) {
     billIds: expWork.bills.map(b => b.id),
     ...(additional ? { additional: true } : {})
   }, ['draft', ...(additional ? [] : ['additional']), ...(billNo ? [] : ['billNo'])]);   // a filled-in bill draft becomes a normal expense
+  if (record.purchase && !purchaseOwned(record)) Object.assign(record, withoutPurchaseLink(record, record.order ? 'also-order' : 'other-event', 'edit')), delete record.purchase;   // a link 4.28.0 left pointing at another event's purchase
 
   // One shared bill: vendor, item, date and payment stay the same on every part
   const siblings = base?.split ? splitParts(D.expenses, base.split.id).filter(x => x.id !== record.id).map(s => {
     const { _rev, billNo: _no, ...r } = s;
+    if (r.purchase && !purchaseOwned(r)) { Object.assign(r, withoutPurchaseLink(r, r.order ? 'also-order' : 'other-event', 'edit')); delete r.purchase; }
     return { store: 'expenses', record: { ...r, cat: record.cat, head: record.head, date: record.date, pay: record.pay, mode: record.mode, venId: record.venId, dueDate: record.dueDate, notes: record.notes, ...(billNo ? { billNo } : {}) }, expected: s };
   }) : [];
   await commitChanges([{ store: 'expenses', record, expected: base }, ...siblings, ...expWork.removed.map(id => ({ store: 'photos', id, unchecked: true }))], { check: true, extraStores: ['events', 'vendors'] });
@@ -4263,7 +4943,7 @@ async function saveExpense({ next = false } = {}) {
   const i = D.expenses.findIndex(x => x.id === record.id);
   if (i >= 0) D.expenses[i] = record; else D.expenses.push(record);
   expWork.saved = true;
-  expLogi = ''; expOrder = '';   // a "+Next" entry answers no reminder or order unless opened from one
+  expLogi = ''; expOrder = ''; expPurchase = '';   // a "+Next" entry answers no reminder or order unless opened from one
   try { localStorage.removeItem('ffv2_expdraft'); } catch {}   // saved: nothing left to resume
   writePref('ffv2_lastexp', { cat: record.cat, head: record.head, mode: record.mode || readPref('ffv2_lastexp', {}).mode });
 
@@ -4283,6 +4963,7 @@ async function saveExpense({ next = false } = {}) {
     q('exp-notes').value = '';
     clearFieldErrors();
     startExpSession(null);
+    q('exp-ev').disabled = false;   // the next entry is an ordinary expense: its event can be chosen (a purchase's bill locked it)
     updateExpEvHint();
     q('exp-amt').focus({ preventScroll: true });
     showToast(over ? `Saved · ${over}` : `Saved ${fmtCurrency(record.amt)} · add the next – पुढील खर्च`, over ? 'error' : 'success');
@@ -4338,6 +5019,7 @@ function setVenKind(kind) {
   q('ven-kind').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.kind === kind)));
   q('ven-kind-hint').hidden = !person;
   q('ven-cat-row').hidden = person;
+  q('ven-tax').hidden = person;   // a person (lender) has no GSTIN
   q('ven-name-lbl').innerHTML = person ? 'Name – नाव <span class="req">*</span>' : 'Vendor name – विक्रेत्याचे नाव <span class="req">*</span>';
   q('ven-name').placeholder = person ? 'Friend, relative, financier…' : 'Business / supplier name';
   q('btn-save-ven').textContent = person ? 'Save – जतन करा' : 'Save vendor – जतन करा';
@@ -4350,6 +5032,8 @@ function openVenModal(id, kind = 'vendor') {
   q('ven-name').value  = vn?.name  || '';
   q('ven-phone').value = vn?.phone || '';
   q('ven-notes').value = vn?.notes || '';
+  q('ven-gstin').value = vn?.gstin || '';
+  q('ven-legal').value = vn?.legalName || '';
   populateSelect('ven-cat', Object.keys(EXPENSE_HEADS), vn?.cat || (pickVendorForExpense ? qv('exp-cat') : pickVendorForEvent ? 'Operations' : ''));
   loadVenSpecialty(vn?.specialty || (pickVendorForExpense ? qv('exp-head') : pickVendorForEvent ? 'Outsourced Event – आउटसोर्स कार्यक्रम' : ''));
   setVenKind(vn ? (isPerson(vn) ? 'person' : 'vendor') : kind);
@@ -4366,13 +5050,18 @@ function loadVenSpecialty(selected = '') {
 async function saveVendor() {
   const data = { name: qv('ven-name'), phone: qv('ven-phone') };
   const { valid, errors } = validate(VENDOR_RULES, data);
-  if (!valid) { showFieldErrors({ 'ven-name': errors.name, 'ven-phone': errors.phone }); return; }
+  const person = q('ven-kind').dataset.value === 'person';
+  // GSTIN: optional, kept in capitals without spaces; checked (shape and check character) before saving
+  const gstin = person ? '' : normGstin(qv('ven-gstin')), legalName = person ? '' : qv('ven-legal').trim();
+  const gstErr = gstin && !gstinValid(gstin) ? (gstin.length !== 15 ? 'GSTIN has 15 characters – जीएसटीआयएन १५ अक्षरी असतो' : 'This GSTIN is not valid – please check it – जीएसटीआयएन तपासा') : '';
+  if (!valid || gstErr) { showFieldErrors({ 'ven-name': errors.name, 'ven-phone': errors.phone, ...(gstErr ? { 'ven-gstin': gstErr } : {}) }); return; }
 
   const id = qv('ven-id');
-  const person = q('ven-kind').dataset.value === 'person';
   const base = id ? formBase.ven : null;
+  // Same id, so every bill and payment stays linked; empty GST fields are removed rather than kept blank
   const record = editedRecord(base, { id: id || uid('VN'), name: data.name, cat: person ? '' : qv('ven-cat'), specialty: person ? '' : qv('ven-specialty'),
-                   phone: data.phone, notes: qv('ven-notes'), ...(person ? { kind: 'person' } : {}) }, person ? [] : ['kind']);
+                   phone: data.phone, notes: qv('ven-notes'), ...(person ? { kind: 'person' } : {}), ...(gstin ? { gstin } : {}), ...(legalName ? { legalName } : {}) },
+                   [...(person ? [] : ['kind']), ...(gstin ? [] : ['gstin']), ...(legalName ? [] : ['legalName'])]);
 
   await putChecked('vendors', record, base);
   if (id) D.vendors = D.vendors.map(v => v.id === id ? record : v);
@@ -4534,9 +5223,9 @@ async function deleteFromSheet(type, idField) {
 }
 
 /* ── PHOTOS ──────────────────────────────────────── */
-function triggerPhoto(evId) {
+function triggerPhoto(evId, camera = false) {
   pendingPhotoEvId = evId;
-  q('photo-input').click();
+  q(camera ? 'photo-cam' : 'photo-input').click();
 }
 
 async function handlePhotoInput(files) {
@@ -4726,6 +5415,207 @@ async function exportData() {
   if (CT === 'home') rHome();
 }
 
+/* ── ENCRYPTED BACKUP FILE (recovery key) ── */
+/* A backup can be saved as an encrypted file (.cdbk) that only the recovery key opens: the step before encrypted
+   Google Drive backups, and safe to keep anywhere. The key is made on this phone, shown once, and must be typed
+   back in full before it is used. This phone keeps it so it can encrypt without asking, as a key that can be used
+   but not read back out. It is never in a backup, never sent anywhere, and without it nobody can open the files. */
+let rkDraft = null;
+// The key and its id are one record, written in one step, so a backup can never be labelled with another key's id
+const keyPair = v => v && v.key instanceof CryptoKey && typeof v.id === 'string' && /^[0-9a-f]{16}$/.test(v.id) ? { key: v.key, id: v.id } : null;
+async function backupKey() {
+  const v = await getMeta('backup_key');
+  if (v instanceof CryptoKey) {
+    // Set up by an earlier 4.29.0 test build as two records: join them into one, in a single transaction
+    const id = await getMeta('backup_key_id'), pair = keyPair({ key: v, id });
+    if (!pair) return null;
+    await commitChanges([{ store: 'meta', record: { id: 'backup_key', value: pair } }, { store: 'meta', id: 'backup_key_id' }]);
+    return pair;
+  }
+  return keyPair(v);
+}
+async function refreshEncMeta() {
+  const k = await backupKey();
+  q('enc-meta').textContent = k ? `· recovery key set (${k.id.slice(0, 4).toUpperCase()}…)` : '· not set up';
+}
+// Forget every shown or typed copy of a key once its sheet is done: finished, closed, cancelled or Back
+function clearKeySetup() { rkDraft = null; q('rk-key').textContent = ''; q('rk-typed').value = ''; q('rk-result').textContent = ''; }
+async function openKeySetup() {
+  // Replacing a working key is a deliberate, confirmed step; the current key stays in use until the new one is verified
+  const k = await backupKey();
+  if (k && !await askSheet({ title: 'Replace the recovery key? – की बदलायची?',
+    message: `A recovery key is already set up (${k.id.slice(0, 4).toUpperCase()}…). Every encrypted backup saved so far opens only with that key, and after a change this phone will ask for it when restoring one of them. Keep the current key safe. It stays in use until the new key has been typed back correctly.`,
+    actions: [{ label: 'Make a new key – नवीन की', value: true, style: 'btn-danger' }] })) return;
+  rkDraft = await newRecoveryKey();
+  q('rk-key').textContent = rkDraft.text;
+  q('rk-step1').hidden = false; q('rk-step2').hidden = true;
+  q('rk-written').checked = false; q('btn-rk-next').disabled = true;
+  q('rk-typed').value = ''; q('rk-result').textContent = '';
+  openSheet('rk-modal', clearKeySetup);
+}
+function keySetupNext() { q('rk-step1').hidden = true; q('rk-step2').hidden = false; q('rk-key').textContent = ''; q('rk-typed').focus(); }
+async function keySetupVerify() {
+  if (!rkDraft) return;
+  const typed = q('rk-typed').value, wrong = differingGroups(rkDraft.text, typed);
+  if (wrong.length) {
+    q('rk-result').textContent = wrong.length > 4 ? 'This does not match the key shown. Check it against what you wrote down. – जुळत नाही'
+      : `Group${wrong.length > 1 ? 's' : ''} ${wrong.join(', ')} ${wrong.length > 1 ? 'do' : 'does'} not match what was shown. Correct ${wrong.length > 1 ? 'them' : 'it'} from what you wrote down. – जुळत नाही`;
+    return;
+  }
+  let raw;
+  try { raw = await parseRecoveryKey(typed); } catch (e) { q('rk-result').textContent = e.message; return; }
+  const id = await keyIdOf(raw);
+  if (id !== await keyIdOf(rkDraft.raw)) { q('rk-result').textContent = 'This does not match the key shown.'; return; }
+  // Typed in full and identical: keep it on this phone (usable, not readable) and forget the shown copy
+  const replaced = (await backupKey())?.id;
+  // One record, one write: if it fails or the app closes, the current key (or none) stays complete and in use
+  try { await setMeta('backup_key', { key: await importBackupKey(raw), id }); }
+  catch (e) { q('rk-result').textContent = `The new key could not be saved (${e.message || e}). ${replaced ? 'The current key is still in use.' : 'Try again.'}`; return; }
+  clearKeySetup();
+  closeModals(); await refreshEncMeta();
+  showToast(replaced && replaced !== id
+    ? 'New recovery key is in use. Keep the old key too: encrypted backups saved before today still need it. – नवीन की'
+    : 'Encrypted backup is set up. Keep the recovery key safe: without it, encrypted backups cannot be opened. – तयार');
+}
+/* Encrypted backup: the same backup as the readable one, encrypted with the recovery key (D1 .cdbk format).
+   'phone': downloaded to this phone. 'drive': handed to Android's share menu, where the owner picks Google Drive (or any
+   app), the account and the folder; CaterDesk uses no Google sign-in for this. Android's share menu refuses file types
+   it does not know (.cdbk), so the shared copy is named .cdbk.txt; the bytes are the same encrypted file, and Restore
+   recognises it by its contents. CaterDesk cannot see whether the other app kept the file, so it never says "saved". */
+const SHARE_PROBE = () => new File(['x'], 'probe.txt', { type: 'text/plain' });
+async function exportEncrypted(target = 'phone') {
+  if (!launched || q('pin-screen').classList.contains('active')) { showToast('Unlock the app before exporting.', 'error'); return; }
+  if (target === 'drive' && !navigator.canShare?.({ files: [SHARE_PROBE()] })) {
+    showToast('This device cannot hand files to Google Drive from CaterDesk. Use "Backup to phone", then upload that file in the Drive app. Nothing was saved.', 'error');
+    return;
+  }
+  const k = await backupKey();
+  if (!k) { showToast('Set up the recovery key first: backups are encrypted with it.'); openKeySetup(); return; }
+  let file;
+  showLoading(true);
+  try {
+    const json = JSON.stringify({ ...await exportAllData(), prefs: backupPrefs() });
+    const out = await encryptBackup(k.key, k.id, json, { appVersion: APP_BUILD });
+    const stamp = localStamp();
+    file = target === 'drive'
+      ? new File(out.parts, `caterdesk-backup-${stamp}.cdbk.txt`, { type: 'text/plain' })
+      : new File(out.parts, `caterdesk-backup-${stamp}.cdbk`, { type: 'application/octet-stream' });
+  } catch (e) { showToast(`The encrypted backup could not be made (${e.message || e}). Nothing was saved.`, 'error'); return; }
+  finally { showLoading(false); }
+  const size = file.size > 1048576 ? `${(file.size / 1048576).toFixed(1)} MB` : `${Math.ceil(file.size / 1024)} KB`;
+  let how = 'download';
+  if (target === 'drive') {
+    // Android opens the share menu only straight from a tap, and building a backup takes longer than it allows: one more tap
+    const why = e => ({ refused: `${e?.name || 'Error'}${e?.message ? ': ' + String(e.message).slice(0, 120) : ''}` });
+    const share = () => { try { return navigator.share({ files: [file], title: 'CaterDesk encrypted backup' }).then(() => 'shared', e => e?.name === 'AbortError' ? 'aborted' : why(e)); } catch (e) { return Promise.resolve(why(e)); } };
+    const outcome = await (await askSheet({ title: 'Backup to Google Drive – ड्राइव्हवर बॅकअप',
+      message: `Encrypted backup ready (${size}). Tap Share, choose Drive, then pick your Google account and folder and tap Save.\n\nDrive shows it as a .txt file. It is encrypted: it opens only in CaterDesk, with your recovery key.`,
+      actions: [{ label: 'Share to Google Drive – पाठवा', style: 'btn-primary', run: share }] }));
+    if (!outcome || outcome === 'aborted') return;   // cancelled: nothing was handed anywhere, nothing recorded
+    if (outcome.refused) { showToast(`This phone did not open the share menu (${outcome.refused}). Nothing was saved. Use "Backup to phone", then upload that file in the Drive app.`, 'error'); return; }
+    how = 'shared';
+  } else {
+    const url = URL.createObjectURL(file), a = document.createElement('a'); a.href = url; a.download = file.name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  lastExport = new Date().toISOString(); await setMeta('last_export', lastExport); await setMeta('last_export_how', how);
+  showToast(how === 'shared'
+    ? `Encrypted backup handed to the app you chose (${size}). CaterDesk cannot see whether it was saved: check it is in your Drive.`
+    : `Encrypted backup download started (${size}). Check it is in this phone's Downloads, and keep a copy outside the phone too.`);
+  if (CT === 'home') rHome();
+}
+// Ask for the recovery key (restoring on any device). Resolves with the key, or null if cancelled.
+function askRecoveryKey(keyId) {
+  return new Promise(resolve => {
+    q('rki-typed').value = ''; q('rki-result').textContent = '';
+    let done = false;
+    // The typed key is never left in the page once the prompt is answered, closed, cancelled or Back
+    const forget = () => { q('rki-typed').value = ''; q('rki-result').textContent = ''; };
+    const finish = v => { forget(); if (done) return; done = true; q('btn-rki-ok').onclick = null; resolve(v); };
+    q('btn-rki-ok').onclick = async () => {
+      let raw;
+      try { raw = await parseRecoveryKey(q('rki-typed').value); } catch (e) { q('rki-result').textContent = e.message; return; }
+      if (await keyIdOf(raw) !== keyId) { q('rki-result').textContent = 'This backup was made with a different recovery key.'; return; }
+      // Mark it answered before closing: closing the sheet runs its "cancelled" callback, which must not win
+      const key = await importBackupKey(raw); done = true; q('btn-rki-ok').onclick = null; forget();
+      closeOverlay().then(() => resolve(key));
+    };
+    openSheet('rki-modal', () => finish(null));
+  });
+}
+// An encrypted backup file → the backup JSON text (the stored key if it is the one used, else the typed one)
+async function openEncrypted(bytes) {
+  const { header } = readHeader(bytes);
+  const k = await backupKey();
+  const key = k && k.id === header.keyId ? k.key : await askRecoveryKey(header.keyId);
+  if (!key) return null;
+  showLoading(true);
+  try { return await decryptBackup(key, header.keyId, bytes); } finally { showLoading(false); }
+}
+
+/* Before a restore replaces this phone's data: if there is anything Replace would remove (events, bills,
+   drafts, vendors, payments, photos, the menu library or business details), the owner saves a copy of it first and
+   confirms that copy is saved. The browser cannot tell whether a download was kept, so nothing is replaced until
+   the owner says it is there. Resolves true to go ahead, false to stop (nothing changed). */
+async function safetyCopyFirst() {
+  const now = { ...await exportAllData(), prefs: backupPrefs() };
+  const records = Object.values(now.manifest?.counts || {}).reduce((n, c) => n + (Number(c) || 0), 0);
+  const profile = typeof now.prefs.ffv2_profile === 'string' && now.prefs.ffv2_profile.trim() && now.prefs.ffv2_profile.trim() !== '{}';
+  if (!records && !profile) return true;   // nothing on this phone that Replace would remove
+  const stamp = localStamp();
+  const name = `caterdesk-before-restore-${stamp}.json`;
+  const what = [records ? `${records} record${records > 1 ? 's' : ''}` : '', profile ? 'business details' : ''].filter(Boolean).join(' and ');
+  if (!await askSheet({ title: 'First, save a copy of this phone\'s data – आधी प्रत',
+    message: `Replace removes what is on this phone now (${what}). Save a copy first so it can be brought back.\n\nThe copy is a plain backup file, not encrypted: anyone who opens it can read your business records. Keep it private.`,
+    actions: [{ label: 'Save a copy to this phone – प्रत जतन', value: true, style: 'btn-primary' }] })) return false;
+  for (;;) {
+    const url = URL.createObjectURL(new File([JSON.stringify(now)], name, { type: 'application/json' }));
+    const a = document.createElement('a'); a.href = url; a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    const answer = await askSheet({ title: 'Is the copy saved? – प्रत जतन झाली?',
+      message: `Check that ${name} is in this phone's Downloads (or where your browser saves files). Only then replace. If it is not there, cancel: nothing will be replaced.`,
+      actions: [{ label: 'The copy is saved – replace now – बदला', value: 'go', style: 'btn-danger' },
+        { label: 'Save the copy again – पुन्हा', value: 'again', style: 'btn-secondary' }] });
+    if (answer === 'go') return true;
+    if (answer !== 'again') return false;
+  }
+}
+
+/* A backup's text (from a file or from Google Drive) → checked, previewed, then merged or replacing this phone's data.
+   Throws a plain-language reason if it is not a usable backup; nothing is changed until the owner chooses. Replace
+   first asks for a confirmed copy of this phone's data whenever there is any (safetyCopyFirst). */
+async function restoreText(text, { safetyCopy = false } = {}) {
+  let payload;
+  try { payload = JSON.parse(text); }
+  catch { throw new Error('This file is not a CaterDesk backup, or it is cut off. Your data was not changed.'); }
+  const info = await inspectBackup(payload);   // throws a plain-language reason; nothing is changed
+  const c = info.counts;
+  const made = info.exportedAt ? `Made ${fmtDate(localDay(info.exportedAt))}${info.appVersion ? ` · CaterDesk v${info.appVersion}` : ''}` : 'Older backup';
+  const counts = `${c.events} events · ${c.expenses} expenses · ${c.cPays} client payments · ${c.vendors} vendors · ${c.vPays} vendor payments · ${c.photos} photos`;
+  const check = info.verified ? '✓ Checked: complete and undamaged' : 'Made by an older version: it cannot be checked for damage, but every record is still validated before import.';
+  const mode = await askSheet({
+    title: 'Import backup – आयात',
+    message: `${made}\n${counts}\n${check}\n\nMerge keeps your current data. Replace deletes it first${safetyCopy ? '; if this phone has data, you will save a copy of it before anything is replaced' : ''}.`,
+    actions: [
+      { label: 'Merge – जोडा', value: 'merge', style: 'btn-primary' },
+      { label: 'Replace all data – सर्व बदला', value: 'replace', style: 'btn-danger' }
+    ]
+  });
+  if (!mode) return false;
+  if (mode === 'replace' && safetyCopy && !await safetyCopyFirst()) { showToast('Not replaced. Your data was not changed.'); return false; }
+
+  showLoading(true);
+  try {
+    const { repaired = 0 } = await importAllData(payload, mode) || {};
+    if (mode === 'replace') restorePrefs(payload.prefs);   // merge keeps this phone's settings
+    await loadAll();
+    changesChannel?.postMessage('changed');
+    go('home');
+    renderPage('home');
+    showToast(repaired ? `Imported. ${repaired} bill${repaired > 1 ? 's were' : ' was'} linked to a purchase on another event; the bill${repaired > 1 ? 's are' : ' is'} kept, the link removed. – आयात झाली` : 'Imported – आयात झाली');
+  } finally { showLoading(false); }
+  return true;
+}
+
 async function handleImport(file) {
   if (!launched || q('pin-screen').classList.contains('active')) return;
   if (!file) return;
@@ -4734,32 +5624,13 @@ async function handleImport(file) {
   const reader = new FileReader();
   reader.onload = async e => {
     try {
-      let payload;
-      try { payload = JSON.parse(e.target.result); }
-      catch { throw new Error('This file is not a CaterDesk backup, or it is cut off. Your data was not changed.'); }
-      const info = await inspectBackup(payload);   // throws a plain-language reason; nothing is changed
-      const c = info.counts;
-      const made = info.exportedAt ? `Made ${fmtDate(info.exportedAt.slice(0, 10))}${info.appVersion ? ` · CaterDesk v${info.appVersion}` : ''}` : 'Older backup';
-      const counts = `${c.events} events · ${c.expenses} expenses · ${c.cPays} client payments · ${c.vendors} vendors · ${c.vPays} vendor payments · ${c.photos} photos`;
-      const check = info.verified ? '✓ Checked: complete and undamaged' : 'Made by an older version: it cannot be checked for damage, but every record is still validated before import.';
-      const mode = await askSheet({
-        title: 'Import backup – आयात',
-        message: `${made}\n${counts}\n${check}\n\nMerge keeps your current data. Replace deletes it first.`,
-        actions: [
-          { label: 'Merge – जोडा', value: 'merge', style: 'btn-primary' },
-          { label: 'Replace all data – सर्व बदला', value: 'replace', style: 'btn-danger' }
-        ]
-      });
-      if (!mode) return;
-
-      showLoading(true);
-      await importAllData(payload, mode);
-      if (mode === 'replace') restorePrefs(payload.prefs);   // merge keeps this phone's settings
-      await loadAll();
-      changesChannel?.postMessage('changed');
-      go('home');
-      renderPage('home');
-      showToast('Imported – आयात झाली');
+      let text;
+      const bytes = new Uint8Array(e.target.result);
+      if (bytes[0] === 0x43 && bytes[1] === 0x44 && bytes[2] === 0x42 && bytes[3] === 0x4b) {   // "CDBK": encrypted
+        text = await openEncrypted(bytes);
+        if (text === null) return;   // no key given: nothing changed
+      } else text = new TextDecoder().decode(bytes);
+      await restoreText(text, { safetyCopy: true });
     } catch (err) {
       showToast(err.message || 'Import failed. Existing data was kept. – आयात अयशस्वी', 'error');
       console.error(err);
@@ -4768,13 +5639,134 @@ async function handleImport(file) {
       q('import-input').value = '';
     }
   };
-  reader.readAsText(file);
+  reader.readAsArrayBuffer(file);
+}
+
+/* ── GOOGLE DRIVE BACKUP (design D2) ── */
+/* Hidden until the owner's Google client ID is set (drive-config.js) on a registered address. The Google sign-in
+   library is loaded only when this sheet opens. Two records are kept apart: the last attempt (any result) and the
+   last verified backup; a failed attempt never changes the verified one. Drive is never read automatically. */
+const driveOn = () => drive.driveAvailable(DRIVE_CLIENT_ID, DRIVE_ORIGINS);
+let driveBusy = false;
+const mbText = n => n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.ceil(n / 1024))} KB`;
+const driveWhen = iso => { const d = new Date(iso); return `${fmtDate(localDay(d))}, ${d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}`; };
+async function refreshDriveMeta() {
+  q('btn-drive').hidden = !driveOn();
+  if (!driveOn()) return;
+  const v = await getMeta('drive_last_verified');
+  const days = v?.at ? daysSince(localDay(new Date(v.at))) : null;
+  q('drive-meta').textContent = days === null ? '· no backup yet' : days === 0 ? '· verified today' : `· verified ${days}d ago`;
+}
+const driveButtons = () => ['btn-drive-backup', 'btn-drive-restore', 'btn-drive-connect', 'btn-drive-disconnect'].forEach(id => { q(id).disabled = driveBusy; });
+async function renderDrive() {
+  driveButtons();
+  const [v, a] = await Promise.all([getMeta('drive_last_verified'), getMeta('drive_last_attempt')]);
+  const lines = [drive.connected() ? 'Connected for this session.' : 'Not connected on this phone.',
+    v ? `Last verified backup: ${driveWhen(v.at)} · ${mbText(v.size)} · key ${String(v.keyId).slice(0, 4).toUpperCase()}…` : 'No verified backup on Drive yet.'];
+  if (a && !a.ok && (!v || a.at > v.at)) lines.push(`Last attempt ${driveWhen(a.at)} failed: ${a.reason}`);
+  q('drive-status').textContent = lines.join('\n');
+  q('btn-drive-connect').hidden = drive.connected();
+  q('btn-drive-disconnect').hidden = !drive.connected();
+}
+function openDrive() {
+  if (!driveOn()) return;
+  q('drive-progress').textContent = '';
+  openSheet('drive-modal');
+  renderDrive();
+  drive.loadGis().catch(() => {});   // ready before the owner taps Connect (Google opens its popup only inside a tap)
+}
+// Run Drive work, signing in first if needed (called straight from a tap). One job at a time.
+async function withDrive(job) {
+  if (driveBusy) return;
+  if (!launched || q('pin-screen').classList.contains('active')) { showToast('Unlock the app first.', 'error'); return; }
+  driveBusy = true; driveButtons(); q('drive-progress').textContent = '';
+  try {
+    if (!drive.connected()) { q('drive-progress').textContent = 'Connecting to Google…'; await drive.loadGis(); await drive.signIn(DRIVE_CLIENT_ID); }
+    await job();
+  } catch (e) {
+    q('drive-progress').textContent = e.message || String(e);
+    if (!(e instanceof drive.DriveError) || e.code !== 'cancelled') showToast(e.message || String(e), 'error');
+    if (!(e instanceof drive.DriveError)) console.error(e);
+  } finally { driveBusy = false; renderDrive(); refreshDriveMeta(); }
+}
+const hexOf = buf => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+async function driveBackupNow() {
+  if (driveBusy) return;
+  const k = await backupKey();
+  if (!k) { closeModals(); showToast('Set up the recovery key first: Drive backups are encrypted with it.'); openKeySetup(); return; }
+  await withDrive(async () => {
+    const at = new Date().toISOString(), say = t => { q('drive-progress').textContent = t; };
+    try {
+      say('Preparing backup…');
+      const json = JSON.stringify({ ...await exportAllData(), prefs: backupPrefs() });
+      say('Encrypting…');
+      const out = await encryptBackup(k.key, k.id, json, { appVersion: APP_BUILD, createdAt: at });
+      const blob = new Blob(out.parts, { type: 'application/octet-stream' });
+      let bytes = new Uint8Array(await blob.arrayBuffer());
+      await checkEnds(k.key, k.id, bytes);   // never upload a file this key cannot open
+      const sha256 = hexOf(await crypto.subtle.digest('SHA-256', bytes)); bytes = null;
+      say('Checking Google Drive…');
+      const folder = await drive.ensureFolder();
+      if (await drive.freeSpace() < blob.size) throw new drive.DriveError('full', `Google Drive storage is full: this backup needs ${mbText(blob.size)}. Free some space in Drive; nothing was deleted.`);
+      let tag = await getMeta('drive_device');
+      if (!tag) { tag = hexOf(crypto.getRandomValues(new Uint8Array(3))); await setMeta('drive_device', tag); }
+      const d = new Date(at), pad = n => String(n).padStart(2, '0');
+      const name = `CaterDesk-backup-${localDay(d)}-${pad(d.getHours())}${pad(d.getMinutes())}-${tag}.cdbk`;
+      const file = await drive.uploadBackup(folder, blob, { name, sha256,
+        appProperties: { caterdesk: '1', format: '1', keyId: k.id, createdAt: at, appVersion: APP_BUILD },
+        onProgress: (sent, total) => say(sent < total ? `Uploading ${mbText(sent)} of ${mbText(total)}…` : 'Checking upload…') });
+      await setMeta('drive_last_verified', { at, id: file.id, name: file.name, size: file.size, keyId: k.id });
+      await setMeta('drive_last_attempt', { at, ok: true });
+      // Tidy older copies into Drive's bin; a backup that is saved and verified stays a success even if this fails
+      let moved = 0;
+      try { for (const id of drive.toPrune(await drive.listBackups(folder))) { await drive.trash(id); moved++; } } catch { /* tried again next time */ }
+      say(`Saved to Drive and verified · ${driveWhen(at)}`);
+      showToast(`Saved to Google Drive and verified (${mbText(file.size)}).${moved ? ` ${moved} older cop${moved > 1 ? 'ies' : 'y'} moved to Drive's bin.` : ''} – ड्राइव्हवर जतन`);
+    } catch (e) {
+      await setMeta('drive_last_attempt', { at, ok: false, reason: e.message || String(e) });
+      throw e;
+    }
+  });
+}
+async function driveRestore() {
+  await withDrive(async () => {
+    q('drive-progress').textContent = 'Looking for backups…';
+    const folder = await drive.ensureFolder({ create: false });
+    const files = folder ? await drive.listBackups(folder) : [];
+    if (!files.length) { q('drive-progress').textContent = 'No CaterDesk backups were found on this Google Drive.'; return; }
+    q('drive-progress').textContent = '';
+    const pick = await askSheet({ title: 'Restore from Google Drive – परत आणा',
+      message: `${files.length} backup${files.length > 1 ? 's' : ''} on Drive${files.length > 8 ? '; the 8 newest are shown' : ''}. Pick one. Nothing changes until you choose Merge or Replace.`,
+      actions: files.slice(0, 8).map((f, i) => ({ label: `${driveWhen(f.createdAt)} · ${mbText(f.size)}${f.appVersion ? ` · v${f.appVersion}` : ''}`, value: f, style: i ? 'btn-secondary' : 'btn-primary' })) });
+    if (!pick) return;
+    // The key is checked before anything is downloaded: this phone's key if it made the backup, else the typed one
+    const k = await backupKey();
+    const key = k && k.id === pick.keyId ? k.key : await askRecoveryKey(pick.keyId);
+    if (!key) return;
+    q('drive-progress').textContent = `Downloading ${mbText(pick.size)}…`;
+    const bytes = await drive.downloadBackup(pick.id, MAX_BACKUP_BYTES);
+    let text;
+    showLoading(true);
+    try { text = await decryptBackup(key, pick.keyId, bytes); } finally { showLoading(false); }
+    q('drive-progress').textContent = '';
+    // The import preview is shown on its own, and the app is on Home afterwards
+    if (q('drive-modal').classList.contains('active')) await closeOverlay();
+    await restoreText(text, { safetyCopy: true });
+  });
+}
+function driveDisconnect() {
+  drive.signOut();
+  q('drive-progress').textContent = '';
+  renderDrive();
+  showToast('Google Drive disconnected on this phone. Backups already on Drive stay there.');
 }
 
 /* ── SETTINGS PANEL ──────────────────────────────── */
 function openDrawer() {
-  const days = lastExport ? daysSince(lastExport.slice(0, 10)) : null;
+  const days = lastExport ? daysSince(localDay(lastExport)) : null;
   q('backup-meta').textContent = days === null ? '· never' : days === 0 ? '· today' : `· ${days}d ago`;
+  refreshEncMeta();
+  refreshDriveMeta();
   q('drawer').classList.add('active');
   q('drawer-toggle').setAttribute('aria-expanded', 'true');
   openOverlay(() => {
@@ -4811,15 +5803,23 @@ function bindAllEvents() {
       case 'menu-edit':    openMenuModal(); break;
       case 'svc-edit':     openServiceSheet(id); break;
       case 'svc-add':      openServiceSheet(); break;
+      case 'menu-approve': openApproveSheet(); break;
+      case 'menu-versions': openVersionsSheet(); break;
+      case 'menu-send':    openMenuDocSheet(); break;
       case 'svc-use':      useServiceTemplate(id); break;
       case 'lab-edit':     openLabModal(); break;
       case 'dish-assign':  assignDish(Number(id)); break;
-      case 'order-new':    openOrderModal({ head: id }); break;
-      case 'order-status': orderAction(id); break;
+      case 'buy-new':      openBuyModal({ key: id }); break;
+      case 'buy-status':   buyAction(id); break;
+      case 'order-new':    openOrderModal({ head: id, svc: el.dataset.svc || '' }); break;
+      case 'order-remind': remindOrder(el.dataset.ev, id); break;
+      case 'order-confirm': confirmOrder(el.dataset.ev, id); break;
+      case 'order-status': if (el.dataset.ev && el.dataset.ev !== curRef) { await showEvDetail(el.dataset.ev); } orderAction(id); break;   // from Home: its event first
       case 'recon-open':   openReconModal(); break;
       case 'plan-edit':    openPlanModal(); break;
       case 'count-open':   openCountModal(); break;
       case 'count-policy-save': saveCountPolicy(); break;
+      case 'count-booked-save': saveBookedGuests(); break;
       case 'fs-open':  openFunctionSheet(); break;
       case 'settle-open': openSettle(); break;
       case 'quote-open': openQuote(); break;
@@ -4847,6 +5847,7 @@ function bindAllEvents() {
       case 'edit-cpay':    openCPayModal(null, id); break;
       case 'edit-vpay':    openVPayModal(null, id); break;
       case 'add-photo':    triggerPhoto(id); break;
+      case 'add-photo-cam': triggerPhoto(id, true); break;
       case 'lightbox':     openEventPhoto(el.dataset.evid, el.dataset.photoid); break;
       // Bill photos: the file picker must open inside the tap itself
       case 'snap':         billTarget = 'snap';  q('bill-cam').click(); break;
@@ -4861,6 +5862,9 @@ function bindAllEvents() {
       case 'period':       period = id; writePref('ffv2_period', id); renderPage(CT); break;
       case 'ev-filter':    F.ev = id; rEvents(); break;
       case 'exp-filter': expensePage = 1; F.exp = id; rExp(); break;
+      case 'ven-filter': venShown = VEN_STEP; F.ven = id; rVen(); break;
+      case 'ven-more': venShown += VEN_STEP; rVen(); break;
+      case 'copy-gstin': copyText(id); break;
       case 'expense-prev': expensePage--; rExp(); window.scrollTo(0, 0); break;
       case 'expense-next': expensePage++; rExp(); window.scrollTo(0, 0); break;
     }
@@ -4906,11 +5910,14 @@ function bindAllEvents() {
   // Search boxes filter as you type
   q('ev-q').addEventListener('input', e => { F.evQ = e.target.value.trim(); rEvents(); });
   q('exp-q').addEventListener('input', e => { expensePage = 1; F.expQ = e.target.value.trim(); rExp(); });
-  q('ven-q').addEventListener('input', e => { F.venQ = e.target.value.trim(); rVen(); });
+  q('ven-q').addEventListener('input', e => { F.venQ = e.target.value.trim(); venShown = VEN_STEP; rVen(); });
+  populateSelect('ven-sort', Object.entries(VEN_SORTS).map(([v, l]) => ({ v, l })), F.venSort);
+  q('ven-sort').addEventListener('change', e => { F.venSort = VEN_SORTS[e.target.value] ? e.target.value : 'pay'; writePref('ffv2_ven_sort', F.venSort); venShown = VEN_STEP; rVen(); });
 
   ['fs-timings', 'fs-setup'].forEach(id => q(id).addEventListener('input', renderFunctionSheet));
   // Photo / import inputs
   q('photo-input').addEventListener('change', function () { handlePhotoInput(this.files); });
+  q('photo-cam').addEventListener('change', function () { handlePhotoInput(this.files).finally(() => { this.value = ''; }); });
   ['bill-cam', 'bill-gal'].forEach(inputId => q(inputId).addEventListener('change', async function () {
     const files = [...this.files];
     this.value = '';
@@ -4918,6 +5925,17 @@ function bindAllEvents() {
     if (billTarget === 'snap') snapBills(files); else addBillsToSheet(files);
   }));
   q('import-input').addEventListener('change', function () { handleImport(this.files[0]); });
+  q('btn-export-enc').addEventListener('click', () => exportEncrypted('phone'));
+  q('btn-export-drive').addEventListener('click', () => exportEncrypted('drive'));
+  q('btn-enc-setup').addEventListener('click', openKeySetup);
+  q('btn-drive').addEventListener('click', () => { closeOverlay().then(openDrive); });
+  q('btn-drive-backup').addEventListener('click', driveBackupNow);
+  q('btn-drive-restore').addEventListener('click', driveRestore);
+  q('btn-drive-connect').addEventListener('click', () => withDrive(async () => { q('drive-progress').textContent = 'Connected. – जोडले'; }));
+  q('btn-drive-disconnect').addEventListener('click', driveDisconnect);
+  q('rk-written').addEventListener('change', () => { q('btn-rk-next').disabled = !q('rk-written').checked; });
+  q('btn-rk-next').addEventListener('click', keySetupNext);
+  q('btn-rk-verify').addEventListener('click', keySetupVerify);
 
   // Expense sheet controls
   q('exp-cats').addEventListener('click', e => {
@@ -4991,6 +6009,8 @@ function bindAllEvents() {
     labRows.splice(Number(b.dataset.labDel), 1); renderLabRows();
   });
   q('btn-send-ord').addEventListener('click', () => runSave('order', sendOrder));
+  q('btn-send-buy').addEventListener('click', () => runSave('purchase', sendBuy));
+  q('btn-cancel-buy').addEventListener('click', cancelBuyFromSheet);
   q('btn-cancel-ord').addEventListener('click', () => runSave('order', cancelOrderFromSheet));
   q('btn-save-exp').addEventListener('click', () => runSave('expense', () => saveExpense()));
   q('btn-save-exp-next').addEventListener('click', () => runSave('expense', () => saveExpense({ next: true })));
@@ -5022,6 +6042,8 @@ function bindAllEvents() {
   // Settings panel / FAB
   q('drawer-toggle').addEventListener('click', openDrawer);
   q('drawer-bg').addEventListener('click', () => closeOverlay());
+  // The brand at the top of Settings: close Settings (its history entry goes with it), then Home as the Home tab does
+  q('drawer-home').addEventListener('click', () => closeOverlay().then(() => go('home')));
   q('fab').addEventListener('click', () => FAB[CT]?.run());
 
   // Bottom nav
@@ -5029,7 +6051,7 @@ function bindAllEvents() {
 
   // Dependent select
   q('ven-cat').addEventListener('change', () => loadVenSpecialty());
-  q('ev-menu').addEventListener('change', updateMenuHint);
+  q('ev-menu').addEventListener('change', pricing(updateMenuHint));
   q('ev-billing').addEventListener('input', updateQuote);
   q('ev-type').addEventListener('change', updateQuote);
   document.querySelectorAll('[data-contact]').forEach(b => {
@@ -5039,6 +6061,7 @@ function bindAllEvents() {
   // Meals toggle on and off; turning Lunch on also turns Breakfast on (banquet lunches include it)
   q('ev-meals').addEventListener('click', e => {
     const b = e.target.closest('[data-meal]'); if (!b) return;
+    billAutoOk = true;
     const on = b.getAttribute('aria-pressed') !== 'true';
     b.setAttribute('aria-pressed', String(on));
     if (on && b.dataset.meal === 'lunch') q('ev-meals').querySelector('[data-meal="breakfast"]').setAttribute('aria-pressed', 'true');
@@ -5056,7 +6079,7 @@ function bindAllEvents() {
   // 2. refresh: header button, and pull down at the top of a page
   initPullToRefresh();
   ['ev-billing', 'ev-out-charge'].forEach(id => q(id).addEventListener('input', updateOutHint));
-  q('ev-guests').addEventListener('input', updateMenuHint);
+  q('ev-guests').addEventListener('input', pricing(updateMenuHint));
   q('ven-kind').addEventListener('click', e => { const b = e.target.closest('[data-kind]'); if (b) setVenKind(b.dataset.kind); });
 
   // Settings
@@ -5069,7 +6092,7 @@ function bindAllEvents() {
   let menuTimer;
   q('menu-text').addEventListener('input', () => { clearTimeout(menuTimer); menuTimer = setTimeout(readMenuText, 300); });
   q('menu-review').addEventListener('change', e => { const s = e.target.closest('[data-md]'); if (!s) return;
-    const d = menuDraft[Number(s.dataset.md)]; if (!d) return; d[s.dataset.k] = s.value; if (s.dataset.k === 'head') d.manual = true;
+    const d = menuDraft[Number(s.dataset.md)]; if (!d) return; if (s.dataset.k === 'head') setWho(d, s.value); else d[s.dataset.k] = s.value;
     // A dish moved to another meal moves under that meal's heading in the text box too
     if (s.dataset.k === 'meal') { if (!s.value) delete d.meal; const ev = D.events.find(x => x.id === curRef); if (ev) syncMenuText(ev); } });
   q('menu-review').addEventListener('click', e => { const b = e.target.closest('[data-md-del]'); if (!b) return;
@@ -5078,6 +6101,12 @@ function bindAllEvents() {
   q('svc-meal').addEventListener('change', switchServiceMeal);
   q('svc-tpl').addEventListener('change', chooseServiceMenu);
   q('btn-save-svc').addEventListener('click', saveServiceSheet);
+  q('btn-save-approval').addEventListener('click', saveApproval);
+  q('md-ver').addEventListener('change', renderMenuDocSheet);
+  q('btn-md-print').addEventListener('click', printMenuDoc);
+  q('btn-md-wa').addEventListener('click', shareMenuDoc);
+  q('btn-md-sent').addEventListener('click', markMenuDocSent);
+  q('md-issued').addEventListener('click', e => { const b = e.target.closest('[data-md-reprint]'); if (b) reprintMenuDoc(b.dataset.mdReprint); });
   q('svc-save').addEventListener('click', e => { const b = e.target.closest('[data-save]'); if (!b || !svcState?.id) return;
     if (b.dataset.save === 'event' && q('svc-tpl').value === '__new') q('svc-tpl').value = svcState.tpl0 === '__new' ? '' : svcState.tpl0;
     setServiceMode(b.dataset.save); renderServiceSheet(); });
@@ -5087,7 +6116,7 @@ function bindAllEvents() {
     if (!e.target.closest('#btn-svc-addtpl')) return; const t = menuById(q('svc-tpl').value); if (t) addServiceDishes(t.items || [], t.name); });
   q('svc-dishes').addEventListener('input', e => { const row = e.target.closest('[data-sd]'); if (!row || e.target.dataset.k !== 'name' || !svcState?.id) return; svcState.draft[Number(row.dataset.sd)].name = e.target.value; });
   q('svc-dishes').addEventListener('change', e => { const row = e.target.closest('[data-sd]'), k = e.target.dataset.k; if (!row || !k || k === 'name' || !svcState?.id) return;
-    const d = svcState.draft[Number(row.dataset.sd)]; d[k] = e.target.value; if (k === 'head') d.manual = true; if (k === 'type' || k === 'cat') renderServiceSheet(); });
+    const d = svcState.draft[Number(row.dataset.sd)]; if (k === 'head') setWho(d, e.target.value); else d[k] = e.target.value; if (k === 'type' || k === 'cat') renderServiceSheet(); });
   q('svc-dishes').addEventListener('click', e => { if (!svcState?.id) return;
     const del = e.target.closest('[data-sd-del]'); if (del) { const at = Number(del.dataset.sdDel); svcState.draft.splice(at, 1);
       svcState.dietOpen = new Set([...(svcState.dietOpen || [])].filter(i => i !== at).map(i => i > at ? i - 1 : i)); renderServiceSheet(); return; }
@@ -5097,14 +6126,15 @@ function bindAllEvents() {
     const d = svcState.draft[Number(chip.closest('[data-sd]').dataset.sd)], k = chip.dataset.diet, set = new Set(d.diet || []);
     if (set.has(k)) set.delete(k); else set.add(k);
     d.diet = DIET_TAGS.map(([x]) => x).filter(x => set.has(x)); renderServiceSheet(); });
-  q('ev-mp-rows').addEventListener('input', updateMealPlan);
-  q('ev-mp-rows').addEventListener('change', e => {
+  q('ev-mp-rows').addEventListener('input', pricing(updateMealPlan));
+  q('ev-g-meals').addEventListener('input', pricing(updateMealPlan));
+  q('ev-mp-rows').addEventListener('change', pricing(e => {
     if (e.target.dataset.k !== 'menu') return;
     const row = e.target.closest('[data-mp]'), menu = menuById(e.target.value), rate = row.querySelector('[data-k="rate"]');
-    const guests = row.querySelector('[data-k="guests"]').value || qv('ev-guests');
+    const guests = qv(`ev-mp-${row.dataset.mp}-g`) || qv('ev-guests');
     if (menu && (!rate.value || rate.dataset.auto === rate.value)) { rate.value = String(menuRate(menu, guests)); rate.dataset.auto = rate.value; }
     updateMealPlan();
-  });
+  }));
   q('plan-rows').addEventListener('input', e => { const row = e.target.closest('[data-pm]'), k = e.target.dataset.k; if (!row || !k) return;
     const m = planDraft[Number(row.dataset.pm)]; if (k === 'amt') m.amtRaw = e.target.value; else m[k] = e.target.value; updatePlanSum(); });
   q('plan-rows').addEventListener('change', e => { const row = e.target.closest('[data-pm]'); if (!row || e.target.dataset.k !== 'when') return;

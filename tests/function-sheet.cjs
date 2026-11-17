@@ -36,7 +36,10 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     await openEvent();
     assert.match(await p.locator('#count-line').innerText(), /Count method not agreed with the client yet/);
     await p.locator('[data-action="count-open"]').click(); await p.waitForSelector('#count-modal.active');
-    assert.equal(await p.locator('#count-policy').evaluate(d => d.open), true, 'open while not agreed');
+    // 4.28.0: booked guests come first; the count method sits collapsed at the bottom, its summary saying it is not agreed
+    assert.equal(await p.locator('#count-policy').evaluate(d => d.open), false, 'collapsed at the bottom');
+    assert.match(await p.locator('#count-policy summary').innerText(), /not agreed/i);
+    await p.locator('#count-policy summary').click();
     // Ticking "agreed" without a method is refused
     await p.locator('#cp-confirmed').check(); await p.locator('[data-action="count-policy-save"]').click(); await p.waitForTimeout(300);
     assert.equal((await ev()).countPolicy, undefined);

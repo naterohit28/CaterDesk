@@ -4,7 +4,7 @@
 
 An offline-first app for catering events, expenses, vendor credit, client collections, menus and vendor orders. Business records stay in the device's browser storage; the hosted app also sends limited error diagnostics to its server.
 
-**Current source and hosted web build: v4.23.0.** Documentation checked on **14 November 2026**.
+**Current source and hosted web build: v4.31.1.** Documentation checked on **14 November 2026**.
 
 [Open the app](https://expense-calculator-kohl.vercel.app/) · [Download published packages](https://github.com/naterohit28/CaterDesk/releases) · [Historical reliability report](docs/RELIABILITY.md) · [Competitor/name research and Claude evaluation notes](docs/research/README.md) · [Report an issue](https://github.com/naterohit28/CaterDesk/issues)
 
@@ -31,16 +31,16 @@ The **APK wrapper version, hosted web version and bundled desktop version are in
 
 | Component | Verified state on 3 November 2026 | Meaning |
 | --- | --- | --- |
-| Source and hosted web app | **4.23.0** | Current UI, data/export version, service worker and error reporter |
+| Source and hosted web app | **4.31.1** | Current UI, data/export version, service worker and error reporter |
 | Service-worker release cache | `flavor-fusion-v2-cache-v25` | Installed web assets; this number is not the database schema version |
-| Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** | APK package inspected locally; launches the hosted app, which can run 4.23.0 |
+| Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** | APK package inspected locally; launches the hosted app, which can run 4.31.1 |
 | Android requirements for that local wrapper | min API **24**, target API **36** | Android 7.0+ and a compatible browser provider |
 | Latest GitHub Release with downloadable binaries | **2.4.7** | APK and desktop ZIP; later source tags do not imply newer binaries were uploaded |
 | Desktop package currently in the owner's `Apps/Desktop` folder | **2.4.7** | A static older bundle, not the current source build |
-| Desktop launcher source/instructions | **4.23.0** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
+| Desktop launcher source/instructions | **4.31.1** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
 | IndexedDB schema | **4** | Kept separate from application version changes |
 
-Do not relabel an older package as 4.23.0. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
+Do not relabel an older package as 4.31.1. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
 
 ## Current features
 
@@ -147,17 +147,17 @@ The APK is a **Trusted Web Activity** wrapper around the hosted site. It does no
 1. Keep a business-data backup.
 2. Obtain the intended APK from its actual release assets or the owner's prepared local package. Install over the existing app with the same package/signing identity.
 3. Open online to download updates. Check the **web build in Settings**, not just Android App info.
-4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **4.23.0**.
+4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **4.31.1**.
 
 A newer web release may reload automatically during the first 20 seconds of startup when no active form/save/overlay prevents it, at most once per release per session. Otherwise it waits for a later start or explicit reload. Refresh can also switch versions when no form/save is open. Service-worker cache mappings preserve matching assets for older open pages until navigation.
 
 Do not uninstall or clear browser/site storage to force an update. If Android rejects an APK, check package, versionCode and signing certificate before proceeding. The public certificate association is [`public/.well-known/assetlinks.json`](public/.well-known/assetlinks.json).
 
-The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **4.23.0**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
+The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **4.31.1**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
 
 ## Windows desktop testing
 
-Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v4.23.0 package.
+Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v4.31.1 package.
 
 1. Extract the entire ZIP; keep `app/` beside `CaterDesk-Desktop.exe`.
 2. Run the EXE. Microsoft Edge opens an app window; a tray icon provides **Open CaterDesk**, storage information and **Exit test server**.
@@ -236,12 +236,9 @@ From Windows PowerShell in the repository root:
 
 ```powershell
 .\desktop\build.ps1 -OutputDirectory C:\Temp\CaterDesk-Desktop
-# Required with the current helper: index.html and sw.js reference this asset,
-# but build.ps1 does not yet include it in its copy list.
-Copy-Item -LiteralPath .\public\error-reporter.js -Destination C:\Temp\CaterDesk-Desktop\app\error-reporter.js
 ```
 
-**Current packaging limitation:** omitting `error-reporter.js` causes a missing-script response and can prevent the service worker from completing its precache. Include the file even though the reporter itself skips local hosts. This README documents the workaround; the helper has not been changed as part of this documentation update.
+The build copies every file the app loads and the service worker caches (including `backup-crypto.js` and `error-reporter.js`); no manual copy is needed. [`tests/desktop-package.cjs`](tests/desktop-package.cjs) checks the copy list against the app's imports, `index.html` and the service-worker precache, and starts a package made from that list.
 
 The helper uses the Windows .NET Framework compiler and the CaterDesk icon. Distribute the whole output directory (`CaterDesk-Desktop.exe`, `README.txt`, `app/`), preferably as a ZIP. Do not include Edge profiles, customer backups or credentials. Inspect the bundled app build before naming/publishing the ZIP.
 
@@ -326,7 +323,7 @@ Commit from this Git checkout, not the outer Downloads folder. Generated `node_m
 | Event/vendor cannot be deleted | Linked accounting history must be resolved individually; deletion guards preserve balances |
 | Forgotten PIN | Keep storage intact. Privacy-help is not a PIN bypass; restore an existing export into a separate profile if needed |
 | Desktop still shows an older build | Exit the old tray server and use a complete newly built package. Website updates do not replace desktop bundle files |
-| Desktop missing-script/offline-install error | Check `app/error-reporter.js` exists; use the documented build workaround |
+| Desktop missing-script/offline-install error | Rebuild with the current `desktop/build.ps1`; check every file listed in `sw.js` is in `app/` |
 | Desktop cannot bind port 19891 | Exit the conflicting test server normally; changing the port changes the storage origin |
 | APK update is refused | Check signer, package and increasing versionCode; do not uninstall before protecting records |
 | No hosted error logs/alerts | Confirm the Vercel function/deployment and optional environment variable; local reporting is intentionally skipped |
@@ -339,6 +336,19 @@ This is a short source-feature history, not a list of available binary downloads
 
 | Version | Main changes |
 | --- | --- |
+| 4.31.1 | Dates and times shown in the phone's own time everywhere: entries saved between midnight and 05:30 in India no longer show the previous day or a UTC clock time (order messages and reminders, payment and settlement history, reconciliation, quotes, backup age, restore preview, backup file names). Nothing saved changes. |
+| 4.31.0 | Backup & Recovery in Settings: **Backup to phone** (encrypted .cdbk download), **Backup to Google Drive** (the same encrypted file handed to Android's share menu as .cdbk.txt, because Android refuses unknown file types; the owner picks Drive, the account and the folder; no Google sign-in), **Restore backup** (any file the phone's picker offers, local or cloud; recognised by content), **Recovery key**, and the readable backup kept as a last option. A share is reported as handed over, never as saved; a refused share no longer downloads silently instead. Restore with Replace on a phone with data asks for a confirmed copy first. The Drive API client stays off. |
+| 4.30.0 | Google Drive backup client (D2), switched off: with no Google client ID configured (as shipped) nothing changes for users and no Google code loads. When enabled after owner approval (D3), Settings → Google Drive backup encrypts on the phone, uploads to a CaterDesk Backups folder (drive.file scope only), checks size and SHA-256, keeps 14 daily / 8 weekly / 12 monthly copies (older ones go to Drive's bin, never deleted), and restores on another device with the recovery key. The production CSP allows only the Google sign-in file and Drive/Google token addresses. Tested against a mocked Google only. |
+| 4.29.0 | Encrypted backup file (D1): Settings can save an encrypted .cdbk backup (AES-256-GCM, compressed, in pieces) protected by a 14-group recovery key; restore asks for the key and refuses a wrong key or a changed file. The plain .txt backup is unchanged. |
+| 4.28.2 | Owner feedback: a first quote starts from the event's meals and booked guests; total bill optional (shows Not set); meal choice no longer scrolls; Save timings & setup is a visible button; event photos from the camera as well as the gallery |
+| 4.28.1 | Hotfix: a purchase's bill stays on the purchase's event (its event is locked in the expense sheet and refused on save). A backup from 4.28.0 with a moved bill restores in full: the bill is kept, only the impossible link is removed. |
+| 4.28.0 | **Guests first:** a new or upcoming event needs its guest count before it is saved (one box, or one per meal; a meal's guests are kept before it is priced). The Guest count sheet starts with **Booked guests**; a day-of count waits for them; the event page shows the guests or *Guest count not entered*. **Menu sourcing:** each dish is made in our kitchen, bought ready-made, bought and finished by us, or served by a vendor's counter (old dishes unchanged). Bought items get **purchase orders** (supplier, quantity and unit, delivery, instructions, optional estimate) with WhatsApp history; a delivered purchase's bill is recorded or linked once; nothing becomes an expense by itself. Sourcing changes are internal (no new client approval); a sent purchase whose item changes is flagged, never resent. |
+| 4.27.0 | **Vendors tab:** a summary of what you owe suppliers (total payable), the advances you gave them, and how many vendors you have; people who lent you money are kept apart. Search by name, category, speciality, phone, GSTIN or registered name; filters To pay, Advances, Settled, No activity; sort by highest payable, name or recently used; 30 at a time with Show more. **Vendor GSTIN:** optional, checked (15 characters and check character) before saving, never for a person; registered business name; shown on the vendor page with Copy and a link to the official GST search. No bill, payment or tax figure changes. |
+| 4.26.1 | **Menu dates in local time:** a menu sent to the client keeps the date printed on it (printed before midnight, marked sent after: still the printed date), and reprints with it; older copies and approvals use the local day, not the UTC one (before 05:30 IST that was the day before). Codex review of #60. |
+| 4.26.0 | **Vendor orders per meal:** when two meals (or two dinners) use the same counter, each gets its own row and order with that meal's dishes; the order sheet starts from the meal's date, time and guests. The WhatsApp message adds the meal, guests, the venue details a vendor needs (cooking, electricity, water, parking) and the client-approved menu version when the menu is unchanged since approval. A menu change flags only the orders whose own dishes changed; nothing is sent. Orders saved before have *all meals* when their counter serves more than one meal. The order status shows its steps: Prepared → WhatsApp opened → Sent → Confirmed → Delivered → Billed. On Home, *Pending collections* shows the total still to collect beside its heading, like *Pay vendors*. In Settings, tapping *CaterDesk* at the top goes to Home. **Vendor reminders:** Deliveries on Home also lists orders not yet confirmed for the next 2 days, with **Remind** (WhatsApp opens a prefilled request to confirm, with the date, time, venue, plates, items and guests; you send it) and **Confirmed** for when the vendor replies; an order never sent offers **Send order**. The order status sheet offers *Remind to confirm* for a sent order. |
+| 4.25.0 | **Client documents from an approved menu:** a quotation can add a **menu annexure** (pages after the quotation) from a chosen approved version, or the current menu marked as a draft; a new quote version takes the latest approved menu. **Send menu** on the event page sends the menu on its own, as a PDF or WhatsApp text, from a chosen version. Client documents show meals, dishes and diet marks only, never kitchens, counters, vendors, rates or costs. **I have sent it** keeps the exact menu sent, and printing it again later shows the same menu even after changes. A quotation sent before copies were kept prints with a note that it was rebuilt from current data. |
+| 4.24.0 | **Client-approved menu versions:** **Mark approved** on the event page keeps a copy of every meal's menu as it is, numbered (version 1, 2, …), with how it was approved (written or verbal) and by whom. A kept version is never changed; when the menu changes afterwards, the page says *Changed since approved v1 · N changes*, and approving again shows what changed meal by meal (dishes added or removed, a dish's kitchen/counter or diet marks, date, time, guests, rate) and keeps it as the next version. **Versions** lists them newest first with the changes from the one before. A library menu shown for a meal but not used is left out of the copy and named. Nothing is sent to anyone. |
+| 4.23.1 | **Home always opens Home:** tapping Home now always lands on Home and is remembered as the last screen. On a slow phone, closing a sheet could leave its Back still on the way; tapping Home in that moment showed Home and then jumped back to Events (and the app reopened on Events). Home now shows at once, a late Back changes nothing, and a miscounted history is reset to Home. |
 | 4.23.0 | **Menu by meal:** the event page shows each meal with its own dishes (grouped by course where one was set), with its date, time, guests and rate, and who prepares each dish; dishes served at every meal are listed once. A library menu chosen for a meal shows as *not confirmed yet* until **Use these dishes** makes them that meal's dishes, so counters and vendor orders see them. **Add menu** (or **Edit** on a meal) opens one sheet in four steps: choose the meal (a repeated meal shows its date), choose a library menu (menus for that meal first, each with its dish count) or *Create new menu*, type or paste the dishes (for example *Poha, Upma, Idli, Medu Vada, Fruit Bowl, Tea and Coffee*) and choose for each our kitchen or a counter, with diet marks such as Jain under a small *Diet* button, and save for this event only or also as a new library menu. Dishes a meal already has stay unless you choose to add to or replace them; existing library menus are never changed; switching meals with unsaved changes asks first. The page points out dishes of a removed meal and a menu changed in an older app version. |
 | 4.22.1 | **Opens on Home:** the installed app now always opens on Home. It goes back to the screen you were on only when reopened within 10 minutes, for example after Android closed it while the camera was open for a bill photo (it used to return to the last screen for up to 12 hours, so it often opened on Events). |
 | 4.22.0 | **Groundwork for meal-by-meal menus:** each meal served at an event (a *service*) can keep its own time and a different date, and a meal can have more than one service, such as a second lunch on the next day with its own guests, rate and dishes. Dishes can carry a course (soup, salad, snacks/chaat, accompaniment, your own), one food type (veg, egg or non-veg) and diet marks (Jain, no onion-garlic, vegan, gluten-free, nut-free); nothing is guessed, and Jain, no onion-garlic or vegan on a non-veg dish is refused. A library menu chosen for a meal keeps showing its dishes after saving and reloading. Dishes of a meal you remove are kept as they were, are not served or ordered at other meals, and are marked until you choose a meal for them. Existing fields are still saved as before, so older backups and the 4.21.1 app keep working; events not edited meal by meal are saved exactly as before. *Business details* gain an optional *Contact person*, printed on quotations. |

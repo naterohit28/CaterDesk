@@ -231,6 +231,8 @@ html.dark .btn-danger { background: #DC2626; }
 .search input { flex: 1; min-width: 0; height: 44px; border: 0; outline: 0; background: none; color: var(--text); font: inherit; font-size: 16px; }
 .search input::-webkit-search-cancel-button { filter: grayscale(1); }
 .chips-row { display: flex; gap: var(--s2); overflow-x: auto; margin: var(--s3) calc(-1 * var(--s4)) 0; padding: 0 var(--s4); }
+/* Chips that wrap onto more lines never need to scroll (4.28.2: the meal choice showed a small scroll bar) */
+.chips-row[style*="flex-wrap:wrap"] { overflow: visible; }
 .chips-row:empty { display: none; }
 /* Event tools: one wrapping row of equal small buttons */
 .tool-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); margin-top: var(--s3); }
@@ -263,8 +265,8 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .mt-total { border-top: 1px solid var(--line); margin-top: 2px; padding-top: 6px; }
 .mt-total .mt-amt { font-weight: 700; }
 /* Event form: one row per meal – name above, then menu | guests | rate */
-.mp-head { grid-template-columns: minmax(0, 1.6fr) minmax(0, .9fr) minmax(0, .9fr); }
-.mp-row { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, .9fr) minmax(0, .9fr); gap: 6px; align-items: center; margin-bottom: var(--s2); }
+.mp-head { grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr); }
+.mp-row { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr); gap: 6px; align-items: center; margin-bottom: var(--s2); }
 .mp-name { grid-column: 1 / -1; font-size: var(--fs-xs); font-weight: 650; color: var(--text); margin: 2px 0 -2px 2px; }
 .mp-row select { padding-left: 10px; padding-right: 24px; background-position: right 6px center; }
 .mp-row input[type="number"] { padding-left: 10px; padding-right: 8px; font-variant-numeric: tabular-nums; }
@@ -686,3 +688,53 @@ body::before {
 .svc-dish-who { display: flex; align-items: center; gap: var(--s2); }
 .svc-dish-who select { flex: 1; min-width: 0; }
 .svc-diet-btn { flex-shrink: 0; max-width: 45%; min-height: 40px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; line-height: 38px; }
+/* Client-approved menu: status bar, changes, versions */
+.ma-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2); }
+.ma-text { display: inline-flex; align-items: center; gap: 6px; color: var(--text); }
+.ok-note { border-color: var(--pos); background: var(--pos-soft); }
+.mv-meal { padding: var(--s2) 0; border-bottom: 1px solid var(--line); }
+.mv-meal:last-child { border-bottom: 0; }
+.mv-line { display: flex; gap: var(--s2); align-items: baseline; font-size: var(--fs-sm); padding: 2px 0; }
+.mv-line .sym { flex: none; width: 14px; font-weight: 700; text-align: center; }
+.mv-line .sym.p { color: var(--pos); } .mv-line .sym.m { color: var(--neg); } .mv-line .sym.c { color: var(--due); }
+.mv-ver { border-bottom: 1px solid var(--line); padding: var(--s2) 0; }
+.mv-ver summary { display: flex; flex-direction: column; gap: 2px; cursor: pointer; list-style: none; }
+.mv-ver summary::-webkit-details-marker { display: none; }
+.mv-diff { padding-top: var(--s2); }
+/* Client documents: menu pages and the send-menu preview */
+.pd-break { break-before: page; page-break-before: always; margin-top: 24px; }
+.pd-rebuilt { border-color: #555; color: #333; font-weight: 600; letter-spacing: 0; }
+.pd-menu-label { font-size: 9.5pt; color: #555; margin-bottom: 8px; }
+.pd-meal { break-inside: avoid; margin-top: 12px; }
+.pd-meal h2 { font-size: 12pt; margin: 0 0 2px; color: #0D2425; }
+.pd-meal ul { margin: 4px 0 0; padding-left: 18px; columns: 2; column-gap: 24px; }
+.pd-meal li { break-inside: avoid; padding: 1px 0; }
+.md-preview { white-space: pre-wrap; font: var(--fs-sm)/1.5 var(--font); background: var(--surface-2); border-radius: var(--r-md); padding: var(--s3); margin: 0; max-height: 40vh; overflow: auto; color: var(--text); }
+/* Settings brand is a button: looks as before, goes Home */
+button.d-brand { width: 100%; border: 0; border-bottom: 2px solid var(--accent); padding: 0 0 16px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 0; }
+button.d-brand:active { opacity: .7; }
+button.d-brand:focus-visible { outline: 2px solid var(--brand-text); outline-offset: 4px; border-radius: var(--r-sm); }
+/* Remind / Confirmed under an order not yet confirmed: lined up with the order's text, part of the same item */
+.dl-acts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); padding: 0 0 var(--s3) calc(38px + var(--s3)); border-bottom: 1px solid var(--line); }
+.dl-acts:last-child { border-bottom: 0; }
+.row:has(+ .dl-acts) { border-bottom: 0; padding-bottom: var(--s2); }
+/* Vendors tab (4.27.0): summary, search, filter chips, sort, and the list (the floating button adds a vendor); names may take two lines so long business names stay readable */
+.ven-sum { margin-top: var(--s2); }
+.ven-sortrow { display: flex; align-items: center; justify-content: flex-end; gap: var(--s2); margin: var(--s3) 0 0; }
+.ven-sortrow label { margin: 0; }
+.field.ven-sortrow select { width: auto; max-width: 75%; min-height: 40px; padding-top: 6px; padding-bottom: 6px; font-size: var(--fs-sm); }
+.ven-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.ven-more { width: 100%; margin-top: var(--s3); }
+.gstin-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); margin-top: 2px; }
+.gstin { font-size: var(--fs-md); font-weight: 600; letter-spacing: .04em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.gst-link { display: inline-block; margin-top: var(--s2); color: var(--brand-text); min-height: 24px; }
+/* Guests per meal in the event form (4.27.1): meal name above its guest box, two to a row on a phone */
+.g-meals { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); }
+.g-meals:empty { display: none; }
+.g-meal label { margin-bottom: 4px; }
+.booked-row { display: flex; gap: var(--s2); align-items: center; margin-top: 6px; }
+.booked-row .btn { width: auto; flex: 0 0 auto; padding: 0 var(--s4); }
+.guests-miss { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); flex-wrap: wrap; }
+/* Recovery key: large, grouped, easy to copy by hand */
+.rk-key { font: 600 18px/1.7 ui-monospace, 'Cascadia Mono', Consolas, monospace; letter-spacing: .04em; word-spacing: .3em; background: var(--surface-2); border-radius: var(--r-md); padding: var(--s3); color: var(--text); overflow-wrap: anywhere; user-select: all; }
+#rk-typed, #rki-typed { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; letter-spacing: .04em; }

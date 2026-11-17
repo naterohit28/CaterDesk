@@ -39,7 +39,7 @@ const DATA = { version: 'ffv2', vendors: [{ id: 'v1', name: 'Sample Counter', ca
   // Opens an event by name from a fresh page (no pending history steps from a sheet that just closed)
   const openByName = async name => { await p.reload(); await p.waitForSelector('#kpi .card'); await p.locator('#n-events:visible').click();
     await p.locator('#ev-list [data-action="evdetail"]:visible', { hasText: name }).first().click(); await p.waitForSelector('#tab-evdetail .detail-name'); await p.waitForTimeout(200); };
-  const basics = async (name, venue) => { await p.fill('#ev-name', name); await p.fill('#ev-date', day(-1)); await p.fill('#ev-venue', venue); await p.locator('#ev-venue').dispatchEvent('change'); await p.fill('#ev-billing', '100000'); };
+  const basics = async (name, venue) => { await p.fill('#ev-name', name); await p.fill('#ev-date', day(-1)); await p.fill('#ev-venue', venue); await p.locator('#ev-venue').dispatchEvent('change'); await p.fill('#ev-billing', '100000'); if (await p.locator('#ev-guests').isVisible()) await p.fill('#ev-guests', '100'); };
 
   await test('G-40 legacy event without venue details survives opening, editing and saving unchanged', async () => {
     const before = await stored('legacy');

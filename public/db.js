@@ -5,6 +5,7 @@
  * Images stored separately in 'photos' store (blob/base64)
  */
 
+import { gstinValid } from './utils.js';
 const DB_NAME    = 'FlavorFusionDB';
 /* Version 4 is kept on purpose: raising it breaks an older app version still open in another tab or window (its save
    would be refused by the browser). New kinds of records go into existing stores instead – the menu library lives in
@@ -148,11 +149,12 @@ export async function commitChanges(changes, opts = {}) {
 }
 async function commitPhysical(changes, { clear = [], check = false, extraStores = [] } = {}) {
   const guardedDelete = check && changes.some(c => !c.record && ['events', 'vendors'].includes(c.store));
-  const names = [...new Set([...clear, ...extraStores, ...(guardedDelete ? STORES : []), ...changes.map(c => c.store)])];
+  const names = [...new Set([...clear, ...extraStores, ...(guardedDelete ? STORES : []), ...changes.map(c => c.store),
+    ...(changes.some(c => c.store === 'expenses' && c.record?.purchase !== undefined) ? ['events'] : [])])];
   if (!names.length) return;
   return withTx(db => new Promise((resolve, reject) => {
     const tx = transaction(db, names, 'readwrite');
-    let failure;
+    let failure; const purchaseChecked = new Set();
     tx.oncomplete = () => {
       changes.forEach(c => { if (c.record && c.nextRev) c.record._rev = c.nextRev; });
       resolve();
@@ -166,6 +168,21 @@ async function commitPhysical(changes, { clear = [], check = false, extraStores 
         const req = os.get(id);
         req.onsuccess = () => {
           try {
+            // A bill linked to a purchase (4.28.1): that purchase must be on the bill's own event, and the bill not also an order's
+            if (c.store === 'expenses' && c.record?.purchase !== undefined && !purchaseChecked.has(c)) {
+              const verdict = ev => {
+                if (typeof c.record.purchase === 'string' && !c.record.order && (ev?.purchases || []).some(x => x.id === c.record.purchase)) return true;
+                failure = new Error('This bill is linked to a purchase on another event. Nothing was saved.'); tx.abort(); return false;
+              };
+              const own = changes.find(op => op.store === 'events' && op.record?.id === c.record.evId);
+              if (own) { if (!verdict(own.record)) return; }
+              else {
+                const er = tx.objectStore('events').get(c.record.evId ?? '');
+                er.onsuccess = () => { if (verdict(er.result)) { purchaseChecked.add(c); req.onsuccess(); } };
+                er.onerror = e => { e.preventDefault?.(); failure = new Error('Could not verify the linked purchase. Nothing was saved.'); tx.abort(); };
+                return;
+              }
+            }
             const current = req.result;
             const canonicalObj = o => o ? JSON.stringify(Object.fromEntries(Object.entries(o).filter(([k]) => k !== '_rev').sort(([a],[b]) => a.localeCompare(b)))) : '';
             const revMismatch = current && c.expected && current._rev !== undefined && c.expected._rev !== undefined && current._rev !== c.expected._rev;
@@ -298,6 +315,37 @@ export async function saveEventPhotos(event, dataUrls) {
   return record;
 }
 
+// Why a bill's purchase link cannot stand, or '' if it is valid. A removed link leaves a note on the bill (linkRepair):
+// when, which purchase, why, and whether on start, on restore or on saving, so its history can always be explained (4.28.1).
+export const REPAIR_REASONS = { 'other-event': 'the purchase is on another event', 'also-order': 'the bill is also linked to a vendor order' };
+export function purchaseLinkProblem(x, ev) {
+  if (x.purchase === undefined) return '';
+  if (x.order) return 'also-order';
+  return (ev?.purchases || []).some(p => p.id === x.purchase) ? '' : 'other-event';
+}
+export function withoutPurchaseLink(x, reason, from, at = new Date().toISOString()) {
+  const { purchase, ...kept } = x;
+  return { ...kept, linkRepair: { at, purchase: String(purchase).slice(0, 40), reason, from } };
+}
+// 4.28.0 could move a purchase's bill to another event (4.28.1 fix): on start, such a bill keeps everything except the
+// link to a purchase that is not on its event (or that is also an order's), so every later save and backup is valid.
+export async function repairPurchaseLinks() {
+  return withTx(db => new Promise((resolve, reject) => {
+    const tx = transaction(db, ['events', 'expenses'], 'readwrite');
+    let fixed = 0;
+    tx.oncomplete = () => resolve(fixed);
+    tx.onerror = tx.onabort = () => reject(tx.ffError || tx.error || new Error('Purchase link repair aborted'));
+    const evs = tx.objectStore('events').getAll(), exs = tx.objectStore('expenses').getAll();
+    const run = () => {
+      const byId = new Map((evs.result || []).map(e => [e.id, e]));
+      for (const x of exs.result || []) {
+        const why = purchaseLinkProblem(x, byId.get(x.evId)); if (!why) continue;
+        tx.objectStore('expenses').put({ ...withoutPurchaseLink(x, why, 'start'), _rev: (Number(x._rev) || 0) + 1 }); fixed++;
+      }
+    };
+    let waiting = 2; evs.onsuccess = exs.onsuccess = () => { if (!--waiting) run(); };
+  }));
+}
 // If the OS stopped the app after a bill image committed but before its form was
 // saved, preserve the attachment as a draft instead of leaving an invisible orphan.
 export async function recoverUnlinkedBills() {
@@ -478,6 +526,9 @@ export async function prepareImport(payload) {
       }
       if (row.guests !== undefined && (!Number.isSafeInteger(row.guests) || row.guests < 0)) throw new Error('Invalid guest count');
       if (['events', 'vendors'].includes(name) && (typeof row.name !== 'string' || !row.name.trim())) throw new Error('Missing name in ' + name);
+      // Vendor GSTIN and registered business name (4.27.0): optional; a person has neither
+      if (name === 'vendors' && ((row.gstin !== undefined && !gstinValid(row.gstin)) || (row.legalName !== undefined && (typeof row.legalName !== 'string' || row.legalName.length > 200))
+        || (row.kind === 'person' && (row.gstin !== undefined || row.legalName !== undefined)))) throw new Error('Invalid vendor GSTIN');
       if (name === 'events') { amount(row.billing, 'billing'); if (row.budget !== undefined) amount(row.budget, 'budget'); }
       if (['expenses', 'cPays', 'vPays'].includes(name)) amount(row.amt ?? (row.draft ? 0 : undefined), name);
       if (['events', 'expenses', 'cPays', 'vPays'].includes(name) && !row.draft && !validDate(row.date)) throw new Error('Invalid date in ' + name);
@@ -503,6 +554,16 @@ export async function prepareImport(payload) {
       if (row.billChanges !== undefined && (!Array.isArray(row.billChanges) || row.billChanges.some(b => !b || typeof b.reason !== 'string' || (amount(b.from, 'bill'), amount(b.to, 'bill'), false)
         || (b.kind !== undefined && !['discount', 'waiver', 'writeoff'].includes(b.kind)) || (b.ack !== undefined && !['written', 'verbal', 'none'].includes(b.ack))
         || (b.kind && !(b.to < b.from && b.reason.trim()))))) throw new Error('Invalid bill history');
+      // A menu as the client saw it: meals with dish names and diet marks only (4.25.0). Names and text are checked no more
+      // strictly than the event's own (any dish or event name, any number of dishes), so sending a menu never makes a backup unrestorable.
+      const cmStr = (v, max) => typeof v === 'string' && v.length <= max;
+      const badCmDish = d => !d || typeof d.name !== 'string' || (d.diet !== undefined && (!Array.isArray(d.diet) || d.diet.some(x => !cmStr(x, 40)))) || Object.keys(d).some(k => !['name', 'diet'].includes(k));
+      const badClientMenu = m => !m || typeof m !== 'object' || !cmStr(m.v, 40) || typeof m.label !== 'string' || !Array.isArray(m.meals) || m.meals.length > 30
+        || m.meals.some(x => !x || typeof x.title !== 'string' || typeof x.when !== 'string' || !Number.isSafeInteger(x.guests) || x.guests < 0 || !Array.isArray(x.dishes) || x.dishes.some(badCmDish))
+        || !Array.isArray(m.shared) || m.shared.some(badCmDish);
+      if (row.menuDocs !== undefined && (!Array.isArray(row.menuDocs) || row.menuDocs.length > 200 || row.menuDocs.some(d => !d || !cmStr(d.id, 40) || typeof d.at !== 'string' || (d.date !== undefined && !validDate(d.date)) || !cmStr(d.v, 40)
+        || !Number.isSafeInteger(d.layout) || badClientMenu(d.menu) || typeof d.text !== 'string' || !d.event || typeof d.event.name !== 'string' || !cmStr(d.event.date, 10)
+        || (d.profile !== undefined && (typeof d.profile !== 'object' || d.profile === null || Object.values(d.profile).some(v => typeof v !== 'string' || v.length > 1000)))))) throw new Error('Invalid menu sent to client');
       if (row.quotes !== undefined && (!Array.isArray(row.quotes) || row.quotes.length > 100 || row.quotes.some(qt => !qt || !Number.isSafeInteger(qt.v) || qt.v < 1
         || !['draft', 'sent', 'accepted', 'declined'].includes(qt.status) || !Array.isArray(qt.lines) || qt.lines.length > 50
         || qt.lines.some(l => !l || (l.menu !== undefined && (typeof l.menu !== 'string' || l.menu.length > 64)) || (l.kind === 'meal' ? !['breakfast', 'lunch', 'hightea', 'dinner', 'latenight'].includes(l.meal) || !Number.isSafeInteger(l.guests) || l.guests < 0 || (amount(l.rate, 'quote rate'), false)
@@ -511,6 +572,8 @@ export async function prepareImport(payload) {
         || (qt.profile !== undefined && (typeof qt.profile !== 'object' || qt.profile === null || Object.values(qt.profile).some(v => typeof v !== 'string' || v.length > 1000)))
         || (qt.snap !== undefined && (!qt.snap || typeof qt.snap.event?.name !== 'string' || typeof qt.snap.event?.date !== 'string' || (qt.snap.event.venue !== undefined && typeof qt.snap.event.venue !== 'string')
           || typeof qt.snap.menus !== 'object' || qt.snap.menus === null || Object.values(qt.snap.menus).some(m => !m || typeof m.name !== 'string' || !Array.isArray(m.items) || m.items.length > 120 || m.items.some(i => typeof i !== 'string' || i.length > 200))))
+        || (qt.annex !== undefined && (typeof qt.annex !== 'string' || !qt.annex || qt.annex.length > 40))
+        || (qt.snap?.annex !== undefined && badClientMenu(qt.snap.annex)) || (qt.snap?.layout !== undefined && !Number.isSafeInteger(qt.snap.layout))
         || (qt.evidence !== undefined && !['written', 'verbal'].includes(qt.evidence)) || (qt.option !== undefined && !/^[A-H]$/.test(qt.option)))
         || new Set(row.quotes.map(qt => qt.v)).size !== row.quotes.length)) throw new Error('Invalid quote');
       if (name === 'menus' && (typeof row.name !== 'string' || !row.name.trim() || row.name.length > 80
@@ -522,9 +585,26 @@ export async function prepareImport(payload) {
       if (row.gst !== undefined && (!row.gst || !(Number(row.gst.rate) > 0 && Number(row.gst.rate) <= 100) || (amount(row.gst.taxable, 'GST taxable amount'), amount(row.gst.amount, 'GST'), false)
         || (row.gst.from !== undefined && typeof row.gst.from !== 'string'))) throw new Error('Invalid GST');
       if (row.quotes?.some(qt => qt.gst !== undefined && (!qt.gst || !(Number(qt.gst.rate) > 0 && Number(qt.gst.rate) <= 100) || (amount(qt.gst.taxable, 'GST taxable amount'), false)))) throw new Error('Invalid quote');
+      if (row.billClearedAt !== undefined && (typeof row.billClearedAt !== 'string' || row.billClearedAt.length > 40 || Number.isNaN(Date.parse(row.billClearedAt)))) throw new Error('Invalid bill history');
       if (row.dispute !== undefined && (!row.dispute || typeof row.dispute.reason !== 'string' || !row.dispute.reason.trim() || typeof row.dispute.at !== 'string' || (amount(row.dispute.amt, 'disputed amount'), false))) throw new Error('Invalid dispute');
+      // An order's meal, the approved menu it follows and the guests it was planned on (4.26.0)
+      if (row.orders?.some(o => o && ((o.svc !== undefined && (typeof o.svc !== 'string' || !o.svc || o.svc.length > 40)) || (o.menuVersion !== undefined && (typeof o.menuVersion !== 'string' || o.menuVersion.length > 40))
+        || (o.basis !== undefined && (!o.basis || !Number.isSafeInteger(o.basis.guests) || o.basis.guests < 0 || !['meal', 'event'].includes(o.basis.from)))
+        || (o.reminded !== undefined && (!Array.isArray(o.reminded) || o.reminded.length > 20 || o.reminded.some(t => typeof t !== 'string' || t.length > 40)))))) throw new Error('Invalid order');
       if (row.orders?.some(o => o?.messages !== undefined && (!Array.isArray(o.messages) || o.messages.some(m => !m || typeof m.text !== 'string' || !['prepared', 'opened', 'sent', 'confirmed'].includes(m.status))))) throw new Error('Invalid order messages');
+      // Purchases of bought items (4.28.0)
+      if (row.purchases !== undefined && (!Array.isArray(row.purchases) || row.purchases.length > 500 || new Set(row.purchases.map(p => p?.id)).size !== row.purchases.length
+        || row.purchases.some(p => !p || typeof p.id !== 'string' || !p.id || p.id.length > 40 || typeof p.item !== 'string' || !p.item.trim() || !['buy', 'finish'].includes(p.src)
+          || (p.svc !== undefined && (typeof p.svc !== 'string' || !p.svc || p.svc.length > 40)) || (p.venId !== undefined && typeof p.venId !== 'string')
+          || typeof p.qty !== 'number' || !Number.isFinite(p.qty) || p.qty <= 0 || !['pcs', 'kg', 'litre', 'packet', 'bottle', 'carton', 'tub', 'box'].includes(p.unit)
+          || !validDate(p.date) || (p.time !== undefined && (typeof p.time !== 'string' || p.time.length > 10)) || (p.notes !== undefined && (typeof p.notes !== 'string' || p.notes.length > 500))
+          || (p.estCost !== undefined && (amount(p.estCost, 'estimated cost'), false)) || !['prepared', 'opened', 'sent', 'confirmed', 'delivered', 'cancelled'].includes(p.status)
+          || (p.changed !== undefined && p.changed !== true) || (p.messages !== undefined && (!Array.isArray(p.messages) || p.messages.some(m => !m || typeof m.text !== 'string' || !['prepared', 'opened', 'sent', 'confirmed'].includes(m.status))))
+          || (p.reminded !== undefined && (!Array.isArray(p.reminded) || p.reminded.length > 20 || p.reminded.some(t => typeof t !== 'string' || t.length > 40)))))) throw new Error('Invalid purchase');
       if (row.additional !== undefined && typeof row.additional !== 'boolean') throw new Error('Invalid extra flag');
+      if (row.linkRepair !== undefined && (name !== 'expenses' || !row.linkRepair || typeof row.linkRepair !== 'object' || typeof row.linkRepair.at !== 'string' || row.linkRepair.at.length > 40
+        || typeof row.linkRepair.purchase !== 'string' || row.linkRepair.purchase.length > 40 || !Object.hasOwn(REPAIR_REASONS, row.linkRepair.reason)
+        || !['start', 'restore', 'edit'].includes(row.linkRepair.from))) throw new Error('Invalid link repair note');
       if (row.split !== undefined && (!row.split || typeof row.split.id !== 'string' || (amount(row.split.total, 'shared bill'), false))) throw new Error('Invalid shared bill');
       if (row.stock !== undefined && (row.stock !== true || name !== 'expenses' || row.evId)) throw new Error('Invalid common stock entry');
       if (row.billNo !== undefined && (typeof row.billNo !== 'string' || row.billNo.length > 60)) throw new Error('Invalid bill number');
@@ -547,12 +627,25 @@ export async function prepareImport(payload) {
         || (d.cat !== undefined && (!str(d.cat, 40) || !d.cat.trim())) || (d.type !== undefined && !['veg', 'egg', 'nonveg'].includes(d.type))
         || (d.diet !== undefined && (!Array.isArray(d.diet) || new Set(d.diet).size !== d.diet.length || d.diet.some(x => !['jain', 'no_onion_garlic', 'vegan', 'gluten_free', 'nut_free'].includes(x))))
         || ((d.diet || []).some(x => ['jain', 'no_onion_garlic', 'vegan'].includes(x)) && (d.type === 'egg' || d.type === 'nonveg'))
-        || (d.manual !== undefined && typeof d.manual !== 'boolean'))) throw new Error('Invalid dish details');
+        || (d.manual !== undefined && typeof d.manual !== 'boolean')
+        // Bought dishes (4.28.0): ready-made or finished by us; never also a counter
+        || (d.src !== undefined && (!['buy', 'finish'].includes(d.src) || (d.head || '') !== '')))) throw new Error('Invalid dish details');
       if (row.services !== undefined && (!Array.isArray(row.services) || row.services.length > 30 || new Set(row.services.map(s => s?.id)).size !== row.services.length
         || row.services.some(s => !s || !str(s.id, 40) || !s.id || !MEAL_KEYS.includes(s.meal) || (s.date !== undefined && !validDate(s.date)) || (s.time !== undefined && !str(s.time, 10))
           || (s.guests !== undefined && (!Number.isSafeInteger(s.guests) || s.guests < 0)) || (s.rate !== undefined && (amount(s.rate, 'meal rate'), false))
           || (s.template !== undefined && (!s.template || !str(s.template.id, 64) || !s.template.id || !str(s.template.name, 120)))))) throw new Error('Invalid meal menus');
       if (row.servicesSig !== undefined && !str(row.servicesSig, 16)) throw new Error('Invalid meal menus');
+      // Client-approved menu versions (4.24.0): numbered 1, 2, … in order; each a copy of the meals and their dishes.
+      // A copied dish is checked no more strictly than the event's own dishes (any name, any number), so approving never makes a backup unrestorable.
+      const badSnapDish = d => !d || typeof d.name !== 'string' || !d.name.trim() || (d.src !== undefined && !['buy', 'finish'].includes(d.src)) || (d.head !== undefined && !str(d.head, 120)) || (d.cat !== undefined && !str(d.cat, 40))
+        || (d.type !== undefined && !['veg', 'egg', 'nonveg'].includes(d.type)) || (d.diet !== undefined && (!Array.isArray(d.diet) || d.diet.some(x => !['jain', 'no_onion_garlic', 'vegan', 'gluten_free', 'nut_free'].includes(x))));
+      if (row.menuApproved !== undefined && (!Array.isArray(row.menuApproved) || row.menuApproved.length > 200
+        || row.menuApproved.some((v, i) => !v || !str(v.id, 40) || !v.id || v.n !== i + 1 || typeof v.at !== 'string' || !['written', 'verbal'].includes(v.by) || (v.who !== undefined && !str(v.who, 200))
+          || !Array.isArray(v.services) || v.services.length > 30 || v.services.some(s => !s || !str(s.id, 40) || !MEAL_KEYS.includes(s.meal) || (s.date !== undefined && !validDate(s.date)) || (s.time !== undefined && !str(s.time, 10))
+            || !Number.isSafeInteger(s.guests) || s.guests < 0 || (amount(s.rate, 'meal rate'), false) || (s.template !== undefined && (!s.template || !str(s.template.id, 64) || !str(s.template.name, 120)))
+            || !Array.isArray(s.dishes) || s.dishes.some(badSnapDish))
+          || !Array.isArray(v.shared) || v.shared.some(badSnapDish) || (v.pending !== undefined && (!Array.isArray(v.pending) || v.pending.some(x => !str(x, 40)))))
+        || new Set(row.menuApproved.map(v => v.id)).size !== row.menuApproved.length)) throw new Error('Invalid approved menu');
       if (row.logistics !== undefined && (typeof row.logistics !== 'object' || row.logistics === null || Array.isArray(row.logistics) || Object.values(row.logistics).some(v => typeof v !== 'string'))) throw new Error('Invalid venue logistics');
       if (row.recon != null && (typeof row.recon !== 'object' || Array.isArray(row.recon) || !Number.isSafeInteger(row.recon.costPaise) || !Number.isSafeInteger(row.recon.billPaise) || typeof row.recon.sig !== 'string')) throw new Error('Invalid reconciliation');
       if (row.reconHistory !== undefined && (!Array.isArray(row.reconHistory) || row.reconHistory.some(h => !h || typeof h !== 'object' || !['reconciled', 'reopened'].includes(h.action)))) throw new Error('Invalid reconciliation history');
@@ -578,8 +671,8 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
   return withTx(db => new Promise((resolve, reject) => {
     const tx = transaction(db, [...BASE_STORES, 'meta'], 'readwrite');
     let failure;
-    const current = {}; let pending = DATA_STORES.length;
-    tx.oncomplete = () => resolve();
+    const current = {}; let pending = DATA_STORES.length, repaired = 0;
+    tx.oncomplete = () => resolve({ repaired });
     tx.onerror = tx.onabort = () => reject(failure || tx.ffError || tx.error || new Error('Import aborted; previous data retained'));
     DATA_STORES.forEach(name => {
       const req = tx.objectStore(phys(name)).getAll();
@@ -603,6 +696,12 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
               if ((required || row[field]) && !final[target].has(row[field])) throw new Error('Missing ' + target + ' reference in ' + store + ': ' + row.id);
             };
             if (store === 'expenses') { ref('evId', 'events', !row.draft && !row.stock); ref('venId', 'vendors'); }
+            // A bill linked to a purchase (4.28.0): that purchase exists on the bill's event, and the bill is not also an order's
+            if (store === 'expenses' && row.purchase !== undefined && typeof row.purchase !== 'string') throw new Error('Invalid purchase link in expenses: ' + row.id);
+            // 4.28.0 could move a purchase's bill to another event: such a backup still restores in full. The bill and its
+            // amount are kept; only the link to a purchase that is not on its event (or that is also an order's) is removed.
+            const why = store === 'expenses' ? purchaseLinkProblem(row, final.events.get(row.evId)) : '';
+            if (why) { rows.set(row.id, withoutPurchaseLink(row, why, 'restore')); repaired++; }
             if (store === 'cPays') ref('evId', 'events', true);
             if (store === 'vPays') { ref('venId', 'vendors', true); ref('evId', 'events'); }
             if (store === 'photos') { ref('eventId', 'events'); ref('expenseId', 'expenses'); }
@@ -624,7 +723,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.23.0';
+export const APP_VERSION = '4.31.1';
 const COUNT_METHOD_IDS = ['tokens', 'tally', 'gate', 'coupons', 'joint', 'other'];
 // v4.18.0 kept menus in their own store (database version 5): copy them into meta once and empty that store
 export async function migrateLegacyMenus() {
@@ -651,5 +750,7 @@ export async function checkAndMigrate() {
   }
   await setMeta('app_version', APP_VERSION);
   await recoverUnlinkedBills();
+  try { const n = await repairPurchaseLinks(); if (n) setTimeout(() => window.dispatchEvent(new CustomEvent('ff-link-repair', { detail: n })), 600); }
+  catch (e) { console.error('Purchase link repair left unchanged:', e); }
   return storedVer;
 }
