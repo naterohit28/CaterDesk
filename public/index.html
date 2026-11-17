@@ -111,12 +111,13 @@
     </div>
 
     <div class="d-group">
-      <p class="meta">Records are saved on this device. Keep a backup outside your phone; clearing browser data can remove records.</p><span class="label">Backup – बॅकअप <span class="meta" id="backup-meta" data-nl></span></span>
-      <button type="button" class="d-item" id="btn-export"><i data-ic="upload"></i>Share / save backup – बॅकअप पाठवा</button>
-      <button type="button" class="d-item" id="btn-import"><i data-ic="download"></i>Import backup – आयात</button>
-      <span class="label" style="margin-top:var(--s2)">Encrypted backup – सुरक्षित बॅकअप <span class="meta" id="enc-meta" data-nl></span></span>
-      <button type="button" class="d-item" id="btn-export-enc"><i data-ic="lock"></i>Save encrypted backup file – सुरक्षित बॅकअप</button>
-      <button type="button" class="d-item" id="btn-enc-setup"><i data-ic="lock"></i>Set up recovery key – रिकव्हरी की</button>
+      <span class="label">Backup &amp; Recovery – बॅकअप <span class="meta" id="backup-meta" data-nl></span></span>
+      <p class="meta">Records are saved only on this phone. Keep an encrypted backup outside it: clearing browser data or losing the phone removes them.</p>
+      <button type="button" class="d-item" id="btn-export-enc"><i data-ic="lock"></i>Backup to phone – फोनवर बॅकअप</button>
+      <button type="button" class="d-item" id="btn-export-drive"><i data-ic="upload"></i>Backup to Google Drive – ड्राइव्हवर बॅकअप</button>
+      <button type="button" class="d-item" id="btn-import"><i data-ic="download"></i>Restore backup – परत आणा</button>
+      <button type="button" class="d-item" id="btn-enc-setup"><i data-ic="lock"></i>Recovery key – रिकव्हरी की <span class="meta" id="enc-meta" data-nl></span></button>
+      <button type="button" class="d-item" id="btn-export"><i data-ic="upload"></i>Readable backup (not encrypted) – साधा बॅकअप</button>
       <!-- Shown only once the owner's Google client ID is configured (drive-config.js) -->
       <button type="button" class="d-item" id="btn-drive" hidden><i data-ic="upload"></i>Google Drive backup – ड्राइव्ह <span class="meta" id="drive-meta" data-nl></span></button>
     </div>

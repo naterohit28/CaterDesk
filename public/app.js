@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.30.0';
+const APP_BUILD = '4.31.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -5477,31 +5477,51 @@ async function keySetupVerify() {
     ? 'New recovery key is in use. Keep the old key too: encrypted backups saved before today still need it. – नवीन की'
     : 'Encrypted backup is set up. Keep the recovery key safe: without it, encrypted backups cannot be opened. – तयार');
 }
-// Save an encrypted backup file: the same backup as "Share / save backup", encrypted with the recovery key
-async function exportEncrypted() {
+/* Encrypted backup: the same backup as the readable one, encrypted with the recovery key (D1 .cdbk format).
+   'phone': downloaded to this phone. 'drive': handed to Android's share menu, where the owner picks Google Drive (or any
+   app), the account and the folder; CaterDesk uses no Google sign-in for this. Android's share menu refuses file types
+   it does not know (.cdbk), so the shared copy is named .cdbk.txt; the bytes are the same encrypted file, and Restore
+   recognises it by its contents. CaterDesk cannot see whether the other app kept the file, so it never says "saved". */
+const SHARE_PROBE = () => new File(['x'], 'probe.txt', { type: 'text/plain' });
+async function exportEncrypted(target = 'phone') {
   if (!launched || q('pin-screen').classList.contains('active')) { showToast('Unlock the app before exporting.', 'error'); return; }
+  if (target === 'drive' && !navigator.canShare?.({ files: [SHARE_PROBE()] })) {
+    showToast('This device cannot hand files to Google Drive from CaterDesk. Use "Backup to phone", then upload that file in the Drive app. Nothing was saved.', 'error');
+    return;
+  }
   const k = await backupKey();
-  if (!k) { openKeySetup(); return; }
+  if (!k) { showToast('Set up the recovery key first: backups are encrypted with it.'); openKeySetup(); return; }
   let file;
   showLoading(true);
   try {
     const json = JSON.stringify({ ...await exportAllData(), prefs: backupPrefs() });
     const out = await encryptBackup(k.key, k.id, json, { appVersion: APP_BUILD });
     const stamp = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
-    file = new File(out.parts, `caterdesk-backup-${stamp}.cdbk`, { type: 'application/octet-stream' });
+    file = target === 'drive'
+      ? new File(out.parts, `caterdesk-backup-${stamp}.cdbk.txt`, { type: 'text/plain' })
+      : new File(out.parts, `caterdesk-backup-${stamp}.cdbk`, { type: 'application/octet-stream' });
   } catch (e) { showToast(`The encrypted backup could not be made (${e.message || e}). Nothing was saved.`, 'error'); return; }
   finally { showLoading(false); }
   const size = file.size > 1048576 ? `${(file.size / 1048576).toFixed(1)} MB` : `${Math.ceil(file.size / 1024)} KB`;
   let how = 'download';
-  if (navigator.canShare?.({ files: [file] })) {
-    const outcome = await askSheet({ title: 'Encrypted backup ready – तयार', message: `${size}. It opens only with your recovery key. Share sends it to another app (Drive, Files); Save to phone downloads it here.`,
-      actions: [{ label: 'Share – पाठवा', style: 'btn-primary', run: () => navigator.share({ files: [file], title: 'CaterDesk encrypted backup' }).then(() => 'shared', e => e?.name === 'AbortError' ? 'aborted' : 'download') },
-        { label: 'Save to phone – फोनवर जतन', value: 'download', style: 'btn-secondary' }] });
-    const r = await outcome; if (!r || r === 'aborted') return; how = r;
+  if (target === 'drive') {
+    // Android opens the share menu only straight from a tap, and building a backup takes longer than it allows: one more tap
+    const why = e => ({ refused: `${e?.name || 'Error'}${e?.message ? ': ' + String(e.message).slice(0, 120) : ''}` });
+    const share = () => { try { return navigator.share({ files: [file], title: 'CaterDesk encrypted backup' }).then(() => 'shared', e => e?.name === 'AbortError' ? 'aborted' : why(e)); } catch (e) { return Promise.resolve(why(e)); } };
+    const outcome = await (await askSheet({ title: 'Backup to Google Drive – ड्राइव्हवर बॅकअप',
+      message: `Encrypted backup ready (${size}). Tap Share, choose Drive, then pick your Google account and folder and tap Save.\n\nDrive shows it as a .txt file. It is encrypted: it opens only in CaterDesk, with your recovery key.`,
+      actions: [{ label: 'Share to Google Drive – पाठवा', style: 'btn-primary', run: share }] }));
+    if (!outcome || outcome === 'aborted') return;   // cancelled: nothing was handed anywhere, nothing recorded
+    if (outcome.refused) { showToast(`This phone did not open the share menu (${outcome.refused}). Nothing was saved. Use "Backup to phone", then upload that file in the Drive app.`, 'error'); return; }
+    how = 'shared';
+  } else {
+    const url = URL.createObjectURL(file), a = document.createElement('a'); a.href = url; a.download = file.name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  if (how === 'download') { const url = URL.createObjectURL(file), a = document.createElement('a'); a.href = url; a.download = file.name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
   lastExport = new Date().toISOString(); await setMeta('last_export', lastExport); await setMeta('last_export_how', how);
-  showToast(how === 'shared' ? `Encrypted backup handed to the app you chose (${size}). Check it arrived there.` : `Encrypted backup download started (${size}). Copy it outside the phone too.`);
+  showToast(how === 'shared'
+    ? `Encrypted backup handed to the app you chose (${size}). CaterDesk cannot see whether it was saved: check it is in your Drive.`
+    : `Encrypted backup download started (${size}). Check it is in this phone's Downloads, and keep a copy outside the phone too.`);
+  if (CT === 'home') rHome();
 }
 // Ask for the recovery key (restoring on any device). Resolves with the key, or null if cancelled.
 function askRecoveryKey(keyId) {
@@ -5532,7 +5552,7 @@ async function openEncrypted(bytes) {
   try { return await decryptBackup(key, header.keyId, bytes); } finally { showLoading(false); }
 }
 
-/* Before a restore from Drive replaces this phone's data: if there is anything Replace would remove (events, bills,
+/* Before a restore replaces this phone's data: if there is anything Replace would remove (events, bills,
    drafts, vendors, payments, photos, the menu library or business details), the owner saves a copy of it first and
    confirms that copy is saved. The browser cannot tell whether a download was kept, so nothing is replaced until
    the owner says it is there. Resolves true to go ahead, false to stop (nothing changed). */
@@ -5561,8 +5581,8 @@ async function safetyCopyFirst() {
 }
 
 /* A backup's text (from a file or from Google Drive) → checked, previewed, then merged or replacing this phone's data.
-   Throws a plain-language reason if it is not a usable backup; nothing is changed until the owner chooses. Restoring
-   from Drive with Replace first asks for a confirmed copy of this phone's data (safetyCopyFirst). */
+   Throws a plain-language reason if it is not a usable backup; nothing is changed until the owner chooses. Replace
+   first asks for a confirmed copy of this phone's data whenever there is any (safetyCopyFirst). */
 async function restoreText(text, { safetyCopy = false } = {}) {
   let payload;
   try { payload = JSON.parse(text); }
@@ -5610,7 +5630,7 @@ async function handleImport(file) {
         text = await openEncrypted(bytes);
         if (text === null) return;   // no key given: nothing changed
       } else text = new TextDecoder().decode(bytes);
-      await restoreText(text);
+      await restoreText(text, { safetyCopy: true });
     } catch (err) {
       showToast(err.message || 'Import failed. Existing data was kept. – आयात अयशस्वी', 'error');
       console.error(err);
@@ -5905,7 +5925,8 @@ function bindAllEvents() {
     if (billTarget === 'snap') snapBills(files); else addBillsToSheet(files);
   }));
   q('import-input').addEventListener('change', function () { handleImport(this.files[0]); });
-  q('btn-export-enc').addEventListener('click', exportEncrypted);
+  q('btn-export-enc').addEventListener('click', () => exportEncrypted('phone'));
+  q('btn-export-drive').addEventListener('click', () => exportEncrypted('drive'));
   q('btn-enc-setup').addEventListener('click', openKeySetup);
   q('btn-drive').addEventListener('click', () => { closeOverlay().then(openDrive); });
   q('btn-drive-backup').addEventListener('click', driveBackupNow);
