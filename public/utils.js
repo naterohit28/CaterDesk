@@ -772,6 +772,7 @@ export function localDay(ts) {
 
 // The local clock time (HH:MM) of a saved timestamp; '' if it is not a time.
 export function localTime(ts) {
+  if (typeof ts === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(ts)) return '';   // a calendar day has no time
   const d = new Date(ts);
   return isNaN(d) ? '' : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
@@ -793,8 +794,10 @@ export function esc(s) {
 
 export function fmtDate(d) {
   if (!d) return '—';
-  const date = new Date(d);
-  if (isNaN(date)) return '—';
+  // A plain YYYY-MM-DD is a calendar day: read it as local, not UTC midnight (which is the day before west of UTC)
+  const ymd = typeof d === 'string' && /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+  const date = ymd ? new Date(+ymd[1], ymd[2] - 1, +ymd[3]) : new Date(d);
+  if (isNaN(date) || (ymd && date.getDate() !== +ymd[3])) return '—';   // 2026-02-31 is not a day
   return date.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
 }
 

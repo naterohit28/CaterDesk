@@ -44,6 +44,25 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     assert.doesNotMatch(src, /(at|At|lastExport)\)?\.slice\(0, ?10\)/, 'a saved timestamp is cut to its UTC day');
   });
 
+  await test('west of UTC: a calendar date shows its own day, and a timestamp shows the local day and time', async () => {
+    const c2 = await browser.newContext({ ...devices['Pixel 5'], viewport: { width: 360, height: 780 }, timezoneId: 'America/Los_Angeles' });
+    const q = await c2.newPage(); q.setDefaultTimeout(10000); q.on('pageerror', e => errors.push(e.message));
+    await q.goto(BASE_URL); await q.waitForSelector('#kpi .card');
+    const r = await q.evaluate(async t => { const u = await import('./utils.js');
+      return { date: u.fmtDate('2026-11-17'), bad: u.fmtDate('2026-02-31'), noTime: u.localTime('2026-11-17'), day: u.localDay(t), time: u.localTime(t),
+        want17: new Date(2026, 10, 17).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) }; }, EARLY);
+    assert.equal(r.date, r.want17, 'a plain date must not move to the day before');
+    assert.equal(r.bad, '—'); assert.equal(r.noTime, '');
+    assert.equal(r.day, '2026-11-16'); assert.equal(r.time, '12:15');
+    await q.evaluate(async d => { const u = await import('./utils.js'), db = await import('./db.js');   // tomorrow in this phone's time
+      const t = new Date(); t.setDate(t.getDate() + 1); const tm = u.localDay(t);
+      d.events[0].date = tm; d.events[0].orders[0].date = tm; await db.importAllData(d); }, structuredClone(DATA));
+    await q.reload(); await q.waitForSelector('#deliveries');
+    const want = await q.evaluate(() => new Date(2026, 10, 16).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }));
+    assert.match(await q.locator('#deliveries .dl-acts[data-order="o1"]').innerText(), new RegExp(`Reminded ${want} 12:15`));
+    await c2.close();
+  });
+
   await test('no page errors', async () => { assert.deepEqual(errors, []); });
   await browser.close();
   console.log(failed ? `${failed} FAILED` : 'ALL PASS');
