@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.31.1';
+const APP_BUILD = '4.31.2';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -571,10 +571,11 @@ document.addEventListener('visibilitychange', () => {
 
   }
 });
-function openOverlay(hide, after) {
+// `guard` (optional): returns true while the sheet holds unsaved changes; dismissing it then asks first
+function openOverlay(hide, after, guard) {
   const previous = overlayTrigger || document.activeElement;
   document.documentElement.classList.add('modal-open');   // page behind stays still while a sheet is up
-  overlays.push({ hide: () => {
+  overlays.push({ guard, hide: () => {
     hide(); syncOverlayAccessibility();
     if (!overlays.length) document.documentElement.classList.remove('modal-open');
     const target = previous?.isConnected && previous.getClientRects().length && !previous.closest('[inert]') ? previous : q('fab');
@@ -607,6 +608,26 @@ function closeOverlay() {
   });
 }
 
+// Close button, backdrop tap and Escape. A sheet with unsaved changes asks first; Back is handled in onPopState.
+// Saving still closes with closeOverlay() directly, so a saved sheet never asks.
+async function dismissOverlay() {
+  const top = overlays.at(-1);
+  if (top?.guard?.() && !await confirmDiscard()) return;
+  if (overlays.at(-1) === top) return closeOverlay();
+}
+function confirmDiscard() {
+  return askSheet({ title: 'Discard changes? – बदल सोडायचे?', message: 'Your changes are not saved yet.', cancel: null,
+    actions: [{ label: 'Keep editing – संपादन सुरू ठेवा', value: false, style: 'btn-primary' },
+              { label: 'Discard changes – बदल सोडा', value: true, style: 'btn-danger' }] }).then(v => v === true);
+}
+// Back has already left the sheet's history entry: put the same entry back, so the sheet and history still match, then ask
+function keepSheetOnBack(top, st) {
+  const base = st || { tab: CT, ref: curRef, depth: 0 };
+  history.pushState({ ...base, overlay: true, depth: (base.depth || 0) + 1 }, '');
+  if (q('pin-screen').classList.contains('active')) return;   // locked: the form simply stays
+  confirmDiscard().then(ok => { if (ok && overlays.at(-1) === top) closeOverlay(); });
+}
+
 // Hide every overlay without touching history (the next go() replaces the entry)
 function dropOverlays() {
   while (overlays.length) { const o = overlays.pop(); o.hide(); o.after?.(); }
@@ -620,7 +641,11 @@ function onPopState(e) {
   if (lateBacks > 0) { lateBacks--; return; }
   // Unwinding to Home: whatever entry this lands on becomes the root again, and Home stays shown
   if (homeUnwind) { homeUnwind = false; clearTimeout(homeTimer); settleHome(); return; }
-  if (overlays.length) { const o = overlays.pop(); o.hide(); o.after?.(); return; }
+  if (overlays.length) {
+    const top = overlays.at(-1);
+    if (top.guard?.()) { keepSheetOnBack(top, e.state); return; }
+    overlays.pop(); top.hide(); top.after?.(); return;
+  }
   const st = e.state;
   if (st?.overlay) { history.back(); return; }   // stale entry reached via Forward
   restorePage(st || { tab: 'home', ref: null });
@@ -4001,12 +4026,22 @@ function rSummary() {
 }
 
 /* ── SHEETS ──────────────────────────────────────── */
-function openSheet(id, after) {
+function openSheet(id, after, guard) {
   const el = q(id);
   el.classList.add('active');
   el.querySelector('.sheet').scrollTop = 0;
-  openOverlay(() => el.classList.remove('active'), after);
+  openOverlay(() => el.classList.remove('active'), after, guard);
   requestAnimationFrame(() => fitSelects(el));
+}
+
+// What a sheet's fields and toggles hold, as one string: compared with its value at opening to tell whether the
+// user changed anything (typing a value and then deleting it again is no change). Opening a section is not a change.
+function sheetState(id) {
+  return JSON.stringify([...q(id).querySelectorAll('input, select, textarea, [aria-pressed], [data-value]')].map(el =>
+    el.matches('input[type=checkbox], input[type=radio]') ? el.checked
+    : el.matches('input[type=file]') ? ''
+    : el.matches('input, select, textarea') ? el.value.trim()
+    : `${el.getAttribute('aria-pressed') ?? ''}|${el.dataset.value ?? ''}`));
 }
 
 /* A dropdown can't wrap its text, so a long chosen name (vendor, event) would be cut off. When it doesn't fit,
@@ -4064,14 +4099,15 @@ function closeModals() {
 // In-app replacement for confirm(): resolves to the chosen action's value, or null on Cancel / Back.
 // An action with `run` calls it inside the tap itself (Android allows some things, like the share menu,
 // only directly from a tap) and resolves to what it returns.
-function askSheet({ title, message = '', actions }) {
+// `cancel: null` leaves out the Cancel button (the actions then include the safe choice; Back / Escape still give null).
+function askSheet({ title, message = '', actions, cancel = 'Cancel – रद्द करा' }) {
   return new Promise(resolve => {
     let result = null;
     q('ask-title').textContent = title;
     q('ask-msg').textContent   = message;
     const box = q('ask-actions');
     box.innerHTML = '';
-    [...actions, { label: 'Cancel – रद्द करा', value: null, style: 'btn-ghost' }].forEach(a => {
+    [...actions, ...(cancel ? [{ label: cancel, value: null, style: 'btn-ghost' }] : [])].forEach(a => {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'btn ' + (a.style || 'btn-primary');
@@ -4159,7 +4195,10 @@ function openEvModal(id) {
   populateSelect('ev-adv-mode', PAY_MODES, '');
   q('ev-mtitle').textContent = ev ? 'Edit event – संपादित करा' : 'New event – नवीन कार्यक्रम';
   clearFieldErrors();
-  openSheet('ev-modal');
+  // A new or edited event that was changed asks before it is dismissed unsaved (not while its save is being written:
+  // that save closes the sheet itself)
+  const opened = sheetState('ev-modal');
+  openSheet('ev-modal', null, () => !activeSaves.has('event') && sheetState('ev-modal') !== opened);
 }
 
 // Event page: client payment schedule (due now vs outstanding vs overdue)
@@ -5794,7 +5833,7 @@ function bindAllEvents() {
         if (id === 'vendor')  openVenModal();
         break;
       case 'close-modal':
-      case 'close-lightbox': closeOverlay(); break;
+      case 'close-lightbox': dismissOverlay(); break;
       case 'evdetail':     showEvDetail(id); break;
       case 'vendetail':    showVenDetail(id); break;
       case 'open-cpay':    openCPayModal(id); break;
@@ -5872,7 +5911,7 @@ function bindAllEvents() {
 
   // Close sheets on backdrop tap
   document.querySelectorAll('.modal-ov').forEach(o => {
-    o.addEventListener('click', e => { if (e.target === o) closeOverlay(); });
+    o.addEventListener('click', e => { if (e.target === o) dismissOverlay(); });
   });
 
   // Phone Back button / gesture
@@ -5880,7 +5919,7 @@ function bindAllEvents() {
 
   // Keyboard: Enter/Space on role=button cards, Escape closes the top overlay
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && overlays.length) { closeOverlay(); return; }
+    if (e.key === 'Escape' && overlays.length) { dismissOverlay(); return; }
     const el = e.target;
     if ((e.key === 'Enter' || e.key === ' ') && el.getAttribute?.('role') === 'button') {
       e.preventDefault();

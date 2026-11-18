@@ -167,7 +167,7 @@ const base = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
     await p.selectOption('#ev-vtype', 'hall'); await p.locator('#ev-vtype').dispatchEvent('change');
     s = await shown(); assert.deepEqual([s.hidden, s.display], [true, 'none'], 'hidden once you choose your own');
     // Reopening the form for another new event starts clean
-    await p.locator('#ev-modal [data-action="close-modal"]').click(); await p.waitForTimeout(300);
+    await p.locator('#ev-modal [data-action="close-modal"]').click(); await p.waitForTimeout(300); await p.waitForTimeout(150); if (await p.locator("#ask-modal.active #ask-actions button", { hasText: "Discard" }).count()) { await p.locator("#ask-actions button", { hasText: "Discard" }).click(); await p.waitForTimeout(300); }   // a changed event form asks first (4.31.2)
     if (await p.locator('#ask-modal.active').count()) await p.locator('#ask-actions button').first().click();
     await p.locator('#fab').click(); await p.waitForSelector('#ev-modal.active');
     s = await shown(); assert.deepEqual([s.hidden, s.display], [true, 'none']);

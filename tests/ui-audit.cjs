@@ -109,6 +109,9 @@ const DATA = {
       if (how === 'back') await p.goBack();
       if (how === 'scrim') await p.mouse.click(180, 20);
       await p.waitForTimeout(300);
+      // A changed event form asks first (4.31.2); the audit changed its dropdowns and means to throw that away
+      const discard = p.locator('#ask-modal.active #ask-actions button', { hasText: 'Discard' });
+      if (await discard.count()) { await discard.tap({ timeout: 3000 }).catch(() => {}); await p.waitForTimeout(300); }
       if (await sheetOpen()) note(theme, 'sheet', `did not close with ${how}`);
     };
     // Every select in an open sheet: every option can be chosen without errors

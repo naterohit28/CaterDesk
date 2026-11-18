@@ -158,7 +158,7 @@ const base = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
     await p.locator('#n-events:visible').click(); await p.locator('#fab').click(); await p.waitForSelector('#ev-modal.active');
     await p.selectOption('#ev-menu', 'golden'); await p.fill('#ev-guests', '100'); await p.locator('#ev-guests').dispatchEvent('input');
     assert.match(await text('#ev-quote'), /usually costs you ₹482\/plate \(2 reconciled events\)/);
-    await p.locator('#ev-modal [data-action="close-modal"]').click(); await p.waitForTimeout(300);
+    await p.locator('#ev-modal [data-action="close-modal"]').click(); await p.waitForTimeout(300); await p.waitForTimeout(150); if (await p.locator("#ask-modal.active #ask-actions button", { hasText: "Discard" }).count()) { await p.locator("#ask-actions button", { hasText: "Discard" }).click(); await p.waitForTimeout(300); }   // a changed event form asks first (4.31.2)
     if (await p.locator('#ask-modal.active').count()) await p.locator('#ask-actions button').first().click();
   });
 
@@ -182,7 +182,7 @@ const base = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
     await p.locator('#n-events:visible').click(); await p.locator('#fab').click(); await p.waitForSelector('#ev-modal.active');
     await p.selectOption('#ev-menu', 'golden'); await p.fill('#ev-guests', '100'); await p.locator('#ev-guests').dispatchEvent('input');
     assert.match(await text('#ev-quote'), /usually costs you ₹482\/plate \(2 reconciled events\)/);
-    await p.locator('#ev-modal [data-action="close-modal"]').click(); await p.waitForTimeout(300);
+    await p.locator('#ev-modal [data-action="close-modal"]').click(); await p.waitForTimeout(300); await p.waitForTimeout(150); if (await p.locator("#ask-modal.active #ask-actions button", { hasText: "Discard" }).count()) { await p.locator("#ask-actions button", { hasText: "Discard" }).click(); await p.waitForTimeout(300); }   // a changed event form asks first (4.31.2)
     if (await p.locator('#ask-modal.active').count()) await p.locator('#ask-actions button').first().click();
     await p.locator('#n-summary:visible').click(); await p.locator('#tab-summary [data-period-seg] [data-id="all"]').click();
     const rep = await text('#summary-content');
