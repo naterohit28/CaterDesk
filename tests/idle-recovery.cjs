@@ -35,7 +35,7 @@ const assert = require('node:assert/strict');
   await test('missing popstate cannot leave a form or navigation stuck', async () => {
     await seed(); await newEvent('Close test');
     await p.evaluate(() => { window.originalBack = history.back.bind(history); history.back = () => {}; });
-    await p.locator('#ev-modal [data-action="close-modal"]').click(); await p.waitForTimeout(750);
+    await p.locator('#ev-modal [data-action="close-modal"]').click(); await p.waitForSelector('#ask-modal.active'); await p.locator('#ask-actions button', { hasText: 'Discard' }).click(); await p.waitForTimeout(1500);   // a changed form asks first (4.31.2)
     assert(await p.locator('#n-home').isEnabled()); await p.locator('#n-home').click(); await p.locator('.qa[data-id="expense"]').click(); await p.locator('#exp-amt').fill('71'); await p.locator('#btn-save-exp').click(); await p.waitForTimeout(750);
     assert.equal(await p.evaluate(async () => (await (await import('./db.js')).getAll('expenses')).length), 1);
     await p.evaluate(() => { history.back = window.originalBack; });
