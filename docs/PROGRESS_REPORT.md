@@ -7,6 +7,32 @@ This report covers what has been released, what has been accepted on the owner's
 built from the merged pull requests and the release table in the README. That table has a line for every version; this
 report groups them. It gives no "percent ready" figure. Readiness is stated as criteria that have passed or are still open.
 
+## Status at a glance
+
+**Completed:** built, covered by automated tests, and accepted on the owner's phone where that applies.
+- event, collection, expense, vendor and payment records, with edits that keep every stored field
+- encrypted backup to the phone, backup to Google Drive through the share menu, and restore with the recovery key on
+  another device: all accepted on the phone on 17 Nov
+- the recovery key: a wrong key is refused, and cancelling a replacement keeps the old key (accepted 16 Nov)
+- dates and times in India time
+- the automated suite: 434 passed, 0 failed
+
+**Pending phone verification:** built and covered by automated tests, but not yet recorded as checked on a physical
+Android phone.
+- bill photos from the camera and gallery, including when permission is denied
+- a quote's Print / Save as PDF
+- one full event through guest counts, shared bills, final settlement and the Books check
+
+**Deferred:** not built, by decision.
+- automatic Google Drive backup (D3/D4), paused under Google's Drive API terms
+- cloud sync between phones, or any server copy of the records
+- app-update improvements
+- Complimentary (free) events, which need the owner's approval
+
+**Commercial readiness:** not started. The criteria are in section 1B. They include a setup and support process per
+customer, a privacy notice and terms, the GST decisions, an independent finance review, testing on more phones, and a
+licence and price.
+
 ## 1. Readiness
 
 ### A. Ready for the owner's own business
