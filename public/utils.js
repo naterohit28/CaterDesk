@@ -1425,13 +1425,24 @@ export function periodStart(period) {
   if (period === 'fy')    return iso(m >= 3 ? y : y - 1, 3);
   return '';
 }
+// The first day after the period (exclusive end): next month for "This month" and "3 months", 1 April for "This FY".
+// Without it, an event booked for a later month or year counted in this period's totals.
+export function periodEnd(period) {
+  const d = new Date(today());
+  const y = d.getFullYear(), m = d.getMonth();
+  const iso = (yy, mm) => `${yy}-${String(mm + 1).padStart(2, '0')}-01`;
+  if (period === 'month' || period === '3m') { const e = new Date(y, m + 1, 1); return iso(e.getFullYear(), e.getMonth()); }
+  if (period === 'fy') return iso(m >= 3 ? y + 1 : y, 3);
+  return '';
+}
 
-// Events dated in the period, plus the payments and expenses that belong to them
+// Events dated in the period (from its start up to, not including, its end), plus the payments and expenses that belong to them
 export function sliceByPeriod(D, period) {
   const start = periodStart(period);
   // Common stock is no event's cost: it stays out of event and period totals (shown on its own)
   if (!start) return { ...D, expenses: D.expenses.filter(x => !x.stock) };
-  const events = D.events.filter(e => (e.date || '') >= start);
+  const end = periodEnd(period);
+  const events = D.events.filter(e => (e.date || '') >= start && (e.date || '') < end);
   const ids = new Set(events.map(e => e.id));
   return {
     ...D, events,
