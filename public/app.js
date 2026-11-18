@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.31.2';
+const APP_BUILD = '4.31.3';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -2576,12 +2576,13 @@ function menuDiffHtml(ev, diff, newer, older) {
 function approvalBar(ev) {
   const st = menuSinceApproved(ev), last = st.last;
   if (!last && !st.now.services.some(s => s.dishes.length) && !st.now.shared.length) return '';
-  const when = last ? `${fmtDate(localDay(last.at))} · ${last.by}${last.who ? ` (${last.who})` : ''}` : '';
+  // Escape only what was typed (who approved); the line itself is tr()'s English/Marathi markup and must stay HTML
+  const when = last ? esc(`${fmtDate(localDay(last.at))} · ${last.by}${last.who ? ` (${last.who})` : ''}`) : '';
   const text = !last ? tr('Not approved by the client yet', 'ग्राहकाने अजून मान्य केला नाही')
     : !st.count ? tr(`Approved v${last.n} · ${when}`, `मान्य आवृत्ती ${last.n} · ${when}`)
     : tr(`Changed since approved v${last.n} · ${st.count} change${st.count > 1 ? 's' : ''}`, `मान्य आवृत्ती ${last.n} नंतर ${st.count} बदल`);
   return `<div class="card pad ma-bar ${!last ? '' : st.count ? 'due-note' : 'ok-note'}" id="menu-approval" role="status">
-    <div class="meta ma-text" data-nl>${!last ? '' : st.count ? '' : icon('check', 16)}${esc(text)}</div>
+    <div class="meta ma-text" data-nl>${!last ? '' : st.count ? '' : icon('check', 16)}${text}</div>
     <div class="row-btns">${!last || st.count ? `<button type="button" class="btn-sm" data-action="menu-approve">${tr(!last ? 'Mark approved' : 'Review & approve', !last ? 'मान्य झाले' : 'तपासा व मान्य')}</button>` : ''}
       <button type="button" class="btn-sm" data-action="menu-send">${icon('message', 16)}${tr('Send menu', 'मेनू पाठवा')}</button>
       ${last ? `<button type="button" class="btn-sm" data-action="menu-versions">${tr(`Versions (${approvedMenus(ev).length})`, `आवृत्त्या (${approvedMenus(ev).length})`)}</button>` : ''}</div>

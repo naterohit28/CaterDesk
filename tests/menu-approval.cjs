@@ -49,7 +49,10 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [], 
     assert.deepEqual(v1.services[0].dishes.find(d => d.name === 'Dal Tadka'), { name: 'Dal Tadka', head: '', diet: ['jain'] });
     assert.deepEqual(v1.shared, [{ name: 'Mineral Water', head: '' }]); assert.deepEqual(v1.pending, ['svc-dinner'], 'library menu not used: left out, named');
     await openEvent();
-    assert.match(await bar(), new RegExp(`Approved v1 · ${await fmt(day(0))} · written`));
+    assert.match(await bar(), new RegExp(`^Approved v1 · ${await fmt(day(0))} · written$`, 'm'));
+    // The line is shown as words in the chosen language, never as markup (4.31.3: it was escaped and showed both)
+    assert.doesNotMatch(await bar(), /<span|t-en|t-mr|मान्य/, 'English only, no visible markup');
+    assert.equal(await p.locator('#menu-approval .ma-text .t-mr').count(), 1, 'the Marathi half is a hidden element, not text');
     assert.equal(await p.locator('[data-action="menu-approve"]').count(), 0, 'nothing to approve');
   });
 
@@ -71,22 +74,23 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [], 
     assert.match(body, /Changes since approved version 1:/);
     assert.match(body, /Lunch\n~\nGuests 250 → 260\n\+\nGulab Jamun\n−\nPani Puri\n~\nJeera Rice: sourcing Our kitchen → Counter \(internal, not for the client\)/);
     assert.doesNotMatch(body, /^Dinner$/m, "no dinner changes listed (dinner is only named as not included)");
-    await p.selectOption('#ma-by', 'verbal'); await p.fill('#ma-who', 'Sample Client Father');
+    await p.selectOption('#ma-by', 'verbal'); await p.fill('#ma-who', 'Sample Client <b>Father</b>');
     assert.equal(await p.locator('#btn-save-approval').innerText(), 'Save approved version 2');
     await p.locator('#btn-save-approval').click(); await p.waitForTimeout(600);
     const e = await ev('e1');
     assert.equal(e.menuApproved.length, 2); assert.deepEqual(e.menuApproved[0], v1, 'version 1 exactly as approved');
     assert.deepEqual(e.menuApproved[1].services[0].dishes.map(d => [d.name, d.head]), [['Jeera Rice', 'Chaat – चाट'], ['Dal Tadka', ''], ['Gulab Jamun', '']]);
-    assert.deepEqual([e.menuApproved[1].by, e.menuApproved[1].who, e.menuApproved[1].services[0].guests], ['verbal', 'Sample Client Father', 260]);
+    assert.deepEqual([e.menuApproved[1].by, e.menuApproved[1].who, e.menuApproved[1].services[0].guests], ['verbal', 'Sample Client <b>Father</b>', 260]);
     await openEvent();
-    assert.match(await bar(), /Approved v2 · .* · verbal \(Sample Client Father\)/);
+    assert.match(await bar(), /Approved v2 · .* · verbal \(Sample Client <b>Father<\/b>\)/, 'a typed name is shown as typed, not run as markup');
+    assert.equal(await p.locator('#menu-approval b').count(), 0);
   });
 
   await test('versions: newest first, each with what changed from the one before', async () => {
     await p.locator('[data-action="menu-versions"]').click(); await p.waitForSelector('#mv-modal.active');
     const vers = p.locator('#mv-body .mv-ver');
     assert.equal(await vers.count(), 2);
-    assert.match(await vers.nth(0).innerText(), /^Version 2\n.* · verbal \(Sample Client Father\) · 4 dishes\nChanges from version 1:/);
+    assert.match(await vers.nth(0).innerText(), /^Version 2\n.* · verbal \(Sample Client <b>Father<\/b>\) · 4 dishes\nChanges from version 1:/);
     assert.match(await vers.nth(0).innerText(), /\+\nGulab Jamun/);
     await vers.nth(1).locator('summary').click();
     assert.match(await vers.nth(1).innerText(), /^Version 1\n.* · written · 4 dishes\nLunch · new\n\+\nJeera Rice\n\+\nPani Puri\n\+\nDal Tadka[\s\S]*Every meal\n\+\nMineral Water/);
