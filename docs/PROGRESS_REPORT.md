@@ -1,4 +1,4 @@
-# CaterDesk progress report: v4.0.1 → v4.31.12
+# CaterDesk progress report: v4.0.1 → v4.31.13
 
 **As of 19 November 2026.** This report describes source version **v4.31.12**. Releases go live one at a time after
 the owner approves each one, so the live web app at expense-calculator-kohl.vercel.app may still be on an earlier
@@ -18,7 +18,7 @@ report groups them. It gives no "percent ready" figure. Readiness is stated as c
 - the recovery key: a wrong key is refused, and cancelling a replacement keeps the old key (accepted 16 Nov)
 - dates and times in India time
 - the fixes from the independent audit of 19 Nov (section 3)
-- the automated suite: 467 passed, 0 failed on v4.31.8. **Not yet run on v4.31.9–4.31.12**: only each fix's own new checks were run (they fail on the old code and pass on the fix)
+- the automated suite, run on the developer's computer on each release's final commit: 467 (v4.31.8 and v4.31.9), 469 (v4.31.10), 476 (v4.31.11) and 482 (v4.31.12) passed, none failed. Results are posted on each PR. GitHub does not yet run the suite itself
 
 **Pending phone verification:** built and covered by automated tests, but not yet recorded as checked on a physical
 Android phone.
@@ -54,7 +54,7 @@ licence and price.
 | Restore with the recovery key | ✅ Accepted on the phone, 17 Nov: all counts matched | #71 acceptance comment |
 | Wrong key refused; cancelling a key replacement keeps the old key | ✅ Accepted on the phone, 16 Nov | #69 |
 | Dates and times in India time | ✅ Fixed | v4.31.1 (#72) |
-| Automated tests | ✅ Full suite on every release up to v4.31.8 (467 passed, 0 failed). ⏳ Not yet run on v4.31.9–4.31.12 | #72–#77 |
+| Automated tests | ✅ Full suite passed on every release's final commit through v4.31.12 (482 passed, 0 failed), run locally; not yet run by GitHub | #72–#83 |
 | Fixes from the independent audit of 19 Nov | ✅ Fixed in v4.31.4–v4.31.11 | Section 3 |
 | Phase 3/4 features (counts, shared bills, settlement, Books check) used on the phone | ⏳ Not recorded as phone-tested | — |
 | Camera and gallery bill photos, including permission denial (v4.28.2) | ⏳ Not recorded as phone-tested | — |
@@ -147,8 +147,9 @@ tests alone does not make a change ready for use.
 | 4.31.6 (#78) | ✅ | ✅ | ✅ | ⏳ |
 | 4.31.7 (#79) | ✅ | ✅ | ✅ | ⏳ |
 | 4.31.8 (#77) | ✅ full suite | ✅ | ✅ | not needed |
-| 4.31.9 (#80), 4.31.10 (#81) | own checks only; full suite ⏳ | ✅ no major findings | ⏳ | ⏳ (4.31.9) |
-| 4.31.11 (#82), 4.31.12 (#83) | own checks only; full suite ⏳ | Codex findings fixed; re-review ⏳ | ⏳ | ⏳ (4.31.12) |
+| 4.31.9 (#80), 4.31.10 (#81) | ✅ full suite | ✅ no major findings | ✅ | ⏳ (4.31.9) |
+| 4.31.11 (#82), 4.31.12 (#83) | ✅ full suite | Codex findings fixed; the fixed commits were **not** re-reviewed (Codex limit; merged on the owner's decision) | ✅ | ⏳ (4.31.12) |
+| 4.31.13 | ⏳ | ⏳ | ⏳ | not needed |
 
 - v4.31.2 (#74): leaving a new or edited event with unsaved changes asks *Keep editing / Discard changes*.
 - v4.31.3 (#75): the menu approval line showed raw page code in both languages. It now shows the chosen language.
@@ -164,6 +165,7 @@ tests alone does not make a change ready for use.
 - v4.31.11: old app caches are cleaned up, long vendor names stay inside their chips, and the desktop launcher
   source shows the current version.
 - v4.31.12: dropdown text stays at the readable size, with a long chosen name shown in full under the dropdown.
+- v4.31.13: security fix: the meal-menu editor shows menu and every-meal dish names as text, never as page code.
 
 ## 3. Defects found and fixed after release
 
@@ -182,8 +184,8 @@ tests alone does not make a change ready for use.
 Found by the independent audit of 19 November, with Codex reviews:
 - **Report periods had no end,** so later bookings counted in this month or this year. Fixed in v4.31.4.
 - **A menu name could become page code** in five places on the event page. Fixed in v4.31.8. The reviewer then found the same
-  problem in the meal-menu editor (`renderServiceSheet`: menu, "from" and shared dish names). Not fixed yet: a separate
-  security fix is planned.
+  problem in the meal-menu editor (`renderServiceSheet`: menu, "from" and shared dish names). Fixed in v4.31.13
+  (awaiting review and merge).
 - **A waived, discounted or written-off event pulled the suggested selling price down.** Fixed in v4.31.10.
 - **A counter paid in several bills showed a fraction of its real rate per plate.** Fixed in v4.31.10.
 - **Old app caches were never deleted** from the phone. Fixed in v4.31.11.
@@ -211,8 +213,9 @@ Still open from the audit, waiting for an owner decision:
 
 ## 6. Recommended next steps
 
-1. **Release v4.31.8 to v4.31.12 one at a time,** each after its own review and the owner's approval. Then fix only
-   genuine defects.
+1. **Keep v4.31.12 as the production baseline,** plus the v4.31.13 security fix once reviewed and approved. No new
+   development cycle: Android acceptance testing and GitHub CI come next. Suitable for continued internal use, subject
+   to the phone checks; not yet approved for commercial distribution.
 2. **Phone checks still not recorded:**
    - the unsaved-changes question, form-error focus and the keyboard, and the menu price focus
    - long names in dropdowns (after v4.31.12)

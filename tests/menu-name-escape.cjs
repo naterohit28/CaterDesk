@@ -1,5 +1,5 @@
 // Menu names are text: a library menu name that looks like HTML is shown exactly as typed on the event page, in English,
-// Marathi and both, and never becomes page markup. Before 4.31.8 five places put the name in unescaped: the meal card's
+// Marathi and both, and never becomes page markup. Before 4.31.8 five places put the name in unescaped (and the meal-menu editor, until 4.31.13): the meal card's
 // "From … menu" and "Started from … menu" lines, the older single-menu summary, the past-events basis and "Cost vs
 // usual". Found by the independent audit of 19 Nov (finding 1). 360px. Synthetic data only.
 const BASE_URL = process.env.TEST_BASE_URL; if (!BASE_URL || !/^http:\/\/127\.0\.0\.1:\d+$/.test(BASE_URL)) throw new Error('Use npm test to run against the isolated local test server.');
@@ -8,13 +8,17 @@ const assert = require('node:assert/strict');
 
 const day = n => { const d = new Date(); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const NAME = 'Sample <b class="x-leak">Gold</b> Menu';
+const SHARED = 'Sample <i class="x-leak">Water</i>';
 const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [], vendors: [],
-  menus: [{ id: 'MNx', name: NAME, meals: ['dinner'], slabs: [{ min: 0, rate: 650 }], items: ['Paneer Tikka', 'Dal Makhani'] }],
+  menus: [{ id: 'MNx', name: NAME, meals: ['lunch', 'dinner'], slabs: [{ min: 0, rate: 650 }], items: ['Paneer Tikka', 'Dal Makhani'] }],
   events: [
     { id: 'A', name: 'Sample Meal Menu Event', date: day(9), venue: 'Sample Lawns', type: 'Wedding – लग्न', billing: 200000, guests: 300, meals: ['dinner'], photoIds: [],
       mealPlan: { dinner: { guests: 300, rate: 650, menu: 'MNx' } }, dishes: [] },
     { id: 'B', name: 'Sample Older Menu Event', date: day(10), venue: 'Sample Hall', type: 'Party – पार्टी', billing: 50000, guests: 80, photoIds: [],
-      menu: 'MNx', dishes: [] }] };
+      menu: 'MNx', dishes: [] },
+    { id: 'D', name: 'Sample Editor Event', date: day(12), venue: 'Sample Hall', type: 'Party – पार्टी', billing: 60000, guests: 100, meals: ['lunch'], photoIds: [],
+      mealPlan: { lunch: { guests: 100, rate: 600 } },
+      dishes: [{ name: 'Dal Tadka', head: '', meal: 'lunch' }, { name: SHARED, head: '' }] }] };
 
 (async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
@@ -48,11 +52,29 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [], 
     assert.match(await p.locator('#tab-evdetail').innerText(), /From Sample <b class="x-leak">Gold<\/b> Menu menu/);
   });
 
+  // The meal-menu editor (renderServiceSheet), found by the reviewer after 4.31.8: the library menu's name in the "from"
+  // line and in the note after choosing it, and the every-meal dishes in "Also served"
+  await test('meal-menu editor: menu names and every-meal dish names are shown as typed, never as page code', async () => {
+    await open('A', 'en');
+    await p.locator('.svc-card[data-meal-menu="dinner"] [data-action="svc-edit"]').click(); await p.waitForSelector('#svc-modal.active');
+    assert.equal(await p.locator('#svc-modal .x-leak').count(), 0, '"from" line: no element');
+    assert.match(await p.locator('#svc-tpl-note').innerText(), /from Sample <b class="x-leak">Gold<\/b> Menu below/);
+    await open('D', 'en');
+    await p.locator('.svc-card[data-meal-menu="lunch"] [data-action="svc-edit"]').click(); await p.waitForSelector('#svc-modal.active');
+    assert.equal(await p.locator('#svc-modal .x-leak').count(), 0, '"Also served": no element');
+    assert.match(await p.locator('#svc-modal').innerText(), /Also served: Sample <i class="x-leak">Water<\/i>/);
+    await p.locator('#svc-tpl').selectOption('MNx'); await p.waitForTimeout(200);
+    assert.equal(await p.locator('#svc-modal .x-leak').count(), 0, 'chosen library menu note: no element');
+    assert.match(await p.locator('#svc-tpl-note').innerText(), /Sample <b class="x-leak">Gold<\/b> Menu has 2 more/);
+    assert.match(await p.locator('#btn-svc-replace').innerText(), /Replace with Sample <b class="x-leak">Gold<\/b> Menu/);
+  });
+
   await test('no source line puts a menu name into the page unescaped', async () => {
     const src = await p.evaluate(async () => (await fetch('./app.js')).text());
     // Page text built with tr() (HTML); toasts, hints and WhatsApp text set plain text and are fine
     assert.doesNotMatch(src, /tr\(`[^`]*\$\{(s\.template\.name|menu\.name)\}/);
     assert.doesNotMatch(src, /`on the \$\{menuById\(ev\.menu\)\?\.name/);
+    assert.doesNotMatch(src, /tr\(`[^`]*\$\{(tpl\.name|svcState\.from|svcState\.shared\.join\([^)]*\))\}/, 'meal-menu editor names are escaped');
   });
 
   await test('no page errors', async () => { assert.deepEqual(errors, []); });
