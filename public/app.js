@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.31.6';
+const APP_BUILD = '4.31.7';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -4138,8 +4138,15 @@ function populateSelect(id, options, selected = '') {
    themselves stay in each save function. A message slot written into the page (e.g. #me-slabs-err) is filled and
    hidden again rather than created and removed. */
 const shownErrors = [];   // { box: element whose edits clear it, ctrl: the field, msg: the message element, made }
-const errCtrl = el => el.matches('input, select, textarea') ? el
-  : [...(el.closest('.field') || el).querySelectorAll('input:not([type=hidden]), select, textarea')].find(c => !c.value) || (el.closest('.field') || el).querySelector('input:not([type=hidden]), select, textarea');
+// A message slot names its own fields (data-ctrl): the first of them without a usable value (empty, 0 or less) is the
+// one to fix — e.g. the menu price slot points at the rate boxes, never at the valid 'From guests' box beside them.
+const errCtrl = el => {
+  if (el.matches('input, select, textarea')) return el;
+  const box = el.closest('.field') || el;
+  if (el.dataset.ctrl) { const c = [...box.querySelectorAll(el.dataset.ctrl)]; return c.find(x => !(Number(x.value) > 0)) || c[0]; }
+  const all = [...box.querySelectorAll('input:not([type=hidden]), select, textarea')];
+  return all.find(c => !c.value) || all[0];
+};
 function linkDescribedBy(el, id, on) {
   const ids = (el.getAttribute('aria-describedby') || '').split(/\s+/).filter(x => x && x !== id);
   if (on) ids.push(id);
