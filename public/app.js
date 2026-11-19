@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.31.13';
+const APP_BUILD = '4.31.14';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1772,11 +1772,13 @@ async function sendBuy() {
   p.messages = versioned.messages;
   // A changed instruction is not sent or confirmed yet; a menu-change warning stays until it is marked sent
   if (versioned.changed && old && ['sent', 'confirmed'].includes(old.status)) p.status = phoneOk ? 'opened' : 'prepared';
-  await patchEvent(ev.id, { purchases: old ? ev.purchases.map(x => x.id === id ? p : x) : [...(ev.purchases || []), p] });
-  closeModals(); refreshCurrent();
+  // WhatsApp opens inside the tap, before the save is awaited: a phone browser blocks a window opened after it
   const phone = phoneDigits(ven?.phone);
   if (phone) window.open(`https://wa.me/${phone}?text=${encodeURIComponent(p.messages.at(-1).text)}`, '_blank', 'noopener');
-  else showToast(`Purchase saved. ${ven?.name || 'This supplier'} has no phone number – add it to send on WhatsApp.`, 'error');
+  try { await patchEvent(ev.id, { purchases: old ? ev.purchases.map(x => x.id === id ? p : x) : [...(ev.purchases || []), p] }); }
+  catch (e) { showToast(e.message || 'Could not save the purchase. Nothing was changed.', 'error'); return; }
+  closeModals(); refreshCurrent();
+  if (!phone) showToast(`Purchase saved. ${ven?.name || 'This supplier'} has no phone number – add it to send on WhatsApp.`, 'error');
 }
 async function setBuyStatus(ev, id, next) {
   await patchEvent(ev.id, { purchases: ev.purchases.map(x => { if (x.id !== id) return x; const y = { ...x, status: next };
@@ -1988,7 +1990,7 @@ function openOrderModal({ head, svc = '', orderId }) {
   openSheet('ord-modal');
 }
 
-let ordAuto = '';   // plates last filled from the plan, so a number typed by hand is never replaced
+let ordAuto = '';   // plates last filled from the plan, so a number typed by hand is never replaced; null once typed by hand
 function updateCounterPlan() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const hint = q('ord-plan');
@@ -1996,7 +1998,7 @@ function updateCounterPlan() {
   const { guests, meal } = orderGuests(ev, qv('ord-head'), qv('ord-svc'));
   const s = counterSuggestion(guests, qv('ord-takeup'), qv('ord-min'));
   const plates = Number(qv('ord-plates')) || 0, min = Math.floor(Number(qv('ord-min')) || 0);
-  if (s && (!qv('ord-plates') || qv('ord-plates') === ordAuto)) { q('ord-plates').value = String(s.proposed); ordAuto = String(s.proposed); }
+  if (s && ordAuto !== null && (!qv('ord-plates') || qv('ord-plates') === ordAuto)) { q('ord-plates').value = String(s.proposed); ordAuto = String(s.proposed); }
   const parts = [];
   if (s) parts.push(tr(`${guests} ${meal ? MEALS[meal].toLowerCase() + ' ' : ''}guests × ${Number(qv('ord-takeup'))}% = ${s.forecast} suggested`, `${guests} पाहुणे × ${Number(qv('ord-takeup'))}% = ${s.forecast}`)
     + (s.minimumApplied ? tr(` · vendor minimum ${min}`, ` · किमान ${min}`) : ''));
@@ -2025,7 +2027,9 @@ function orderBelowMinimum(ev) {
   const minimum = Math.floor(Number(qv('ord-min')) || 0);
   return !!ev && !ev.outsourced && minimum > 0 && (Number(qv('ord-plates')) || 0) < minimum;
 }
-async function sendOrder() {
+/* Save order keeps it as prepared (nothing sent). Send on WhatsApp opens WhatsApp inside the tap, before anything is
+   awaited: a phone browser blocks a window opened after the save (full-event test #7). Either way, only you mark it sent. */
+async function sendOrder(mode = 'send') {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const venId = qv('ord-ven');
   if (!venId) { showFieldErrors({ 'ord-ven': 'Choose a vendor – विक्रेता निवडा' }); return; }
@@ -2036,7 +2040,7 @@ async function sendOrder() {
   if (below && !qv('ord-notes')) { showFieldErrors({ 'ord-notes': `Below the vendor minimum of ${minimum}: add a note why – कारण लिहा` }); return; }
   const id = qv('ord-id') || uid('OR');
   const old = (ev.orders || []).find(x => x.id === id);
-  const phoneOk = !!phoneDigits(ven?.phone);
+  const phoneOk = mode === 'send' && !!phoneDigits(ven?.phone);
   // Opening WhatsApp is not proof the message was sent: a new order is 'opened' (or 'prepared' without a phone),
   // and only you mark it sent, or the vendor's confirmation, moves it on. A menu-change warning stays until then.
   const status = !old || old.status === 'cancelled' ? (phoneOk ? 'opened' : 'prepared') : old.status === 'prepared' && phoneOk ? 'opened' : old.status;
@@ -2060,12 +2064,12 @@ async function sendOrder() {
   const orders = old ? ev.orders.map(x => x.id === id ? o : x) : [...(ev.orders || []), o];
   const patch = { orders };
   if (!ev.outsourced && (takeUp || minimum)) patch.counterPlan = { ...(ev.counterPlan || {}), [o.head]: { ...(takeUp ? { takeUp } : {}), ...(minimum ? { minimum } : {}) } };
-  const saved = await patchEvent(ev.id, patch);
+  if (phoneOk) window.open(`https://wa.me/${phoneDigits(ven.phone)}?text=${encodeURIComponent(o.messages.at(-1).text)}`, '_blank', 'noopener');
+  try { await patchEvent(ev.id, patch); } catch (e) { showToast(e.message || 'Could not save the order. Nothing was changed.', 'error'); return; }
   closeModals();
   refreshCurrent();
-  const phone = phoneDigits(ven?.phone);
-  if (phone) window.open(`https://wa.me/${phone}?text=${encodeURIComponent(o.messages.at(-1).text)}`, '_blank', 'noopener');
-  else showToast(`Order saved. ${ven?.name || 'This vendor'} has no phone number – add it to send on WhatsApp.`, 'error');
+  if (mode === 'save') showToast('Order saved, not sent. Tap its status to send it on WhatsApp. – ऑर्डर जतन, पाठवली नाही');
+  else if (!phoneOk) showToast(`Order saved. ${ven?.name || 'This vendor'} has no phone number – add it to send on WhatsApp.`, 'error');
 }
 
 async function orderAction(orderId) {
@@ -2076,6 +2080,9 @@ async function orderAction(orderId) {
     title: `${short(o.head)}${s ? ` · ${svcLabel(ev, s, all)}` : ''} · ${ven?.name || ''} – ${ORDER_STATUS[o.status].en}`,
     message: orderSteps(o),
     actions: [
+      // Not sent yet: open the saved message in WhatsApp inside this tap (a phone blocks it after an await)
+      ...(['prepared', 'opened'].includes(o.status) && !o.menuChanged && o.messages?.length && phoneDigits(ven?.phone)
+        ? [{ label: 'Send on WhatsApp – पाठवा', style: 'btn-wa', run: () => { window.open(`https://wa.me/${phoneDigits(ven.phone)}?text=${encodeURIComponent(o.messages.at(-1).text)}`, '_blank', 'noopener'); return 'wa'; } }] : []),
       ...(['prepared', 'opened'].includes(o.status) || o.menuChanged ? [{ label: 'I have sent it – पाठवले', value: 'sent', style: 'btn-secondary' }] : []),
       ...(['prepared', 'opened', 'sent'].includes(o.status) || o.menuChanged ? [{ label: 'Vendor confirmed – पक्के', value: 'confirmed', style: 'btn-secondary' }] : []),
       ...(o.status !== 'delivered' ? [{ label: 'Delivered · record bill – आले, बिल नोंदवा', value: 'delivered', style: 'btn-primary' }] : []),
@@ -2088,6 +2095,11 @@ async function orderAction(orderId) {
   });
   if (!next) return;
   if (next === 'edit') { openOrderModal({ orderId }); return; }
+  if (next === 'wa') {   // WhatsApp opened: still not proof it was sent, so it becomes 'opened' until you mark it sent
+    if (o.status === 'prepared') { const at = new Date().toISOString();
+      await patchEvent(ev.id, { orders: ev.orders.map(x => x.id === orderId ? { ...x, status: 'opened', openedAt: at, messages: markOrderMessage(x.messages, 'opened', at) } : x) }); refreshCurrent(); }
+    return;
+  }
   if (next === 'remind') { await remindOrder(ev.id, orderId); return; }
   if (next === 'bill') { orderBill(ev, o); return; }
   if (next === 'history') {
@@ -2892,6 +2904,14 @@ async function switchServiceMeal() {
 }
 async function saveServiceSheet() {
   const ev = D.events.find(e => e.id === curRef); if (!ev || !svcState?.id) return;
+  // Dishes typed in the box but not yet added (Add dishes not tapped) are never dropped by Save: they are added to the
+  // list and the sheet stays open so each can be set to kitchen, bought or a counter before saving (full-event test #4)
+  const pending = parseMenu(q('svc-add').value).map(d => d.name);
+  if (pending.length) {
+    q('svc-add').value = ''; addServiceDishes(pending);
+    showToast(`${pending.length} dish${pending.length > 1 ? 'es' : ''} added. Check kitchen or counter for each, then tap Save. – पदार्थ जोडले, तपासून जतन करा`);
+    return;
+  }
   const st = svcState, lib = st.mode === 'library';
   st.draft = st.draft.map(d => ({ ...d, name: String(d.name).replace(/\s+/g, ' ').trim() })).filter(d => d.name);
   for (const d of st.draft) { const why = dishProblem(d); if (why) { showToast(`${d.name}: ${why} – तपासा`, 'error'); renderServiceSheet(); return; } }
@@ -4336,16 +4356,22 @@ function renderPlanRows() {
   q('plan-rows').innerHTML = planDraft.map((m, i) => `<div data-pm="${i}" style="display:flex;flex-direction:column;gap:var(--s2);padding:var(--s3) 0;border-bottom:1px solid var(--line)">
     <div style="display:flex;gap:var(--s2);align-items:center"><div class="field" style="flex:1;min-width:0;margin:0"><input type="text" data-k="label" aria-label="Milestone name" value="${esc(m.label || '')}" placeholder="e.g. Second payment"></div>
       <button type="button" class="icon-btn" data-pm-del="${i}" aria-label="Remove milestone">${icon('x', 16)}</button></div>
-    <div class="f2" style="margin:0"><div class="field" style="margin:0"><input type="text" data-k="amt" aria-label="Amount in rupees or percent" inputmode="decimal" value="${m.pct != null ? m.pct + '%' : esc(String(m.amt ?? ''))}" placeholder="₹ or % of bill"></div>
-      <div class="field" style="margin:0"><select data-k="when" aria-label="When it is due">${whenOpts.map(([v, l]) => `<option value="${v}"${m.when === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div></div>
-    ${m.when === 'date' ? `<div class="field" style="margin:0"><input type="date" data-k="date" aria-label="Due date" value="${esc(m.date || '')}"></div>` : ['before', 'after'].includes(m.when) ? `<div class="field" style="margin:0"><input type="number" data-k="days" aria-label="Days" min="0" inputmode="numeric" placeholder="Days ${m.when === 'before' ? 'before' : 'after'} the event" value="${m.days ?? ''}"></div>` : ''}
+    <div class="f2" style="margin:0"><div class="field" style="margin:0"><label for="pm-amt-${i}">${planUnit(m) === 'pct' ? tr('% of the bill', 'बिलाचे %') : tr('Amount ₹', 'रक्कम ₹')}</label>
+        <div style="display:flex;gap:var(--s1)"><input type="text" id="pm-amt-${i}" data-k="amt" inputmode="decimal" style="flex:1;min-width:0" value="${esc(planAmtText(m))}" placeholder="${planUnit(m) === 'pct' ? 'e.g. 25' : 'e.g. 50000'}">
+        <select data-k="unit" aria-label="Rupees or percent of the bill" style="width:auto;flex:none"><option value="amt"${planUnit(m) === 'amt' ? ' selected' : ''}>₹</option><option value="pct"${planUnit(m) === 'pct' ? ' selected' : ''}>%</option></select></div></div>
+      <div class="field" style="margin:0"><label for="pm-when-${i}">${tr('When', 'केव्हा')}</label><select id="pm-when-${i}" data-k="when">${whenOpts.map(([v, l]) => `<option value="${v}"${m.when === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div></div>
+    ${m.when === 'date' ? `<div class="field" style="margin:0"><label for="pm-date-${i}">${tr('Due date – tap to pick', 'देय तारीख')}</label><input type="date" id="pm-date-${i}" data-k="date" value="${esc(m.date || '')}"></div>` : ['before', 'after'].includes(m.when) ? `<div class="field" style="margin:0"><label for="pm-days-${i}">${m.when === 'before' ? tr('Days before the event', 'कार्यक्रमाच्या किती दिवस आधी') : tr('Days after the event', 'कार्यक्रमानंतर किती दिवस')}</label><input type="number" id="pm-days-${i}" data-k="days" min="0" inputmode="numeric" placeholder="e.g. 7" value="${m.days ?? ''}"></div>` : ''}
   </div>`).join('');
   updatePlanSum();
 }
+/* A milestone is in rupees or a % of the bill, chosen beside the amount (phone number keyboards have no % key).
+   Typing "25%" still works. What was typed is kept as it is across re-renders (changing "when" or the unit). */
+const planUnit = m => /%\s*$/.test(String(m.amtRaw ?? '')) ? 'pct' : m.unit || (m.pct != null ? 'pct' : 'amt');
+const planAmtText = m => String(m.amtRaw ?? (m.pct != null ? m.pct : m.amt ?? '')).replace(/%\s*$/, '');
 function readPlanRow(m) {
-  const raw = String(m.amtRaw ?? (m.pct != null ? m.pct + '%' : m.amt ?? '')).trim();
+  const raw = planAmtText(m).trim();
   const out = { id: m.id, label: (m.label || '').trim(), when: m.when };
-  if (/%$/.test(raw)) out.pct = Number(raw.slice(0, -1)); else out.amt = raw === '' ? NaN : Number(raw);
+  if (planUnit(m) === 'pct') out.pct = raw === '' ? NaN : Number(raw); else out.amt = raw === '' ? NaN : Number(raw);
   if (m.when === 'date') out.date = m.date || '';
   if (['before', 'after'].includes(m.when)) out.days = m.days === '' || m.days == null ? NaN : Math.floor(Number(m.days));
   if (!out.label) delete out.label;
@@ -4354,13 +4380,13 @@ function readPlanRow(m) {
 function updatePlanSum() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const rows = planDraft.map(readPlanRow);
-  const total = rows.reduce((s, r) => s + (r.pct != null ? Math.round(toPaise(ev.billing) * r.pct / 100) : toPaise(r.amt || 0)), 0) / 100;
+  const total = rows.reduce((s, r) => s + (r.pct != null ? Math.round(toPaise(ev.billing) * (r.pct || 0) / 100) : toPaise(r.amt || 0)), 0) / 100;
   const diff = Math.round(ev.billing * 100) / 100 - total;
   q('plan-sum').textContent = `Bill ${fmtCurrency(ev.billing)} · scheduled ${fmtCurrency(total)}` + (diff > 0 ? ` · ${fmtCurrency(diff)} left as balance after the event` : diff < 0 ? ` · ${fmtCurrency(-diff)} more than the bill` : ' · all of the bill');
 }
 async function savePlan() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
-  const rows = planDraft.map(readPlanRow).filter(r => !(r.pct == null && Number.isNaN(r.amt) && !r.label));
+  const rows = planDraft.map(readPlanRow).filter(r => !(Number.isNaN(r.pct ?? r.amt) && !r.label));
   for (const r of rows) {
     const bad = r.pct != null ? !(r.pct > 0 && r.pct <= 100) : !(r.amt > 0) || Math.abs(r.amt * 100 - Math.round(r.amt * 100)) > .001;
     if (bad || (r.when === 'date' && !r.date) || (['before', 'after'].includes(r.when) && !(r.days >= 0))) {
@@ -6144,7 +6170,8 @@ function bindAllEvents() {
     const b = e.target.closest('[data-lab-del]'); if (!b) return;
     labRows.splice(Number(b.dataset.labDel), 1); renderLabRows();
   });
-  q('btn-send-ord').addEventListener('click', () => runSave('order', sendOrder));
+  q('btn-send-ord').addEventListener('click', () => runSave('order', () => sendOrder('send')));
+  q('btn-save-ord').addEventListener('click', () => runSave('order', () => sendOrder('save')));
   q('btn-send-buy').addEventListener('click', () => runSave('purchase', sendBuy));
   q('btn-cancel-buy').addEventListener('click', cancelBuyFromSheet);
   q('btn-cancel-ord').addEventListener('click', () => runSave('order', cancelOrderFromSheet));
@@ -6273,8 +6300,9 @@ function bindAllEvents() {
   }));
   q('plan-rows').addEventListener('input', e => { const row = e.target.closest('[data-pm]'), k = e.target.dataset.k; if (!row || !k) return;
     const m = planDraft[Number(row.dataset.pm)]; if (k === 'amt') m.amtRaw = e.target.value; else m[k] = e.target.value; updatePlanSum(); });
-  q('plan-rows').addEventListener('change', e => { const row = e.target.closest('[data-pm]'); if (!row || e.target.dataset.k !== 'when') return;
-    const m = planDraft[Number(row.dataset.pm)]; m.amtRaw = row.querySelector('[data-k="amt"]').value; m.when = e.target.value; renderPlanRows(); });
+  q('plan-rows').addEventListener('change', e => { const row = e.target.closest('[data-pm]'), k = e.target.dataset.k; if (!row || !['when', 'unit'].includes(k)) return;
+    const m = planDraft[Number(row.dataset.pm)]; m.amtRaw = row.querySelector('[data-k="amt"]').value; m[k] = e.target.value; renderPlanRows();
+    q('plan-rows').querySelector(`[data-pm="${row.dataset.pm}"] [data-k="${k}"]`)?.focus(); });
   q('plan-rows').addEventListener('click', e => { const b = e.target.closest('[data-pm-del]'); if (!b) return; planDraft.splice(Number(b.dataset.pmDel), 1); renderPlanRows(); });
   q('btn-plan-add').addEventListener('click', () => { planDraft.push({ id: uid('PM'), label: '', when: 'date', amt: '' }); renderPlanRows(); });
   q('btn-save-plan').addEventListener('click', savePlan);
@@ -6287,7 +6315,9 @@ function bindAllEvents() {
   q('btn-split-add').addEventListener('click', () => { splitDraft.rows.push({ evId: '', amt: '' }); renderSplitRows(); });
   q('btn-split-equal').addEventListener('click', () => { const parts = equalSplit(splitDraft.total, splitDraft.rows.length); splitDraft.rows.forEach((r, i) => { r.amt = parts[i]; }); renderSplitRows(); });
   q('btn-save-split').addEventListener('click', saveSplit);
-  for (const id of ['ord-takeup', 'ord-min', 'ord-plates']) q(id).addEventListener('input', updateCounterPlan);
+  for (const id of ['ord-takeup', 'ord-min']) q(id).addEventListener('input', updateCounterPlan);
+  // Plates typed by hand are the owner's: never refilled from the plan, even while the box is emptied to retype it
+  q('ord-plates').addEventListener('input', () => { ordAuto = null; updateCounterPlan(); });
   q('ev-type').addEventListener('change', syncEvTypeFields);
   q('ev-vtype').addEventListener('change', () => { syncEvTypeFields(); updateVenueHint(); });
   q('ev-venue').addEventListener('change', updateVenueHint);
