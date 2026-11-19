@@ -45,15 +45,16 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [],
     const price = t.find(s => s.kind === 'price'); assert.deepEqual([price.perPlate, price.margin], [950, 19]);
   });
 
-  await test('the selling price leaves out events whose bill was waived or discounted at settlement; their costs still count', async () => {
+  await test('the selling price leaves out events whose bill was waived, discounted or written off at settlement; their costs still count', async () => {
     const r = await p.evaluate(async () => { const u = await import('./utils.js'); const d = await (await import('./db.js')).exportAllData();
       const T = d.events.find(e => e.id === 'T'), at = new Date().toISOString();
       const run = (id, change) => { const events = d.events.map(e => { if (e.id !== id) return e;
           const c = { ...e, billing: change.to, billChanges: [change] }; return { ...c, ...u.reconcileFields(c, d.expenses, ['bills', 'shared', 'final']) }; });
         const t = u.pastSuggestions(T, events, d.expenses); return { cost: t.find(s => s.kind === 'cost'), price: t.find(s => s.kind === 'price') }; };
       return { waived: run('E1', { kind: 'waiver', from: 300000, to: 0, at }), discounted: run('E1', { kind: 'discount', from: 300000, to: 150000, at }),
+        writtenoff: run('E1', { kind: 'writeoff', from: 300000, to: 200000, at }),
         corrected: run('E1', { from: 300000, to: 330000, at }) }; });
-    for (const k of ['waived', 'discounted']) {
+    for (const k of ['waived', 'discounted', 'writtenoff']) {
       assert.equal(r[k].price, undefined, `${k}: one event sold at its price is not enough for a price suggestion`);
       assert.deepEqual([r[k].cost.perPlate, r[k].cost.src.n], [763, 2], `${k}: the cost still learns from both events`);
     }
