@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.31.7';
+const APP_BUILD = '4.31.10';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1245,7 +1245,7 @@ async function showEvDetail(id, { fromHistory = false } = {}) {
     ${ev.notes ? `<div class="card pad"><div class="label">Notes – नोंदी</div><div class="notes-text" data-nl>${esc(ev.notes)}</div></div>` : ''}
 
     ${mealMenuCard(ev)}
-    ${menu && !MEAL_ORDER.some(m => ev.mealPlan?.[m]?.menu) ? `<details class="card pad"><summary class="label" style="cursor:pointer">${tr(`${menu.name} menu · ${menu.items.length} items`, `${menu.name} मेनू · ${menu.items.length}`)}</summary>
+    ${menu && !MEAL_ORDER.some(m => ev.mealPlan?.[m]?.menu) ? `<details class="card pad"><summary class="label" style="cursor:pointer">${tr(`${esc(menu.name)} menu · ${menu.items.length} items`, `${esc(menu.name)} मेनू · ${menu.items.length}`)}</summary>
       <ul class="notes-text" data-nl style="margin:var(--s2) 0 0;padding-left:1.2em">${menu.items.map(i => `<li>${esc(i)}</li>`).join('')}</ul></details>` : ''}
 
     ${menuOrdersCard(ev)}
@@ -2533,9 +2533,9 @@ function mealMenuCard(ev) {
     const own = s.dishes.filter(d => !d.shared);
     const facts = [s.date ? fmtDate(s.date) : '', s.time || '', s.guests ? `${s.guests} guests` : '', s.rate ? `${fmtCurrency(s.rate)} / plate` : ''].filter(Boolean).join(' · ');
     const tplLine = s.fromTemplate
-      ? `<div class="svc-from"><div class="meta">${tr(`From ${s.template.name} menu · ${own.length} dishes · not confirmed yet`, `${s.template.name} मेनू · ${own.length} पदार्थ · अजून पक्के नाही`)}</div>
+      ? `<div class="svc-from"><div class="meta">${tr(`From ${esc(s.template.name)} menu · ${own.length} dishes · not confirmed yet`, `${esc(s.template.name)} मेनू · ${own.length} पदार्थ · अजून पक्के नाही`)}</div>
           <button type="button" class="btn-sm" data-action="svc-use" data-id="${esc(s.id)}">${icon('check', 16)}${tr('Use these dishes', 'हे पदार्थ घ्या')}</button></div>`
-      : s.template ? `<div class="meta svc-tpl">${tr(`Started from ${s.template.name} menu`, `${s.template.name} मेनूवरून`)}</div>` : '';
+      : s.template ? `<div class="meta svc-tpl">${tr(`Started from ${esc(s.template.name)} menu`, `${esc(s.template.name)} मेनूवरून`)}</div>` : '';
     return `<div class="card pad svc-card" data-svc="${esc(s.id)}" data-meal-menu="${esc(s.meal)}">
       <div class="svc-h"><div class="svc-t"><div class="title-sm">${esc(svcTitle(s, services))}</div>${facts ? `<div class="meta" data-nl>${esc(facts)}</div>` : ''}</div>
         <button type="button" class="btn-sm" data-action="svc-edit" data-id="${esc(s.id)}" aria-label="Edit ${esc(svcTitle(s, services))} menu">${icon('pencil', 16)}${tr('Edit', 'बदला')}</button></div>
@@ -2962,7 +2962,7 @@ function srcLine(src) {
 function pastCard(ev) {
   if (reconStatus(ev, D.expenses).state === 'reconciled') return '';
   const list = pastSuggestions(ev, D.events, D.expenses); if (!list.length) return '';
-  const g = eventGuests(ev), basisText = s => s.basis === 'menu' ? `on the ${menuById(ev.menu)?.name || 'same'} menu` : `of this type (${esc(short(ev.type))})`;
+  const g = eventGuests(ev), basisText = s => s.basis === 'menu' ? `on the ${esc(menuById(ev.menu)?.name || 'same')} menu` : `of this type (${esc(short(ev.type))})`;
   const row = (s, body, action = '') => `<div class="tip" data-tip="${esc(s.key)}"><div class="tip-body">${body}${s.src ? `<div class="meta">${srcLine(s.src)}</div>` : ''}</div>
     <div class="tip-act">${action}<button type="button" class="icon-btn" data-tip-ignore="${esc(s.key)}" aria-label="Ignore this suggestion">${icon('x', 16)}</button></div></div>`;
   const rows = list.map(s => {
@@ -3527,7 +3527,7 @@ async function reopenRecon() {
 function costVsUsualCard(ev) {
   const cmp = costVsUsual(ev, D.events, costByCategory(D.events, D.expenses), reconciledIds(D.events, D.expenses));
   if (!cmp) return '';
-  const basis = cmp.basis === 'menu' ? (menuById(ev.menu)?.name || 'menu') : (ev.type || '').split(' – ')[0];
+  const basis = esc(cmp.basis === 'menu' ? (menuById(ev.menu)?.name || 'menu') : (ev.type || '').split(' – ')[0]);   // typed names are text, not markup
   return `
     <div class="sec"><span class="sec-title">Cost vs usual – नेहमीच्या तुलनेत</span><span class="meta">${tr(`per plate · ${basis}, ${cmp.n} event${cmp.n > 1 ? 's' : ''}`, `प्रति ताट · ${cmp.n} कार्यक्रम`)}</span></div>
     <div class="card list" id="cost-vs-usual">${cmp.rows.map(r => `
@@ -4137,7 +4137,7 @@ function populateSelect(id, options, selected = '') {
    the field), the first one in the form gets focus, and a message goes away as soon as its field is edited. The rules
    themselves stay in each save function. A message slot written into the page (e.g. #me-slabs-err) is filled and
    hidden again rather than created and removed. */
-const shownErrors = [];   // { box: element whose edits clear it, ctrl: the field, msg: the message element, made }
+const shownErrors = [];   // { box: element whose edits clear it, only: which fields in it count (data-ctrl), ctrl: the field, msg: the message element, made }
 // A message slot names its own fields (data-ctrl): the first of them without a usable value (empty, 0 or less) is the
 // one to fix — e.g. the menu price slot points at the rate boxes, never at the valid 'From guests' box beside them.
 const errCtrl = el => {
@@ -4178,7 +4178,7 @@ function showFieldErrors(errors) {
     err.textContent = msg;
     const ctrl = errCtrl(inp);
     if (ctrl) { ctrl.classList.add('error'); ctrl.setAttribute('aria-invalid', 'true'); linkDescribedBy(ctrl, err.id, true); }
-    shownErrors.push({ box: made ? inp : (inp.closest('.field') || inp), ctrl, msg: err, made });
+    shownErrors.push({ box: made ? inp : (inp.closest('.field') || inp), only: made ? '' : (inp.dataset.ctrl || ''), ctrl, msg: err, made });
   }
   // the first error in the form's order, not the order the rules ran in
   const first = shownErrors.filter(e => e.ctrl?.isConnected)
@@ -4187,11 +4187,13 @@ function showFieldErrors(errors) {
   (first?.msg || shownErrors[0]?.msg)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   syncRequired();
 }
-// Editing a field takes its message away (the rules run again on the next save)
+// Editing a field takes its message away (the rules run again on the next save). A slot that names its fields
+// (data-ctrl) goes away only when one of those is edited: changing 'From guests' leaves a price of 0 marked.
 function onFieldEdited(e) {
   for (let i = shownErrors.length - 1; i >= 0; i--) {
     const err = shownErrors[i];
-    if (err.box === e.target || err.box.contains(e.target)) { dropFieldError(err); shownErrors.splice(i, 1); }
+    const inBox = err.box === e.target || err.box.contains(e.target);
+    if (inBox && (!err.only || e.target.matches?.(err.only))) { dropFieldError(err); shownErrors.splice(i, 1); }
   }
 }
 

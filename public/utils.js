@@ -1055,21 +1055,32 @@ export function pastSuggestions(ev, events, expenses) {
   let basis = 'menu', comps = ev.menu ? pool.filter(e => e.menu === ev.menu && sized(e)) : [];
   if (comps.length < 2) { basis = 'type'; comps = pool.filter(e => e.type === ev.type && sized(e)); }
   if (comps.length >= 2) {
-    const cpp = comps.map(e => costOf(e.id) / eventGuests(e)), bpp = comps.map(e => Number(e.billing) / eventGuests(e));
-    const margins = comps.filter(e => e.billing > 0).map(e => (e.billing - costOf(e.id)) / e.billing * 100);
+    const cpp = comps.map(e => costOf(e.id) / eventGuests(e));
     const perPlate = Math.round(median(cpp));
     out.push({ key: 'cost', kind: 'cost', basis, perPlate, total: guests ? perPlate * guests : 0, src: sources(comps) });
-    out.push({ key: 'price', kind: 'price', basis, perPlate: Math.round(median(bpp)), margin: margins.length ? Math.round(median(margins)) : null, src: sources(comps) });
+    // The selling price learns only from events sold at their price: a bill lowered at settlement by a waiver or an
+    // agreed discount is not what the event sells for (owner's rule, 19 Nov audit). Their costs above still count.
+    const sold = comps.filter(e => !(e.billChanges || []).some(c => c.kind === 'waiver' || c.kind === 'discount'));
+    if (sold.length >= 2) {
+      const bpp = sold.map(e => Number(e.billing) / eventGuests(e));
+      const margins = sold.filter(e => e.billing > 0).map(e => (e.billing - costOf(e.id)) / e.billing * 100);
+      out.push({ key: 'price', kind: 'price', basis, perPlate: Math.round(median(bpp)), margin: margins.length ? Math.round(median(margins)) : null, src: sources(sold) });
+    }
   } else out.push({ key: 'cost', kind: 'insufficient', basis: ev.menu ? 'menu' : 'type', n: comps.length });
   // 3: who usually does each counter on this event, and what they charged per plate ordered
   const heads = [...new Set([...(ev.dishes || []).map(d => d.head), ...(ev.orders || []).map(o => o.head)].filter(Boolean))];
   for (const h of heads) {
     const uses = new Map();
-    for (const e of pool) for (const x of expenses) {
-      if (x.evId !== e.id || x.head !== h || !x.venId || x.draft) continue;
-      const plates = (e.orders || []).filter(o => o.head === h && o.venId === x.venId && o.status !== 'cancelled').reduce((s, o) => s + (Number(o.plates) || 0), 0);
-      const u = uses.get(x.venId) || { venId: x.venId, events: new Map(), rates: [] };
-      u.events.set(e.id, e); if (plates > 0) u.rates.push(Number(x.amt) / plates); uses.set(x.venId, u);
+    // A vendor's bills for one counter on one event are added up before dividing by the plates: two bills of ₹6,000
+    // and ₹4,000 for 100 plates are ₹100 a plate, not ₹50 (19 Nov audit).
+    for (const e of pool) {
+      const billed = new Map();
+      for (const x of expenses) if (x.evId === e.id && x.head === h && x.venId && !x.draft) billed.set(x.venId, (billed.get(x.venId) || 0) + toPaise(x.amt));
+      for (const [venId, amtP] of billed) {
+        const plates = (e.orders || []).filter(o => o.head === h && o.venId === venId && o.status !== 'cancelled').reduce((s, o) => s + (Number(o.plates) || 0), 0);
+        const u = uses.get(venId) || { venId, events: new Map(), rates: [] };
+        u.events.set(e.id, e); if (plates > 0) u.rates.push(amtP / 100 / plates); uses.set(venId, u);
+      }
     }
     const best = [...uses.values()].sort((a, b) => b.events.size - a.events.size || [...b.events.values()].map(e => e.date).sort().at(-1).localeCompare([...a.events.values()].map(e => e.date).sort().at(-1)))[0];
     if (best) out.push({ key: 'counter:' + h, kind: 'counter', head: h, venId: best.venId, perPlate: best.rates.length ? Math.round(median(best.rates)) : null, src: sources([...best.events.values()]) });
