@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.31.7';
+const APP_BUILD = '4.31.8';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -4050,23 +4050,28 @@ function sheetState(id) {
     : `${el.getAttribute('aria-pressed') ?? ''}|${el.dataset.value ?? ''}`));
 }
 
-/* A dropdown can't wrap its text, so a long chosen name (vendor, event) would be cut off. When it doesn't fit,
-   its text is made a little smaller, never below 13px; only beyond that does it end with "…". */
+/* A dropdown can't wrap its text, so a long chosen name (vendor, event) is cut off at the box's edge. Its text keeps
+   the normal 16px size; when the chosen name doesn't fit, it is written out in full on a line under the box (only
+   then, so short names change nothing). A screen reader already reads the full name from the dropdown, so that line
+   is hidden from it. */
 let fitCanvas = null;
 function fitSelects(root = document) {
   fitCanvas ||= document.createElement('canvas').getContext('2d');
-  for (const sel of root.querySelectorAll('.field select')) {
-    sel.style.fontSize = '';
+  for (const sel of root.querySelectorAll('.field > select')) {
     const text = sel.selectedOptions[0]?.text || '', cs = getComputedStyle(sel);
     const room = sel.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-    if (!text || room <= 0) continue;
-    let size = parseFloat(cs.fontSize);
-    const width = px => { fitCanvas.font = `${cs.fontWeight} ${px}px ${cs.fontFamily}`; return fitCanvas.measureText(text).width; };
-    while (size > 13 && width(size) > room) size -= 0.5;
-    if (size < parseFloat(cs.fontSize)) sel.style.fontSize = size + 'px';
+    fitCanvas.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    const cut = !!text && room > 0 && fitCanvas.measureText(text).width > room;
+    let full = sel.nextElementSibling?.classList.contains('sel-full') ? sel.nextElementSibling : null;
+    if (!cut) { full?.remove(); continue; }
+    if (!full) { full = document.createElement('div'); full.className = 'sel-full'; full.setAttribute('aria-hidden', 'true'); sel.after(full); }
+    full.textContent = text;
   }
 }
-document.addEventListener('change', e => { if (e.target.matches?.('.field select')) fitSelects(e.target.closest('.field')); });
+document.addEventListener('change', e => { if (e.target.matches?.('.field > select')) fitSelects(e.target.closest('.field')); });
+// a turned phone or a resized window changes the room each dropdown has
+let fitQueued = 0;
+addEventListener('resize', () => { cancelAnimationFrame(fitQueued); fitQueued = requestAnimationFrame(() => document.querySelectorAll('.modal-ov.active').forEach(el => fitSelects(el))); });
 // Quote editor: typing updates the working draft and its total; version chips and line buttons
 function quoteInput(e) {
   if (!quoteDraft) return;
