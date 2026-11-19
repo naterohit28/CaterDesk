@@ -21,6 +21,17 @@ async function preserveOpenReleases() {
     if (!await pinnedRelease(client.id)) await pinRelease(client.id, oldReleases[0] || CACHE_NAME);
   }
 }
+// Old release caches are kept only while an open tab still uses one; the rest are deleted, with the pins of tabs
+// that have closed. Business records (IndexedDB) are never touched (19 Nov audit: caches piled up on the phone).
+async function pruneOldReleases() {
+  const open = new Set((await self.clients.matchAll({ type: 'window', includeUncontrolled: true })).map(c => c.id));
+  const pins = await caches.open(CLIENT_RELEASES), keep = new Set([CACHE_NAME]);
+  for (const req of await pins.keys()) {
+    const id = decodeURIComponent(new URL(req.url).pathname.split('/__client_release__/')[1] || '');
+    if (open.has(id)) keep.add(await (await pins.match(req)).text()); else await pins.delete(req);
+  }
+  for (const k of await caches.keys()) if (/^flavor-fusion-v2-cache-v\d+$/.test(k) && !keep.has(k)) await caches.delete(k);
+}
 self.addEventListener('install', e => {
   e.waitUntil((async () => {
     await (await caches.open(CACHE_NAME)).addAll(PRECACHE.map(url => new Request(url, { cache: 'reload' })));
@@ -31,7 +42,8 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil((async () => {
     await preserveOpenReleases();
-    // Old release caches remain available to open tabs; business storage is untouched.
+    // Old release caches stay available to tabs still open on them; business storage is untouched.
+    await pruneOldReleases();
     await self.clients.claim();
   })());
 });
