@@ -1058,9 +1058,10 @@ export function pastSuggestions(ev, events, expenses) {
     const cpp = comps.map(e => costOf(e.id) / eventGuests(e));
     const perPlate = Math.round(median(cpp));
     out.push({ key: 'cost', kind: 'cost', basis, perPlate, total: guests ? perPlate * guests : 0, src: sources(comps) });
-    // The selling price learns only from events sold at their price: a bill lowered at settlement by a waiver or an
-    // agreed discount is not what the event sells for (owner's rule, 19 Nov audit). Their costs above still count.
-    const sold = comps.filter(e => !(e.billChanges || []).some(c => c.kind === 'waiver' || c.kind === 'discount'));
+    // The selling price learns only from events sold at their price: a bill lowered at settlement by a waiver, an
+    // agreed discount or a write-off is not what the event sells for (owner's rule, 19 Nov audit). Their costs above
+    // still count. A discount written into the quote is part of the agreed price, so that event still counts.
+    const sold = comps.filter(e => !(e.billChanges || []).some(c => SETTLE_KINDS[c.kind]));
     if (sold.length >= 2) {
       const bpp = sold.map(e => Number(e.billing) / eventGuests(e));
       const margins = sold.filter(e => e.billing > 0).map(e => (e.billing - costOf(e.id)) / e.billing * 100);
