@@ -317,6 +317,9 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
   font-size: var(--fs-sm); font-weight: 600; display: inline-flex; align-items: center; gap: 6px; position: relative;
 }
 .f-chip::before { content: ''; position: absolute; inset: -4px 0; }
+/* Usual-vendor picks: a long vendor name wraps inside its chip instead of running off its edge */
+#exp-ven-quick { flex-wrap: wrap; overflow: visible; }
+#exp-ven-quick .f-chip { flex-shrink: 1; min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; text-align: start; padding-block: 6px; }
 .f-chip[aria-pressed="true"] { background: var(--text); border-color: var(--text); color: var(--bg); }
 .f-chip .n { font-weight: 500; }
 

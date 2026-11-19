@@ -45,6 +45,32 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [],
     const price = t.find(s => s.kind === 'price'); assert.deepEqual([price.perPlate, price.margin], [950, 19]);
   });
 
+  await test('the selling price leaves out events whose bill was waived or discounted at settlement; their costs still count', async () => {
+    const r = await p.evaluate(async () => { const u = await import('./utils.js'); const d = await (await import('./db.js')).exportAllData();
+      const T = d.events.find(e => e.id === 'T'), at = new Date().toISOString();
+      const run = (id, change) => { const events = d.events.map(e => { if (e.id !== id) return e;
+          const c = { ...e, billing: change.to, billChanges: [change] }; return { ...c, ...u.reconcileFields(c, d.expenses, ['bills', 'shared', 'final']) }; });
+        const t = u.pastSuggestions(T, events, d.expenses); return { cost: t.find(s => s.kind === 'cost'), price: t.find(s => s.kind === 'price') }; };
+      return { waived: run('E1', { kind: 'waiver', from: 300000, to: 0, at }), discounted: run('E1', { kind: 'discount', from: 300000, to: 150000, at }),
+        corrected: run('E1', { from: 300000, to: 330000, at }) }; });
+    for (const k of ['waived', 'discounted']) {
+      assert.equal(r[k].price, undefined, `${k}: one event sold at its price is not enough for a price suggestion`);
+      assert.deepEqual([r[k].cost.perPlate, r[k].cost.src.n], [763, 2], `${k}: the cost still learns from both events`);
+    }
+    assert.deepEqual([r.corrected.price.perPlate, r.corrected.price.src.n], [1000, 2], 'a plain bill correction is still a selling price');
+  });
+
+  await test('a counter billed in two parts on one event is one rate per plate (₹6,000 + ₹4,000 for 100 plates = ₹100)', async () => {
+    const r = await p.evaluate(async () => { const u = await import('./utils.js'); const d = await (await import('./db.js')).exportAllData();
+      const T = d.events.find(e => e.id === 'T');
+      // E1's dosa bill (₹30,000 for 250 plates = ₹120) split into ₹18,000 + ₹12,000; E2 stays ₹52,000 for 400 = ₹130
+      const expenses = d.expenses.filter(x => x.id !== 'a2').concat(
+        { ...d.expenses.find(x => x.id === 'a2'), id: 'a2a', amt: 18000 }, { ...d.expenses.find(x => x.id === 'a2'), id: 'a2b', amt: 12000 });
+      const events = d.events.map(e => ['E1', 'E2'].includes(e.id) ? { ...e, ...u.reconcileFields(e, expenses, ['bills', 'shared', 'final']) } : e);
+      return u.pastSuggestions(T, events, expenses).find(s => s.kind === 'counter'); });
+    assert.deepEqual([r.venId, r.perPlate, r.src.n], ['vd', 125, 2], 'same ₹125 middle value as with one bill each (₹120 and ₹130)');
+  });
+
   await test('vendor per counter, latest labour rates, and charges at the same venue – each with its sources', async () => {
     const t = await tips('T');
     const c = t.find(s => s.kind === 'counter'); assert.deepEqual([c.head, c.venId, c.perPlate, c.src.n], ['Dosa – डोसा', 'vd', 125, 2]);
