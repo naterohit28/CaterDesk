@@ -69,6 +69,22 @@ const VEN_MR = 'नमुना श्री गणेश किराणा आ
     await ctx.close();
   });
 
+  await test('tapping a usual-vendor chip updates the full-name line, so it always names the vendor that will be saved (Codex on #83)', async () => {
+    const { ctx, p } = await open();
+    await p.locator('#exp-cats [data-cat="Raw Material"]').click(); await p.waitForTimeout(150);
+    await p.locator('#exp-ven-quick [data-ven="v1"]').waitFor();
+    await pick(p, 'exp-vendor', 'v2'); assert.equal((await state(p, 'exp-vendor')).full, VEN_EN);
+    await p.locator('#exp-ven-quick [data-ven="v1"]').click(); await p.waitForTimeout(150);
+    assert.equal(await p.locator('#exp-vendor').inputValue(), 'v1');
+    assert.equal((await state(p, 'exp-vendor')).full, null, 'a short vendor chosen by chip: the long name is gone');
+    await p.locator('#exp-ven-quick [data-ven="v2"]').click(); await p.waitForTimeout(150);
+    assert.equal((await state(p, 'exp-vendor')).full, VEN_EN, 'the long vendor chosen by chip: its name is shown');
+    await p.locator('#exp-ven-quick [data-ven="v2"]').click(); await p.waitForTimeout(150);
+    assert.equal(await p.locator('#exp-vendor').inputValue(), '');
+    assert.equal((await state(p, 'exp-vendor')).full, null, 'cleared by tapping the chip again: no name left behind');
+    await ctx.close();
+  });
+
   await test('reopening the sheet with a long name already chosen shows it in full', async () => {
     const { ctx, p } = await open();
     await pick(p, 'exp-ev', 'e3');

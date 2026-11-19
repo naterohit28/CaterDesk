@@ -6094,6 +6094,7 @@ function bindAllEvents() {
     sel.value = sel.value === b.dataset.ven ? '' : b.dataset.ven;
     sel.dataset.prev = sel.value;
     renderVendorQuick();
+    fitSelects(sel.closest('.field'));   // the full-name line under the picker follows the chip (Codex on #83)
   });
   q('exp-vendor').addEventListener('change', e => {
     const v = e.target.value;
