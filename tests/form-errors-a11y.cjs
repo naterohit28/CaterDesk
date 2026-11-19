@@ -139,6 +139,16 @@ const assert = require('node:assert/strict');
     await p.locator('#me-slabs [data-ms="0"] [data-k="rate"]').fill('300');
     assert.equal(await msg.isVisible(), false, 'typing a price clears it');
     assert.equal(await p.locator('#me-slabs-err').count(), 1, 'the message slot stays in the page for next time');
+    // a price of 0 (refused like an empty one) next to a filled "From guests": the price box is the one to fix (Codex on #78)
+    const min = p.locator('#me-slabs [data-ms="0"] [data-k="min"]'), rate = p.locator('#me-slabs [data-ms="0"] [data-k="rate"]');
+    await min.fill('50'); await rate.fill('0');
+    await p.locator('#btn-me-save').click(); await p.waitForTimeout(250);
+    assert.equal(await msg.isVisible(), true, 'a price of 0 is refused as before');
+    assert.equal(await rate.evaluate(el => document.activeElement === el), true, 'focus on the price box');
+    assert.equal(await rate.getAttribute('aria-invalid'), 'true');
+    assert.match(await rate.getAttribute('aria-describedby') || '', /me-slabs-err/);
+    assert.equal(await min.getAttribute('aria-invalid'), null, 'the valid "From guests" box is not marked');
+    assert.doesNotMatch(await min.getAttribute('aria-describedby') || '', /me-slabs-err/);
     await ctx.close();
   });
 

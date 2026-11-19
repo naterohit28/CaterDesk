@@ -1,5 +1,5 @@
 // Menu names are text: a library menu name that looks like HTML is shown exactly as typed on the event page, in English,
-// Marathi and both, and never becomes page markup. Before 4.31.7 five places put the name in unescaped: the meal card's
+// Marathi and both, and never becomes page markup. Before 4.31.8 five places put the name in unescaped: the meal card's
 // "From … menu" and "Started from … menu" lines, the older single-menu summary, the past-events basis and "Cost vs
 // usual". Found by the independent audit of 19 Nov (finding 1). 360px. Synthetic data only.
 const BASE_URL = process.env.TEST_BASE_URL; if (!BASE_URL || !/^http:\/\/127\.0\.0\.1:\d+$/.test(BASE_URL)) throw new Error('Use npm test to run against the isolated local test server.');
