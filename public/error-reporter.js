@@ -3,7 +3,7 @@
 // error type, app file name, line, column, release and a browser family. Never sent: error messages, stacks,
 // page paths, full browser strings, times or any business record (D-2).
 (function () {
-  const RELEASE = '4.31.6';
+  const RELEASE = '4.31.7';
   const ENDPOINT = '/api/client-error';
   const MAX_PER_SESSION = 10;
   if (window.caterDeskErrorReporter) return;
