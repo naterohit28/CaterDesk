@@ -1416,8 +1416,10 @@ export const PERIODS = {
 export const PERIOD_SHORT = { month: 'Month – महिना', '3m': '3 months – ३ महिने', fy: 'FY – आर्थिक वर्ष', all: 'All time – सर्व' };
 
 // Start date (YYYY-MM-DD) of a period, or '' for all time. FY runs April–March.
+// Both read the local clock directly: new Date('YYYY-MM-DD') is UTC midnight, which is the previous day (and so the
+// previous month on the 1st) in any time zone behind UTC.
 export function periodStart(period) {
-  const d = new Date(today());
+  const d = new Date();
   const y = d.getFullYear(), m = d.getMonth();
   const iso = (yy, mm) => `${yy}-${String(mm + 1).padStart(2, '0')}-01`;
   if (period === 'month') return iso(y, m);
@@ -1428,7 +1430,7 @@ export function periodStart(period) {
 // The first day after the period (exclusive end): next month for "This month" and "3 months", 1 April for "This FY".
 // Without it, an event booked for a later month or year counted in this period's totals.
 export function periodEnd(period) {
-  const d = new Date(today());
+  const d = new Date();
   const y = d.getFullYear(), m = d.getMonth();
   const iso = (yy, mm) => `${yy}-${String(mm + 1).padStart(2, '0')}-01`;
   if (period === 'month' || period === '3m') { const e = new Date(y, m + 1, 1); return iso(e.getFullYear(), e.getMonth()); }

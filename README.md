@@ -336,7 +336,7 @@ This is a short source-feature history, not a list of available binary downloads
 
 | Version | Main changes |
 | --- | --- |
-| 4.31.4 | **Fix:** *This month*, *3 months* and *This FY* on Home and Reports now end where they say: an event booked for a later month or year (with its payments and costs) no longer counts in this period's billed, collected, cost and margin figures. *All time* is unchanged. |
+| 4.31.4 | **Fix:** *This month*, *3 months* and *This FY* on Home and Reports now end where they say: an event booked for a later month or year (with its payments and costs) no longer counts in this period's billed, collected, cost and margin figures. The period also starts on the right month on the 1st in time zones behind UTC. *All time* is unchanged. |
 | 4.31.3 | **Fix:** the menu approval line on an event (*Approved v1 · date · written*) showed raw code with both English and Marathi (`<span class="t-en">…`) instead of the chosen language. It now shows only the chosen language; the name of whoever approved is still shown exactly as typed. |
 | 4.31.2 | A new or edited event with unsaved changes asks **Keep editing / Discard changes** before it closes, whether by Back, the close button, a tap outside the sheet or Escape. An unchanged form closes as before; Save closes normally, and a failed save keeps what was typed. |
 | 4.31.1 | Dates and times shown in the phone's own time everywhere: entries saved between midnight and 05:30 in India no longer show the previous day or a UTC clock time (order messages and reminders, payment and settlement history, reconciliation, quotes, backup age, restore preview, backup file names). Nothing saved changes. |

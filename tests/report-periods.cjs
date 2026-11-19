@@ -17,7 +17,7 @@ const assert = require('node:assert/strict');
   // Dates around today's edges, worked out in the page (its own clock and time zone)
   const E = await p.evaluate(async () => {
     const u = await import('./utils.js');
-    const d = new Date(u.today()), y = d.getFullYear(), m = d.getMonth();
+    const d = new Date(), y = d.getFullYear(), m = d.getMonth();
     const day = (yy, mm, dd) => u.localDay(new Date(yy, mm, dd));
     const fyStartY = m >= 3 ? y : y - 1;
     return {
@@ -65,6 +65,26 @@ const assert = require('node:assert/strict');
     const sub = await p.locator('.hero-sub').innerText();
     assert.match(sub, new RegExp(`· ${n} event${n > 1 ? 's' : ''}`), `Home counts ${n} events this month: ${sub}`);
   });
+
+  // Behind UTC, on the first day of a month or FY (Codex on #76): the period must still be this month, not last month
+  for (const [when, start, end, fyStart, fyEnd] of [
+    ['2026-11-01T10:00:00-04:00', '2026-11-01', '2026-12-01', '2026-04-01', '2027-04-01'],
+    ['2027-04-01T09:00:00-04:00', '2027-04-01', '2027-05-01', '2027-04-01', '2028-04-01']]) {
+    await test(`New York, ${when.slice(0, 10)}: this month and this FY start today`, async () => {
+      const c = await browser.newContext({ ...devices['Pixel 5'], viewport: { width: 360, height: 780 }, timezoneId: 'America/New_York' });
+      const q = await c.newPage(); q.setDefaultTimeout(10000); q.on('pageerror', e => errors.push(e.message));
+      await q.clock.setFixedTime(new Date(when));
+      await q.goto(BASE_URL); await q.waitForSelector('#kpi .card');
+      const r = await q.evaluate(async () => { const u = await import('./utils.js');
+        const D = { events: [{ id: 'today', date: u.today() }], expenses: [], cPays: [] };
+        return { today: u.today(), ms: u.periodStart('month'), me: u.periodEnd('month'), fs: u.periodStart('fy'), fe: u.periodEnd('fy'),
+          inMonth: u.sliceByPeriod(D, 'month').events.length, inFy: u.sliceByPeriod(D, 'fy').events.length }; });
+      await c.close();
+      assert.equal(r.today, when.slice(0, 10));
+      assert.deepEqual([r.ms, r.me, r.fs, r.fe], [start, end, fyStart, fyEnd]);
+      assert.equal(r.inMonth, 1, "today's event counts in This month"); assert.equal(r.inFy, 1, "and in This FY");
+    });
+  }
 
   await test('no page errors', async () => { assert.deepEqual(errors, []); });
   await browser.close();
