@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.31.3';
+const APP_BUILD = '4.31.6';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -2020,6 +2020,11 @@ function orderMessage(ev, o, ven) {
     + (o.notes ? `Note: ${o.notes}\n` : '') + `\nPlease confirm. Thank you!`;
 }
 
+// Plates ordered below the vendor's minimum: a note why is then required
+function orderBelowMinimum(ev) {
+  const minimum = Math.floor(Number(qv('ord-min')) || 0);
+  return !!ev && !ev.outsourced && minimum > 0 && (Number(qv('ord-plates')) || 0) < minimum;
+}
 async function sendOrder() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const venId = qv('ord-ven');
@@ -2027,7 +2032,7 @@ async function sendOrder() {
   const ven = D.vendors.find(v => v.id === venId);
   const takeUp = Number(qv('ord-takeup')) || 0, minimum = Math.floor(Number(qv('ord-min')) || 0);
   if (!ev.outsourced && qv('ord-takeup') && !(takeUp > 0 && takeUp <= 100)) { showFieldErrors({ 'ord-takeup': 'Between 1 and 100 – १ ते १००' }); return; }
-  const below = !ev.outsourced && minimum > 0 && (Number(qv('ord-plates')) || 0) < minimum;
+  const below = orderBelowMinimum(ev);
   if (below && !qv('ord-notes')) { showFieldErrors({ 'ord-notes': `Below the vendor minimum of ${minimum}: add a note why – कारण लिहा` }); return; }
   const id = qv('ord-id') || uid('OR');
   const old = (ev.orders || []).find(x => x.id === id);
@@ -4032,7 +4037,7 @@ function openSheet(id, after, guard) {
   el.classList.add('active');
   el.querySelector('.sheet').scrollTop = 0;
   openOverlay(() => el.classList.remove('active'), after, guard);
-  requestAnimationFrame(() => fitSelects(el));
+  requestAnimationFrame(() => { fitSelects(el); syncRequired(); });
 }
 
 // What a sheet's fields and toggles hold, as one string: compared with its value at opening to tell whether the
@@ -4128,8 +4133,25 @@ function populateSelect(id, options, selected = '') {
   ).join('');
 }
 
+/* Field errors: each message is tied to its field (aria-invalid + aria-describedby, so a screen reader reads it with
+   the field), the first one in the form gets focus, and a message goes away as soon as its field is edited. The rules
+   themselves stay in each save function. A message slot written into the page (e.g. #me-slabs-err) is filled and
+   hidden again rather than created and removed. */
+const shownErrors = [];   // { box: element whose edits clear it, ctrl: the field, msg: the message element, made }
+const errCtrl = el => el.matches('input, select, textarea') ? el
+  : [...(el.closest('.field') || el).querySelectorAll('input:not([type=hidden]), select, textarea')].find(c => !c.value) || (el.closest('.field') || el).querySelector('input:not([type=hidden]), select, textarea');
+function linkDescribedBy(el, id, on) {
+  const ids = (el.getAttribute('aria-describedby') || '').split(/\s+/).filter(x => x && x !== id);
+  if (on) ids.push(id);
+  if (ids.length) el.setAttribute('aria-describedby', ids.join(' ')); else el.removeAttribute('aria-describedby');
+}
+function dropFieldError(e) {
+  if (e.made) e.msg.remove(); else { e.msg.hidden = true; e.msg.textContent = ''; }
+  if (e.ctrl) { e.ctrl.classList.remove('error'); e.ctrl.removeAttribute('aria-invalid'); linkDescribedBy(e.ctrl, e.msg.id, false); }
+}
 function clearFieldErrors() {
-  document.querySelectorAll('.field-error').forEach(el => el.remove());
+  shownErrors.splice(0).forEach(dropFieldError);
+  document.querySelectorAll('.field-error:not([id$="-err"])').forEach(el => el.remove());   // any left by an older build's render
   document.querySelectorAll('.field .error').forEach(el => el.classList.remove('error'));
 }
 
@@ -4139,14 +4161,73 @@ function showFieldErrors(errors) {
     if (!msg) continue;
     const inp = document.getElementById(field) || document.querySelector(`[name="${field}"]`);
     if (!inp) continue;
-    inp.classList.add('error');
-    const err = document.createElement('div');
-    err.className = 'field-error'; err.textContent = msg;
-    inp.parentNode.appendChild(err);
+    let err, made = false;
+    if (inp.matches('.field-error')) { err = inp; err.hidden = false; }
+    else {
+      err = document.createElement('div'); made = true;
+      err.className = 'field-error'; err.id = `${inp.id || field}-error`;
+      inp.parentNode.appendChild(err);
+    }
+    err.textContent = msg;
+    const ctrl = errCtrl(inp);
+    if (ctrl) { ctrl.classList.add('error'); ctrl.setAttribute('aria-invalid', 'true'); linkDescribedBy(ctrl, err.id, true); }
+    shownErrors.push({ box: made ? inp : (inp.closest('.field') || inp), ctrl, msg: err, made });
   }
-  const first = document.querySelector('.field-error');
-  if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  // the first error in the form's order, not the order the rules ran in
+  const first = shownErrors.filter(e => e.ctrl?.isConnected)
+    .sort((a, b) => a.ctrl.compareDocumentPosition(b.ctrl) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1)[0];
+  if (first) first.ctrl.focus({ preventScroll: true });
+  (first?.msg || shownErrors[0]?.msg)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  syncRequired();
 }
+// Editing a field takes its message away (the rules run again on the next save)
+function onFieldEdited(e) {
+  for (let i = shownErrors.length - 1; i >= 0; i--) {
+    const err = shownErrors[i];
+    if (err.box === e.target || err.box.contains(e.target)) { dropFieldError(err); shownErrors.splice(i, 1); }
+  }
+}
+
+/* Required fields for assistive technology: a label marked with * makes its field aria-required (the * itself is
+   hidden from screen readers), and the fields that are required only in some cases follow the same conditions the
+   save functions check. */
+const REQUIRED_WHEN = [
+  ['#ma-by, #count-n, #st-amt, #st-reason', () => true],
+  ['#ma-who', () => qv('ma-by') === 'verbal'],
+  ['#vpay-notes', () => q('vpay-kind').dataset.value === 'credit'],
+  ['#lab-ven', () => (q('lab-pay').dataset.value || 'paid') === 'credit'],
+  ['#ev-out-ven', () => q('ev-handling').dataset.value === 'out'],
+  ['#ord-notes', () => orderBelowMinimum(D.events.find(e => e.id === curRef))],
+  ['#cp-method', () => q('cp-confirmed').checked],
+  ['#count-note', () => { const ev = D.events.find(e => e.id === curRef); return !!ev && guestCountStatus(ev, countMeal).counted != null; }],
+  ['#ev-guests', () => eventNeedsGuests() && !evMeals().length],
+  ['#ev-g-meals input', () => eventNeedsGuests() && !!evMeals().length && !(Number(qv('ev-guests')) >= 1)]
+];
+function eventNeedsGuests() { const date = qv('ev-date'); return !qv('ev-id') || !date || date >= today(); }
+function syncRequired() {
+  const want = new Map();
+  document.querySelectorAll('label .req').forEach(star => {
+    star.setAttribute('aria-hidden', 'true');
+    const ctrl = star.closest('label').control;
+    if (ctrl) want.set(ctrl, true);
+  });
+  for (const [sel, when] of REQUIRED_WHEN) {
+    let on = false;
+    try { on = !!when(); } catch { continue; }   // that sheet is not in the page
+    document.querySelectorAll(sel).forEach(el => want.set(el, on));
+  }
+  document.querySelectorAll('[aria-required]').forEach(el => { if (!want.get(el)) el.removeAttribute('aria-required'); });
+  want.forEach((on, el) => { if (on) el.setAttribute('aria-required', 'true'); });
+}
+let requiredQueued = false;
+function queueSyncRequired() {
+  if (requiredQueued || !overlays.length) return;
+  requiredQueued = true;
+  setTimeout(() => { requiredQueued = false; syncRequired(); });   // after the sheet's own handlers have run
+}
+document.addEventListener('input', e => { onFieldEdited(e); queueSyncRequired(); }, true);
+document.addEventListener('change', e => { onFieldEdited(e); queueSyncRequired(); }, true);
+document.addEventListener('click', queueSyncRequired, true);
 
 function eventOptions() {
   return [...D.events].sort((a, b) => b.date.localeCompare(a.date))
