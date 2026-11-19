@@ -149,6 +149,14 @@ const assert = require('node:assert/strict');
     assert.match(await rate.getAttribute('aria-describedby') || '', /me-slabs-err/);
     assert.equal(await min.getAttribute('aria-invalid'), null, 'the valid "From guests" box is not marked');
     assert.doesNotMatch(await min.getAttribute('aria-describedby') || '', /me-slabs-err/);
+    // editing "From guests" while the price is still 0 leaves the price message and its marking in place (review of #79)
+    await min.fill('60');
+    assert.equal(await msg.isVisible(), true, 'changing "From guests" does not clear the price message');
+    assert.equal(await rate.getAttribute('aria-invalid'), 'true', 'the price box stays marked');
+    assert.match(await rate.getAttribute('aria-describedby') || '', /me-slabs-err/);
+    await rate.fill('250');
+    assert.equal(await msg.isVisible(), false, 'editing the price box clears it');
+    assert.equal(await rate.getAttribute('aria-invalid'), null);
     await ctx.close();
   });
 

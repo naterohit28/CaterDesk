@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.31.8';
+const APP_BUILD = '4.31.9';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -4137,7 +4137,7 @@ function populateSelect(id, options, selected = '') {
    the field), the first one in the form gets focus, and a message goes away as soon as its field is edited. The rules
    themselves stay in each save function. A message slot written into the page (e.g. #me-slabs-err) is filled and
    hidden again rather than created and removed. */
-const shownErrors = [];   // { box: element whose edits clear it, ctrl: the field, msg: the message element, made }
+const shownErrors = [];   // { box: element whose edits clear it, only: which fields in it count (data-ctrl), ctrl: the field, msg: the message element, made }
 // A message slot names its own fields (data-ctrl): the first of them without a usable value (empty, 0 or less) is the
 // one to fix — e.g. the menu price slot points at the rate boxes, never at the valid 'From guests' box beside them.
 const errCtrl = el => {
@@ -4178,7 +4178,7 @@ function showFieldErrors(errors) {
     err.textContent = msg;
     const ctrl = errCtrl(inp);
     if (ctrl) { ctrl.classList.add('error'); ctrl.setAttribute('aria-invalid', 'true'); linkDescribedBy(ctrl, err.id, true); }
-    shownErrors.push({ box: made ? inp : (inp.closest('.field') || inp), ctrl, msg: err, made });
+    shownErrors.push({ box: made ? inp : (inp.closest('.field') || inp), only: made ? '' : (inp.dataset.ctrl || ''), ctrl, msg: err, made });
   }
   // the first error in the form's order, not the order the rules ran in
   const first = shownErrors.filter(e => e.ctrl?.isConnected)
@@ -4187,11 +4187,13 @@ function showFieldErrors(errors) {
   (first?.msg || shownErrors[0]?.msg)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   syncRequired();
 }
-// Editing a field takes its message away (the rules run again on the next save)
+// Editing a field takes its message away (the rules run again on the next save). A slot that names its fields
+// (data-ctrl) goes away only when one of those is edited: changing 'From guests' leaves a price of 0 marked.
 function onFieldEdited(e) {
   for (let i = shownErrors.length - 1; i >= 0; i--) {
     const err = shownErrors[i];
-    if (err.box === e.target || err.box.contains(e.target)) { dropFieldError(err); shownErrors.splice(i, 1); }
+    const inBox = err.box === e.target || err.box.contains(e.target);
+    if (inBox && (!err.only || e.target.matches?.(err.only))) { dropFieldError(err); shownErrors.splice(i, 1); }
   }
 }
 
