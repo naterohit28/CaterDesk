@@ -26,9 +26,15 @@ const assert = require('node:assert/strict');
       events: [{ id: 'e', name: 'Sample Kept Event', date: '2026-12-01', venue: 'Sample Hall', type: 'Party – पार्टी', billing: 1000, guests: 10, photoIds: [] }] }); });
     await p.waitForFunction(async () => (await navigator.serviceWorker.getRegistration())?.active?.state === 'activated');
     const current = await p.evaluate(async () => (await (await fetch('./sw.js')).text()).match(/CACHE_NAME = '([^']+)'/)[1]);
-    await p.waitForFunction(async c => { const k = await caches.keys(); return k.includes(c) && !k.includes('flavor-fusion-v2-cache-v1') && !k.includes('flavor-fusion-v2-cache-v40'); }, current);
+    // v1 is used by no tab, so it must go. v40 is the newest old release: the first install may pin this very test page
+    // to it (an open tab keeps its release), so it may stay only while an open tab's pin points at it (Codex on #82).
+    await p.waitForFunction(async c => { const k = await caches.keys(); return k.includes(c) && !k.includes('flavor-fusion-v2-cache-v1'); }, current);
     const keys = await p.evaluate(() => caches.keys());
     assert.ok(keys.includes(current), 'the current release cache stays');
+    const pinned = await p.evaluate(async () => { const pins = await caches.open('caterdesk-client-releases');
+      return Promise.all((await pins.keys()).map(async r => (await pins.match(r)).text())); });
+    for (const k of keys.filter(k => /^flavor-fusion-v2-cache-v\d+$/.test(k) && k !== current))
+      assert.ok(pinned.includes(k), `${k} is kept only because an open tab still uses it`);
     assert.ok(keys.includes('unrelated-cache'), 'caches that are not app releases are left alone');
     const pins = await p.evaluate(async () => (await (await caches.open('caterdesk-client-releases')).keys()).map(r => r.url));
     assert.ok(!pins.some(u => u.endsWith('/gone-tab')), 'the closed tab’s pin is removed');
