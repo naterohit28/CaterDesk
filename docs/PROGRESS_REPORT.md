@@ -1,8 +1,7 @@
 # CaterDesk progress report: v4.0.1 → v4.31.13
 
-**As of 19 November 2026.** This report describes source version **v4.31.12**. Releases go live one at a time after
-the owner approves each one, so the live web app at expense-calculator-kohl.vercel.app may still be on an earlier
-4.31.x version. The installed Android app (wrapper 3.0.0, versionCode 9) loads the live web app, so it always runs
+**As of 19 November 2026.** The live web app is **v4.31.13** at expense-calculator-kohl.vercel.app. Releases go live
+one at a time after the owner approves each one. The installed Android app (wrapper 3.0.0, versionCode 9) loads the live web app, so it always runs
 whatever version is live.
 
 This report covers what has been released, what has been accepted on the owner's phone, and what is still open. It is
@@ -136,7 +135,7 @@ Each line lists versions and pull requests. The README's release table has the d
 **Defect fixes and the independent audit (18–19 Nov)**
 
 Each line says how far it has got: *built and tested* (the full suite, or only the fix's own checks, as stated), *reviewed*
-(Codex reviewed the exact commit), *merged and live*, and *phone-verified* (checked by the owner on the phone). Passing
+(Codex reviewed the exact commit: a code review, not a full security audit of the app), *merged and live*, and *phone-verified* (checked by the owner on the phone). Passing
 tests alone does not make a change ready for use.
 
 | Version | Built and tested | Reviewed | Merged and live | Phone-verified |
@@ -149,7 +148,7 @@ tests alone does not make a change ready for use.
 | 4.31.8 (#77) | ✅ full suite | ✅ | ✅ | not needed |
 | 4.31.9 (#80), 4.31.10 (#81) | ✅ full suite | ✅ no major findings | ✅ | ⏳ (4.31.9) |
 | 4.31.11 (#82), 4.31.12 (#83) | ✅ full suite | Codex findings fixed; the fixed commits were **not** re-reviewed (Codex limit; merged on the owner's decision) | ✅ | ⏳ (4.31.12) |
-| 4.31.13 | ⏳ | ⏳ | ⏳ | not needed |
+| 4.31.13 (#85) | ✅ full suite (483) | ✅ no major findings | ✅ | not needed |
 
 - v4.31.2 (#74): leaving a new or edited event with unsaved changes asks *Keep editing / Discard changes*.
 - v4.31.3 (#75): the menu approval line showed raw page code in both languages. It now shows the chosen language.
@@ -185,7 +184,7 @@ Found by the independent audit of 19 November, with Codex reviews:
 - **Report periods had no end,** so later bookings counted in this month or this year. Fixed in v4.31.4.
 - **A menu name could become page code** in five places on the event page. Fixed in v4.31.8. The reviewer then found the same
   problem in the meal-menu editor (`renderServiceSheet`: menu, "from" and shared dish names). Fixed in v4.31.13
-  (awaiting review and merge).
+  (#85).
 - **A waived, discounted or written-off event pulled the suggested selling price down.** Fixed in v4.31.10.
 - **A counter paid in several bills showed a fraction of its real rate per plate.** Fixed in v4.31.10.
 - **Old app caches were never deleted** from the phone. Fixed in v4.31.11.
@@ -213,7 +212,7 @@ Still open from the audit, waiting for an owner decision:
 
 ## 6. Recommended next steps
 
-1. **Keep v4.31.12 as the production baseline,** plus the v4.31.13 security fix once reviewed and approved. No new
+1. **Keep v4.31.13 as the production baseline.** No new
    development cycle: Android acceptance testing and GitHub CI come next. Suitable for continued internal use, subject
    to the phone checks; not yet approved for commercial distribution.
 2. **Phone checks still not recorded:**
