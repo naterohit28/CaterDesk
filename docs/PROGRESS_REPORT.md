@@ -1,7 +1,9 @@
-# CaterDesk progress report: v4.0.1 → v4.31.1
+# CaterDesk progress report: v4.0.1 → v4.31.12
 
-**As of 18 November 2026.** The live web app is **v4.31.1** at expense-calculator-kohl.vercel.app. The installed Android
-app (wrapper 3.0.0, versionCode 9) loads the live web app, so it runs v4.31.1 too.
+**As of 19 November 2026.** This report describes source version **v4.31.12**. Releases go live one at a time after
+the owner approves each one, so the live web app at expense-calculator-kohl.vercel.app may still be on an earlier
+4.31.x version. The installed Android app (wrapper 3.0.0, versionCode 9) loads the live web app, so it always runs
+whatever version is live.
 
 This report covers what has been released, what has been accepted on the owner's phone, and what is still open. It is
 built from the merged pull requests and the release table in the README. That table has a line for every version; this
@@ -11,14 +13,20 @@ report groups them. It gives no "percent ready" figure. Readiness is stated as c
 
 **Completed:** built, covered by automated tests, and accepted on the owner's phone where that applies.
 - event, collection, expense, vendor and payment records, with edits that keep every stored field
-- encrypted backup to the phone, backup to Google Drive through the share menu, and restore with the recovery key on
-  another device: all accepted on the phone on 17 Nov
+- encrypted backup to the phone, backup to Google Drive through the share menu, and restore with the recovery key:
+  all accepted on the owner's phone on 17 Nov
 - the recovery key: a wrong key is refused, and cancelling a replacement keeps the old key (accepted 16 Nov)
 - dates and times in India time
-- the automated suite: 434 passed, 0 failed
+- the fixes from the independent audit of 19 Nov (section 3)
+- the automated suite: every check passes on each release (469+ checks at v4.31.12)
 
 **Pending phone verification:** built and covered by automated tests, but not yet recorded as checked on a physical
 Android phone.
+- the unsaved-changes question when leaving a new or edited event (v4.31.2)
+- form errors: the cursor goes to the first field to fix, and the keyboard does not cover it (v4.31.6)
+- a menu price of 0: the cursor goes to the price box, and the message stays until the price is changed (v4.31.7, v4.31.9)
+- long names in dropdowns shown in full under the dropdown (v4.31.12)
+- the menu approval line in English only (v4.31.3)
 - bill photos from the camera and gallery, including when permission is denied
 - a quote's Print / Save as PDF
 - one full event through guest counts, shared bills, final settlement and the Books check
@@ -43,17 +51,19 @@ licence and price.
 | Edits never lose stored data | ✅ Fixed | v4.0.2 (#19) |
 | Backup to the phone (encrypted `.cdbk`) | ✅ Accepted on the phone, 17 Nov | #71 acceptance comment |
 | Backup to Google Drive (share menu, no Google login) | ✅ Accepted on the phone, 17 Nov | #71 acceptance comment |
-| Restore on another device with the recovery key | ✅ Accepted on the phone, 17 Nov: all counts matched | #71 acceptance comment |
+| Restore with the recovery key | ✅ Accepted on the phone, 17 Nov: all counts matched | #71 acceptance comment |
 | Wrong key refused; cancelling a key replacement keeps the old key | ✅ Accepted on the phone, 16 Nov | #69 |
 | Dates and times in India time | ✅ Fixed | v4.31.1 (#72) |
-| Automated tests | ✅ 434 passed, 0 failed on the current code | #72 |
+| Automated tests | ✅ All checks pass on each release, run before every push | #72–#77 and later |
+| Fixes from the independent audit of 19 Nov | ✅ Fixed in v4.31.4–v4.31.11 | Section 3 |
 | Phase 3/4 features (counts, shared bills, settlement, Books check) used on the phone | ⏳ Not recorded as phone-tested | — |
 | Camera and gallery bill photos, including permission denial (v4.28.2) | ⏳ Not recorded as phone-tested | — |
 | Quote "Print / Save as PDF" on the Android phone (decision D-3) | ⏳ Not recorded as phone-tested | — |
 
 **Data recovery** is accepted on the owner's phone. On 17 November, a backup was saved to Google Drive through the share
-menu, restored on another device with the recovery key with all counts matching, and the phone backup appeared in
-Downloads.
+menu and restored with the recovery key with all counts matching, and the phone backup appeared in Downloads. On
+19 November the owner confirmed again that backup and restore both work, so the proposed "is the file saved?" prompt
+was dropped.
 
 ### B. Ready to sell to other caterers
 
@@ -123,6 +133,37 @@ Each line lists versions and pull requests. The README's release table has the d
 - v4.31.1 (#72): dates and times in the phone's own time.
 - #62: test-only diagnostics for a one-off update test failure.
 
+**Defect fixes and the independent audit (18–19 Nov)**
+
+Each line says how far it has got: *built and tested* (the full suite passes on the developer's computer), *reviewed*
+(Codex reviewed the exact commit), *merged and live*, and *phone-verified* (checked by the owner on the phone). Passing
+tests alone does not make a change ready for use.
+
+| Version | Built and tested | Reviewed | Merged and live | Phone-verified |
+|---|---|---|---|---|
+| 4.31.2 (#74) | ✅ | ✅ | ✅ | ⏳ |
+| 4.31.3 (#75) | ✅ | ✅ | ✅ | ⏳ |
+| 4.31.4 (#76) | ✅ | ✅ | ✅ | not needed |
+| 4.31.6 (#78) | ✅ | ✅ | ✅ | ⏳ |
+| 4.31.7 (#79) | ✅ | ✅ | ✅ | ⏳ |
+| 4.31.8 (#77) | ✅ | ⏳ | ⏳ | not needed |
+| 4.31.9 – 4.31.12 | ✅ | ⏳ | ⏳ | ⏳ (4.31.9, 4.31.12) |
+
+- v4.31.2 (#74): leaving a new or edited event with unsaved changes asks *Keep editing / Discard changes*.
+- v4.31.3 (#75): the menu approval line showed raw page code in both languages. It now shows the chosen language.
+- v4.31.4 (#76): *This month*, *3 months* and *This FY* end where they say, so a booking for a later month no longer
+  counts this month. Also correct on the 1st of a month in time zones behind UTC.
+- v4.31.5 was not released under that number: the menu-name fix waited and became v4.31.8.
+- v4.31.6 (#78): form errors work with screen readers, and focus goes to the first field to fix.
+- v4.31.7 (#79): a menu price of 0 points at the price box, not at *From guests*.
+- v4.31.8 (#77): menu names are always shown as text, in five places that could turn them into page code.
+- v4.31.9: the price message stays until the price itself is changed.
+- v4.31.10: past-event price suggestions leave out waived, discounted or written-off events (owner's rule), and a counter paid in
+  several bills gives its true rate per plate.
+- v4.31.11: old app caches are cleaned up, long vendor names stay inside their chips, and the desktop launcher
+  source shows the current version.
+- v4.31.12: dropdown text stays at the readable size, with a long chosen name shown in full under the dropdown.
+
 ## 3. Defects found and fixed after release
 
 - **Edits dropped stored fields** (versions 3.3.0–4.0.1), which could also duplicate labour expenses. Fixed in v4.0.2.
@@ -135,6 +176,18 @@ Each line lists versions and pull requests. The README's release table has the d
 - **A purchase's bill could move to another event.** Fixed in v4.28.1.
 - **Opening an event could fill its bill.** Fixed in v4.28.2.
 - **Dates showed the previous day** for anything saved between midnight and 05:30 IST. Fixed in v4.26.1 for menus, and in v4.31.1 everywhere else.
+- **The menu approval line showed raw page code** in both languages. Found on the phone, fixed in v4.31.3.
+
+Found by the independent audit of 19 November, with Codex reviews:
+- **Report periods had no end,** so later bookings counted in this month or this year. Fixed in v4.31.4.
+- **A menu name could become page code** in five places on the event page. Fixed in v4.31.8.
+- **A waived, discounted or written-off event pulled the suggested selling price down.** Fixed in v4.31.10.
+- **A counter paid in several bills showed a fraction of its real rate per plate.** Fixed in v4.31.10.
+- **Old app caches were never deleted** from the phone. Fixed in v4.31.11.
+
+Still open from the audit, waiting for an owner decision:
+- the safety copy saved before a restore replaces the data is a plain `.json` file, not encrypted (the owner is warned when saving it)
+- GitHub does not run the browser test suite; it runs before every push on the developer's computer
 
 ## 4. Current limitations
 
@@ -155,8 +208,12 @@ Each line lists versions and pull requests. The README's release table has the d
 
 ## 6. Recommended next steps
 
-1. **Close this development cycle at v4.31.1.** Fix only genuine defects.
+1. **Release v4.31.8 to v4.31.12 one at a time,** each after its own review and the owner's approval. Then fix only
+   genuine defects.
 2. **Phone checks still not recorded:**
+   - the unsaved-changes question, form-error focus and the keyboard, and the menu price focus
+   - long names in dropdowns (after v4.31.12)
+   - the menu approval line
    - camera and gallery photos, including permission denial
    - Print / Save as PDF for a quote
    - one full event through counts, shared bills, settlement and the Books check
@@ -164,3 +221,4 @@ Each line lists versions and pull requests. The README's release table has the d
    - GST treatment (O-01, O-02)
    - an independent finance review
    - whether to sell at all, and to whom
+   - whether to encrypt the pre-restore safety copies, and whether GitHub should run the browser tests
