@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.31.12';
+const APP_BUILD = '4.31.13';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -2243,7 +2243,7 @@ function quoteLine(ev) {
   const accepted = sent.find(x => x.status === 'accepted');
   const latest = accepted ? [accepted] : quoteOptions(ev).map(o => sent.filter(x => quoteOption(x) === o).at(-1)).filter(Boolean);
   const many = quoteOptions(ev).length > 1;
-  return `<div class="meta" style="margin-top:var(--s2)" id="quote-line">${latest.map(q => { const st = QUOTE_STATUS[q.status], name = `${many ? `Option ${quoteOption(q)} ` : ''}v${q.v}`;
+  return `<div class="meta" style="margin-top:var(--s2)" id="quote-line">${latest.map(q => { const st = QUOTE_STATUS[q.status], name = esc(`${many ? `Option ${quoteOption(q)} ` : ''}v${q.v}`);
     return tr(`Quote ${name} · ${st[0]} · ${fmtCurrency(quoteTotal(q).total)} before tax`, `दरपत्रक ${name} · ${st[1]} · ${fmtCurrency(quoteTotal(q).total)}`); }).join('<br>')}</div>`;
 }
 let quoteView = null, quoteDraft = null;   // the version on screen; the working copy of a draft
@@ -2845,11 +2845,11 @@ function renderServiceSheet() {
     ? `<div class="meta">${tr('A new library menu is made from the dishes below when you save. Give it a name and a price per plate under Save.', 'खालील पदार्थांतून नवीन मेनू बनेल.')}</div>`
     : tpl && missing.length && d.length
     ? `<div class="svc-from"><div class="meta">${tr(svcState.existing
-        ? `${svcState.label} has ${d.length} dish${d.length > 1 ? 'es' : ''}; they stay unless you replace them. ${tpl.name} has ${missing.length} more.`
-        : `${d.length} dish${d.length > 1 ? 'es are' : ' is'} listed below, not saved yet; they stay unless you replace them. ${tpl.name} has ${missing.length} more.`, `${d.length} पदार्थ तसेच राहतील.`)}</div>
+        ? `${esc(svcState.label)} has ${d.length} dish${d.length > 1 ? 'es' : ''}; they stay unless you replace them. ${esc(tpl.name)} has ${missing.length} more.`
+        : `${d.length} dish${d.length > 1 ? 'es are' : ' is'} listed below, not saved yet; they stay unless you replace them. ${esc(tpl.name)} has ${missing.length} more.`, `${d.length} पदार्थ तसेच राहतील.`)}</div>
         <div class="row-btns"><button type="button" class="btn-sm" id="btn-svc-addtpl">${icon('plus', 16)}${tr(`Add ${missing.length}`, `${missing.length} जोडा`)}</button>
-        <button type="button" class="btn-sm" id="btn-svc-replace">${tr(`Replace with ${tpl.name}`, 'बदला')}</button></div></div>`
-    : svcState.from ? `<div class="meta">${tr(`${d.length} dishes from ${svcState.from} below. Nothing is saved until you tap Save.`, `${svcState.from} मधील पदार्थ. जतन केल्यावरच साठवले जातील.`)}</div>` : '';
+        <button type="button" class="btn-sm" id="btn-svc-replace">${tr(`Replace with ${esc(tpl.name)}`, 'बदला')}</button></div></div>`
+    : svcState.from ? `<div class="meta">${tr(`${d.length} dishes from ${esc(svcState.from)} below. Nothing is saved until you tap Save.`, `${esc(svcState.from)} मधील पदार्थ. जतन केल्यावरच साठवले जातील.`)}</div>` : '';
   const opt = (list, val) => list.map(([k, label]) => `<option value="${esc(k)}"${k === val ? ' selected' : ''}>${esc(label)}</option>`).join('');
   const row = (x, i) => {
     const marks = (x.diet || []).map(k => DIET_NAME[k]), open = svcState.dietOpen?.has(i);
@@ -2866,7 +2866,7 @@ function renderServiceSheet() {
   q('svc-count').textContent = d.length ? `${d.length} dish${d.length > 1 ? 'es' : ''}` : '';
   q('svc-dishes').innerHTML = (d.length ? d.map(row).join('')
       : `<div class="meta">${tr('No dishes yet. Type them above or choose a library menu.', 'अजून पदार्थ नाहीत.')}</div>`)
-    + (svcState.shared.length ? `<div class="meta" style="margin-top:var(--s2)" data-nl>${tr(`Also served: ${svcState.shared.join(', ')} (every meal; change in Event menu)`, `सर्व जेवणात: ${svcState.shared.join(', ')}`)}</div>` : '');
+    + (svcState.shared.length ? `<div class="meta" style="margin-top:var(--s2)" data-nl>${tr(`Also served: ${esc(svcState.shared.join(', '))} (every meal; change in Event menu)`, `सर्व जेवणात: ${esc(svcState.shared.join(', '))}`)}</div>` : '');
 }
 function addServiceDishes(names, from = '') {
   const learned = learnedDishes(D.events), have = new Set(svcState.draft.map(d => d.name.toLowerCase()));
