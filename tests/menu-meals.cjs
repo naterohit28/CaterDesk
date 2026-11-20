@@ -120,7 +120,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     await p.locator('[data-action="order-status"]').click(); await p.waitForSelector('#ask-modal.active');
     await p.locator('#ask-actions button', { hasText: 'Edit / send again' }).click(); await p.waitForSelector('#ord-modal.active');
     assert.match(await p.locator('#ord-items').innerText(), /Pani Puri/); assert.doesNotMatch(await p.locator('#ord-items').innerText(), /Sev Puri/);
-    await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500);
+    await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
     ctx.off('page', count);
     let o = (await ev('e1')).orders[0];
     assert.equal(o.menuChanged, true, 'still flagged after WhatsApp opened'); assert.equal(o.status, 'opened', 'the revised message is opened, not confirmed (4.9.0 versions)'); assert.equal(o.ref, 'vendor-ref-1', 'other order details kept');

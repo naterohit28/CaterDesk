@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.31.13';
+const APP_BUILD = '4.31.14';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1744,9 +1744,11 @@ function openBuyModal({ key = '', id = '' }) {
 }
 function buyMessage(ev, p, ven) {
   const all = eventServices(ev).services, s = p.svc ? all.find(x => x.id === p.svc) : null, meal = s?.meal ? svcLabel(ev, s, all) : '';
+  // One fact per line, in the order a supplier needs them; venue notes and your contact only when you have entered them
+  const venue = venueNotes(ev), me = getProfile(), contact = [me.contact || me.name, me.phone].filter(Boolean).join(', ');
   return `Namaste ${ven.name}! Purchase order for ${ev.name}:\nItem: ${p.item}\nQuantity: ${qtyText(p)}\n`
-    + `Deliver: ${fmtDate(p.date)}${p.time ? ', ' + p.time : ''}${meal ? ' (' + meal + ')' : ''}\nVenue: ${ev.venue || '-'}\n`
-    + (p.notes ? `Note: ${p.notes}\n` : '') + `\nPlease confirm. Thank you!`;
+    + `Deliver: ${fmtDate(p.date)}${p.time ? ', ' + p.time : ''}${meal ? ' (' + meal + ')' : ''}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n`
+    + (venue ? `At the venue: ${venue}\n` : '') + (p.notes ? `Note: ${p.notes}\n` : '') + (contact ? `Contact: ${contact}\n` : '') + `\nPlease confirm. Thank you!`;
 }
 async function sendBuy() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
@@ -1762,21 +1764,21 @@ async function sendBuy() {
   const id = qv('buy-id') || uid('PO'), old = (ev.purchases || []).find(x => x.id === id);
   const all = eventServices(ev).services, s = qv('buy-svc') ? all.find(x => x.id === qv('buy-svc')) : null;
   const now = new Date().toISOString();
-  const status = !old || old.status === 'cancelled' ? (phoneOk ? 'opened' : 'prepared') : old.status === 'prepared' && phoneOk ? 'opened' : old.status;
+  const status = !old || old.status === 'cancelled' ? 'prepared' : old.status;   // saved first, sent second (offerWhatsApp)
   const p = { ...(old || {}), id, item: qv('buy-item'), src: qv('buy-src'), venId, qty, unit, date, status, at: now,
     basis: { item: qv('buy-item'), src: qv('buy-src'), meal: s?.meal || '' } };
   if (qv('buy-svc')) p.svc = qv('buy-svc'); else delete p.svc;
   for (const [k, v] of [['time', qv('buy-time')], ['notes', qv('buy-notes').trim()]]) if (v) p[k] = v; else delete p[k];
   if (est !== '') p.estCost = Number(est); else delete p.estCost;
-  const versioned = addOrderMessage(old?.messages, buyMessage(ev, p, ven), phoneOk, now);
+  const versioned = addOrderMessage(old?.messages, buyMessage(ev, p, ven), false, now);
   p.messages = versioned.messages;
   // A changed instruction is not sent or confirmed yet; a menu-change warning stays until it is marked sent
-  if (versioned.changed && old && ['sent', 'confirmed'].includes(old.status)) p.status = phoneOk ? 'opened' : 'prepared';
-  await patchEvent(ev.id, { purchases: old ? ev.purchases.map(x => x.id === id ? p : x) : [...(ev.purchases || []), p] });
-  closeModals(); refreshCurrent();
-  const phone = phoneDigits(ven?.phone);
-  if (phone) window.open(`https://wa.me/${phone}?text=${encodeURIComponent(p.messages.at(-1).text)}`, '_blank', 'noopener');
-  else showToast(`Purchase saved. ${ven?.name || 'This supplier'} has no phone number – add it to send on WhatsApp.`, 'error');
+  if (versioned.changed && old && ['sent', 'confirmed', 'opened'].includes(old.status)) p.status = 'prepared';
+  try { await patchEvent(ev.id, { purchases: old ? ev.purchases.map(x => x.id === id ? p : x) : [...(ev.purchases || []), p] }); }
+  catch (e) { showToast(e.message || 'Could not save the purchase. Nothing was changed and nothing was sent.', 'error'); return; }
+  await closeModals(); refreshCurrent();
+  if (!phoneOk) showToast(`Purchase saved, not sent. ${ven?.name || 'This supplier'} has no phone number – add it to send on WhatsApp.`, 'error');
+  else await offerWhatsApp(ev.id, 'purchases', id, 'The purchase order');
 }
 async function setBuyStatus(ev, id, next) {
   await patchEvent(ev.id, { purchases: ev.purchases.map(x => { if (x.id !== id) return x; const y = { ...x, status: next };
@@ -1788,6 +1790,9 @@ async function buyAction(id) {
   const ven = D.vendors.find(v => v.id === p.venId);
   const next = await askSheet({ title: `${p.item} · ${ven?.name || ''} – ${buyStatus(p).en}`, message: `${qtyText(p)} · ${fmtDate(p.date)}${p.time ? ' ' + p.time : ''}${p.estCost != null ? ` · estimate ${fmtCurrency(p.estCost)}` : ''}\n${orderSteps(p)}`,
     actions: [
+      // Not sent yet: open the saved message in WhatsApp inside this tap
+      ...(['prepared', 'opened'].includes(p.status) && !p.changed && p.messages?.length && phoneDigits(ven?.phone)
+        ? [{ label: 'Send on WhatsApp – पाठवा', style: 'btn-wa', run: () => openWa(phoneDigits(ven.phone), p.messages.at(-1).text) }] : []),
       ...(['prepared', 'opened'].includes(p.status) || p.changed ? [{ label: 'I have sent it – पाठवले', value: 'sent', style: 'btn-secondary' }] : []),
       ...(['prepared', 'opened', 'sent'].includes(p.status) || p.changed ? [{ label: 'Supplier confirmed – पक्के', value: 'confirmed', style: 'btn-secondary' }] : []),
       ...(p.status !== 'delivered' ? [{ label: 'Delivered · record bill – आले, बिल नोंदवा', value: 'delivered', style: 'btn-primary' }] : []),
@@ -1797,6 +1802,7 @@ async function buyAction(id) {
       ...(p.status === 'delivered' && !purchaseBillOf(p) ? [{ label: 'Record / link its bill – बिल नोंदवा', value: 'bill', style: 'btn-primary' }] : []),
       ...(p.status !== 'delivered' ? [{ label: 'Cancel purchase – रद्द', value: 'cancelled', style: 'btn-danger' }] : [])] });
   if (!next) return;
+  if (next === 'wa' || next === 'blocked') { await waOpened(ev.id, 'purchases', id, next); return; }   // opened is still not sent
   if (next === 'edit') { openBuyModal({ id }); return; }
   if (next === 'bill') { purchaseBill(ev, p); return; }
   if (next === 'history') {
@@ -1988,7 +1994,7 @@ function openOrderModal({ head, svc = '', orderId }) {
   openSheet('ord-modal');
 }
 
-let ordAuto = '';   // plates last filled from the plan, so a number typed by hand is never replaced
+let ordAuto = '';   // plates last filled from the plan, so a number typed by hand is never replaced; null once typed by hand
 function updateCounterPlan() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const hint = q('ord-plan');
@@ -1996,7 +2002,7 @@ function updateCounterPlan() {
   const { guests, meal } = orderGuests(ev, qv('ord-head'), qv('ord-svc'));
   const s = counterSuggestion(guests, qv('ord-takeup'), qv('ord-min'));
   const plates = Number(qv('ord-plates')) || 0, min = Math.floor(Number(qv('ord-min')) || 0);
-  if (s && (!qv('ord-plates') || qv('ord-plates') === ordAuto)) { q('ord-plates').value = String(s.proposed); ordAuto = String(s.proposed); }
+  if (s && ordAuto !== null && (!qv('ord-plates') || qv('ord-plates') === ordAuto)) { q('ord-plates').value = String(s.proposed); ordAuto = String(s.proposed); }
   const parts = [];
   if (s) parts.push(tr(`${guests} ${meal ? MEALS[meal].toLowerCase() + ' ' : ''}guests × ${Number(qv('ord-takeup'))}% = ${s.forecast} suggested`, `${guests} पाहुणे × ${Number(qv('ord-takeup'))}% = ${s.forecast}`)
     + (s.minimumApplied ? tr(` · vendor minimum ${min}`, ` · किमान ${min}`) : ''));
@@ -2025,7 +2031,9 @@ function orderBelowMinimum(ev) {
   const minimum = Math.floor(Number(qv('ord-min')) || 0);
   return !!ev && !ev.outsourced && minimum > 0 && (Number(qv('ord-plates')) || 0) < minimum;
 }
-async function sendOrder() {
+/* Save order keeps it as prepared (nothing sent). Send on WhatsApp saves it first, then offers Send, which opens
+   WhatsApp from that tap (a phone blocks a window opened after an await; full-event test #7). Only you mark it sent. */
+async function sendOrder(mode = 'send') {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const venId = qv('ord-ven');
   if (!venId) { showFieldErrors({ 'ord-ven': 'Choose a vendor – विक्रेता निवडा' }); return; }
@@ -2036,36 +2044,67 @@ async function sendOrder() {
   if (below && !qv('ord-notes')) { showFieldErrors({ 'ord-notes': `Below the vendor minimum of ${minimum}: add a note why – कारण लिहा` }); return; }
   const id = qv('ord-id') || uid('OR');
   const old = (ev.orders || []).find(x => x.id === id);
-  const phoneOk = !!phoneDigits(ven?.phone);
-  // Opening WhatsApp is not proof the message was sent: a new order is 'opened' (or 'prepared' without a phone),
-  // and only you mark it sent, or the vendor's confirmation, moves it on. A menu-change warning stays until then.
-  const status = !old || old.status === 'cancelled' ? (phoneOk ? 'opened' : 'prepared') : old.status === 'prepared' && phoneOk ? 'opened' : old.status;
+  const phoneOk = mode === 'send' && !!phoneDigits(ven?.phone);
+  // Saved first, sent second: the order is saved as 'prepared', and WhatsApp opens only for the saved order, from a
+  // tap after the save (offerWhatsApp). Opening WhatsApp makes it 'opened', never 'sent': only you mark it sent, or
+  // the vendor's confirmation moves it on. A menu-change warning stays until then.
+  const status = !old || old.status === 'cancelled' ? 'prepared' : old.status;
   const o = { ...(old || {}), id, head: qv('ord-head'), venId, plates: Number(qv('ord-plates')) || 0, date: qv('ord-date'), time: qv('ord-time'),
-              notes: qv('ord-notes'), status, at: new Date().toISOString(), ...(phoneOk ? { openedAt: new Date().toISOString() } : {}) };
+              notes: qv('ord-notes'), status, at: new Date().toISOString() };
   // The meal it is for, the approved menu it follows (only when the menu is unchanged since), the guests it is planned on
   if (qv('ord-svc')) o.svc = qv('ord-svc'); else delete o.svc;
   const ap = menuSinceApproved(ev); if (ap.last && !ap.count) o.menuVersion = ap.last.id; else delete o.menuVersion;
   const g = orderGuests(ev, o.head, o.svc); if (g.guests && !ev.outsourced) o.basis = { guests: g.guests, from: g.from }; else delete o.basis;
   // Keep every different message sent for this order (G-26); the latest version starts as opened/prepared
   const now = new Date().toISOString();
-  const versioned = addOrderMessage(old?.messages, orderMessage(ev, o, ven), phoneOk, now);
+  const versioned = addOrderMessage(old?.messages, orderMessage(ev, o, ven), false, now);
   o.messages = versioned.messages;
   // A new instruction is not yet sent or confirmed. An order from before message versions (no recorded messages) can't
   // be shown to be unchanged, so a resend of it is treated the same way.
   const unproven = old && !(old.messages || []).length;
-  if ((versioned.changed || unproven) && old && ['sent', 'confirmed'].includes(old.status)) o.status = phoneOk ? 'opened' : 'prepared';
+  if ((versioned.changed || unproven) && old && ['sent', 'confirmed', 'opened'].includes(old.status)) o.status = 'prepared';
   if (below) o.belowMinimum = minimum; else delete o.belowMinimum;
   const sugg = ev.outsourced ? null : counterSuggestion(orderGuests(ev, o.head, o.svc).guests, takeUp, minimum);
   if (sugg) o.suggested = sugg.proposed; else delete o.suggested;   // what the plan proposed; the order (plates) is yours
   const orders = old ? ev.orders.map(x => x.id === id ? o : x) : [...(ev.orders || []), o];
   const patch = { orders };
   if (!ev.outsourced && (takeUp || minimum)) patch.counterPlan = { ...(ev.counterPlan || {}), [o.head]: { ...(takeUp ? { takeUp } : {}), ...(minimum ? { minimum } : {}) } };
-  const saved = await patchEvent(ev.id, patch);
-  closeModals();
+  // A failed save opens nothing: the sheet stays open with what was typed, so trying again saves this same order
+  try { await patchEvent(ev.id, patch); } catch (e) { showToast(e.message || 'Could not save the order. Nothing was changed and nothing was sent.', 'error'); return; }
+  await closeModals();
   refreshCurrent();
-  const phone = phoneDigits(ven?.phone);
-  if (phone) window.open(`https://wa.me/${phone}?text=${encodeURIComponent(o.messages.at(-1).text)}`, '_blank', 'noopener');
-  else showToast(`Order saved. ${ven?.name || 'This vendor'} has no phone number – add it to send on WhatsApp.`, 'error');
+  if (mode === 'save') showToast('Order saved, not sent. Tap its status to send it on WhatsApp. – ऑर्डर जतन, पाठवली नाही');
+  else if (!phoneOk) showToast(`Order saved, not sent. ${ven?.name || 'This vendor'} has no phone number – add it to send on WhatsApp.`, 'error');
+  else await offerWhatsApp(ev.id, 'orders', id, 'The order');
+}
+
+/* Vendor orders and purchases: saved first, then sent. WhatsApp opens from a tap on a record that is already saved
+   (a phone blocks a window opened after an await), so a message can never go out for a record that failed to save.
+   Opening WhatsApp moves 'prepared' to 'opened', never to 'sent'; a blocked window leaves it 'prepared'. */
+function openWa(phone, text) {
+  const w = window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
+  if (w) try { w.opener = null; } catch { /* another origin */ }
+  return w ? 'wa' : 'blocked';
+}
+async function offerWhatsApp(evId, list, recId, what) {
+  const ev = D.events.find(e => e.id === evId), r = ev?.[list]?.find(x => x.id === recId);
+  const ven = D.vendors.find(v => v.id === r?.venId), phone = phoneDigits(ven?.phone);
+  if (!r?.messages?.length || !phone) return;
+  const res = await askSheet({ title: 'Saved – now send it – जतन, आता पाठवा',
+    message: `${what} is saved in CaterDesk as not sent yet. Tap Send to open it in WhatsApp for ${ven.name}. It counts as sent only when you mark it sent.`,
+    actions: [{ label: 'Send on WhatsApp – पाठवा', style: 'btn-wa', run: () => openWa(phone, r.messages.at(-1).text) }],
+    cancel: 'Later – नंतर' });
+  await waOpened(evId, list, recId, res);
+}
+async function waOpened(evId, list, recId, res) {
+  if (res === 'blocked') { showToast('WhatsApp did not open. It is saved as not sent: tap its status to try again. – व्हॉट्सॲप उघडले नाही', 'error'); return; }
+  if (res !== 'wa') return;
+  const ev = D.events.find(e => e.id === evId), r = ev?.[list]?.find(x => x.id === recId);
+  if (r?.status !== 'prepared') return;
+  const at = new Date().toISOString();
+  try { await patchEvent(evId, { [list]: ev[list].map(x => x.id === recId ? { ...x, status: 'opened', openedAt: at, messages: markOrderMessage(x.messages, 'opened', at) } : x) }); }
+  catch (e) { showToast(e.message || 'WhatsApp opened, but its status could not be saved. Mark it sent once it has gone.', 'error'); }
+  refreshCurrent();
 }
 
 async function orderAction(orderId) {
@@ -2076,6 +2115,9 @@ async function orderAction(orderId) {
     title: `${short(o.head)}${s ? ` · ${svcLabel(ev, s, all)}` : ''} · ${ven?.name || ''} – ${ORDER_STATUS[o.status].en}`,
     message: orderSteps(o),
     actions: [
+      // Not sent yet: open the saved message in WhatsApp inside this tap (a phone blocks it after an await)
+      ...(['prepared', 'opened'].includes(o.status) && !o.menuChanged && o.messages?.length && phoneDigits(ven?.phone)
+        ? [{ label: 'Send on WhatsApp – पाठवा', style: 'btn-wa', run: () => openWa(phoneDigits(ven.phone), o.messages.at(-1).text) }] : []),
       ...(['prepared', 'opened'].includes(o.status) || o.menuChanged ? [{ label: 'I have sent it – पाठवले', value: 'sent', style: 'btn-secondary' }] : []),
       ...(['prepared', 'opened', 'sent'].includes(o.status) || o.menuChanged ? [{ label: 'Vendor confirmed – पक्के', value: 'confirmed', style: 'btn-secondary' }] : []),
       ...(o.status !== 'delivered' ? [{ label: 'Delivered · record bill – आले, बिल नोंदवा', value: 'delivered', style: 'btn-primary' }] : []),
@@ -2088,6 +2130,7 @@ async function orderAction(orderId) {
   });
   if (!next) return;
   if (next === 'edit') { openOrderModal({ orderId }); return; }
+  if (next === 'wa' || next === 'blocked') { await waOpened(ev.id, 'orders', orderId, next); return; }   // opened is still not sent
   if (next === 'remind') { await remindOrder(ev.id, orderId); return; }
   if (next === 'bill') { orderBill(ev, o); return; }
   if (next === 'history') {
@@ -2892,6 +2935,14 @@ async function switchServiceMeal() {
 }
 async function saveServiceSheet() {
   const ev = D.events.find(e => e.id === curRef); if (!ev || !svcState?.id) return;
+  // Dishes typed in the box but not yet added (Add dishes not tapped) are never dropped by Save: they are added to the
+  // list and the sheet stays open so each can be set to kitchen, bought or a counter before saving (full-event test #4)
+  const pending = parseMenu(q('svc-add').value).map(d => d.name);
+  if (pending.length) {
+    q('svc-add').value = ''; addServiceDishes(pending);
+    showToast(`${pending.length} dish${pending.length > 1 ? 'es' : ''} added. Check kitchen or counter for each, then tap Save. – पदार्थ जोडले, तपासून जतन करा`);
+    return;
+  }
   const st = svcState, lib = st.mode === 'library';
   st.draft = st.draft.map(d => ({ ...d, name: String(d.name).replace(/\s+/g, ' ').trim() })).filter(d => d.name);
   for (const d of st.draft) { const why = dishProblem(d); if (why) { showToast(`${d.name}: ${why} – तपासा`, 'error'); renderServiceSheet(); return; } }
@@ -3084,6 +3135,7 @@ function renderSettle() {
     ${row(st.gst ? tr('Client pays', 'ग्राहकाने द्यायचे') : tr('Bill now', 'आताचे बिल'), fmtCurrency(st.billed))}
     ${row(tr('Received', 'मिळाले'), fmtCurrency(st.received), 'pos')}
     ${row(tr('Still owed', 'बाकी'), fmtCurrency(st.outstanding), st.outstanding ? 'due' : 'muted')}
+    ${st.outstanding ? `<button type="button" class="btn btn-secondary" style="margin-top:var(--s3);width:100%" data-action="settle-pay">${tr('+ Record a payment received', '+ मिळालेले पेमेंट नोंदवा')}</button>` : ''}
     ${st.over ? `<div class="meta due" style="margin-top:var(--s2)">${tr(`Received ${fmtCurrency(st.over)} more than the bill. Check for a refund due or a bill change.`, `बिलापेक्षा ${fmtCurrency(st.over)} जास्त मिळाले.`)}</div>` : ''}
     ${st.outstanding ? `
     <div class="ask-msg" style="margin:var(--s4) 0 var(--s2)">${tr('If the client paid less, the rest stays owed until you decide. Only an agreed discount, waiver or write-off lowers the bill; payments received are never changed.', 'ग्राहकाने कमी दिल्यास, तुम्ही ठरवेपर्यंत बाकी तशीच राहते.')}</div>
@@ -3165,12 +3217,16 @@ function renderCount() {
       : ` · <b>${tr(`accepted ${r.accepted}`, `मान्य ${r.accepted}`)}</b>${r.evidence ? ` · ${r.evidence === 'written' ? tr('written', 'लेखी') : tr('verbal', 'तोंडी')}${r.by ? ` (<span data-nl>${esc(r.by)}</span>)` : ''}` : ''}${r.disputed ? ` · <span class="neg">${tr(`disputed ${r.disputed}`, `वाद ${r.disputed}`)}</span>` : ''}${r.billedAt ? ` · ${tr('added to bill', 'बिलात जोडले')}` : ''}`}
   </div>`).join('');
   const cp = ev.countPolicy || {}, agreed = countPolicyAgreed(cp);
+  // One highlighted (primary) button: the next step. Booked guests first, then billing approved plates, asking approval
+  // for extra plates, or saving a count; the others stay secondary (full-event test #12: actions looked alike)
+  const step = !s.started && !bookedGuests(ev, k) ? 'booked' : s.unbilled ? 'bill' : s.unrequested ? 'request' : 'save';
+  const kind = x => x === step ? 'btn-primary' : 'btn-secondary';
   q('count-body').innerHTML = `
     <div class="card pad" id="count-booked" style="margin:0 0 var(--s3)">
       <div class="label">${tr(`Booked guests${k === 'all' ? '' : ` · ${MEALS[k]}`}`, 'नोंदलेले पाहुणे')}</div>
       ${s.started ? `<div class="amt-md" style="margin-top:2px">${s.contracted}</div><div class="meta">${tr('Fixed when counting started', 'मोजणी सुरू झाल्यावर ठरले')}</div>`
         : `<div class="booked-row"><div class="field" style="margin:0;flex:1"><input type="number" id="count-booked-n" min="1" inputmode="numeric" aria-label="Booked guests" placeholder="e.g. 300" value="${bookedGuests(ev, k) || ''}"></div>
-          <button type="button" class="btn btn-secondary" data-action="count-booked-save">${tr('Save', 'जतन')}</button></div>
+          <button type="button" class="btn ${kind('booked')}" data-action="count-booked-save">${tr('Save', 'जतन')}</button></div>
           ${bookedGuests(ev, k) ? '' : `<div class="meta due" style="margin-top:6px">${tr('Not entered yet: enter the guests booked by the client', 'अजून नोंदलेले नाही')}</div>`}`}
     </div>
     ${s.started || bookedGuests(ev, k) ? `<div class="card pad" style="margin:0 0 var(--s3)" id="count-day">
@@ -3183,8 +3239,8 @@ function renderCount() {
     <div class="f2"><div class="field"><label for="count-n">${tr('New count', 'नवीन मोजणी')}</label><input type="number" id="count-n" min="0" inputmode="numeric" placeholder="${s.counted ?? s.contracted}"></div>
       <div class="field"><label for="count-note">${tr(s.counted == null ? 'Note (optional)' : 'Reason if correcting', 'कारण')}</label><input type="text" id="count-note" placeholder="${s.counted == null ? 'e.g. plates issued at 9 pm' : 'e.g. recount at the gate'}"></div></div>
     <div class="btn-row">
-      <button type="button" class="btn btn-secondary" data-action="count-save">${tr('Save count', 'मोजणी जतन')}</button>
-      ${s.unrequested ? `<button type="button" class="btn btn-secondary" data-action="count-request">${tr(`Ask approval for ${s.unrequested} extra`, `${s.unrequested} जास्त मान्यता`)}</button>` : ''}
+      <button type="button" class="btn ${kind('save')}" data-action="count-save">${tr('Save count', 'मोजणी जतन')}</button>
+      ${s.unrequested ? `<button type="button" class="btn ${kind('request')}" data-action="count-request">${tr(`Ask approval for ${s.unrequested} extra`, `${s.unrequested} जास्त मान्यता`)}</button>` : ''}
     </div>
     ${s.unbilled ? `<button type="button" class="btn btn-primary" style="width:100%;margin-top:var(--s3)" data-action="count-bill">${tr(`Add ${s.unbilled} approved plates to the bill (+${fmtCurrency(s.requests.filter(r => r.unbilled).reduce((t, r) => t + toPaise(r.rate) * r.unbilled, 0) / 100)})`, `${s.unbilled} मान्य ताटे बिलात जोडा`)}</button>` : ''}
     <details class="card pad" id="count-policy" style="margin:var(--s4) 0 0">
@@ -3371,8 +3427,8 @@ async function copyFunctionSheet() {
 
 /* ── SHARED BILL EDITOR (G-13) ── */
 let splitDraft = null;   // { anchor: the expense that holds the bill photo, total, rows: [{ id?, evId, amt }] }
-function openSplitModal() {
-  const id = qv('exp-id'); const ex = D.expenses.find(x => x.id === id); if (!ex) return;
+function openSplitModal(id = qv('exp-id')) {
+  const ex = D.expenses.find(x => x.id === id); if (!ex) return;
   const parts = ex.split ? splitParts(D.expenses, ex.split.id) : [ex];
   const anchor = parts.find(x => (x.billIds || []).length) || parts[0];
   splitDraft = { anchorId: anchor.id, total: ex.split ? ex.split.total : ex.amt,
@@ -4336,16 +4392,30 @@ function renderPlanRows() {
   q('plan-rows').innerHTML = planDraft.map((m, i) => `<div data-pm="${i}" style="display:flex;flex-direction:column;gap:var(--s2);padding:var(--s3) 0;border-bottom:1px solid var(--line)">
     <div style="display:flex;gap:var(--s2);align-items:center"><div class="field" style="flex:1;min-width:0;margin:0"><input type="text" data-k="label" aria-label="Milestone name" value="${esc(m.label || '')}" placeholder="e.g. Second payment"></div>
       <button type="button" class="icon-btn" data-pm-del="${i}" aria-label="Remove milestone">${icon('x', 16)}</button></div>
-    <div class="f2" style="margin:0"><div class="field" style="margin:0"><input type="text" data-k="amt" aria-label="Amount in rupees or percent" inputmode="decimal" value="${m.pct != null ? m.pct + '%' : esc(String(m.amt ?? ''))}" placeholder="₹ or % of bill"></div>
-      <div class="field" style="margin:0"><select data-k="when" aria-label="When it is due">${whenOpts.map(([v, l]) => `<option value="${v}"${m.when === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div></div>
-    ${m.when === 'date' ? `<div class="field" style="margin:0"><input type="date" data-k="date" aria-label="Due date" value="${esc(m.date || '')}"></div>` : ['before', 'after'].includes(m.when) ? `<div class="field" style="margin:0"><input type="number" data-k="days" aria-label="Days" min="0" inputmode="numeric" placeholder="Days ${m.when === 'before' ? 'before' : 'after'} the event" value="${m.days ?? ''}"></div>` : ''}
+    <div class="f2" style="margin:0"><div class="field" style="margin:0"><label for="pm-amt-${i}">${planUnit(m) === 'pct' ? tr('% of the bill', 'बिलाचे %') : tr('Amount ₹', 'रक्कम ₹')}</label>
+        <div style="display:flex;gap:var(--s1)"><input type="text" id="pm-amt-${i}" data-k="amt" inputmode="decimal" style="flex:1;min-width:0" value="${esc(planAmtText(m))}" placeholder="${planUnit(m) === 'pct' ? 'e.g. 25' : 'e.g. 50000'}">
+        <select data-k="unit" aria-label="Rupees or percent of the bill" style="width:auto;flex:none"><option value="amt"${planUnit(m) === 'amt' ? ' selected' : ''}>₹</option><option value="pct"${planUnit(m) === 'pct' ? ' selected' : ''}>%</option></select></div></div>
+      <div class="field" style="margin:0"><label for="pm-when-${i}">${tr('When', 'केव्हा')}</label><select id="pm-when-${i}" data-k="when">${whenOpts.map(([v, l]) => `<option value="${v}"${m.when === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div></div>
+    ${m.when === 'date' ? `<div class="field" style="margin:0"><label for="pm-date-${i}">${tr('Due date – tap to pick', 'देय तारीख')}</label><input type="date" id="pm-date-${i}" data-k="date" value="${esc(m.date || '')}"></div>` : ['before', 'after'].includes(m.when) ? `<div class="field" style="margin:0"><label for="pm-days-${i}">${m.when === 'before' ? tr('Days before the event', 'कार्यक्रमाच्या किती दिवस आधी') : tr('Days after the event', 'कार्यक्रमानंतर किती दिवस')}</label><input type="number" id="pm-days-${i}" data-k="days" min="0" inputmode="numeric" placeholder="e.g. 7" value="${m.days ?? ''}"></div>` : ''}
   </div>`).join('');
   updatePlanSum();
 }
+/* A milestone is in rupees or a % of the bill, chosen beside the amount (phone number keyboards have no % key).
+   Typing "25%" still works. What was typed is kept as it is across re-renders (changing "when" or the unit). */
+const planUnit = m => m.unit || (m.pct != null ? 'pct' : 'amt');
+// A typed amount: "25%" chooses % for this row and is kept as 25 with the unit stored, so no later re-render, row
+// added or removed, or due-date change can turn 25% into ₹25. Only the ₹ / % choice itself changes the unit.
+function setPlanAmt(m, value, row) {
+  const v = String(value ?? '');
+  if (/%\s*$/.test(v)) { m.unit = 'pct'; const sel = row?.querySelector('[data-k="unit"]'); if (sel) sel.value = 'pct'; }
+  else if (!m.unit) m.unit = planUnit(m);
+  m.amtRaw = v.replace(/%\s*$/, '');
+}
+const planAmtText = m => String(m.amtRaw ?? (m.pct != null ? m.pct : m.amt ?? '')).replace(/%\s*$/, '');
 function readPlanRow(m) {
-  const raw = String(m.amtRaw ?? (m.pct != null ? m.pct + '%' : m.amt ?? '')).trim();
+  const raw = planAmtText(m).trim();
   const out = { id: m.id, label: (m.label || '').trim(), when: m.when };
-  if (/%$/.test(raw)) out.pct = Number(raw.slice(0, -1)); else out.amt = raw === '' ? NaN : Number(raw);
+  if (planUnit(m) === 'pct') out.pct = raw === '' ? NaN : Number(raw); else out.amt = raw === '' ? NaN : Number(raw);
   if (m.when === 'date') out.date = m.date || '';
   if (['before', 'after'].includes(m.when)) out.days = m.days === '' || m.days == null ? NaN : Math.floor(Number(m.days));
   if (!out.label) delete out.label;
@@ -4354,13 +4424,13 @@ function readPlanRow(m) {
 function updatePlanSum() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const rows = planDraft.map(readPlanRow);
-  const total = rows.reduce((s, r) => s + (r.pct != null ? Math.round(toPaise(ev.billing) * r.pct / 100) : toPaise(r.amt || 0)), 0) / 100;
+  const total = rows.reduce((s, r) => s + (r.pct != null ? Math.round(toPaise(ev.billing) * (r.pct || 0) / 100) : toPaise(r.amt || 0)), 0) / 100;
   const diff = Math.round(ev.billing * 100) / 100 - total;
   q('plan-sum').textContent = `Bill ${fmtCurrency(ev.billing)} · scheduled ${fmtCurrency(total)}` + (diff > 0 ? ` · ${fmtCurrency(diff)} left as balance after the event` : diff < 0 ? ` · ${fmtCurrency(-diff)} more than the bill` : ' · all of the bill');
 }
 async function savePlan() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
-  const rows = planDraft.map(readPlanRow).filter(r => !(r.pct == null && Number.isNaN(r.amt) && !r.label));
+  const rows = planDraft.map(readPlanRow).filter(r => !(Number.isNaN(r.pct ?? r.amt) && !r.label));
   for (const r of rows) {
     const bad = r.pct != null ? !(r.pct > 0 && r.pct <= 100) : !(r.amt > 0) || Math.abs(r.amt * 100 - Math.round(r.amt * 100)) > .001;
     if (bad || (r.when === 'date' && !r.date) || (['before', 'after'].includes(r.when) && !(r.days >= 0))) {
@@ -4813,7 +4883,7 @@ function setVendorLabel() {
   const credit = q('exp-pay').dataset.value === 'credit';
   q('exp-vendor-lbl').innerHTML = credit ? 'Owed to – कोणाला देणे <span class="req">*</span>'
     : normal(qv('exp-head')) === 'vendor staff tips' ? 'Whose staff – कोणाचा स्टाफ'
-    : 'Vendor – विक्रेता';
+    : 'Vendor (optional) – विक्रेता';
 }
 
 function populateVendorSelect(selected = '') {
@@ -4825,7 +4895,7 @@ function populateVendorSelect(selected = '') {
   const credit = q('exp-pay').dataset.value === 'credit';
   const people = D.vendors.filter(v => isPerson(v) && (credit || String(v.id) === selStr))
     .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-  q('exp-vendor').innerHTML = '<option value="">Choose vendor – विक्रेता निवडा</option>' +
+  q('exp-vendor').innerHTML = (credit ? '<option value="">Choose who you owe – कोणाला देणे</option>' : '<option value="">No vendor (one-off purchase) – विक्रेता नाही</option>') +
     groups.map((vendors, i) => vendors.length ? `<optgroup label="${esc(labels[i])}">${vendors.map(option).join('')}</optgroup>` : '').join('') +
     (people.length ? `<optgroup label="${esc('Other people – इतर व्यक्ती')}">${people.map(option).join('')}</optgroup>` : '') +
     '<option value="__new">+ New vendor – नवीन विक्रेता</option>' +
@@ -4885,7 +4955,7 @@ function openExpModal(arg) {
     : part ? tr(`Shared bill: this event's part of ${fmtCurrency(ex.split.total)} across ${part.length} events. Changes to vendor, item, date or payment apply to every part.`,
     `वाटलेले बिल: ${fmtCurrency(ex.split.total)} पैकी या कार्यक्रमाचा वाटा (${part.length} कार्यक्रम).`)
     : ex?.stock ? tr('Common stock, on no event yet. To use it for an event, move it with Split bill.', 'साठा – अजून कोणत्याही कार्यक्रमावर नाही.') : '';
-  q('btn-share-exp').hidden = !ex || !!ex.draft;
+  q('btn-share-exp').hidden = false;   // a new entry (or a bill draft) is saved first, then split
   q('btn-save-exp-next').hidden = !!ex;
   clearFieldErrors();
   startExpSession(ex);
@@ -5001,7 +5071,7 @@ async function snapBills(files) {
     { label: 'Fill now – आता भरा', run: () => openExpModal(made[0]) });
 }
 
-async function saveExpense({ next = false } = {}) {
+async function saveExpense({ next = false, split = false } = {}) {
   const session = expWork;
   await session.ready;
   if (expWork !== session) return;
@@ -5104,6 +5174,8 @@ async function saveExpense({ next = false } = {}) {
     showToast(over ? `Saved · ${over}` : `Saved ${fmtCurrency(record.amt)} · add the next – पुढील खर्च`, over ? 'error' : 'success');
     return;
   }
+  // "Split bill" on a new entry: saved first, then straight on to dividing it between events or stock
+  if (split) { openSplitModal(record.id); showToast('Saved. Now divide the bill – जतन, आता वाटा', 'success'); return; }
   closeModals();
   showToast(over ? `Saved · ${over}` : `Expense saved – खर्च नोंदवला`, over ? 'error' : 'success');
 }
@@ -5727,11 +5799,20 @@ async function restoreText(text, { safetyCopy = false } = {}) {
   const made = info.exportedAt ? `Made ${fmtDate(localDay(info.exportedAt))}${info.appVersion ? ` · CaterDesk v${info.appVersion}` : ''}` : 'Older backup';
   const counts = `${c.events} events · ${c.expenses} expenses · ${c.cPays} client payments · ${c.vendors} vendors · ${c.vPays} vendor payments · ${c.photos} photos`;
   const check = info.verified ? '✓ Checked: complete and undamaged' : 'Made by an older version: it cannot be checked for damage, but every record is still validated before import.';
+  // What is on this phone now, and what Replace would remove: records here that the backup does not have
+  const STORES = [['events', 'event'], ['expenses', 'expense'], ['cPays', 'client payment'], ['vendors', 'vendor'], ['vPays', 'vendor payment']];
+  const nowText = STORES.map(([k, l]) => `${(D[k] || []).length} ${l}s`).join(' · ');
+  const gone = STORES.map(([k, l]) => { const ids = new Set((Array.isArray(payload[k]) ? payload[k] : []).map(r => r?.id));
+    const list = (D[k] || []).filter(r => !ids.has(r.id)); return { k, l, list }; }).filter(g => g.list.length);
+  const goneEvents = gone.find(g => g.k === 'events')?.list || [];
+  const goneText = gone.length ? `Replace would remove ${gone.map(g => `${g.list.length} ${g.l}${g.list.length > 1 ? 's' : ''}`).join(', ')} that the backup does not have${goneEvents.length ? ` (events: ${goneEvents.slice(0, 3).map(e => e.name || 'unnamed').join(', ')}${goneEvents.length > 3 ? ` and ${goneEvents.length - 3} more` : ''})` : ''}; records in both are set back to the backup's version.`
+    : 'Everything on this phone is also in the backup; Replace sets each record back to the backup\'s version.';
   const mode = await askSheet({
     title: 'Import backup – आयात',
-    message: `${made}\n${counts}\n${check}\n\nMerge keeps your current data. Replace deletes it first${safetyCopy ? '; if this phone has data, you will save a copy of it before anything is replaced' : ''}.`,
+    message: `Backup: ${made}\n${counts}\n${check}\n\nThis phone now: ${nowText}\n${goneText}\n\nMerge adds the backup's records and removes nothing: everything added on this phone since the backup stays.
+Replace makes this phone exactly like the backup: everything added since it was made is removed${safetyCopy ? '; if this phone has data, you will save a copy of it before anything is replaced' : ''}.`,
     actions: [
-      { label: 'Merge – जोडा', value: 'merge', style: 'btn-primary' },
+      { label: 'Merge – जोडा', value: 'merge', style: 'btn-secondary' },
       { label: 'Replace all data – सर्व बदला', value: 'replace', style: 'btn-danger' }
     ]
   });
@@ -5746,7 +5827,7 @@ async function restoreText(text, { safetyCopy = false } = {}) {
     changesChannel?.postMessage('changed');
     go('home');
     renderPage('home');
-    showToast(repaired ? `Imported. ${repaired} bill${repaired > 1 ? 's were' : ' was'} linked to a purchase on another event; the bill${repaired > 1 ? 's are' : ' is'} kept, the link removed. – आयात झाली` : 'Imported – आयात झाली');
+    showToast(mode === 'merge' && !repaired ? 'Merged: nothing on this phone was removed. To go back to the backup exactly, import it again with Replace. – जोडले' : repaired ? `Imported. ${repaired} bill${repaired > 1 ? 's were' : ' was'} linked to a purchase on another event; the bill${repaired > 1 ? 's are' : ' is'} kept, the link removed. – आयात झाली` : 'Imported – आयात झाली');
   } finally { showLoading(false); }
   return true;
 }
@@ -5960,6 +6041,7 @@ function bindAllEvents() {
       case 'quote-open': openQuote(); break;
       case 'quote-print': printQuote(); break;
       case 'quote-new': case 'quote-option': case 'quote-save': case 'quote-share': case 'quote-sent': case 'quote-accept': case 'quote-decline': quoteAction(action); break;
+      case 'settle-pay':   { const id = curRef; closeOverlay().then(() => openCPayModal(id)); break; }
       case 'settle-adjust': case 'settle-dispute': case 'settle-undispute': settleAction(action); break;
       case 'fs-save':  saveFunctionSheet(); break;
       case 'fs-share': shareFunctionSheet(); break;
@@ -6144,7 +6226,8 @@ function bindAllEvents() {
     const b = e.target.closest('[data-lab-del]'); if (!b) return;
     labRows.splice(Number(b.dataset.labDel), 1); renderLabRows();
   });
-  q('btn-send-ord').addEventListener('click', () => runSave('order', sendOrder));
+  q('btn-send-ord').addEventListener('click', () => runSave('order', () => sendOrder('send')));
+  q('btn-save-ord').addEventListener('click', () => runSave('order', () => sendOrder('save')));
   q('btn-send-buy').addEventListener('click', () => runSave('purchase', sendBuy));
   q('btn-cancel-buy').addEventListener('click', cancelBuyFromSheet);
   q('btn-cancel-ord').addEventListener('click', () => runSave('order', cancelOrderFromSheet));
@@ -6272,13 +6355,15 @@ function bindAllEvents() {
     updateMealPlan();
   }));
   q('plan-rows').addEventListener('input', e => { const row = e.target.closest('[data-pm]'), k = e.target.dataset.k; if (!row || !k) return;
-    const m = planDraft[Number(row.dataset.pm)]; if (k === 'amt') m.amtRaw = e.target.value; else m[k] = e.target.value; updatePlanSum(); });
-  q('plan-rows').addEventListener('change', e => { const row = e.target.closest('[data-pm]'); if (!row || e.target.dataset.k !== 'when') return;
-    const m = planDraft[Number(row.dataset.pm)]; m.amtRaw = row.querySelector('[data-k="amt"]').value; m.when = e.target.value; renderPlanRows(); });
+    const m = planDraft[Number(row.dataset.pm)]; if (k === 'amt') setPlanAmt(m, e.target.value, row); else m[k] = e.target.value; updatePlanSum(); });
+  q('plan-rows').addEventListener('change', e => { const row = e.target.closest('[data-pm]'), k = e.target.dataset.k; if (!row || !['when', 'unit'].includes(k)) return;
+    const m = planDraft[Number(row.dataset.pm)]; setPlanAmt(m, row.querySelector('[data-k="amt"]').value, row); m[k] = e.target.value; renderPlanRows();
+    q('plan-rows').querySelector(`[data-pm="${row.dataset.pm}"] [data-k="${k}"]`)?.focus(); });
   q('plan-rows').addEventListener('click', e => { const b = e.target.closest('[data-pm-del]'); if (!b) return; planDraft.splice(Number(b.dataset.pmDel), 1); renderPlanRows(); });
   q('btn-plan-add').addEventListener('click', () => { planDraft.push({ id: uid('PM'), label: '', when: 'date', amt: '' }); renderPlanRows(); });
   q('btn-save-plan').addEventListener('click', savePlan);
-  q('btn-share-exp').addEventListener('click', openSplitModal);
+  // One bill for several events: a saved entry opens the split; a new one (or a bill draft) is saved first
+  q('btn-share-exp').addEventListener('click', () => D.expenses.some(x => x.id === qv('exp-id')) ? openSplitModal() : saveExpense({ split: true }));
   q('count-meals').addEventListener('click', e => { const b = e.target.closest('[data-count-meal]'); if (!b) return; countMeal = b.dataset.countMeal; renderCount(); });
   q('split-rows').addEventListener('input', e => { const row = e.target.closest('[data-sp]'), k = e.target.dataset.k; if (!row || !k) return;
     splitDraft.rows[Number(row.dataset.sp)][k] = e.target.value; updateSplitSum(); });
@@ -6287,7 +6372,9 @@ function bindAllEvents() {
   q('btn-split-add').addEventListener('click', () => { splitDraft.rows.push({ evId: '', amt: '' }); renderSplitRows(); });
   q('btn-split-equal').addEventListener('click', () => { const parts = equalSplit(splitDraft.total, splitDraft.rows.length); splitDraft.rows.forEach((r, i) => { r.amt = parts[i]; }); renderSplitRows(); });
   q('btn-save-split').addEventListener('click', saveSplit);
-  for (const id of ['ord-takeup', 'ord-min', 'ord-plates']) q(id).addEventListener('input', updateCounterPlan);
+  for (const id of ['ord-takeup', 'ord-min']) q(id).addEventListener('input', updateCounterPlan);
+  // Plates typed by hand are the owner's: never refilled from the plan, even while the box is emptied to retype it
+  q('ord-plates').addEventListener('input', () => { ordAuto = null; updateCounterPlan(); });
   q('ev-type').addEventListener('change', syncEvTypeFields);
   q('ev-vtype').addEventListener('change', () => { syncEvTypeFields(); updateVenueHint(); });
   q('ev-venue').addEventListener('change', updateVenueHint);
