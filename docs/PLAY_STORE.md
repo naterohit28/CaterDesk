@@ -15,7 +15,7 @@ Play rules checked on 20 Nov 2026 (re-check in Play Console before submitting; t
 
 | # | Decision | Recommendation |
 | --- | --- | --- |
-| P-1 | Developer account: **personal** or **organization** | Organization if the business has (or can get) a free D-U-N-S number: no 12-tester wait, and the listing shows the business name. Personal is faster to open but needs the 14-day closed test |
+| P-1 | Developer account: **personal** or **organization** | **Decided 20 Nov 2026: personal.** That means a closed test with at least 12 testers for 14 days in a row before production (see §10). The listing shows the developer name entered at sign-up; the contact email is public |
 | P-2 | Public contact email for the listing and privacy policy | A business address, not a personal one. It is shown publicly |
 | P-3 | App name on Play | Keep **CaterDesk** (other businesses use the name; a trademark check is still open) |
 | P-4 | Price and countries | Free, India first |
@@ -145,3 +145,54 @@ The answers must match `public/privacy.html`. If anything is added that sends da
 - **Name:** another "CaterDesk" exists in this industry; a complaint could force a rename after launch.
 - **Support load:** a public listing brings reviews and emails; decide who answers them.
 - **Data loss reports:** records live in Chrome's storage. Clearing Chrome's data removes them. The listing and in-app text already tell users to keep a backup.
+
+## 10. Personal account: the 14-day closed test
+
+A personal developer account opened after 13 Nov 2023 can't publish to everyone straight away. It first runs a **closed test with at least 12 testers who stay opted in for 14 days in a row**, then applies for production in Play Console. Google then reviews the request, usually in about a week. Plan on **about 3–4 weeks** from the first closed-test upload to going live.
+
+### Before day 1
+
+- [ ] Play Console account opened as **personal**, fee paid, identity verified (government ID). Play Console may also ask you to confirm a phone number and to sign in once from the Play Console app on an Android phone.
+- [ ] App created; §4–§7 filled in; privacy policy live with the real contact email.
+- [ ] Signing done (§3); the 5.0.0 `.aab` uploaded to **Internal testing** and installed on your own phone from Play. The app opens **without a browser address bar** (asset links work) and your records are still there.
+- [ ] **15–20 testers lined up**, not just 12. Some will forget to opt in or will leave, and if fewer than 12 stay opted in, the 14 days may have to start again. Good testers: staff, family, a few fellow caterers. Each needs an Android phone and the Gmail address they use in Play Store.
+
+### Day 1: start the closed test
+
+1. Play Console → **Testing → Closed testing** → create a track (e.g. "Caterers") → upload the same `.aab` or promote it from internal testing.
+2. **Testers** → create an email list with every tester's Gmail address.
+3. Countries: India.
+4. Send the track for review (the first review can take a few days). Once it is approved, copy the **opt-in link** and send it with the message below.
+5. In **Testers**, check that at least 12 show as opted in. Day 1 of the 14 starts when 12 are in.
+
+### Days 1–14
+
+- Keep the test running: don't pause the track or remove testers.
+- Check the opted-in count every few days, and remind anyone who dropped off.
+- Testers should **open and use the app** with Sample data; Google's production application asks how testers used the app.
+- Collect feedback (questions below). Fix real defects in small PRs as usual. A web fix reaches testers through the website; a new `.aab` is needed only if the wrapper changes.
+
+### Day 15+: apply for production
+
+Play Console → **Dashboard → Apply for production**. Google asks about the closed test: how you recruited testers, how they used the app, what feedback you got and what you changed, and whether the app is ready. Answer from the feedback notes. After approval: production release with a **staged rollout** (§8).
+
+### Message for testers (WhatsApp/SMS, edit as you like)
+
+> Namaskar! I'm testing my catering accounts app, CaterDesk, on Google Play before launch. Google needs 12 people to keep it installed for 14 days. Could you help?
+>
+> 1. Open this link on your Android phone, signed in with the Gmail you use for Play Store: **[opt-in link]**
+> 2. Tap **Become a tester**, then **Download it on Google Play** and install CaterDesk.
+> 3. Please keep it installed for at least 14 days and open it a few times. Add a made-up event and a few expenses (no real client details needed).
+> 4. Tell me anything confusing or broken.
+>
+> It's free, has no ads, and everything you enter stays on your phone. Thank you!
+
+### Feedback questions (send on day 7 and day 13)
+
+1. Did anything not work, freeze or show an error? What were you doing?
+2. What was hard to find or understand?
+3. Did it work without internet?
+4. Would a caterer use this every day? What is missing?
+5. Phone model and Android version.
+
+Keep a short note of each answer and what you changed, for the production application.
