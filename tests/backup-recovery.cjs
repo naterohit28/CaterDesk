@@ -179,7 +179,8 @@ const SHARE_SIM = () => {
     assert.equal(await snapshot(p), before);
     assert.match(await restore(), /First, save a copy/);
     const dl = p.waitForEvent('download'); await p.locator('#ask-actions button', { hasText: 'Save a copy' }).click();
-    const d = await dl; assert.ok(JSON.parse(fs.readFileSync(await d.path(), 'utf8')).vendors.some(v => v.name === 'Sample Later Vendor'));
+    const d = await dl; assert.match(d.suggestedFilename(), /^caterdesk-before-restore-.*\.cdbk$/, 'with a recovery key the copy is encrypted (tests/encrypted-safety-copy.cjs restores it)');
+    assert.equal(fs.readFileSync(await d.path()).subarray(0, 4).toString(), 'CDBK');
     await p.waitForSelector('#ask-modal.active #ask-title:has-text("Is the copy saved")');
     await p.locator('#ask-actions button', { hasText: 'The copy is saved' }).click();
     await p.waitForSelector('#toast-msg:has-text("Imported")');

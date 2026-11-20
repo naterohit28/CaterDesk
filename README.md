@@ -4,7 +4,7 @@
 
 An offline-first app for catering events, expenses, vendor credit, client collections, menus and vendor orders. Business records stay in the device's browser storage; the hosted app also sends limited error diagnostics to its server.
 
-**Current source and hosted web build: v4.31.14.** Documentation checked on **14 November 2026**.
+**Current source and hosted web build: v4.31.16.** Documentation checked on **20 November 2026**.
 
 [Open the app](https://expense-calculator-kohl.vercel.app/) · [Download published packages](https://github.com/naterohit28/CaterDesk/releases) · [Historical reliability report](docs/RELIABILITY.md) · [Competitor/name research and Claude evaluation notes](docs/research/README.md) · [Report an issue](https://github.com/naterohit28/CaterDesk/issues)
 
@@ -27,20 +27,20 @@ CaterDesk was previously called Flavor Fusion. The existing Android package (`co
 
 ## Versions and available packages
 
-The **APK wrapper version, hosted web version and bundled desktop version are independent**. Installing an APK does not establish which cached web release is currently open. Check the app's Settings panel for the running web build.
+Four things carry version numbers, and they are **independent**: the **hosted web app** (what the phone actually runs, updated from the website), the **Android wrapper** (the installed APK, which only opens the hosted app), the **downloadable binaries** on GitHub Releases, and the **Windows desktop bundle**. A web release never needs a new APK, and installing an APK does not change which web release is open. Check **Settings** in the app for the running web build.
 
-| Component | Verified state on 3 November 2026 | Meaning |
+| Component | State (checked 20 November 2026 unless noted) | Meaning |
 | --- | --- | --- |
-| Source and hosted web app | **4.31.14** | Current UI, data/export version, service worker and error reporter |
-| Service-worker release cache | `flavor-fusion-v2-cache-v25` | Installed web assets; this number is not the database schema version |
-| Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** | APK package inspected locally; launches the hosted app, which can run 4.31.14 |
+| Source and hosted web app | **4.31.16** | Current UI, data/export version, service worker and error reporter |
+| Service-worker release cache | `flavor-fusion-v2-cache-v95` | Installed web assets; this number is not the database schema version |
+| Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** (inspected 3 November 2026) | APK package inspected locally; launches the hosted app, which can run 4.31.16 |
 | Android requirements for that local wrapper | min API **24**, target API **36** | Android 7.0+ and a compatible browser provider |
 | Latest GitHub Release with downloadable binaries | **2.4.7** | APK and desktop ZIP; later source tags do not imply newer binaries were uploaded |
 | Desktop package currently in the owner's `Apps/Desktop` folder | **2.4.7** | A static older bundle, not the current source build |
-| Desktop launcher source/instructions | **4.31.14** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
+| Desktop launcher source/instructions | **4.31.16** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
 | IndexedDB schema | **4** | Kept separate from application version changes |
 
-Do not relabel an older package as 4.31.14. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
+Do not relabel an older package as 4.31.16. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
 
 ## Current features
 
@@ -109,24 +109,35 @@ Browser IndexedDB **`FlavorFusionDB`**, schema **4**, contains:
 
 Preferences, resume snapshots and remembered choices also use localStorage. A backup contains the six business stores plus the settings that travel with your data (theme, language, Home period and the last-used expense category). It never contains the PIN, the `meta` store, error-report consent or unsaved drafts, which stay with the device.
 
-**There is no account-based business-data cloud sync or automatic off-device backup.** Saving to Google Drive is manual: **Share / save backup → Drive** in the share menu. Automatic, encrypted Drive backup is a later v5 step (P1-E) and is not implemented. GitHub/Vercel hosting does not back up event records. Phone, desktop and ordinary browser profiles can have separate data. Changing domain, scheme, port, browser provider or profile can show another database. Preserve an export before moving to a custom domain or another device.
+**There is no account-based business-data cloud sync and no automatic off-device backup.** Every backup is a deliberate tap in **Settings (☰) → Backup & Recovery**. GitHub/Vercel hosting does not back up event records. Phone, desktop and ordinary browser profiles can have separate data. Changing domain, scheme, port, browser provider or profile can show another database. Preserve a backup before moving to a custom domain or another device.
 
-The app requests persistent storage where supported, but storage can still be lost through clearing data, device loss or profile changes. The PIN hides the UI; it does **not encrypt** the database or exported files. Export is blocked while the app is locked.
+Five different things, often confused:
+
+| What | What it is | Encrypted? |
+| --- | --- | --- |
+| **Backup to phone** | A `.cdbk` file in the phone's Downloads | Yes, with the recovery key |
+| **Backup to Google Drive** | The same encrypted file handed to Android's share menu as `.cdbk.txt`; you pick Drive, the account and the folder. CaterDesk never signs in to Google and cannot see whether Drive kept the file | Yes, with the recovery key |
+| **Readable backup (not encrypted)** | A plain backup file (`.json`, or `.txt` when shared) that anyone who opens it can read | No |
+| **Recovery key** | 14 groups shown once on this phone and typed back before use. Every encrypted backup opens only with the key it was made with. This phone keeps it in a form it can use but not show again; it is never in a backup or sent anywhere. Lose the key and the phone, and the encrypted backups are gone | — |
+| **Google Drive API backup (switched off)** | A direct Drive client was built (4.30.0) but ships switched off: no Google client ID is configured and no Google code loads. It stays off because Google's Drive API terms restrict app backups to Drive without Google's consent. It needs the owner's explicit decision before any change | — |
+
+The app requests persistent storage where supported, but storage can still be lost through clearing data, device loss or profile changes. The PIN hides the screen; it does **not encrypt** the database. Encrypted backups use the recovery key, not the PIN; the readable backup is not encrypted. Backups are blocked while the app is locked.
 
 ### Back up
 
-1. Unlock the app and choose **Settings → Share / save backup**.
-2. When the backup is ready, choose **Share** (the phone's share menu: **Drive**, **Files**, WhatsApp or email) or **Save to phone (Downloads)**. The choice is a fresh tap because Android opens the share menu only shortly after a tap, and building a backup with photos can take longer. Android Chrome refuses to share `.json` files, so the backup is always shared as `caterdesk-backup-YYYY-MM-DD.txt` (same content; CaterDesk imports `.txt` and `.json`). Where no share menu exists the file downloads as `.json`. Keep more than one dated copy outside the device.
-3. Before updates, migration or imports, confirm that the file is actually saved and keep the previous backup.
+1. Unlock the app and open **Settings (☰) → Backup & Recovery**. The first time, choose **Recovery key**, write the key down exactly (or print it), keep it away from the phone, and type it back in full.
+2. Choose **Backup to phone** (encrypted `.cdbk` in Downloads) or **Backup to Google Drive** (tap **Share to Google Drive**, then pick Drive, your account and folder, and tap Save). Android's share menu opens only straight after a tap and refuses `.cdbk` files, so the Drive copy is named `.cdbk.txt`; the bytes are the same encrypted file.
+3. Check the file is really there (Downloads, or the Drive folder). CaterDesk says only that a download started or that the file was handed to the app you chose, never that it was saved. Keep more than one dated copy outside the phone.
 
-Backups contain business records and images. Protect them as private documents. Sending a file to a share sheet does not prove a chosen destination retained it.
+Backups contain business records and images. Protect the readable backup as a private document.
 
 ### Restore
 
-1. Export current records first. For testing, import a copy into a separate profile.
-2. Choose **Settings → Import backup** and select the backup (`.txt` or `.json`). Before anything changes, CaterDesk shows the backup's date, app version and record counts, and whether it passed its integrity check.
-3. **Merge** retains current records and rejects conflicts for the same ID. **Replace** validates first, then replaces business records atomically; a failed replacement preserves the old database.
-4. Reconcile totals, client/vendor balances, drafts and images after restoration.
+1. For testing, restore into a separate browser profile or a second phone, never over live records.
+2. Choose **Settings (☰) → Backup & Recovery → Restore backup** and pick the file (`.cdbk`, `.cdbk.txt`, `.txt` or `.json`, from Downloads or from Drive through the phone's file picker). An encrypted backup made on another phone or with another key asks for its recovery key; a wrong key is refused and nothing changes.
+3. Before anything changes, CaterDesk shows the backup's date, app version and record counts, whether it passed its integrity check, what is on this phone now, and what **Replace** would remove (naming up to three events).
+4. **Merge** adds the backup's records and removes nothing; if the same record differs on the phone and in the backup, the whole merge is refused and the current data is kept. **Replace** makes the phone exactly like the backup. If the phone has any data, Replace first asks you to save a copy of it and to confirm the copy is saved; nothing is replaced until you do. With a recovery key set up, that copy is encrypted (`caterdesk-before-restore-….cdbk`, opened with the same key through Restore backup). Without a key it is a readable `.json`, with a warning; with a key, a readable copy is still available as a warned emergency option. If the encrypted copy cannot be made, nothing is replaced. Replace validates first and replaces the records in one step, so a failed replacement keeps the old data.
+5. Check totals, client/vendor balances, drafts and images after restoring.
 
 **Backup format v5 (manifest 1, from 4.1.0).** The file keeps the `ffv2` layout, so 4.0.x can still read it, and adds a `manifest` with a record count per store and a SHA-256 of all records. A file that was edited, cut off or damaged, a file from a newer CaterDesk, a non-backup file or a file over 300 MB is refused with a plain message, and existing data is not changed. Backups made before 4.1.0 have no manifest; they still import after the usual record validation, marked as not checkable. Restore (Replace) also restores the backed-up settings; Merge keeps this phone's settings. [`tests/backup-restore.cjs`](tests/backup-restore.cjs) runs the restore drill on a second simulated device.
 
@@ -147,17 +158,17 @@ The APK is a **Trusted Web Activity** wrapper around the hosted site. It does no
 1. Keep a business-data backup.
 2. Obtain the intended APK from its actual release assets or the owner's prepared local package. Install over the existing app with the same package/signing identity.
 3. Open online to download updates. Check the **web build in Settings**, not just Android App info.
-4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **4.31.14**.
+4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **4.31.16**.
 
 A newer web release may reload automatically during the first 20 seconds of startup when no active form/save/overlay prevents it, at most once per release per session. Otherwise it waits for a later start or explicit reload. Refresh can also switch versions when no form/save is open. Service-worker cache mappings preserve matching assets for older open pages until navigation.
 
 Do not uninstall or clear browser/site storage to force an update. If Android rejects an APK, check package, versionCode and signing certificate before proceeding. The public certificate association is [`public/.well-known/assetlinks.json`](public/.well-known/assetlinks.json).
 
-The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **4.31.14**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
+The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **4.31.16**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
 
 ## Windows desktop testing
 
-Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v4.31.14 package.
+Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v4.31.16 package.
 
 1. Extract the entire ZIP; keep `app/` beside `CaterDesk-Desktop.exe`.
 2. Run the EXE. Microsoft Edge opens an app window; a tray icon provides **Open CaterDesk**, storage information and **Exit test server**.
@@ -255,7 +266,7 @@ cd ..\Android
 
 The local helper generates/compiles the project, signs through Android SDK tooling and verifies the APK. It needs Node.js/Bubblewrap, JDK, Android SDK and the original signing identity. Passwords are loaded from Windows-user-encrypted local credentials or prompted interactively. Never commit credentials or print them in build instructions.
 
-A fresh clone does not include this generated project, keystore or credentials. To create another wrapper, configure Bubblewrap separately; an in-place update of the existing installed package requires the original signer and an increasing Android versionCode. Web-only releases do not require a newly numbered APK. Protect recovery copies of signing material; user-encrypted files are not portable to another Windows account by simple copying.
+A fresh clone does not include this generated project, keystore or credentials. **Known reproducibility gap:** the wrapper's source (the Bubblewrap project) lives only in the owner's local workspace, so the installed APK cannot be rebuilt from this repository alone. Bringing its non-secret files into the repository is a future item; the keystore and passwords never belong here. To create another wrapper, configure Bubblewrap separately; an in-place update of the existing installed package requires the original signer and an increasing Android versionCode. Web-only releases do not require a newly numbered APK. Protect recovery copies of signing material; user-encrypted files are not portable to another Windows account by simple copying.
 
 ## Deployment, diagnostics and maintenance
 
@@ -311,13 +322,13 @@ Commit from this Git checkout, not the outer Downloads folder. Generated `node_m
 | Symptom | Action |
 | --- | --- |
 | Android App info and Settings show different versions | Wrapper and web versions differ by design. Settings identifies the running UI; use the version table above |
-| Settings shows an older web build | Open online, save/close entries, check updates and reload; or use header refresh when idle. Do not clear data |
+| Settings shows an older web build | Open online, save/close entries, then **Settings → Check for app updates** and reload. Do not clear data |
 | Records look missing in another environment | Check original domain, scheme, port, browser provider and profile. Import a backup copy only into the intended environment |
 | Save waits or reports busy storage | Let the transaction finish/cancel, then retry the retained form. Avoid repeated Save taps or storage clearing |
 | App seems frozen after returning | Look for PIN/confirmation overlays; report build, action, duration and error text. Retain storage and backups |
 | Expense/vendor choice looks unexpected | Check category, item and history-based suggestions. Manual choices win; edit the entry if it is wrong |
 | Delivered order has no recorded expense | A normal delivery opens a form; save the actual bill. Whole-event outsourced charges may already be recorded |
-| An order says Sent but WhatsApp was cancelled | Status is locally maintained, not a WhatsApp delivery acknowledgement; review/update it |
+| An order says Opened but nothing reached the vendor | Opening WhatsApp marks an order *opened*, never *sent*; CaterDesk cannot see WhatsApp. Mark it sent or confirmed yourself once the vendor has it |
 | Contacts button is unavailable | Browser API support varies. Enter details manually; only an explicitly selected contact is requested where supported |
 | Backup is rejected or stale edit is blocked | Keep the original file/records, read the validation error or reopen the current record; do not bypass checks blindly |
 | Event/vendor cannot be deleted | Linked accounting history must be resolved individually; deletion guards preserve balances |
@@ -336,6 +347,8 @@ This is a short source-feature history, not a list of available binary downloads
 
 | Version | Main changes |
 | --- | --- |
+| 4.31.16 | Fixes from the independent pre-v5 audit: a vendor order saves only with a whole number of plates (1 or more) and a real delivery date; a delivered purchase without its bill now stops reconciliation and shows in the Books check, like a delivered order; two delivered orders from one vendor need two bills (each bill counts for one order, linked or not), so one vendor bill no longer hides another order's missing bill (`tests/order-recon-fixes.cjs`). Cache v95 |
+| 4.31.15 | Encrypted safety copy before a restore: when Replace would remove this phone's data, the copy it first asks for is now encrypted with the recovery key (.cdbk; the key is never inside) instead of a readable file. No key set up: a readable copy, with the warning, as before. With a key: a readable copy only through a warned emergency option. A cancelled, failed or interrupted restore changes nothing, and the encrypted copy restores the phone exactly (`tests/encrypted-safety-copy.cjs`). Cache v94 |
 | 4.31.14 | Full-event test fixes: payment plan ₹ / % choice (a chosen % stays a % through every edit) and labelled date/days; meal dishes typed but not added are kept on Save; vendor and purchase orders are saved first and sent second (WhatsApp opens from a tap on the saved order, a failed save sends nothing, a blocked window leaves it not sent), Save order keeps it unsent, typed plates are never refilled; Split bill is offered on a new expense; a cash one-off purchase needs no vendor; settlement can record a payment; the restore sheet shows this phone's records, what Replace would remove, and that Merge removes nothing; purchase orders add venue notes and your contact; the guest-count sheet highlights the next step |
 | 4.31.13 | **Security fix:** the meal-menu editor shows a library menu's name and the every-meal dish names as text. A name containing page code could add elements to the editor (found by the reviewer after 4.31.8). A quote option label on the event page is escaped too. |
 | 4.31.12 | Dropdown text stays at the readable size: a long event or vendor name is no longer shrunk to fit. When the chosen name doesn't fit, it is written out in full on a line under the dropdown (English or Marathi); short names look as before. **Fix:** the meal and menu dropdowns in quote and meal rows now get the narrower padding they were meant to have, so their names fit at full size on a small phone. |
