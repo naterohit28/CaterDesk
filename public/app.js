@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.31.14';
+const APP_BUILD = '4.31.15';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -5762,24 +5762,50 @@ async function openEncrypted(bytes) {
 /* Before a restore replaces this phone's data: if there is anything Replace would remove (events, bills,
    drafts, vendors, payments, photos, the menu library or business details), the owner saves a copy of it first and
    confirms that copy is saved. The browser cannot tell whether a download was kept, so nothing is replaced until
-   the owner says it is there. Resolves true to go ahead, false to stop (nothing changed). */
+   the owner says it is there. Resolves true to go ahead, false to stop (nothing changed), null if it stopped with its own message.
+   With a recovery key set up, the copy is encrypted with it (.cdbk, the same file as Backup to phone: it opens only in
+   CaterDesk, with that key, and the key is never in it). Without a key, or if the owner deliberately chooses it after a
+   warning, the copy is a readable file. If the encrypted copy cannot be made, nothing is replaced. */
 async function safetyCopyFirst() {
   const now = { ...await exportAllData(), prefs: backupPrefs() };
   const records = Object.values(now.manifest?.counts || {}).reduce((n, c) => n + (Number(c) || 0), 0);
   const profile = typeof now.prefs.ffv2_profile === 'string' && now.prefs.ffv2_profile.trim() && now.prefs.ffv2_profile.trim() !== '{}';
   if (!records && !profile) return true;   // nothing on this phone that Replace would remove
   const stamp = localStamp();
-  const name = `caterdesk-before-restore-${stamp}.json`;
   const what = [records ? `${records} record${records > 1 ? 's' : ''}` : '', profile ? 'business details' : ''].filter(Boolean).join(' and ');
-  if (!await askSheet({ title: 'First, save a copy of this phone\'s data – आधी प्रत',
-    message: `Replace removes what is on this phone now (${what}). Save a copy first so it can be brought back.\n\nThe copy is a plain backup file, not encrypted: anyone who opens it can read your business records. Keep it private.`,
-    actions: [{ label: 'Save a copy to this phone – प्रत जतन', value: true, style: 'btn-primary' }] })) return false;
+  const k = await backupKey();
+  const READABLE_WARN = 'The copy is a plain backup file, not encrypted: anyone who opens it can read your business records. Keep it private.';
+  let kind = await askSheet({ title: 'First, save a copy of this phone\'s data – आधी प्रत',
+    message: `Replace removes what is on this phone now (${what}). Save a copy first so it can be brought back.\n\n` + (k
+      ? `The copy is encrypted with your recovery key (${k.id.slice(0, 4).toUpperCase()}…): it opens only in CaterDesk, with that key.`
+      : `${READABLE_WARN}\nTo make this copy encrypted, cancel and set up the recovery key in Backup & Recovery first.`),
+    actions: k
+      ? [{ label: 'Save a copy to this phone – प्रत जतन', value: 'enc', style: 'btn-primary' },
+        { label: 'Readable copy instead (not encrypted) – साधी प्रत', value: 'plain-ask', style: 'btn-secondary' }]
+      : [{ label: 'Save a copy to this phone – प्रत जतन', value: 'plain', style: 'btn-primary' }] });
+  // The readable copy with a key set up is an emergency option: say plainly what it means before saving it
+  if (kind === 'plain-ask') kind = await askSheet({ title: 'Save a readable copy? – साधी प्रत?',
+    message: `${READABLE_WARN}\n\nUse it only if the encrypted copy cannot be saved or opened on this phone. Delete it once you no longer need it.`,
+    actions: [{ label: 'Save a readable copy – साधी प्रत जतन', value: 'plain', style: 'btn-danger' }] });
+  if (kind !== 'enc' && kind !== 'plain') return false;
+  let file;
+  if (kind === 'enc') {
+    showLoading(true);
+    try {
+      const out = await encryptBackup(k.key, k.id, JSON.stringify(now), { appVersion: APP_BUILD });
+      file = new File(out.parts, `caterdesk-before-restore-${stamp}.cdbk`, { type: 'application/octet-stream' });
+    } catch (e) {
+      showToast(`The encrypted copy could not be made (${e?.message || e}). Nothing was replaced. Try again, or choose the readable copy.`, 'error');
+      return null;   // its own message is showing: the caller adds none
+    } finally { showLoading(false); }
+  } else file = new File([JSON.stringify(now)], `caterdesk-before-restore-${stamp}.json`, { type: 'application/json' });
   for (;;) {
-    const url = URL.createObjectURL(new File([JSON.stringify(now)], name, { type: 'application/json' }));
-    const a = document.createElement('a'); a.href = url; a.download = name; a.click();
+    const url = URL.createObjectURL(file);
+    const a = document.createElement('a'); a.href = url; a.download = file.name; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 60000);
     const answer = await askSheet({ title: 'Is the copy saved? – प्रत जतन झाली?',
-      message: `Check that ${name} is in this phone's Downloads (or where your browser saves files). Only then replace. If it is not there, cancel: nothing will be replaced.`,
+      message: `Check that ${file.name} is in this phone's Downloads (or where your browser saves files). Only then replace. If it is not there, cancel: nothing will be replaced.`
+        + (kind === 'enc' ? '\n\nTo bring it back later: Restore backup, choose this file; it opens with your recovery key.' : ''),
       actions: [{ label: 'The copy is saved – replace now – बदला', value: 'go', style: 'btn-danger' },
         { label: 'Save the copy again – पुन्हा', value: 'again', style: 'btn-secondary' }] });
     if (answer === 'go') return true;
@@ -5817,7 +5843,7 @@ Replace makes this phone exactly like the backup: everything added since it was 
     ]
   });
   if (!mode) return false;
-  if (mode === 'replace' && safetyCopy && !await safetyCopyFirst()) { showToast('Not replaced. Your data was not changed.'); return false; }
+  if (mode === 'replace' && safetyCopy) { const ok = await safetyCopyFirst(); if (ok !== true) { if (ok === false) showToast('Not replaced. Your data was not changed.'); return false; } }
 
   showLoading(true);
   try {

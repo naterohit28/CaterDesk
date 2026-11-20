@@ -323,7 +323,7 @@ function startServer() {
     // Cancel at "save a copy first"
     await replaceFromDrive(p);
     assert.match(await askTitle(p), /First, save a copy/);
-    assert.match(await p.locator('#ask-msg').innerText(), /not encrypted: anyone who opens it can read your business records/);
+    assert.match(await p.locator('#ask-msg').innerText(), /encrypted with your recovery key/);
     await p.locator('#ask-actions button', { hasText: 'Cancel' }).click();
     await p.waitForSelector('#toast-msg:has-text("Not replaced")');
     assert.equal(await snapshot(p), before);
@@ -346,9 +346,10 @@ function startServer() {
     await askTitle(p);
     const dl2 = p.waitForEvent('download');
     await p.locator('#ask-actions button', { hasText: 'Save the copy again' }).click();
-    const d = await dl2; assert.match(d.suggestedFilename(), /^caterdesk-before-restore-.*\.json$/);
-    const saved = JSON.parse(fs.readFileSync(await d.path(), 'utf8'));
-    assert.ok(saved.vendors.some(v => v.name === 'Sample Later Vendor'), 'the copy holds the data that is about to be replaced');
+    const d = await dl2; assert.match(d.suggestedFilename(), /^caterdesk-before-restore-.*\.cdbk$/);
+    const saved = fs.readFileSync(await d.path());
+    assert.equal(saved.subarray(0, 4).toString(), 'CDBK', 'the copy is encrypted with the recovery key (tests/encrypted-safety-copy.cjs restores one)');
+    assert.ok(!saved.toString('latin1').includes('Sample Later Vendor'), 'and its records are not readable');
     assert.match(await askTitle(p), /Is the copy saved/);
     await p.locator('#ask-actions button', { hasText: 'The copy is saved' }).click();
     await p.waitForSelector('#toast-msg:has-text("Imported")', { timeout: 120000 });
