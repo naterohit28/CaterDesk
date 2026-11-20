@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.31.17';
+const APP_BUILD = '4.31.18';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -4604,9 +4604,9 @@ function updateQuote() {
   if (q('ev-handling').dataset.value === 'out') { box.hidden = true; return; }
   const spent = new Map();
   for (const x of D.expenses) spent.set(x.evId, (spent.get(x.evId) || 0) + x.amt);
-  const peers = D.events.filter(e => e.id !== id && !e.outsourced && Number(e.guests) > 0);
+  const peers = D.events.filter(e => e.id !== id && !e.outsourced && eventGuests(e) > 0);
   const avg = (list, val) => {
-    const g = list.reduce((s, e) => s + Number(e.guests), 0);
+    const g = list.reduce((s, e) => s + eventGuests(e), 0);
     return g ? { n: list.length, perPlate: Math.round(list.reduce((s, e) => s + val(e), 0) / g) } : null;
   };
   const done = reconciledIds(D.events, D.expenses);
