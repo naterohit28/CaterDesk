@@ -954,7 +954,7 @@ export function calcEventPL(ev, cPays, expenses) {
   const margin   = ev.billing > 0 ? Math.round(profit / ev.billing * 100) : 0;
   const pctPaid  = clientDueP(ev) > 0 ? Math.min(100, toPaise(received) / clientDueP(ev) * 100) : 0;
   // Per-plate figures need a guest count; budget figures need an expected cost
-  const guests   = Number(ev.guests) || 0;
+  const guests   = eventGuests(ev);   // the meals' own guest numbers when set (4.31.18)
   const budget   = Number(ev.budget) || 0;
   const perPlate = n => guests ? Math.round(n / guests) : null;
   return {
@@ -980,15 +980,15 @@ export function costByCategory(events, expenses) {
 
 // "Usual" comes only from reconciled events (`done`: their ids), whose costs are known to be complete
 export function costVsUsual(ev, events, costs, done = new Set()) {
-  const guests = Number(ev.guests) || 0;
+  const guests = eventGuests(ev);
   const mine = costs.get(ev.id);
   if (ev.outsourced || !guests || !mine) return null;
-  const usable = e => e.id !== ev.id && !e.outsourced && Number(e.guests) > 0 && costs.has(e.id) && done.has(e.id);
+  const usable = e => e.id !== ev.id && !e.outsourced && eventGuests(e) > 0 && costs.has(e.id) && done.has(e.id);
   let peers = ev.menu ? events.filter(e => usable(e) && e.menu === ev.menu) : [];
   let basis = peers.length ? 'menu' : 'type';
   if (!peers.length) peers = events.filter(e => usable(e) && e.type === ev.type);
   if (!peers.length) return null;
-  const plates = peers.reduce((s, e) => s + Number(e.guests), 0);
+  const plates = peers.reduce((s, e) => s + eventGuests(e), 0);
   const usual = new Map();
   for (const e of peers) for (const [cat, amt] of costs.get(e.id)) usual.set(cat, (usual.get(cat) || 0) + amt);
   const cats = new Set([...mine.keys(), ...usual.keys()]);
@@ -1005,7 +1005,7 @@ export function costVsUsual(ev, events, costs, done = new Set()) {
    look like a change); outsourced events and events without guests are left out. Flags rises of 8%+. */
 export function priceCreep(expenses, events, minPct = 8) {
   const done = reconciledIds(events, expenses);
-  const evs = new Map(events.filter(e => Number(e.guests) > 0 && !e.outsourced && done.has(e.id)).map(e => [e.id, e]));
+  const evs = new Map(events.filter(e => eventGuests(e) > 0 && !e.outsourced && done.has(e.id)).map(e => [e.id, e]));
   const sums = new Map();   // venId|head → Map evId → amount
   for (const x of expenses) {
     if (!x.venId || !x.head || !evs.has(x.evId)) continue;
@@ -1015,7 +1015,7 @@ export function priceCreep(expenses, events, minPct = 8) {
   }
   const out = [];
   for (const [k, byEv] of sums) {
-    const rows = [...byEv].map(([evId, amt]) => ({ ev: evs.get(evId), pp: amt / Number(evs.get(evId).guests) }))
+    const rows = [...byEv].map(([evId, amt]) => ({ ev: evs.get(evId), pp: amt / eventGuests(evs.get(evId)) }))
       .sort((a, b) => a.ev.date.localeCompare(b.ev.date));
     if (rows.length < 2) continue;
     const latest = rows.at(-1), before = rows.slice(0, -1);
@@ -1037,8 +1037,8 @@ export function menuCostPerPlate(menuId, events, expenses, excludeId = '') {
   for (const x of expenses) if (!x.draft) spent.set(x.evId, (spent.get(x.evId) || 0) + toPaise(x.amt));
   let guests = 0, cost = 0, n = 0;
   for (const e of events) {
-    if (e.menu !== menuId || e.id === excludeId || e.outsourced || !(Number(e.guests) > 0) || !spent.get(e.id) || !done.has(e.id)) continue;
-    guests += Number(e.guests); cost += spent.get(e.id); n++;
+    if (e.menu !== menuId || e.id === excludeId || e.outsourced || !(eventGuests(e) > 0) || !spent.get(e.id) || !done.has(e.id)) continue;
+    guests += eventGuests(e); cost += spent.get(e.id); n++;
   }
   return n ? { n, perPlate: Math.round(fromPaise(cost) / guests) } : null;
 }
@@ -1065,7 +1065,16 @@ export function deliveredWithoutBill(ev, expenses) {
    events, how many, the date range). With fewer than 2 comparable events it says so instead of guessing. */
 const median = xs => { const s = [...xs].sort((a, b) => a - b), m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 const normVenue = v => String(v || '').toLowerCase().replace(/[^a-z0-9ऀ-ॿ]+/g, ' ').trim();
-export const eventGuests = ev => Number(ev.guests) || Math.max(0, ...Object.values(ev.mealPlan || {}).map(m => Number(m.guests) || 0));
+/* The event's guests for per-plate figures. Once meals are chosen the form asks each meal's guests and no longer
+   shows the event's own number, which keeps whatever was typed before (an event first saved for 10 guests, then
+   given dinner for 300, still holds 10). So the meals' own guests win when set: the largest meal, as people, not
+   plates added across meals. Without meal guests, the event's number as before. (Phone test, 4.31.18) */
+export const eventGuests = ev => {
+  const plan = ev?.mealPlan || {};
+  const meals = Array.isArray(ev?.meals) && ev.meals.length ? ev.meals : Object.keys(plan);
+  const own = meals.map(m => Number(plan[m]?.guests) || 0).filter(g => g > 0);
+  return own.length ? Math.max(...own) : Number(ev?.guests) || 0;
+};
 function sources(list) {
   const ds = list.map(e => e.date).filter(Boolean).sort();
   return { n: list.length, from: ds[0] || '', to: ds.at(-1) || '', ids: list.map(e => e.id), names: [...list].sort((a, b) => (b.date || '').localeCompare(a.date || '')).map(e => e.name) };
