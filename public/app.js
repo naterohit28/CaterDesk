@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.31.19';
+const APP_BUILD = '4.31.20';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -4796,10 +4796,11 @@ async function saveEvent() {
   if (!id && CT !== 'evdetail') setTimeout(hideToast, 6000);
   refreshCurrent();
   const moved = id && base && base.date !== record.date ? movedOrders(record) : [];
-  if (moved.length) await askSheet({ title: tr('Tell your vendors about the new date', 'विक्रेत्यांना नवी तारीख कळवा'),
-    message: tr(`The event is now on ${fmtDate(record.date)}. These were sent for another date and keep it until you change them:`, `कार्यक्रम आता ${fmtDate(record.date)} ला आहे. ही ऑर्डर दुसऱ्या तारखेसाठी पाठवली होती:`)
-      + '\n' + moved.map(m => `• ${m.what}${m.ven ? ` · ${m.ven}` : ''} · ${fmtDate(m.date)}`).join('\n')
-      + '\n\n' + tr('Open each one and use Edit / send again if the vendor must come on the new date.', 'गरज असल्यास प्रत्येक ऑर्डर उघडून पुन्हा पाठवा.'),
+  // Plain text: the notice shows its words as written (tr() returns markup for the language switch)
+  if (moved.length) await askSheet({ title: 'Tell your vendors about the new date – विक्रेत्यांना नवी तारीख कळवा',
+    message: `The event is now on ${fmtDate(record.date)}. These were sent for another date and keep it until you change them:\n`
+      + moved.map(m => `• ${m.what}${m.ven ? ` · ${m.ven}` : ''} · ${fmtDate(m.date)}`).join('\n')
+      + '\n\nOpen each one and use Edit / send again if the vendor must come on the new date. – गरज असल्यास प्रत्येक ऑर्डर उघडून पुन्हा पाठवा.',
     actions: [{ label: 'OK – ठीक', value: true, style: 'btn-primary' }] });
 }
 
