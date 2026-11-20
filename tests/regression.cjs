@@ -194,7 +194,7 @@ await test('contacts button fills name and number from the phone contact list',a
 await test('event menu becomes counter orders sent on WhatsApp, tracked to delivery',async()=>{
  const t=new Date();const tmr=new Date(t);tmr.setDate(t.getDate()+1);const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
  await seed({...empty(),events:[{...ev,date:iso(tmr),guests:300,venue:'Lawn'}],vendors:[{id:'rajiv',name:'Rajiv Chaat',cat:'Live Counter',specialty:'Chaat – चाट',phone:'9876543210'},{id:'mur',name:'Murugan',cat:'Live Counter',specialty:'Dosa – डोसा'}]});
- await p.evaluate(()=>{window.__opened=[];window.open=u=>{window.__opened.push(u);return null}});
+ await p.evaluate(()=>{window.__opened=[];window.open=u=>{window.__opened.push(u);return {}; }});
  await p.locator('#n-events').click();await p.locator('#ev-list [data-action="evdetail"]').first().click();await p.waitForSelector('[data-action="menu-edit"]');
  await p.locator('[data-action="menu-edit"]').click();await p.waitForSelector('#menu-modal.active');
  await p.locator('#menu-text').fill('1. Pani Puri\n2. Sev Puri, Masala Dosa\n• Dal Makhani\nStarters:\nGulab Jamun\npani puri');await p.locator('#btn-save-menu').click();await p.waitForSelector('#menu-orders');
@@ -207,7 +207,7 @@ await test('event menu becomes counter orders sent on WhatsApp, tracked to deliv
  // Order the chaat counter: vendor and plates filled, WhatsApp message written
  await p.locator('[data-action="order-new"][data-id^="Chaat"]').click();await p.waitForSelector('#ord-modal.active');
  assert.equal(await p.locator('#ord-ven').inputValue(),'rajiv');assert.equal(await p.locator('#ord-plates').inputValue(),'300');
- await p.locator('#ord-time').fill('19:00');await p.locator('#btn-send-ord').click();await p.waitForTimeout(300);
+ await p.locator('#ord-time').fill('19:00');await p.locator('#btn-send-ord').click(); await p.waitForTimeout(300); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
  const url=decodeURIComponent((await p.evaluate(()=>window.__opened))[0]);assert.match(url,/^https:\/\/wa\.me\/919876543210\?text=Namaste Rajiv Chaat! Order for Wedding:[\s\S]*19:00[\s\S]*Venue: Lawn[\s\S]*Chaat for 300 plates[\s\S]*Items: Pani Puri, Sev Puri/);
  assert.match(await p.locator('#menu-orders').innerText(),/WhatsApp opened\s*· 300/,'opening WhatsApp is not marked as sent (v4.4.1)');assert.match(await p.locator('#menu-orders').innerText(),/Dessert Counter\n/,'no guessed vendor for an unknown counter');
  // Home shows tomorrow's delivery
@@ -219,7 +219,7 @@ await test('event menu becomes counter orders sent on WhatsApp, tracked to deliv
  await p.locator('#exp-amt').fill('27000');await p.locator('#btn-save-exp').click();await p.waitForTimeout(300);
  assert.equal((await db(async d=>d.getOne('events','e'))).orders[0].status,'delivered');
  // Murugan has no phone: the order is saved and the app says why WhatsApp did not open
- await p.locator('[data-action="order-new"][data-id^="Dosa"]').click();await p.waitForSelector('#ord-modal.active');await p.locator('#btn-send-ord').click();await p.waitForTimeout(300);
+ await p.locator('[data-action="order-new"][data-id^="Dosa"]').click();await p.waitForSelector('#ord-modal.active');await p.locator('#btn-send-ord').click(); await p.waitForTimeout(300); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
  assert.match(await p.locator('#toast').innerText(),/no phone number/);assert.equal((await p.evaluate(()=>window.__opened)).length,1);
  assert.equal((await db(async d=>d.getOne('events','e'))).orders.find(o=>/^Dosa/.test(o.head)).status,'prepared','saved but not sent: no phone');
 });
@@ -227,7 +227,7 @@ await test('v3.3.1: new caterer on the go, outsourced menu, expenses by event, r
  await seed({...empty(),events:[{...ev,id:'own',name:'Own Wedding',date:'2026-12-01'},{...ev,id:'out',name:'Small Birthday',date:'2026-12-05',outsourced:true,outVenId:'kaka',guests:80}],
   vendors:[{id:'kaka',name:'Kaka Caterers',cat:'Operations',phone:'9876543210'}],
   expenses:[{id:'x1',evId:'own',cat:'Raw Material',head:'Grocery – किराणा',amt:1111,date:'2026-12-01',pay:'paid'},{id:'x2',evId:'out',cat:'Operations',head:'Outsourced Event – आउटसोर्स कार्यक्रम',amt:40000,date:'2026-12-05',pay:'credit',venId:'kaka'}]});
- await p.evaluate(()=>{window.__opened=[];window.open=u=>{window.__opened.push(u);return null}});
+ await p.evaluate(()=>{window.__opened=[];window.open=u=>{window.__opened.push(u);return {}; }});
  // 1. "+ New vendor" from an outsourced event's Done by
  await p.locator('#n-events').click();await p.locator('#fab').click();await p.waitForSelector('#ev-modal.active');await p.locator('#ev-handling [data-h="out"]').click();
  await p.locator('#ev-out-ven').selectOption('__new');await p.waitForSelector('#ven-modal.active');assert.equal(await p.locator('#ven-cat').inputValue(),'Operations');
@@ -240,7 +240,7 @@ await test('v3.3.1: new caterer on the go, outsourced menu, expenses by event, r
  await p.locator('#menu-text').fill('Pani Puri\nMasala Dosa\nDal Makhani');await p.locator('#btn-save-menu').click();await p.waitForSelector('#menu-orders');
  const card=await p.locator('#menu-orders').innerText();assert.match(card,/Whole event · Kaka Caterers[\s\S]*Pani Puri, Masala Dosa, Dal Makhani/);assert.equal(await p.locator('[data-action="dish-assign"]').count(),0);assert.equal(await p.locator('[data-action="order-new"]').count(),1);
  await p.locator('[data-action="order-new"]').click();await p.waitForSelector('#ord-modal.active');assert.equal(await p.locator('#ord-ven').inputValue(),'kaka');assert.equal(await p.locator('#ord-plates').inputValue(),'80');
- await p.locator('#btn-send-ord').click();await p.waitForTimeout(300);
+ await p.locator('#btn-send-ord').click(); await p.waitForTimeout(300); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
  assert.match(decodeURIComponent((await p.evaluate(()=>window.__opened))[0]),/Full event catering for 80 guests[\s\S]*Menu: Pani Puri, Masala Dosa, Dal Makhani/);
  await p.locator('[data-action="order-status"]').click();await p.locator('#ask-actions button',{hasText:'Delivered'}).click();await p.waitForTimeout(300);
  assert.match(await p.locator('#toast').innerText(),/already recorded/);assert.equal(await p.locator('#exp-modal.active').count(),0,'charge not counted twice');

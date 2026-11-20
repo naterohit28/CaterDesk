@@ -52,8 +52,8 @@ const base = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
     // Resend opens WhatsApp: still flagged, status unchanged
     await p.locator('#menu-orders [data-action="order-status"]').first().click(); await p.waitForSelector('#ask-modal.active');
     await p.locator('#ask-actions button', { hasText: 'Edit / send again' }).click(); await p.waitForSelector('#ord-modal.active');
-    await p.evaluate(() => { window.__opens = []; window.open = url => { window.__opens.push(String(url)); return null; }; });
-    await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500);
+    await p.evaluate(() => { window.__opens = []; window.open = url => { window.__opens.push(String(url)); return {}; }; });
+    await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
     assert.match((await p.evaluate(() => window.__opens))[0] || '', /^https:\/\/wa\.me\/919000000001/, 'WhatsApp opened');
     let o = (await ev('e1')).orders.find(x => x.id === 'oc');
     assert.equal(o.menuChanged, true, 'warning stays after WhatsApp opened'); assert.equal(o.status, 'opened', 'the revised message is opened, not sent (4.9.0 versions)'); assert(o.openedAt);
@@ -65,7 +65,7 @@ const base = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
     // A new order: opened (not sent) when WhatsApp opens; prepared when the vendor has no phone
     await openEvent('Sample Reception');
     await p.locator('[data-action="order-new"]').first().click(); await p.waitForSelector('#ord-modal.active');
-    await p.selectOption('#ord-ven', 'v2'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500);
+    await p.selectOption('#ord-ven', 'v2'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
     const fresh = (await ev('e1')).orders.find(x => !['oc', 'od'].includes(x.id));
     assert.equal(fresh.status, 'opened');
     await openEvent('Sample Reception');

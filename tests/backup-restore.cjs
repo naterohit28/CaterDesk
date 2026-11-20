@@ -167,7 +167,7 @@ const noRev = rows => rows.map(({ _rev, ...r }) => r).sort((a, b) => a.id.locale
   });
   await step('merge keeps this phone\'s own settings', async () => {
     await B.p.evaluate(() => localStorage.setItem('ffv2_theme', 'dark'));
-    await importFile(B.p, good, /Merge|जोडा/); assert.match(await toast(B.p), /Imported|आयात झाली/);
+    await importFile(B.p, good, /Merge|जोडा/); assert.match(await toast(B.p), /Merged: nothing on this phone was removed|जोडले/);
     assert.equal(await B.p.evaluate(() => localStorage.getItem('ffv2_theme')), 'dark');
   });
   assert.deepEqual([...A.errors, ...B.errors], []);
