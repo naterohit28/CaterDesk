@@ -93,7 +93,7 @@ const base = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
     assert.match(await cLabel(), /provisional/);
     assert.match(await text('#recon-card'), /Changed after reconciling/); assert.match(await text('#recon-card'), /1,35,000 → ₹2,10,000/);
     await p.locator('[data-action="recon-open"]').click(); await p.waitForSelector('#recon-modal.active');
-    assert.match(await text('#recon-sum'), /75,000 still on credit \(counted\)/);
+    assert.match(await text('#recon-sum'), /75,000 still to pay to vendors \(counted\)/);
     await p.locator('#recon-modal [data-action="close-modal"]').click(); await p.waitForTimeout(200);
     await reconcile();
     ev = await stored('g12');

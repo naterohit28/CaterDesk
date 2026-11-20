@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.31.18';
+const APP_BUILD = '4.31.19';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1633,6 +1633,14 @@ function offMenuOrders(ev) {
       </div>`; }).join('');
 }
 
+// An order or purchase still open with a vendor whose delivery date is not the event's date (the event was moved after it was sent)
+const offDate = (ev, x) => !!x && ACTIVE_ORDER.includes(x.status) && !!x.date && !!ev.date && x.date !== ev.date;
+const offDateText = d => tr(`Sent for ${fmtDate(d)}, not the event date: tell the vendor, or Edit / send again`, `${fmtDate(d)} साठी पाठवले – कार्यक्रमाची तारीख नाही`);
+function movedOrders(ev) {
+  return [...(ev.orders || []).filter(o => offDate(ev, o)).map(o => ({ what: short(o.head), ven: D.vendors.find(v => v.id === o.venId)?.name || '', date: o.date })),
+    ...(ev.purchases || []).filter(p => offDate(ev, p)).map(p => ({ what: p.item, ven: D.vendors.find(v => v.id === p.venId)?.name || '', date: p.date }))];
+}
+
 function menuOrdersCard(ev) {
   const dishes = ev.dishes || [];
   if (!dishes.length && !(ev.orders || []).length) return `
@@ -1649,7 +1657,7 @@ function menuOrdersCard(ev) {
     return `<div class="row" style="min-height:56px" data-counter="${esc(r.key)}">
       <div class="row-ic">${icon('utensils', 18)}</div>
       <div class="row-body"><div class="title-sm trunc">${ev.outsourced ? tr('Whole event', 'संपूर्ण कार्यक्रम') : esc(short(head))}${r.label ? ` · ${esc(r.label)}` : ''}${ven ? ` · <span data-nl>${esc(ven.name)}</span>` : ''}</div>
-        <div class="meta trunc" data-nl>${esc(names.join(', '))}</div>${counterPlanLine(ev, head, o, r.svcId)}</div>
+        <div class="meta trunc" data-nl>${esc(names.join(', '))}</div>${counterPlanLine(ev, head, o, r.svcId)}${offDate(ev, o) ? `<div class="meta due" data-off-date>${offDateText(o.date)}</div>` : ''}</div>
       ${o ? `<button type="button" class="chip ${o.menuChanged ? 'due' : st.tone}" data-action="order-status" data-id="${esc(o.id)}">${o.menuChanged ? tr('Menu changed · resend', 'मेनू बदलला · पुन्हा पाठवा') : (x => tr(st.en + x, st.mr + x))(o.plates ? ' · ' + o.plates : '')}</button>`
           : `<button type="button" class="btn-sm" data-action="order-new" data-id="${esc(head)}" data-svc="${esc(r.svcId)}">${icon('message', 16)}${tr('Order', 'ऑर्डर')}</button>`}
     </div>`;
@@ -1713,7 +1721,7 @@ function buyCard(ev) {
       <div class="row-body"><div class="title-sm trunc" data-nl>${title}</div><div class="meta trunc" data-nl>${meta}</div></div>${end}</div>`;
   return `<div class="sec"><span class="sec-title">${tr('To buy', 'विकत घ्यायचे')}</span><span class="meta">${tr('bought ready-made or to finish', 'तयार / आपण पूर्ण करू')}</span></div>
     <div class="card list" id="buy-list">${rows.map(r => { const p = buyOf(ev, r.key), ven = p && D.vendors.find(v => v.id === p.venId);
-      return line(esc(r.name), [r.label, SRC_NAME[r.src], p ? `${ven?.name || ''} · ${qtyText(p)}` : ''].filter(Boolean).map(esc).join(' · '),
+      return line(esc(r.name), [offDate(ev, p) ? offDateText(p.date) : '', r.label, SRC_NAME[r.src], p ? `${ven?.name || ''} · ${qtyText(p)}` : ''].filter(Boolean).map(esc).join(' · '),
         p ? chip(p) : `<button type="button" class="btn-sm" data-action="buy-new" data-id="${esc(r.key)}">${icon('message', 16)}${tr('Order', 'ऑर्डर')}</button>`, r.key); }).join('')}
     ${[...off.values()].map(p => line(esc(p.item), `${tr('Not on the current menu', 'सध्याच्या मेनूत नाही')} · ${esc(qtyText(p))}`, chip(p))).join('')}</div>`;
 }
@@ -3546,11 +3554,12 @@ function openReconModal() {
   reconBase = structuredClone(ev);
   const pl = calcEventPL(ev, D.cPays, D.expenses);
   const exps = D.expenses.filter(x => x.evId === ev.id);
-  const credit = sumRupees(exps.filter(x => x.pay === 'credit'));
+  // Still to pay to vendors on this event's bills, after what has been paid (not every bill entered on credit)
+  const credit = (pendingCredit().filter(u => u.x.evId === ev.id).reduce((s, u) => s + toPaise(u.left), 0)) / 100;
   const blockers = reconBlockers(ev, D.expenses, D.drafts);
   q('recon-sum').innerHTML = `
-    <div>${tr(`Costs recorded: <b>${fmtCurrency(pl.expTotal)}</b> in ${exps.length} entr${exps.length === 1 ? 'y' : 'ies'}`, `नोंदलेला खर्च: <b>${fmtCurrency(pl.expTotal)}</b> (${exps.length})`)}${credit ? tr(` · ${fmtCurrency(credit)} still on credit (counted)`, ` · ${fmtCurrency(credit)} उधारीवर (मोजले)`) : ''}</div>
-    <div>${tr(`Bill <b>${fmtCurrency(ev.billing)}</b>${ev.guests ? ` · ${ev.guests} guests` : ''} · contribution <b>${fmtCurrency(pl.profit)}</b>${ev.billing > 0 ? ` (${pl.margin}%)` : ''}`, `बिल <b>${fmtCurrency(ev.billing)}</b> · योगदान <b>${fmtCurrency(pl.profit)}</b>`)}</div>`;
+    <div>${tr(`Costs recorded: <b>${fmtCurrency(pl.expTotal)}</b> in ${exps.length} entr${exps.length === 1 ? 'y' : 'ies'}`, `नोंदलेला खर्च: <b>${fmtCurrency(pl.expTotal)}</b> (${exps.length})`)}${credit ? tr(` · ${fmtCurrency(credit)} still to pay to vendors (counted)`, ` · ${fmtCurrency(credit)} देणे बाकी (मोजले)`) : ''}</div>
+    <div>${tr(`Bill <b>${fmtCurrency(ev.billing)}</b>${eventGuests(ev) ? ` · ${eventGuests(ev)} guests` : ''} · contribution <b>${fmtCurrency(pl.profit)}</b>${ev.billing > 0 ? ` (${pl.margin}%)` : ''}`, `बिल <b>${fmtCurrency(ev.billing)}</b> · योगदान <b>${fmtCurrency(pl.profit)}</b>`)}</div>`;
   q('recon-block').innerHTML = blockers.map(b => `<div class="note alert" style="margin-top:var(--s2)"><span class="note-ic">${icon('alert', 16)}</span><div>${tr(b.en, b.mr)}</div></div>`).join('');
   q('recon-checks').innerHTML = RECON_CHECKS.map(c => `<label class="check-row"><input type="checkbox" data-check="${c.id}"${blockers.length ? ' disabled' : ''}><span>${tr(c.en, c.mr)}</span></label>`).join('');
   updateReconSave();
@@ -4786,6 +4795,12 @@ async function saveEvent() {
   showToast(msg, 'success', !id && CT !== 'evdetail' ? { label: 'Open – उघडा', run: () => showEvDetail(record.id) } : null);
   if (!id && CT !== 'evdetail') setTimeout(hideToast, 6000);
   refreshCurrent();
+  const moved = id && base && base.date !== record.date ? movedOrders(record) : [];
+  if (moved.length) await askSheet({ title: tr('Tell your vendors about the new date', 'विक्रेत्यांना नवी तारीख कळवा'),
+    message: tr(`The event is now on ${fmtDate(record.date)}. These were sent for another date and keep it until you change them:`, `कार्यक्रम आता ${fmtDate(record.date)} ला आहे. ही ऑर्डर दुसऱ्या तारखेसाठी पाठवली होती:`)
+      + '\n' + moved.map(m => `• ${m.what}${m.ven ? ` · ${m.ven}` : ''} · ${fmtDate(m.date)}`).join('\n')
+      + '\n\n' + tr('Open each one and use Edit / send again if the vendor must come on the new date.', 'गरज असल्यास प्रत्येक ऑर्डर उघडून पुन्हा पाठवा.'),
+    actions: [{ label: 'OK – ठीक', value: true, style: 'btn-primary' }] });
 }
 
 /* ── EXPENSE SHEET ───────────────────────────────── */
@@ -5258,7 +5273,7 @@ function openVenModal(id, kind = 'vendor') {
 }
 
 function loadVenSpecialty(selected = '') {
-  populateSelect('ven-specialty', EXPENSE_HEADS[qv('ven-cat')] || [], selected);
+  populateSelect('ven-specialty', [{ v: '', l: 'Not set – निवडा' }, ...(EXPENSE_HEADS[qv('ven-cat')] || [])], selected);
 }
 
 async function saveVendor() {
