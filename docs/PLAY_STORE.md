@@ -16,7 +16,8 @@ Play rules checked on 20 Nov 2026 (re-check in Play Console before submitting; t
 | # | Decision | Recommendation |
 | --- | --- | --- |
 | P-1 | Developer account: **personal** or **organization** | **Decided 20 Nov 2026: personal.** That means a closed test with at least 12 testers for 14 days in a row before production (see §10). The listing shows the developer name entered at sign-up; the contact email is public |
-| P-2 | Public contact email for the listing and privacy policy | A business address, not a personal one. It is shown publicly |
+| P-2 | Public contact email for the listing and privacy policy | No domain or business email yet (20 Nov 2026). A domain is **not** needed: make a free, separate Gmail just for the app and use it here, shown publicly. Switch to a domain email later if one is bought |
+| P-7 | Web address: keep `expense-calculator-kohl.vercel.app` or move to an own domain **before** the first Play upload | Decide before launch. The address is built into the Android app, and each address has its own storage, so moving later means every user must back up and restore. Keeping the Vercel address costs nothing and works on Play. If a domain is wanted, buy it and move first, then build the Play version for it |
 | P-3 | App name on Play | Keep **CaterDesk** (other businesses use the name; a trademark check is still open) |
 | P-4 | Price and countries | Free, India first |
 | P-5 | Signing: keep the current key (recommended) or let Google make a new one | See §3 |
