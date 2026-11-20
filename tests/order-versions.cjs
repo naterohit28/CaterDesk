@@ -19,7 +19,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
   const order = async head => (await p.evaluate(async () => (await import('./db.js')).exportAllData())).events[0].orders.find(o => o.head.startsWith(head));
   const openEvent = async () => { await p.reload(); await p.waitForSelector('#kpi .card'); await p.locator('#n-events:visible').click();
     await p.locator('#ev-list [data-action="evdetail"][data-id="E"]:visible').click(); await p.waitForSelector('#tab-evdetail .detail-name'); await p.waitForTimeout(200);
-    await p.evaluate(() => { window.__opens = []; window.open = url => { window.__opens.push(decodeURIComponent(String(url))); return null; }; }); };
+    await p.evaluate(() => { window.__opens = []; window.open = url => { window.__opens.push(decodeURIComponent(String(url))); return {}; }; }); };
   const statusSheet = async head => { await p.locator('#menu-orders .row', { hasText: head }).locator('[data-action="order-status"]').click(); await p.waitForSelector('#ask-modal.active'); };
   const pick = async label => { await p.locator('#ask-actions button', { hasText: label }).click(); await p.waitForTimeout(400); };
   await p.goto(BASE_URL); await p.waitForSelector('#kpi .card');
@@ -27,7 +27,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
 
   await test('G-10: opening WhatsApp and backing out leaves the order "WhatsApp opened", never sent', async () => {
     await openEvent(); await p.locator('[data-action="order-new"][data-id^="Dosa"]').click(); await p.waitForSelector('#ord-modal.active');
-    await p.selectOption('#ord-ven', 'vd'); await p.fill('#ord-plates', '250'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500);
+    await p.selectOption('#ord-ven', 'vd'); await p.fill('#ord-plates', '250'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
     const o = await order('Dosa');
     assert.equal(o.status, 'opened'); assert.equal(o.messages.length, 1);
     assert.deepEqual([o.messages[0].v, o.messages[0].status], [1, 'opened']); assert.match(o.messages[0].text, /Dosa for 250 plates/);
@@ -39,11 +39,11 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     let o = await order('Dosa'); assert.deepEqual([o.status, o.messages[0].status], ['confirmed', 'confirmed']); assert(o.messages[0].confirmedAt);
     // Same text again: no new version
     await openEvent(); await statusSheet('Dosa'); await pick('Edit / send again'); await p.waitForSelector('#ord-modal.active');
-    await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500);
+    await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
     o = await order('Dosa'); assert.equal(o.messages.length, 1, 'unchanged message: no new version'); assert.equal(o.status, 'confirmed');
     // Revised: 280 plates
     await openEvent(); await statusSheet('Dosa'); await pick('Edit / send again'); await p.waitForSelector('#ord-modal.active');
-    await p.fill('#ord-plates', '280'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500);
+    await p.fill('#ord-plates', '280'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
     o = await order('Dosa');
     assert.equal(o.messages.length, 2);
     assert.deepEqual(o.messages.map(m => [m.v, m.status]), [[1, 'confirmed'], [2, 'opened']], 'old version keeps its real status');
@@ -62,7 +62,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
 
   await test('a vendor without a phone: the message is kept as "Not sent yet"', async () => {
     await openEvent(); await p.locator('[data-action="order-new"][data-id^="Chaat"]').click(); await p.waitForSelector('#ord-modal.active');
-    await p.selectOption('#ord-ven', 'vn'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500);
+    await p.selectOption('#ord-ven', 'vn'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
     const o = await order('Chaat'); assert.deepEqual([o.status, o.messages[0].status], ['prepared', 'prepared']);
     const bad = await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest; d.events[0].orders[0].messages = [{ text: 'x', status: 'delivered' }];
       try { await db.importAllData(d, 'replace'); return 'accepted'; } catch (e) { return e.message; } });
