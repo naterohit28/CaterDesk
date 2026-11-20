@@ -1025,12 +1025,19 @@ export function menuCostPerPlate(menuId, events, expenses, excludeId = '') {
   return n ? { n, perPlate: Math.round(fromPaise(cost) / guests) } : null;
 }
 
-/* Delivered orders whose bill is not in: none linked (`order`) and no bill at all from that vendor on the event.
-   An outsourced event's charge was recorded at booking. */
+/* Delivered vendor orders and purchases whose bill is not in. A bill counts when it is linked to that order (`order`)
+   or purchase (`purchase`). Older bills entered before links existed: each bill from the same vendor on this event
+   that is linked to nothing covers ONE delivered item from that vendor, so two delivered orders from one vendor need
+   two bills. A purchase with no vendor needs its linked bill. An outsourced event's charge was recorded at booking. */
 export function deliveredWithoutBill(ev, expenses) {
   if (ev.outsourced) return [];
-  return (ev.orders || []).filter(o => o.status === 'delivered' && o.venId
-    && !expenses.some(x => !x.draft && (x.order === o.id || (x.evId === ev.id && x.venId === o.venId))));
+  const live = expenses.filter(x => !x.draft);
+  const linked = new Set(live.flatMap(x => [x.order, x.purchase].filter(Boolean)));
+  const spare = new Map();
+  for (const x of live) if (x.evId === ev.id && x.venId && !x.order && !x.purchase) spare.set(x.venId, (spare.get(x.venId) || 0) + 1);
+  const items = [...(ev.orders || []).map(o => ({ ...o, kind: 'order' })), ...(ev.purchases || []).map(p => ({ ...p, kind: 'purchase' }))]
+    .filter(o => o.status === 'delivered' && !linked.has(o.id));
+  return items.filter(o => { const n = o.venId ? spare.get(o.venId) || 0 : 0; if (n) { spare.set(o.venId, n - 1); return false; } return true; });
 }
 
 
@@ -1191,8 +1198,10 @@ export function reconBlockers(ev, expenses, drafts = []) {
   if (!costRows(ev.id, expenses).length) out.push({ en: 'No costs are recorded for this event', mr: 'या कार्यक्रमाचा खर्च नोंदवलेला नाही' });
   const open = drafts.filter(d => d.evId === ev.id).length;
   if (open) out.push({ en: `${open} bill photo${open > 1 ? 's' : ''} for this event still to be filled in`, mr: `या कार्यक्रमाची ${open} बिले भरायची बाकी` });
-  const unbilled = deliveredWithoutBill(ev, expenses).length;
-  if (unbilled) out.push({ en: `${unbilled} delivered order${unbilled > 1 ? 's have' : ' has'} no bill from that vendor yet`, mr: `${unbilled} आलेल्या ऑर्डरचे बिल नोंदवले नाही` });
+  const missing = deliveredWithoutBill(ev, expenses), unbilled = missing.length, buys = missing.filter(o => o.kind === 'purchase').length;
+  if (unbilled) out.push(buys
+    ? { en: `${unbilled} delivered order${unbilled > 1 ? 's or purchases have' : ' or purchase has'} no bill recorded yet`, mr: `${unbilled} आलेल्या ऑर्डर / खरेदीचे बिल नोंदवले नाही` }
+    : { en: `${unbilled} delivered order${unbilled > 1 ? 's have' : ' has'} no bill from that vendor yet`, mr: `${unbilled} आलेल्या ऑर्डरचे बिल नोंदवले नाही` });
   return out;
 }
 

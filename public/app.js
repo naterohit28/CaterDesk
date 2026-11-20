@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.31.15';
+const APP_BUILD = '4.31.16';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -2040,6 +2040,10 @@ async function sendOrder(mode = 'send') {
   const ven = D.vendors.find(v => v.id === venId);
   const takeUp = Number(qv('ord-takeup')) || 0, minimum = Math.floor(Number(qv('ord-min')) || 0);
   if (!ev.outsourced && qv('ord-takeup') && !(takeUp > 0 && takeUp <= 100)) { showFieldErrors({ 'ord-takeup': 'Between 1 and 100 – १ ते १००' }); return; }
+  // Plates: a whole number, 1 or more (the box's min is not checked when a script saves); a real delivery date
+  const platesTxt = String(qv('ord-plates')).trim(), plates = Number(platesTxt), dd = qv('ord-date');
+  if (!platesTxt || !Number.isInteger(plates) || plates < 1) { showFieldErrors({ 'ord-plates': 'Plates: a whole number, 1 or more – ताटांची संख्या' }); return; }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dd) || localDay(new Date(dd + 'T00:00:00')) !== dd) { showFieldErrors({ 'ord-date': 'Choose the delivery date – दिनांक निवडा' }); return; }
   const below = orderBelowMinimum(ev);
   if (below && !qv('ord-notes')) { showFieldErrors({ 'ord-notes': `Below the vendor minimum of ${minimum}: add a note why – कारण लिहा` }); return; }
   const id = qv('ord-id') || uid('OR');
@@ -2049,7 +2053,7 @@ async function sendOrder(mode = 'send') {
   // tap after the save (offerWhatsApp). Opening WhatsApp makes it 'opened', never 'sent': only you mark it sent, or
   // the vendor's confirmation moves it on. A menu-change warning stays until then.
   const status = !old || old.status === 'cancelled' ? 'prepared' : old.status;
-  const o = { ...(old || {}), id, head: qv('ord-head'), venId, plates: Number(qv('ord-plates')) || 0, date: qv('ord-date'), time: qv('ord-time'),
+  const o = { ...(old || {}), id, head: qv('ord-head'), venId, plates, date: qv('ord-date'), time: qv('ord-time'),
               notes: qv('ord-notes'), status, at: new Date().toISOString() };
   // The meal it is for, the approved menu it follows (only when the menu is unchanged since), the guests it is planned on
   if (qv('ord-svc')) o.svc = qv('ord-svc'); else delete o.svc;
