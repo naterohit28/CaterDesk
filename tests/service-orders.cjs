@@ -19,6 +19,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
       // an order saved before orders had a meal, for a counter now used at both meals
       orders: [{ id: 'old1', head: CHAAT, venId: 'v1', plates: 500, date: day(12), status: 'confirmed', at: '2026-11-01T10:00:00.000Z' }] }] };
 
+const pickTime = async (p, id, hhmm = '19:30') => { if (await p.inputValue('#' + id)) return; const [h, m] = hhmm.split(':').map(Number); await p.selectOption('#' + id + '-h', String(h % 12 || 12)); await p.selectOption('#' + id + '-m', String(m).padStart(2, '0')); await p.selectOption('#' + id + '-ap', h < 12 ? 'AM' : 'PM'); };
 (async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   const ctx = await browser.newContext({ ...devices['Pixel 5'], viewport: { width: 360, height: 780 } });
@@ -52,9 +53,9 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     assert.equal(await p.locator('#ord-items').innerText(), 'Sev Puri');
     assert.deepEqual([await p.inputValue('#ord-date'), await p.inputValue('#ord-time'), await p.inputValue('#ord-plates')], [day(12), '20:00', '300']);
     assert.match(await p.locator('#ord-plan').innerText(), /Based on 300 dinner guests; change it if needed/);
-    await p.selectOption('#ord-ven', 'v1'); await p.fill('#ord-plates', '280'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
+    await p.selectOption('#ord-ven', 'v1'); await p.fill('#ord-plates', '280'); await pickTime(p, 'ord-time'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
     const msg = await lastMessage();
-    assert.match(msg, /^Namaste Sample Chaat Stall! Order for Sample Order Wedding:\nDate: .*, 20:00 \(Dinner\)\nVenue: Sample Lawns\nChaat for 280 plates\nItems: Sev Puri\nGuests: 300\nAt the venue: Cooking at venue: Gas allowed · Parking & loading: Restricted\nMenu: version 1, approved by the client\n/);
+    assert.match(msg, /^Namaste Sample Chaat Stall! Order for Sample Order Wedding:\nCounter: Chaat\nItems: Sev Puri\nQuantity: 280 plates\nDate: .* \(Dinner\)\nReady by: 8:00 PM\nVenue: Sample Lawns\nGuests: 300\nAt the venue: Cooking at venue: Gas allowed · Parking & loading: Restricted\nMenu: version 1, approved by the client\n/);
     assert.doesNotMatch(msg, /Pani Puri|Kitchen: /, 'lunch dishes and unrelated venue details left out');
     const o = (await ev()).orders.find(x => x.svc === 'svc-dinner');
     assert.deepEqual([o.head, o.plates, o.status, o.menuVersion, o.basis], [CHAAT, 280, 'opened', (await ev()).menuApproved[0].id, { guests: 300, from: 'meal' }]);
@@ -62,8 +63,8 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     assert.equal(await row(`svc-lunch|${CHAAT}`).locator('[data-action="order-new"]').count(), 1, 'lunch chaat still to order');
     await row(`svc-lunch|${CHAAT}`).locator('[data-action="order-new"]').click(); await p.waitForSelector('#ord-modal.active');
     assert.deepEqual([await p.locator('#ord-items').innerText(), await p.inputValue('#ord-time'), await p.inputValue('#ord-plates')], ['Pani Puri', '12:30', '250']);
-    await p.selectOption('#ord-ven', 'v1'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
-    assert.match(await lastMessage(), /\(Lunch\)[\s\S]*Items: Pani Puri\n/);
+    await p.selectOption('#ord-ven', 'v1'); await pickTime(p, 'ord-time'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
+    assert.match(await lastMessage(), /Items: Pani Puri\n[\s\S]*\(Lunch\)/);
   });
 
   await test('the status sheet shows the steps; changing dinner flags only the dinner order, nothing is sent', async () => {
@@ -95,7 +96,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     await row(`svc-dinner|${CHAAT}`).locator('[data-action="order-status"]').click(); await p.waitForSelector('#ask-modal.active');
     await p.locator('#ask-actions button', { hasText: 'Edit / send again' }).click(); await p.waitForSelector('#ord-modal.active');
     assert.equal(await p.locator('#ord-items').innerText(), 'Sev Puri, Bhel Puri');
-    await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
+    await pickTime(p, 'ord-time'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
     const msg = await lastMessage();
     assert.match(msg, /Items: Sev Puri, Bhel Puri\n/); assert.doesNotMatch(msg, /Menu: version/, 'menu changed since approval: no approved version claimed');
     assert.equal((await ev()).orders.find(x => x.svc === 'svc-dinner').menuVersion, undefined);
@@ -120,7 +121,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     const openE9 = async () => { await p.reload(); await p.waitForSelector('#kpi .card'); await p.locator('#n-events:visible').click();
       await p.locator('#ev-list [data-action="evdetail"]:visible', { hasText: 'Sample Single Dinner' }).first().click(); await p.waitForSelector('#menu-orders');
       await p.evaluate(() => { window.__opened = []; window.open = u => { window.__opened.push(u); return {}; }; }); };
-    const send = async () => { await p.waitForSelector('#ord-modal.active'); await p.selectOption('#ord-ven', 'v2'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); } return lastMessage(); };
+    const send = async () => { await p.waitForSelector('#ord-modal.active'); await p.selectOption('#ord-ven', 'v2'); await pickTime(p, 'ord-time'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); } return lastMessage(); };
     const o9 = async () => (await dump()).events.find(e => e.id === 'e9').orders[0];
     const resend = async () => { await openE9(); await p.locator('#menu-orders [data-action="order-status"]').first().click(); await p.waitForSelector('#ask-modal.active');
       await p.locator('#ask-actions button', { hasText: 'Edit / send again' }).click(); return send(); };

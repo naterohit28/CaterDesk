@@ -13,6 +13,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
   { id: 'E2', name: 'Sample Small Party', date: day(7), venue: 'Sample Hall', type: 'Birthday – वाढदिवस', guests: 50, billing: 30000, photoIds: [] },
   { id: 'E3', name: 'Sample Past Party', date: day(-1), venue: 'Sample Hall', type: 'Birthday – वाढदिवस', guests: 50, billing: 10000, photoIds: [] }] };
 
+const pickTime = async (p, id, hhmm = '19:30') => { if (await p.inputValue('#' + id)) return; const [h, m] = hhmm.split(':').map(Number); await p.selectOption('#' + id + '-h', String(h % 12 || 12)); await p.selectOption('#' + id + '-m', String(m).padStart(2, '0')); await p.selectOption('#' + id + '-ap', h < 12 ? 'AM' : 'PM'); };
 (async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   const p = await (await browser.newContext({ ...devices['Pixel 5'], viewport: { width: 360, height: 780 } })).newPage(); p.setDefaultTimeout(10000);
@@ -59,15 +60,12 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     assert.equal((await ev()).payPlan[0].pct, 20);
   });
 
-  await test('meal menu: dishes typed but not added are added (not dropped) when Save is tapped; the next Save keeps them', async () => {
+  await test('meal menu: dishes typed but not added are saved (not dropped) by one Save', async () => {
     await openEvent();
     await p.locator('[data-action="svc-edit"]').first().click();
     await p.locator('#svc-add').fill('Paneer Butter Masala, Dal Tadka, Masala Dosa');
-    await p.locator('#btn-save-svc').click();
-    assert.equal(await p.locator('#svc-modal').isVisible(), true, 'the sheet stays open to check kitchen or counter');
-    assert.ok((await p.evaluate(() => [...document.querySelectorAll('#svc-modal input')].map(i => i.value))).includes('Masala Dosa'), 'listed for review');
-    assert.equal((await ev()).dishes?.length || 0, 0, 'nothing saved yet');
-    await p.locator('#btn-save-svc').click(); await p.waitForTimeout(500);
+    await p.locator('#btn-save-svc').click(); await p.waitForTimeout(500);   // one Save (owner's phone review, 4.31.21)
+    assert.equal(await p.locator('#svc-modal.active').count(), 0, 'one Save closes the sheet');
     assert.deepEqual((await ev()).dishes.map(d => d.name), ['Paneer Butter Masala', 'Dal Tadka', 'Masala Dosa']);
   });
 
@@ -85,7 +83,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     await p.locator('#ord-plates').fill('260');
     await p.locator('#ord-takeup').fill('75');
     assert.equal(await p.locator('#ord-plates').inputValue(), '260', 'a typed count is never replaced by the plan');
-    await p.locator('#btn-save-ord').click(); await p.waitForTimeout(500);
+    await pickTime(p, 'ord-time'); await p.locator('#btn-save-ord').click(); await p.waitForTimeout(500);
     let o = (await ev()).orders[0];
     assert.deepEqual([o.status, o.plates, o.messages.length], ['prepared', 260, 1]);
     assert.deepEqual(await p.evaluate(() => window.__opened.length), 0, 'Save order opens nothing');
@@ -104,7 +102,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     await p.locator('#ord-notes').fill('setup by 6 pm');
     // window.event is the tap only while its handler runs synchronously: after any await it is gone
     await p.evaluate(() => { window.__opened = []; window.__inTap = []; window.open = u => { window.__opened.push(u); window.__inTap.push(window.event?.type === 'click'); return {}; }; });
-    await p.locator('#btn-send-ord').click(); await p.waitForTimeout(600);
+    await pickTime(p, 'ord-time'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(600);
     assert.equal(await p.evaluate(() => window.__opened.length), 0, 'nothing opens before the save is done');
     let x = (await ev()).orders[0];
     assert.deepEqual([x.notes, x.status, x.messages.length, x.messages.at(-1).status], ['setup by 6 pm', 'prepared', 2, 'prepared'], 'the changed order is saved as a new, not-sent version');
@@ -125,7 +123,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     // The phone's storage refuses the next write (e.g. full): this save fails
     await p.evaluate(() => { const put = IDBObjectStore.prototype.put; IDBObjectStore.prototype.put = function () { IDBObjectStore.prototype.put = put; throw new DOMException('Storage is full', 'QuotaExceededError'); }; });
     await p.evaluate(() => { window.__opened = []; window.open = u => { window.__opened.push(u); return null; }; });   // null: blocked
-    await p.locator('#btn-send-ord').click(); await p.waitForTimeout(600);
+    await pickTime(p, 'ord-time'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(600);
     assert.equal(await p.locator('#ask-modal.active #ask-actions .btn-wa').count(), 0, 'no send step for an order that did not save');
     assert.equal(await p.evaluate(() => window.__opened.length), 0, 'nothing opened');
     assert.equal((await ev()).orders[0].notes, 'setup by 6 pm', 'the record is unchanged');
@@ -135,7 +133,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     await p.getByRole('button', { name: /^Edit \/ send again/ }).click();
     await p.locator('#ord-notes').fill('setup by 7 pm');
     await p.evaluate(() => { window.__opened = []; window.open = u => { window.__opened.push(u); return null; }; });
-    await p.locator('#btn-send-ord').click(); await p.waitForTimeout(600);
+    await pickTime(p, 'ord-time'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(600);
     await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400);
     assert.match(await p.locator('#toast-msg').innerText(), /WhatsApp did not open\. It is saved as not sent/);
     const x = (await ev()).orders;
@@ -244,10 +242,10 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     assert.equal(await p.locator('#ord-plates').inputValue(), '165', 'a new take-up does not overwrite the typed 165');
     await p.locator('#ord-takeup').fill('75');
     await p.locator('#ord-min').fill('170');
-    await p.locator('#btn-save-ord').click(); await p.waitForTimeout(400);
+    await pickTime(p, 'ord-time'); await p.locator('#btn-save-ord').click(); await p.waitForTimeout(400);
     assert.equal(await p.locator('#ord-modal').isVisible(), true, '165 is below the minimum of 170: a note is asked for');
     await p.locator('#ord-notes').fill('client expects a smaller crowd');
-    await p.locator('#btn-save-ord').click(); await p.waitForTimeout(500);
+    await pickTime(p, 'ord-time'); await p.locator('#btn-save-ord').click(); await p.waitForTimeout(500);
     const ev4 = () => p.evaluate(async () => (await (await import('./db.js')).exportAllData()).events.find(x => x.id === 'E4'));
     let o = (await ev4()).orders[0];
     assert.deepEqual([o.plates, o.suggested, o.belowMinimum, o.status], [165, 170, 170, 'prepared'], 'ordered 165; the plan proposed 150 lifted to the 170 minimum; below-minimum recorded');
@@ -282,8 +280,6 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     await openEvent();
     await p.locator('[data-action="svc-edit"]').first().click();
     await p.locator('#svc-add').fill('पनीर मसाला, जिलेबी');
-    await p.locator('#btn-save-svc').click();
-    assert.equal(await p.locator('#svc-modal').isVisible(), true);
     await p.locator('#btn-save-svc').click(); await p.waitForTimeout(500);
     assert.deepEqual((await ev()).dishes.map(d => d.name), ['पनीर मसाला', 'जिलेबी']);
     await p.evaluate(() => localStorage.setItem('ffv2_lang', 'en'));
