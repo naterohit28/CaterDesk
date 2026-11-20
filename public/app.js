@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, billSet, billingSplit, calcVendorBalance, normGstin, gstinValid, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, learnedDishes, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, keepPaidMilestones, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, learnedDishes, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.31.16';
+const APP_BUILD = '4.31.17';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1853,7 +1853,7 @@ async function patchEvent(id, patch, drop = []) {
   const ev = D.events.find(e => e.id === id); if (!ev) return null;
   let record = { ...ev, ...patch };
   for (const k of drop) delete record[k];
-  record = syncServices(record);   // meal-by-meal menus follow a menu edited here
+  record = keepPaidMilestones(ev, syncServices(record), D.cPays);   // meal-by-meal menus follow a menu edited here; % milestones already paid keep their amount if the bill changes
   await putChecked('events', record, ev);
   D.events = D.events.map(e => e.id === id ? record : e);
   return record;
@@ -4375,7 +4375,7 @@ function scheduleBlock(ev) {
       <span class="label">${tr(`Due now ${fmtCurrency(s.dueNow)}`, `आता देय ${fmtCurrency(s.dueNow)}`)}${s.overdue > 0 ? ` · <span class="neg">${tr(`overdue ${fmtCurrency(s.overdue)}`, `थकीत ${fmtCurrency(s.overdue)}`)}</span>` : ''}</span>
       <button type="button" class="btn-sm" data-action="plan-edit">${icon('pencil', 16)}${tr('Edit', 'बदला')}</button></div>
     ${s.rows.map(r => `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:var(--s2);margin-top:6px">
-      <div class="meta" style="min-width:0"><span data-nl>${esc(r.label || (r.unscheduled ? 'Balance' : 'Milestone'))}</span> · ${whenText(r)}</div>
+      <div class="meta" style="min-width:0"><span data-nl>${esc(r.label || (r.unscheduled ? 'Balance' : 'Milestone'))}</span> · ${whenText(r)}${r.fixed ? ` · <span class="pay-fixed">${tr('kept as paid', 'भरल्याप्रमाणे')}</span>` : ''}</div>
       <div style="white-space:nowrap"><span class="amt-sm">${fmtCurrency(r.amount)}</span> <span class="chip ${PAY_STATE[r.state][2]}">${(rest => tr(PAY_STATE[r.state][0] + rest, PAY_STATE[r.state][1] + rest))(r.paid > 0 && r.rest > 0 ? ` · ${fmtCurrency(r.rest)}` : '')}</span></div></div>`).join('')}
     ${s.overScheduled > 0 ? `<div class="meta due" style="margin-top:6px">${tr(`The schedule adds up to ${fmtCurrency(s.overScheduled)} more than the bill`, `हप्ते बिलापेक्षा ${fmtCurrency(s.overScheduled)} जास्त`)}</div>` : ''}
   </div>`;
@@ -4422,13 +4422,14 @@ function readPlanRow(m) {
   if (planUnit(m) === 'pct') out.pct = raw === '' ? NaN : Number(raw); else out.amt = raw === '' ? NaN : Number(raw);
   if (m.when === 'date') out.date = m.date || '';
   if (['before', 'after'].includes(m.when)) out.days = m.days === '' || m.days == null ? NaN : Math.floor(Number(m.days));
+  if (out.pct != null && m.fixedAmt != null && Number(m.pct) === out.pct) out.fixedAmt = m.fixedAmt;   // paid at the old bill: kept while its % is unchanged
   if (!out.label) delete out.label;
   return out;
 }
 function updatePlanSum() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const rows = planDraft.map(readPlanRow);
-  const total = rows.reduce((s, r) => s + (r.pct != null ? Math.round(toPaise(ev.billing) * (r.pct || 0) / 100) : toPaise(r.amt || 0)), 0) / 100;
+  const total = rows.reduce((s, r) => s + (r.fixedAmt != null ? toPaise(r.fixedAmt) : r.pct != null ? Math.round(toPaise(ev.billing) * (r.pct || 0) / 100) : toPaise(r.amt || 0)), 0) / 100;
   const diff = Math.round(ev.billing * 100) / 100 - total;
   q('plan-sum').textContent = `Bill ${fmtCurrency(ev.billing)} · scheduled ${fmtCurrency(total)}` + (diff > 0 ? ` · ${fmtCurrency(diff)} left as balance after the event` : diff < 0 ? ` · ${fmtCurrency(-diff)} more than the bill` : ' · all of the bill');
 }
@@ -4443,8 +4444,10 @@ async function savePlan() {
   }
   // Bill not set: the paused plan can only be removed; milestones wait for the bill
   if (!billSet(ev) && rows.length) { showToast('Set the bill before changing the plan. To remove it, clear every milestone and save. – आधी बिल भरा', 'error'); return; }
-  const total = rows.reduce((s, r) => s + (r.pct != null ? Math.round(toPaise(ev.billing) * r.pct / 100) : toPaise(r.amt)), 0);
-  if (total > toPaise(ev.billing)) { showToast('The schedule is more than the bill – हप्ते बिलापेक्षा जास्त', 'error'); return; }
+  const total = rows.reduce((s, r) => s + (r.fixedAmt != null ? toPaise(r.fixedAmt) : r.pct != null ? Math.round(toPaise(ev.billing) * r.pct / 100) : toPaise(r.amt)), 0);
+  // With a milestone kept as paid, open % milestones give up any excess (as the schedule shows); only fixed amounts can be too much
+  const firm = rows.reduce((s, r) => s + (r.fixedAmt != null ? toPaise(r.fixedAmt) : r.pct != null ? 0 : toPaise(r.amt)), 0);
+  if (rows.some(r => r.fixedAmt != null) ? firm > toPaise(ev.billing) : total > toPaise(ev.billing)) { showToast('The schedule is more than the bill – हप्ते बिलापेक्षा जास्त', 'error'); return; }
   try { await patchEvent(ev.id, { payPlan: rows }, rows.length ? [] : ['payPlan']); } catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
   closeModals(); refreshCurrent();
   showToast(rows.length ? 'Payment schedule saved – हप्ते जतन' : 'Payment schedule removed – हप्ते काढले');
@@ -4737,7 +4740,7 @@ async function saveEvent() {
 
   const base = id ? formBase.ev : null;
   const meals = Object.keys(MEALS).filter(m => evMeals().includes(m));
-  const record = syncServices(editedRecord(base, {
+  const record = keepPaidMilestones(base, syncServices(editedRecord(base, {
     id:       id || uid('EV'),
     name:     data.name,
     date:     data.date,
@@ -4761,7 +4764,7 @@ async function saveEvent() {
       // Older events keep their shape: an empty mobile or budget, or the format marker, is not added to them
       ...['mobile', 'notes', 'menu'].filter(k => !(base && k in base) && !{ mobile: data.mobile, notes: qv('ev-notes'), menu: mainMealMenu() || qv('ev-menu') }[k]),
       ...(!(Number(data.budget) > 0) && !(base && 'budget' in base) ? ['budget'] : []),
-      ...(base && !('_v' in base) ? ['_v'] : [])]));
+      ...(base && !('_v' in base) ? ['_v'] : [])])), D.cPays);
 
   // The advance is saved with the event in one go, as its first payment received
   const advance = adv !== '' ? { id: uid('CP'), evId: record.id, amt: adv, date: today(), mode: qv('ev-adv-mode'), notes: 'Advance – अॅडव्हान्स' } : null;

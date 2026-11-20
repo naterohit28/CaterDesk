@@ -358,10 +358,16 @@ export function paymentSchedule(ev, cPays, now = today()) {
   let cumPct = 0;
   let rows = plan.map(m => {
     let amtP;
-    if (m.pct != null) { const before = Math.round(billP * cumPct / 100); cumPct += Number(m.pct); amtP = Math.round(billP * cumPct / 100) - before; }
+    if (m.pct != null) { const before = Math.round(billP * cumPct / 100); cumPct += Number(m.pct); amtP = m.fixedAmt != null ? toPaise(m.fixedAmt) : Math.round(billP * cumPct / 100) - before; }
     else amtP = toPaise(m.amt);
-    return { id: m.id, label: m.label || '', when: m.when, pct: m.pct, amtP, dueDate: dueDateOf(m) };
+    return { id: m.id, label: m.label || '', when: m.when, pct: m.pct, fixed: m.pct != null && m.fixedAmt != null, amtP, dueDate: dueDateOf(m) };
   });
+  // The bill went down after a % milestone was paid: the open % milestones, last first, give up the difference
+  let excessP = rows.reduce((s, r) => s + r.amtP, 0) - billP;
+  if (excessP > 0 && rows.some(r => r.fixed)) {
+    for (let i = rows.length - 1; i >= 0 && excessP > 0; i--) if (rows[i].pct != null && !rows[i].fixed) { const cut = Math.min(rows[i].amtP, excessP); rows[i].amtP -= cut; excessP -= cut; }
+    rows = rows.filter(r => r.amtP > 0 || r.pct == null || r.fixed);
+  }
   const plannedP = rows.reduce((s, r) => s + r.amtP, 0);
   if (plannedP < billP) rows.push({ id: '__rest', label: 'Balance', when: 'after', unscheduled: true, amtP: billP - plannedP, dueDate: addDays(ev.date, 1) });
   rows.sort((a, b) => (a.dueDate === '' ? -1 : b.dueDate === '' ? 1 : a.dueDate.localeCompare(b.dueDate)));
@@ -374,10 +380,22 @@ export function paymentSchedule(ev, cPays, now = today()) {
     if (reached) dueP += restP;
     if (past) overP += restP;
     const state = restP === 0 ? 'paid' : past ? 'overdue' : reached ? 'due' : 'upcoming';
-    return { id: r.id, label: r.label, when: r.when, pct: r.pct, unscheduled: !!r.unscheduled, amount: fromPaise(r.amtP), paid: fromPaise(paidP), rest: fromPaise(restP), dueDate: r.dueDate, state };
+    return { id: r.id, label: r.label, when: r.when, pct: r.pct, fixed: !!r.fixed, unscheduled: !!r.unscheduled, amount: fromPaise(r.amtP), paid: fromPaise(paidP), rest: fromPaise(restP), dueDate: r.dueDate, state };
   });
   return out({ scheduled: true, rows, dueNow: fromPaise(Math.min(dueP, outstandingP)), overdue: fromPaise(Math.min(overP, outstandingP)),
     unscheduled: fromPaise(Math.max(0, billP - plannedP)), overScheduled: fromPaise(Math.max(0, plannedP - billP)) });
+}
+
+/* Owner's rule (4.31.17): when the bill changes, a % milestone the client has already paid in full keeps the amount
+   it had (stored as `fixedAmt`); the milestones still open are worked out on the new bill, and whatever the change
+   leaves over is the balance after the event. Nothing is written unless the bill (what the client pays) changed. */
+export function keepPaidMilestones(before, after, cPays) {
+  const plan = after?.payPlan;
+  if (!before || !Array.isArray(plan) || !plan.some(m => m.pct != null && m.fixedAmt == null && m.id)) return after;
+  if (!billSet(before) || clientDueP(before) === clientDueP(after)) return after;
+  const paid = new Map(paymentSchedule(before, cPays).rows.filter(r => r.state === 'paid' && r.pct != null && !r.unscheduled && r.id).map(r => [r.id, r.amount]));
+  if (!paid.size) return after;
+  return { ...after, payPlan: plan.map(m => m.pct != null && m.fixedAmt == null && paid.has(m.id) ? { ...m, fixedAmt: paid.get(m.id) } : m) };
 }
 
 /* ── COUNTER PLANNING (spec §5.4, scenarios C-01 / C-02, G-06) ── */

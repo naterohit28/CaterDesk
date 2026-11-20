@@ -612,7 +612,7 @@ export async function prepareImport(payload) {
       if (row.allocLog !== undefined && (!Array.isArray(row.allocLog) || row.allocLog.length > 50
         || row.allocLog.some(l => !l || typeof l.at !== 'string' || badParts(l.parts) || (l.from !== undefined && badParts(l.from))))) throw new Error('Invalid bill allocation history');
       if (row.payPlan !== undefined && (!Array.isArray(row.payPlan) || row.payPlan.some(m => !m || typeof m.id !== 'string' || !['booking', 'date', 'before', 'after'].includes(m.when)
-        || (m.pct != null ? !(typeof m.pct === 'number' && m.pct > 0 && m.pct <= 100) : (amount(m.amt, 'milestone'), false))
+        || (m.pct != null ? !(typeof m.pct === 'number' && m.pct > 0 && m.pct <= 100) || (m.fixedAmt !== undefined && (amount(m.fixedAmt, 'milestone'), false)) : (amount(m.amt, 'milestone'), false))
         || (m.when === 'date' && !validDate(m.date)) || (['before', 'after'].includes(m.when) && !(Number.isSafeInteger(m.days) && m.days >= 0))))) throw new Error('Invalid payment schedule');
       if (row.counterPlan !== undefined && (typeof row.counterPlan !== 'object' || row.counterPlan === null || Array.isArray(row.counterPlan) || Object.values(row.counterPlan).some(c => !c || typeof c !== 'object'
         || (c.takeUp !== undefined && !(typeof c.takeUp === 'number' && c.takeUp > 0 && c.takeUp <= 100)) || (c.minimum !== undefined && !(Number.isSafeInteger(c.minimum) && c.minimum >= 0))))) throw new Error('Invalid counter plan');
@@ -723,7 +723,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.31.16';
+export const APP_VERSION = '4.31.17';
 const COUNT_METHOD_IDS = ['tokens', 'tally', 'gate', 'coupons', 'joint', 'other'];
 // v4.18.0 kept menus in their own store (database version 5): copy them into meta once and empty that store
 export async function migrateLegacyMenus() {

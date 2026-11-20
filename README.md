@@ -4,7 +4,7 @@
 
 An offline-first app for catering events, expenses, vendor credit, client collections, menus and vendor orders. Business records stay in the device's browser storage; the hosted app also sends limited error diagnostics to its server.
 
-**Current source and hosted web build: v4.31.16.** Documentation checked on **20 November 2026**.
+**Current source and hosted web build: v4.31.17.** Documentation checked on **20 November 2026**.
 
 [Open the app](https://expense-calculator-kohl.vercel.app/) · [Download published packages](https://github.com/naterohit28/CaterDesk/releases) · [Historical reliability report](docs/RELIABILITY.md) · [Competitor/name research and Claude evaluation notes](docs/research/README.md) · [Report an issue](https://github.com/naterohit28/CaterDesk/issues)
 
@@ -31,16 +31,16 @@ Four things carry version numbers, and they are **independent**: the **hosted we
 
 | Component | State (checked 20 November 2026 unless noted) | Meaning |
 | --- | --- | --- |
-| Source and hosted web app | **4.31.16** | Current UI, data/export version, service worker and error reporter |
-| Service-worker release cache | `flavor-fusion-v2-cache-v95` | Installed web assets; this number is not the database schema version |
+| Source and hosted web app | **4.31.17** | Current UI, data/export version, service worker and error reporter |
+| Service-worker release cache | `flavor-fusion-v2-cache-v96` | Installed web assets; this number is not the database schema version |
 | Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** (inspected 3 November 2026) | APK package inspected locally; launches the hosted app, which can run 4.31.16 |
 | Android requirements for that local wrapper | min API **24**, target API **36** | Android 7.0+ and a compatible browser provider |
 | Latest GitHub Release with downloadable binaries | **2.4.7** | APK and desktop ZIP; later source tags do not imply newer binaries were uploaded |
 | Desktop package currently in the owner's `Apps/Desktop` folder | **2.4.7** | A static older bundle, not the current source build |
-| Desktop launcher source/instructions | **4.31.16** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
+| Desktop launcher source/instructions | **4.31.17** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
 | IndexedDB schema | **4** | Kept separate from application version changes |
 
-Do not relabel an older package as 4.31.16. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
+Do not relabel an older package as 4.31.17. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
 
 ## Current features
 
@@ -158,17 +158,17 @@ The APK is a **Trusted Web Activity** wrapper around the hosted site. It does no
 1. Keep a business-data backup.
 2. Obtain the intended APK from its actual release assets or the owner's prepared local package. Install over the existing app with the same package/signing identity.
 3. Open online to download updates. Check the **web build in Settings**, not just Android App info.
-4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **4.31.16**.
+4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **4.31.17**.
 
 A newer web release may reload automatically during the first 20 seconds of startup when no active form/save/overlay prevents it, at most once per release per session. Otherwise it waits for a later start or explicit reload. Refresh can also switch versions when no form/save is open. Service-worker cache mappings preserve matching assets for older open pages until navigation.
 
 Do not uninstall or clear browser/site storage to force an update. If Android rejects an APK, check package, versionCode and signing certificate before proceeding. The public certificate association is [`public/.well-known/assetlinks.json`](public/.well-known/assetlinks.json).
 
-The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **4.31.16**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
+The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **4.31.17**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
 
 ## Windows desktop testing
 
-Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v4.31.16 package.
+Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v4.31.17 package.
 
 1. Extract the entire ZIP; keep `app/` beside `CaterDesk-Desktop.exe`.
 2. Run the EXE. Microsoft Edge opens an app window; a tray icon provides **Open CaterDesk**, storage information and **Exit test server**.
@@ -347,6 +347,7 @@ This is a short source-feature history, not a list of available binary downloads
 
 | Version | Main changes |
 | --- | --- |
+| 4.31.17 | Owner's rule on payment milestones: when the bill changes, a % milestone the client has already paid in full keeps the amount it had (shown "kept as paid"); the open milestones follow the new bill and the difference is the balance after the event. Before, a paid 25% booking milestone showed a few rupees "due" again after the bill grew. |
 | 4.31.16 | Fixes from the independent pre-v5 audit: a vendor order saves only with a whole number of plates (1 or more) and a real delivery date; a delivered purchase without its bill now stops reconciliation and shows in the Books check, like a delivered order; two delivered orders from one vendor need two bills (each bill counts for one order, linked or not), so one vendor bill no longer hides another order's missing bill (`tests/order-recon-fixes.cjs`). Cache v95 |
 | 4.31.15 | Encrypted safety copy before a restore: when Replace would remove this phone's data, the copy it first asks for is now encrypted with the recovery key (.cdbk; the key is never inside) instead of a readable file. No key set up: a readable copy, with the warning, as before. With a key: a readable copy only through a warned emergency option. A cancelled, failed or interrupted restore changes nothing, and the encrypted copy restores the phone exactly (`tests/encrypted-safety-copy.cjs`). Cache v94 |
 | 4.31.14 | Full-event test fixes: payment plan ₹ / % choice (a chosen % stays a % through every edit) and labelled date/days; meal dishes typed but not added are kept on Save; vendor and purchase orders are saved first and sent second (WhatsApp opens from a tap on the saved order, a failed save sends nothing, a blocked window leaves it not sent), Save order keeps it unsent, typed plates are never refilled; Split bill is offered on a new expense; a cash one-off purchase needs no vendor; settlement can record a payment; the restore sheet shows this phone's records, what Replace would remove, and that Merge removes nothing; purchase orders add venue notes and your contact; the guest-count sheet highlights the next step |
