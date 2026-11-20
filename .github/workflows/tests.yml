@@ -1,0 +1,48 @@
+# Runs the full browser test suite on every pull request to main.
+# It only reads the repository: it never deploys, tags or publishes anything, and it uploads no files.
+# The tests use synthetic Sample data in a fresh browser profile and never visit the live site.
+name: Tests
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A new push to the same pull request cancels the run that is still going, so only the latest commit is tested.
+concurrency:
+  group: tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # The owner's phone is on Indian time; the date tests also switch zones inside the browser where they need to.
+      TZ: Asia/Kolkata
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # tests/meal-services-compat.cjs serves the released 4.21.1 app from git history.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install test dependencies
+        run: npm ci
+
+      - name: Install Microsoft Edge for Playwright
+        run: npx playwright install --with-deps msedge
+
+      - name: Install Devanagari fonts for the Marathi screens
+        run: sudo apt-get install -y --no-install-recommends fonts-noto-core
+
+      - name: Run the full suite
+        run: npm test
