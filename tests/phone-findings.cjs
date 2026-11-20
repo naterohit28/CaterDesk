@@ -40,6 +40,8 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [{ id: 'vp1', venI
     await p.waitForSelector('#ask-modal.active');
     assert.match(await p.locator('#ask-title').innerText(), /Tell your vendors about the new date/);
     const msg = await p.locator('#ask-msg').innerText();
+    assert.doesNotMatch(msg + await p.locator('#ask-title').innerText(), /<|class=/, 'plain words on screen, no markup (phone run 4.31.19)');
+    assert.match(msg, /The event is now on/);
     assert.match(msg, /Dosa · Sample Dosa Counter/); assert.match(msg, /Gulab Jamun · Sample Sweet Shop/);
     assert.doesNotMatch(msg, /Chaat/, 'a delivered order is not listed');
     await p.locator('#ask-actions button').first().click(); await p.waitForTimeout(300);
