@@ -103,8 +103,8 @@ const filesAt = ref => { const m = new Map();
       const p = await install(ctx);
       const before = await marker(p);
       assert.equal(before, MONEY, 'the installed release holds the exact bill, payment and expense');
-      serveNew = true;
       await ctx.setOffline(true);
+      serveNew = true;   // published only once the phone is offline (run 44928858429: the old order let the update in first)
       await p.reload({ waitUntil: 'domcontentloaded' }); await p.waitForSelector('#kpi .card');
       assert.equal(await build(p), 'v' + from, 'offline: the installed release opens');
       assert.equal(await marker(p), before);
