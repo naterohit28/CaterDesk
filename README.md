@@ -4,7 +4,9 @@
 
 An offline-first app for catering events, expenses, vendor credit, client collections, menus and vendor orders. Business records stay in the device's browser storage; the hosted app also sends limited error diagnostics to its server.
 
-**Current source and hosted web build: v4.31.24.** Documentation checked on **20 November 2026**.
+**Current source and hosted web build: v5.0.0.** Documentation checked on **21 November 2026**.
+
+**Development status: Stable — Maintenance Mode.** v5.0.0 is the stable internal release (catering operations and financial management): the owner's full 25-check event test passed on their Android phone, the owner confirmed the installed app, and the money is checked against hand-worked figures. From here only these changes are made: defects, security, data integrity and backup/recovery, compatibility, and essential dependency updates. New features wait on the [deferred list](#deferred-improvements) and the owner's decision.
 
 [Open the app](https://expense-calculator-kohl.vercel.app/) · [Download published packages](https://github.com/naterohit28/CaterDesk/releases) · [Historical reliability report](docs/RELIABILITY.md) · [Competitor/name research and Claude evaluation notes](docs/research/README.md) · [Report an issue](https://github.com/naterohit28/CaterDesk/issues)
 
@@ -23,6 +25,7 @@ CaterDesk was previously called Flavor Fusion. The existing Android package (`co
 - [Deployment, diagnostics and maintenance](#deployment-diagnostics-and-maintenance)
 - [Repository and local workspace](#repository-and-local-workspace)
 - [Troubleshooting](#troubleshooting)
+- [Deferred improvements](#deferred-improvements)
 - [Release history](#release-history)
 
 ## Versions and available packages
@@ -31,16 +34,16 @@ Four things carry version numbers, and they are **independent**: the **hosted we
 
 | Component | State (checked 20 November 2026 unless noted) | Meaning |
 | --- | --- | --- |
-| Source and hosted web app | **4.31.24** | Current UI, data/export version, service worker and error reporter |
-| Service-worker release cache | `flavor-fusion-v2-cache-v103` | Installed web assets; this number is not the database schema version |
+| Source and hosted web app | **5.0.0** | Current UI, data/export version, service worker and error reporter |
+| Service-worker release cache | `flavor-fusion-v2-cache-v104` | Installed web assets; this number is not the database schema version |
 | Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** (inspected 3 November 2026) | APK package inspected locally; launches the hosted app, which can run 4.31.16 |
 | Android requirements for that local wrapper | min API **24**, target API **36** | Android 7.0+ and a compatible browser provider |
 | Latest GitHub Release with downloadable binaries | **2.4.7** | APK and desktop ZIP; later source tags do not imply newer binaries were uploaded |
 | Desktop package currently in the owner's `Apps/Desktop` folder | **2.4.7** | A static older bundle, not the current source build |
-| Desktop launcher source/instructions | **4.31.24** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
+| Desktop launcher source/instructions | **5.0.0** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
 | IndexedDB schema | **4** | Kept separate from application version changes |
 
-Do not relabel an older package as 4.31.24. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
+Do not relabel an older package as 5.0.0. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
 
 ## Current features
 
@@ -158,17 +161,17 @@ The APK is a **Trusted Web Activity** wrapper around the hosted site. It does no
 1. Keep a business-data backup.
 2. Obtain the intended APK from its actual release assets or the owner's prepared local package. Install over the existing app with the same package/signing identity.
 3. Open online to download updates. Check the **web build in Settings**, not just Android App info.
-4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **4.31.24**.
+4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **5.0.0**.
 
 A newer web release may reload automatically during the first 20 seconds of startup when no active form/save/overlay prevents it, at most once per release per session. Otherwise it waits for a later start or explicit reload. Refresh can also switch versions when no form/save is open. Service-worker cache mappings preserve matching assets for older open pages until navigation.
 
 Do not uninstall or clear browser/site storage to force an update. If Android rejects an APK, check package, versionCode and signing certificate before proceeding. The public certificate association is [`public/.well-known/assetlinks.json`](public/.well-known/assetlinks.json).
 
-The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **4.31.24**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
+The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **5.0.0**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
 
 ## Windows desktop testing
 
-Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v4.31.24 package.
+Use a published ZIP if its older bundled version is suitable, or build from current source using the instructions below. Do not describe the v2.4.7 download as a v5.0.0 package.
 
 1. Extract the entire ZIP; keep `app/` beside `CaterDesk-Desktop.exe`.
 2. Run the EXE. Microsoft Edge opens an app window; a tray icon provides **Open CaterDesk**, storage information and **Exit test server**.
@@ -341,12 +344,32 @@ Commit from this Git checkout, not the outer Downloads folder. Generated `node_m
 
 Include the web build, wrapper/browser or desktop package version, steps and error text in bug reports. Use synthetic/redacted examples; never attach customer backups or private bills to public issues.
 
+## Deferred improvements
+
+Not part of v5.0.0. Each needs the owner's decision before any work starts.
+
+| Item | Why it waits |
+| --- | --- |
+| Voice entry (5.1) | One "Quick voice entry" that fills the existing form for review before saving, expenses first; Indian English, Hindi and Marathi. Needs the owner's OK on sending speech to Google for recognition, and a test inside the installed app (it runs on the phone's default browser) |
+| Dish list with suggestions while typing (5.1) | From the owner's menu card (dish names only), never limiting what can be typed; until then the "Card – …" section menus (loaded with Restore → Merge) serve the purpose |
+| Interface polish from the phone run | About a dozen small items: the floating Add button over figures, notices over titles, wording and ₹ formatting; none changes a figure |
+| Bill per plate after extra plates are billed; the temporary-change note in the reconciliation history | Display and history wording only; totals are correct |
+| A purchase's bill pre-fills an unrelated item when the supplier has no counter or item set | Found in the detailed phone run; totals are correct, only the Reports category is affected until changed |
+| Play Store listing and commercial use | Launch kit prepared (docs/PLAY_STORE.md); account, domain/email and launch date are the owner's decisions |
+| Name and trademark check | CaterDesk is used by others in this industry; a decision, not a code change |
+| Licence | None is granted; adding one is the owner's decision |
+| Android wrapper source in the repository | Makes the APK rebuildable from a clone; keystore and passwords stay out |
+| Direct Google Drive backup (API) | Built, switched off; Google's Drive API terms restrict app backups without Google's consent |
+| GST on bills and principal-vs-commission accounting (O-01/O-02) | Accounting rules need the owner's and accountant's decisions |
+| Making the GitHub "Tests" check required on `main` | Once the CI run has been reliable for a few more pull requests |
+
 ## Release history
 
 This is a short source-feature history, not a list of available binary downloads.
 
 | Version | Main changes |
 | --- | --- |
+| 5.0.0 | **Stable internal release.** Same app as 4.31.24, renumbered after the owner's Android acceptance (all 25 checks of the full-event test on the owner's phone, run twice, offline included; the owner confirmed the installed app) and the independent money check. Development moves to Maintenance Mode. Updating from 4.31.13, 4.31.14, 4.31.22, 4.31.23 and 4.31.24 keeps records (bill, payments and expenses compared exactly) and open entries, online and offline (tests/update-from-4313.cjs). |
 | 4.31.24 | Owner's requests before v5.0.0: a labour line with workers but no rate is kept on the sheet (it was dropped on save) and says "Rate not set"; only priced lines become expenses, a contractor's bill with no rates is saved as the expense, and a blank rate never deletes an earlier amount. Labour is ordered by heads per shift: the sheet never fills in a rate (last time's rate shows only as a hint), so nothing is counted before the contractor's bill. A vendor order can have a price: it is saved, in the same step as the order, as an expense to pay that vendor, marked as the order's price and not its bill (the order still reads "bill not in" and the event cannot be closed on it). Recording the bill confirms it; a recorded, paid or numbered bill is never changed or removed by its order, and cancelling removes only an unconfirmed price. Prices take whole paise only. Without a price the order says its cost comes with the bill (independent audit of #102, F-01 to F-03, F-07). Part of a dish can come from a vendor or be bought, with the rest made by us (shown under Our kitchen as "(rest)"); a dish can be marked as cooked at the venue, in the event page or the meal editor; a dish on a sent order becoming only part from that counter flags the order for review (F-04, F-06). A cleared labour rate keeps its earlier amount, shown and counted on the labour card (F-05). Coming back to the app after a call, the field being typed in keeps the cursor. Messages to vendors (order, purchase, reminder) no longer name the client or event, the guest count or the client's approval: what, how many, date, time and venue only. Cache v103 |
 | 4.31.23 | From the detailed phone run before v5.0.0: a purchase still sent for an earlier date showed display code in the To-buy list (now a plain warning line, as on order rows); a purchase's status sheet shows its time as 6:30 PM, not 18:30; the order and purchase reminders use the same fixed lines as the orders (counter or item, quantity, date, ready-by / deliver-by time, venue). |
 | 4.31.22 | Times are typed in one box (7:30, 7.05, 730 or 7) with an AM / PM switch; minutes after : or . need two digits, so 7:5 is never read as 7:50 or 7:05 by guess, instead of hour, minute and AM/PM lists. Owner's request: when ordering or buying from an event, the vendor box offers + New vendor (the vendor sheet opens over the order with its counter filled in, and the new vendor comes back picked) and + One-time vendor (kept for its bills, payments and dues, labelled one-time, never suggested for other orders). The sheet opened last is now always the one on top and in use. |
