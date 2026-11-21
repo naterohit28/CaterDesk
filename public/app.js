@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.31.23';
+const APP_BUILD = '4.31.24';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -172,7 +172,7 @@ changesChannel?.addEventListener('message', async () => {
 });
 
 /* ── BOOT ────────────────────────────────────────── */
-/* The field being typed in stays in view above the phone keyboard (owner's phone review, 4.31.23): when a field in a
+/* The field being typed in stays in view above the phone keyboard (owner's phone review, 4.31.21): when a field in a
    sheet gets focus, and again when the keyboard has finished opening (the visible area shrinks), it is scrolled to the
    middle of what can still be seen. */
 function keepFocusVisible() {
@@ -552,16 +552,23 @@ window.addEventListener('popstate', onPopState);
 function getActiveOverlay() {
   if (q('ask-modal').classList.contains('active')) return q('ask-modal');
   if (q('pin-screen').classList.contains('active')) return q('pin-screen');
-  // The sheet opened last is on top (a vendor sheet opened over an order comes earlier in the page, 4.31.23); sheets
+  // The sheet opened last is on top (a vendor sheet opened over an order comes earlier in the page, 4.31.22); sheets
   // without an opening mark keep page order, as before
   return [...document.querySelectorAll('#drawer.active, .modal-ov.active, #lightbox.active')]
     .reduce((top, el) => !top || Number(el.dataset.openedAt || 0) >= Number(top.dataset.openedAt || 0) ? el : top, null);
 }
+/* Coming back to the app (a phone call, another app): the field you were typing in gets the cursor back, not the
+   sheet's first button (owner, 4.31.24: a call in the middle of an entry moved the cursor away) */
+let lastSheetFocus = null;
+document.addEventListener('focusin', e => { if (e.target.closest?.('.modal-ov, #ask-modal, #pin-screen, #drawer, #lightbox')) lastSheetFocus = e.target; });
 function syncOverlayAccessibility() {
   const top = getActiveOverlay();
   for (const root of [q('hdr'), document.querySelector('main'), document.querySelector('nav'), q('fab')]) if (root) root.inert = !!top;
   for (const root of document.querySelectorAll('#drawer, .modal-ov, #lightbox, #pin-screen')) root.inert = !!top && root !== top;
-  if (top && !top.contains(document.activeElement)) (top.querySelector('input:not([type=hidden]), button:not([disabled]), [tabindex="0"]'))?.focus({ preventScroll: true });
+  if (top && !top.contains(document.activeElement)) {
+    const back = lastSheetFocus?.isConnected && top.contains(lastSheetFocus) && !lastSheetFocus.closest('[inert]') && lastSheetFocus.getClientRects().length ? lastSheetFocus : null;
+    (back || top.querySelector('input:not([type=hidden]), button:not([disabled]), [tabindex="0"]'))?.focus({ preventScroll: true });
+  }
 }
 document.addEventListener('keydown', e => {
   if (e.key !== 'Tab') return;
@@ -1374,9 +1381,9 @@ function labourCard(ev) {
         <div class="row-ic">${icon(isExtra(r) ? (r.extra === 'travel' ? 'truck' : 'clipboard') : 'users', 18)}</div>
         <div class="row-body"><div class="title-sm trunc" data-nl>${esc(labName(r))}</div>
           <div class="meta">${isExtra(r)
-            ? `${r.count > 1 ? `${r.count} × ` : ''}${fmtCurrency(r.rate)}`
-            : `${esc(shiftList(r))} · ${fmtCurrency(r.rate)} ${tr('each', 'प्रत्येकी')}`}</div></div>
-        <div class="amt-sm">${fmtCurrency(lineAmt(r))}</div>
+            ? `${r.count > 1 ? `${r.count} × ` : ''}${r.rate > 0 ? fmtCurrency(r.rate) : ''}`
+            : `${esc(shiftList(r))} · ${r.rate > 0 ? `${fmtCurrency(r.rate)} ${tr('each', 'प्रत्येकी')}` : ''}`}${r.rate > 0 ? '' : `<span class="due" data-no-rate>${tr('Rate not set', 'दर नाही')}</span>`}</div></div>
+        <div class="amt-sm">${r.rate > 0 ? fmtCurrency(lineAmt(r)) : '–'}</div>
       </div>`).join('')}
       ${adj ? `<div class="row" style="min-height:44px">
         <div class="row-ic">${icon('pencil', 18)}</div>
@@ -1464,17 +1471,26 @@ async function saveLabour() {
   const rows = labRows.map(r => isExtra(r)
       ? { id: r.id, kind: 'x', extra: r.extra, label: String(r.label || '').trim(), count: Math.round(Number(r.count) || 0), rate: Number(r.rate) || 0 }
       : { id: r.id, role: r.role, rate: Number(r.rate) || 0, counts: clean(r.counts) })
-    .filter(r => r.rate > 0 && (isExtra(r) ? r.count > 0 : heads(r) > 0));
+    .filter(r => isExtra(r) ? r.count > 0 : heads(r) > 0);   // a line with people but no rate yet is kept (owner, 4.31.24)
+  const unpriced = rows.filter(r => !(r.rate > 0));
+  const billTotal = money(Number(qv('lab-bill')) || 0);
   const pay = q('lab-pay').dataset.value || 'paid';
   const venId = pay === 'credit' ? qv('lab-ven') : '';
   if (pay === 'credit' && !venId) { showFieldErrors({ 'lab-ven': 'Choose the contractor you owe – ठेकेदार निवडा' }); return; }
   const oldIds = ev.labour?.expIds || {};
   const byKey = new Map();   // "cat|head" → lines saved as that expense
-  for (const r of rows) {
+  for (const r of rows.filter(r => r.rate > 0)) {
     const key = isExtra(r) ? `${EXTRAS[r.extra].cat}|${EXTRAS[r.extra].head}` : `Labour|${r.role}`;
     if (!byKey.has(key)) byKey.set(key, []);
     byKey.get(key).push(r);
   }
+  const labKey = r => isExtra(r) ? `${EXTRAS[r.extra].cat}|${EXTRAS[r.extra].head}` : `Labour|${r.role}`;
+  // No rate anywhere but a contractor's bill: the bill is the expense (on a line that already had one, else the first)
+  if (!byKey.size && billTotal && rows.length) { const r = rows.find(r => oldIds[labKey(r)]) || rows[0]; byKey.set(labKey(r), [r]); }
+  // Without a bill, a line whose rate was there before and is now blank keeps its earlier expense (a blank rate deletes nothing)
+  const hadRate = new Set((ev.labour?.rows || []).filter(r => Number(r.rate) > 0).map(r => r.id));
+  const keptOld = billTotal ? [] : Object.entries(oldIds).filter(([key, id]) => !byKey.has(key) && D.expenses.some(x => x.id === id)
+    && unpriced.some(r => hadRate.has(r.id) && labKey(r) === key));
   // Items already typed in by hand for this event (G-14): the sheet would count them twice. Never deleted here.
   const dupes = labourDuplicates(ev, D.expenses, [...byKey.keys()]);
   if (dupes.length) {
@@ -1493,12 +1509,13 @@ async function saveLabour() {
       venId, dueDate: pay === 'credit' ? old?.dueDate || '' : '', billIds: old?.billIds || [],
       notes: 'Labour sheet: ' + rs.map(r => isExtra(r)
         ? `${labName(r)} ${r.count > 1 ? r.count + ' × ' : ''}${fmtCurrency(r.rate)}`
-        : `${shiftList(r)} @ ${fmtCurrency(r.rate)}`).join(', ') };
+        : `${shiftList(r)}${r.rate > 0 ? ` @ ${fmtCurrency(r.rate)}` : ''}`).join(', ') + (rs.every(r => !(r.rate > 0)) ? ` · contractor's bill ${fmtCurrency(billTotal)}` : '') };
     delete record._rev;
     changes.push({ store: 'expenses', record, expected: old || null });
     expIds[key] = record.id; saved.push(record);
   }
-  const billTotal = money(Number(qv('lab-bill')) || 0), lines = money(saved.reduce((s, r) => s + r.amt, 0));
+  for (const [key, id] of keptOld) expIds[key] = id;
+  const lines = money(saved.reduce((s, r) => s + r.amt, 0));
   if (billTotal && saved.length && billTotal !== lines) {
     const big = saved.reduce((a, b) => b.amt > a.amt ? b : a);
     if (big.amt + billTotal - lines <= 0) { showFieldErrors({ 'lab-bill': 'Bill total is far below the lines – check the counts' }); return; }
@@ -1520,7 +1537,7 @@ async function saveLabour() {
     r.amt = (billP - othersP) / 100;
     for (const o of others) { const { _rev, ...rec } = o; changes.push({ store: 'expenses', record: { ...rec, split: { ...o.split, total: r.split.total } }, expected: o }); saved.push({ ...rec, split: { ...o.split, total: r.split.total } }); }
   }
-  const removed = Object.entries(oldIds).filter(([key, id]) => !byKey.has(key) && D.expenses.some(x => x.id === id)).map(([, id]) => id);
+  const removed = Object.entries(oldIds).filter(([key, id]) => !byKey.has(key) && !expIds[key] && D.expenses.some(x => x.id === id)).map(([, id]) => id);
   for (const id of removed) changes.push({ store: 'expenses', id, expected: D.expenses.find(x => x.id === id) });
   const evRecord = { ...ev, labour: { rows, pay, mode: pay === 'paid' ? qv('lab-mode') : '', venId, expIds, ...(billTotal && rows.length ? { billTotal } : {}) } };
   await commitChanges([{ store: 'events', record: evRecord, expected: ev }, ...changes], { check: true, extraStores: ['vendors'] });
@@ -1528,7 +1545,9 @@ async function saveLabour() {
   D.expenses = D.expenses.filter(x => !removed.includes(x.id) && !saved.some(r => r.id === x.id)).concat(saved)
     .map(x => dupes.some(d => d.id === x.id) ? { ...x, additional: true } : x);
   closeModals();
-  showToast(rows.length ? `Labour ${fmtCurrency(saved.reduce((s, r) => s + r.amt, 0))} saved – मजूर खर्च जतन` : 'Labour sheet cleared – मजूर यादी काढली');
+  showToast(!rows.length ? 'Labour sheet cleared – मजूर यादी काढली'
+    : unpriced.length && !saved.length ? `Labour sheet saved. No rate yet for ${unpriced.map(labName).join(', ')}, so no expense yet – add the rate or the contractor's bill later`
+    : `Labour ${fmtCurrency(saved.reduce((s, r) => s + r.amt, 0))} saved${unpriced.length && !billTotal ? `. No rate yet for ${unpriced.map(labName).join(', ')}: not in the total` : ''} – मजूर खर्च जतन`, unpriced.length && !saved.length ? 'error' : 'success');
   refreshCurrent();
 }
 
@@ -1546,9 +1565,12 @@ const short = head => String(head || '').split(' – ')[0];
 function orderStatus(o, ev) {
   const st = ORDER_STATUS[o.status] || ORDER_STATUS.sent;
   if (o.status !== 'delivered' || ev?.outsourced) return st;
+  if (priceExpense(o, o)) return { en: 'Delivered · order price', mr: 'आले · ऑर्डरची किंमत', tone: 'due' };
   return D.expenses.some(x => x.order === o.id) ? { en: 'Delivered · billed', mr: 'आले · बिल', tone: 'pos' } : { en: 'Delivered · bill not in', mr: 'आले · बिल नाही', tone: 'due' };
 }
 
+// How a dish made by us is listed: the rest of a part-bought dish, and dishes cooked at the venue (owner, 4.31.24)
+const kitchenName = d => d.name + (d.part ? ' (rest)' : '') + (d.at === 'venue' ? ' · at venue' : '');
 // The event's dishes grouped by the counter that supplies them ('' = your own kitchen)
 const OUT_HEAD = 'Outsourced Event – आउटसोर्स कार्यक्रम';
 function dishGroups(ev) {
@@ -1556,9 +1578,11 @@ function dishGroups(ev) {
   const groups = new Map();
   for (const d of ev.dishes || []) {
     if (isUnassigned(ev, d)) continue;   // its meal is no longer in the event: nothing is ordered for it
-    if (d.src) continue;                 // bought: under To buy, not the kitchen or a counter
-    if (!groups.has(d.head || '')) groups.set(d.head || '', []);
-    groups.get(d.head || '').push(d.name);
+    // Part from a vendor or supplier, the rest made by us (owner, 4.31.24): listed under both; the vendor's plates are on its order
+    if (d.part || !d.head && !d.src) { if (!groups.has('')) groups.set('', []); groups.get('').push(kitchenName(d)); }
+    if (d.src || !d.head) continue;      // bought: under To buy, not a counter
+    if (!groups.has(d.head)) groups.set(d.head, []);
+    groups.get(d.head).push(d.name);
   }
   return groups;
 }
@@ -1619,7 +1643,7 @@ function orderSteps(o) {
 }
 
 // Usual vendor for a counter: listed speciality or who supplied it before. No guess beyond that.
-// The last two choices in an order's or purchase's vendor box (owner, 4.31.23)
+// The last two choices in an order's or purchase's vendor box (owner, 4.31.22)
 const NEW_VENDOR_OPTS = [{ v: '__new', l: '+ New vendor – नवीन विक्रेता' }, { v: '__newonce', l: '+ One-time vendor (just this order) – एकदाच' }];
 // "+ New vendor" / "+ One-time vendor" in an order or purchase: the vendor sheet opens over it, and on saving the new
 // vendor is picked in the box it came from. A one-time vendor is a normal vendor record (its bills, payments and dues
@@ -1703,7 +1727,7 @@ function menuOrdersCard(ev) {
       ${ev.outsourced ? `<div class="meta" style="padding:var(--s3) var(--s4)">${tr('Outsourced event: the full menu goes to the caterer doing the event.', 'आउटसोर्स कार्यक्रम: संपूर्ण मेनू त्या केटररला जातो.')}</div>` : `<div style="padding:var(--s3) var(--s4)">
         <div class="meta" style="margin-bottom:var(--s2)">${tr('Tap a dish to change where it comes from', 'पदार्थ कुठून येतो ते बदलण्यासाठी टॅप करा')}</div>
         <div class="chips-row" style="margin:0;padding:0;flex-wrap:wrap">${dishes.map((d, i) =>
-          `<button type="button" class="f-chip" data-action="dish-assign" data-id="${i}" data-nl style="max-width:100%;overflow:hidden;text-overflow:ellipsis">${esc(d.name)}${d.src ? ` · ${esc(SRC_NAME[d.src])}` : ''}${d.head ? ` · ${esc(short(d.head))}` : ''}${d.meal ? ` · ${esc(MEALS[d.meal] || '')}${isUnassigned(ev, d) ? ' (not in this event)' : ''}` : ''}</button>`).join('')}</div>
+          `<button type="button" class="f-chip" data-action="dish-assign" data-id="${i}" data-nl style="max-width:100%;overflow:hidden;text-overflow:ellipsis">${esc(d.name)}${d.src ? ` · ${esc(SRC_NAME[d.src])}` : ''}${d.head ? ` · ${esc(short(d.head))}` : ''}${d.part ? ` · ${tr('part', 'थोडे')}` : ''}${d.at === 'venue' ? ` · ${tr('at venue', 'साइटवर')}` : ''}${d.meal ? ` · ${esc(MEALS[d.meal] || '')}${isUnassigned(ev, d) ? ' (not in this event)' : ''}` : ''}</button>`).join('')}</div>
         ${dishes.some(d => isUnassigned(ev, d)) ? `<div class="meta" style="margin-top:var(--s2);color:var(--due)">${tr('Some dishes are for a meal no longer in this event. They are kept but not ordered: edit the menu to choose a meal for them.', 'काही पदार्थ आता नसलेल्या जेवणाचे आहेत. मेनू बदलून जेवण निवडा.')}</div>` : ''}
       </div>`}
       ${offMenuOrders(ev)}
@@ -1951,7 +1975,7 @@ function renderMenuReview() {
       <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--s2)"><span class="title-sm trunc" data-nl>${esc(d.name)}</span>
         <button type="button" class="icon-btn" data-md-del="${i}" aria-label="Remove dish">${icon('x', 16)}</button></div>
       <div style="display:flex;gap:var(--s2)">
-        ${ev.outsourced ? '' : sel(i, 'head', [['', 'Our kitchen – आपले किचन'], ...SRC_OPTS, ...heads.map(h => [h, h])], whoValue(d))}
+        ${ev.outsourced ? '' : sel(i, 'head', [['', 'Our kitchen – आपले किचन'], ['@venue', 'We cook it at the venue – साइटवर'], ...SRC_OPTS, ...heads.map(h => [h, h])], whoValue(d))}${d.part ? `<span class="meta" style="align-self:center">${tr('part', 'थोडे')}</span>` : ''}
         ${meals.length > 1 || isUnassigned(ev, d) ? sel(i, 'meal', [...(isUnassigned(ev, d) ? [[d.meal, `${MEALS[d.meal]} (not in this event) – choose`]] : []), ['', 'All meals – सर्व जेवण'], ...meals.map(m => [m, MEALS[m]])], d.meal || '') : ''}
       </div></div>`).join('') : '';
 }
@@ -1988,12 +2012,24 @@ async function assignDish(i) {
   const heads = EXPENSE_HEADS['Live Counter'].filter(h => !/counter setup/i.test(h));
   const head = await askSheet({
     title: `${d.name} – comes from?`,
-    actions: [{ label: 'Our kitchen – आपले किचन', value: '__kitchen', style: !d.src && !d.head ? 'btn-primary' : 'btn-secondary' },
+    actions: [{ label: 'Our kitchen – आपले किचन', value: '__kitchen', style: !d.src && !d.head && d.at !== 'venue' ? 'btn-primary' : 'btn-secondary' },
+              { label: 'We cook it at the venue – साइटवर बनवू', value: '@venue', style: !d.src && !d.head && d.at === 'venue' ? 'btn-primary' : 'btn-secondary' },
               ...SRC_OPTS.map(([v, l]) => ({ label: l, value: v, style: whoValue(d) === v ? 'btn-primary' : 'btn-secondary' })),
               ...heads.map(h => ({ label: h, value: h, style: h === d.head ? 'btn-primary' : 'btn-secondary' }))]
   });
   if (!head) return;
-  const dishes = ev.dishes.map((x, j) => { if (j !== i) return x; const y = { ...x }; setWho(y, head === '__kitchen' ? '' : head); return y; });
+  // From a vendor or bought: all of it, or only part (the quantity goes on its order or purchase) with the rest made by us
+  let share = '';
+  if (head !== '__kitchen' && head !== '@venue') {
+    share = await askSheet({ title: `${d.name} – all of it from them?`,
+      message: 'For part of it, put their quantity on the order or purchase; the rest shows under Our kitchen.',
+      actions: [{ label: 'All of it – सगळे', value: 'all', style: !d.part ? 'btn-primary' : 'btn-secondary' },
+                { label: 'Part; rest from our kitchen – थोडे, बाकी किचन', value: 'kitchen', style: d.part && d.at !== 'venue' ? 'btn-primary' : 'btn-secondary' },
+                { label: 'Part; rest cooked at the venue – थोडे, बाकी साइटवर', value: 'venue', style: d.part && d.at === 'venue' ? 'btn-primary' : 'btn-secondary' }] });
+    if (!share) return;
+  }
+  const dishes = ev.dishes.map((x, j) => { if (j !== i) return x; const y = { ...x }; setWho(y, head === '__kitchen' ? '' : head);
+    if (share && share !== 'all') { y.part = true; if (share === 'venue') y.at = 'venue'; } return y; });
   const patch = { dishes };
   const hit = new Set(ordersHit(ev, { ...ev, dishes }));   // a counter order or purchase that lost this dish is flagged; nothing is resent
   if (hit.size) patch.orders = ev.orders.map(o => hit.has(o.id) ? { ...o, menuChanged: true } : o);
@@ -2032,6 +2068,8 @@ function openOrderModal({ head, svc = '', orderId }) {
   q('ord-date').value = o?.date || when?.date || ev.date;
   q('ord-time').value = o?.time || when?.time || '';
   q('ord-notes').value = o?.notes || '';
+  q('ord-price').value = o?.price || '';
+  q('ord-price').closest('.field').hidden = !!ev.outsourced;   // an outsourced event's charge is recorded when it is booked
   q('btn-cancel-ord').hidden = !o;
   clearFieldErrors();
   openSheet('ord-modal');
@@ -2059,11 +2097,11 @@ function fmtTime(t) {
   const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || '')); if (!m) return '';
   const h = Number(m[1]); return `${h % 12 || 12}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
 }
-/* Time: one box to type the time in ("7:30", "7.30", "730" or just "7") and an AM / PM switch (owner, 4.31.23: no
+/* Time: one box to type the time in ("7:30", "7.30", "730" or just "7") and an AM / PM switch (owner, 4.31.22: no
    clock dial, no hour/minute lists). A 24-hour time ("19:30") is understood too and sets the switch. The hidden
    input keeps its id and HH:MM value, so every place that reads or sets it works as before. Nothing is guessed:
    without AM or PM (for 1–12) the time stays empty and the form asks for it, and minutes after ":" or "." need two
-   digits — "7:5" could mean 7:05 or 7:50, so it is not taken (independent review of 4.31.23). */
+   digits — "7:5" could mean 7:05 or 7:50, so it is not taken (independent review of 4.31.22). */
 function splitTime(text) {
   const t = String(text || '').trim().replace(/\s+/g, '');
   const sep = /^(\d{1,2})[:.](\d{2})$/.exec(t);
@@ -2138,6 +2176,8 @@ async function sendOrder(mode = 'send') {
   if (!platesTxt || !Number.isInteger(plates) || plates < 1) { showFieldErrors({ 'ord-plates': 'Plates: a whole number, 1 or more – ताटांची संख्या' }); return; }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dd) || localDay(new Date(dd + 'T00:00:00')) !== dd) { showFieldErrors({ 'ord-date': 'Choose the delivery date – दिनांक निवडा' }); return; }
   if (!/^\d{2}:\d{2}$/.test(qv('ord-time'))) { showFieldErrors({ 'ord-time-t': 'Ready by: type a time like 7:30 or 7:05 and tap AM or PM – वेळ लिहा' }); return; }
+  const priceTxt = String(qv('ord-price')).trim(), price = Number(priceTxt);
+  if (priceTxt && !(Number.isFinite(price) && price >= 0 && price < 1e9)) { showFieldErrors({ 'ord-price': 'Price: an amount in rupees, or leave it empty – किंमत' }); return; }
   const below = orderBelowMinimum(ev);
   if (below && !qv('ord-notes')) { showFieldErrors({ 'ord-notes': `Below the vendor minimum of ${minimum}: add a note why – कारण लिहा` }); return; }
   const id = qv('ord-id') || uid('OR');
@@ -2162,6 +2202,7 @@ async function sendOrder(mode = 'send') {
   const unproven = old && !(old.messages || []).length;
   if ((versioned.changed || unproven) && old && ['sent', 'confirmed', 'opened'].includes(old.status)) o.status = 'prepared';
   if (below) o.belowMinimum = minimum; else delete o.belowMinimum;
+  if (price > 0 && !ev.outsourced) o.price = money(price); else delete o.price;
   const sugg = ev.outsourced ? null : counterSuggestion(orderGuests(ev, o.head, o.svc).guests, takeUp, minimum);
   if (sugg) o.suggested = sugg.proposed; else delete o.suggested;   // what the plan proposed; the order (plates) is yours
   const orders = old ? ev.orders.map(x => x.id === id ? o : x) : [...(ev.orders || []), o];
@@ -2169,9 +2210,12 @@ async function sendOrder(mode = 'send') {
   if (!ev.outsourced && (takeUp || minimum)) patch.counterPlan = { ...(ev.counterPlan || {}), [o.head]: { ...(takeUp ? { takeUp } : {}), ...(minimum ? { minimum } : {}) } };
   // A failed save opens nothing: the sheet stays open with what was typed, so trying again saves this same order
   try { await patchEvent(ev.id, patch); } catch (e) { showToast(e.message || 'Could not save the order. Nothing was changed and nothing was sent.', 'error'); return; }
+  let costNote = '';
+  try { costNote = await syncOrderCost(D.events.find(e => e.id === ev.id), o, old); }
+  catch (e) { await closeModals(); refreshCurrent(); showToast('The order is saved, but its price could not be saved as an expense: ' + (e.message || 'try again'), 'error'); return; }
   await closeModals();
   refreshCurrent();
-  if (mode === 'save') showToast('Order saved, not sent. Tap its status to send it on WhatsApp. – ऑर्डर जतन, पाठवली नाही');
+  if (mode === 'save') showToast(`Order saved, not sent.${costNote} Tap its status to send it on WhatsApp. – ऑर्डर जतन, पाठवली नाही`);
   else if (!phoneOk) showToast(`Order saved, not sent. ${ven?.name || 'This vendor'} has no phone number – add it to send on WhatsApp.`, 'error');
   else await offerWhatsApp(ev.id, 'orders', id, 'The order');
 }
@@ -2222,7 +2266,7 @@ async function orderAction(orderId) {
       ...(['opened', 'sent'].includes(o.status) && !o.menuChanged ? [{ label: 'Remind to confirm – आठवण द्या', value: 'remind', style: 'btn-secondary' }] : []),
       { label: 'Edit / send again – बदला', value: 'edit', style: 'btn-secondary' },
       ...((o.messages || []).length ? [{ label: `Message history (${o.messages.length}) – संदेशांचा इतिहास`, value: 'history', style: 'btn-secondary' }] : []),
-      ...(o.status === 'delivered' && !orderBillOf(o) ? [{ label: 'Record / link its bill – बिल नोंदवा', value: 'bill', style: 'btn-primary' }] : []),
+      ...(o.status === 'delivered' && (!orderBillOf(o) || priceExpense(o, o)) ? [{ label: 'Record / link its bill – बिल नोंदवा', value: 'bill', style: 'btn-primary' }] : []),
       ...(o.status !== 'delivered' ? [{ label: 'Cancel order – रद्द', value: 'cancelled', style: 'btn-danger' }] : [])
     ]
   });
@@ -2248,9 +2292,35 @@ async function orderAction(orderId) {
 
 // The bill recorded for an order (an expense carrying `order: id`)
 const orderBillOf = o => D.expenses.find(x => x.order === o.id) || null;
+/* An order's price (owner, 4.31.24): an order with a price is saved as an expense to pay its vendor at once, linked to
+   the order, so the event's costs and the vendor's dues show it before the bill comes. It follows the order while it
+   still holds the order's price; once its amount is changed (the real bill) or another bill is linked, the order never
+   changes it again. Clearing the price, or cancelling the order, removes it only while it is still the order's price. */
+const priceExpense = (o, old) => { const x = orderBillOf(o); return x?.fromOrder && money(x.amt) === money(old?.price || 0) ? x : null; };
+async function syncOrderCost(ev, o, old) {
+  const x = orderBillOf(o), mine = priceExpense(o, old);
+  if (x && !mine) return '';   // its bill is in: the bill decides the cost
+  if (!(o.price > 0)) {
+    if (mine) { await commitChanges([{ store: 'expenses', id: mine.id, expected: mine }], { check: true, extraStores: ['events', 'vendors'] }); await loadAll(); return ' Its price was removed from the expenses.'; }
+    return ' No price yet: the cost is added when you record its bill.';
+  }
+  const { _rev, ...base } = mine || {};
+  const record = { ...base, id: mine?.id || uid('EX'), evId: ev.id, cat: ev.outsourced ? 'Operations' : 'Live Counter', head: o.head, amt: money(o.price),
+    date: mine?.date || o.date, pay: mine?.pay || 'credit', mode: mine?.mode || '', venId: o.venId, dueDate: mine?.dueDate || '', billIds: mine?.billIds || [],
+    order: o.id, fromOrder: true, notes: `Price on the order: ${o.plates} plates` };
+  await commitChanges([{ store: 'expenses', record, expected: mine || null }], { check: true, extraStores: ['events', 'vendors'] });
+  await loadAll();
+  return ` ${fmtCurrency(o.price)} saved as an expense to pay ${D.vendors.find(v => v.id === o.venId)?.name || 'the vendor'}.`;
+}
+async function dropOrderCost(o) {
+  const mine = priceExpense(o, o); if (!mine) return;
+  await commitChanges([{ store: 'expenses', id: mine.id, expected: mine }], { check: true, extraStores: ['events', 'vendors'] }); await loadAll();
+}
 /* Delivered: the vendor's actual bill. If a bill from this vendor is already on the event (entered from the bill
    itself, or a shared bill), link it instead of recording it again (G-23); otherwise record it, linked. */
 async function orderBill(ev, o) {
+  const priced = priceExpense(o, o);
+  if (priced) { openExpModal(priced); showToast('Its price is saved as an expense. Change the amount to the bill if it differs – बिलाप्रमाणे रक्कम बदला'); return; }
   if (orderBillOf(o)) { showToast('Its bill is already recorded – बिल आधीच नोंदवले'); return; }
   const ven = D.vendors.find(v => v.id === o.venId);
   const open = D.expenses.filter(x => x.evId === ev.id && x.venId === o.venId && !x.order && !x.purchase && !x.draft).slice(0, 3);
@@ -2274,6 +2344,7 @@ async function orderBill(ev, o) {
 async function cancelOrderFromSheet() {
   const id = qv('ord-id'); const ev = D.events.find(e => e.id === curRef); if (!ev || !id) return;
   await patchEvent(ev.id, { orders: ev.orders.map(x => x.id === id ? { ...x, status: 'cancelled' } : x) });
+  const o = ev.orders.find(x => x.id === id); if (o) await dropOrderCost(o);
   closeModals(); refreshCurrent();
 }
 
@@ -2330,6 +2401,7 @@ async function remindOrder(evId, orderId) {
 }
 // Vendor confirmed: the same step as in the order's status sheet (it also clears a menu-change warning)
 async function setOrderStatus(ev, orderId, next) {
+  if (next === 'cancelled') { const o = ev.orders.find(x => x.id === orderId); if (o) await dropOrderCost(o); }
   await patchEvent(ev.id, { orders: ev.orders.map(x => { if (x.id !== orderId) return x; const y = { ...x, status: next };
     if (['sent', 'confirmed'].includes(next)) { delete y.menuChanged; if (y.messages?.length) y.messages = markOrderMessage(y.messages, next, new Date().toISOString()); }
     return y; }) });
@@ -2908,9 +2980,10 @@ const LIVE_HEADS = () => EXPENSE_HEADS['Live Counter'].filter(h => !/counter set
    or bought and finished by us (`src`). One select in the menu editors; no supplier is asked here (that is the order). */
 const SRC_OPTS = [['@buy', 'Buy ready-made – तयार विकत'], ['@finish', 'Buy & finish – विकत, आपण तयार करू']];
 const SRC_NAME = { kitchen: 'Our kitchen', buy: 'Buy ready-made', finish: 'Buy & finish', counter: 'Counter' };
-const whoValue = d => d.src ? '@' + d.src : d.head || '';
-function setWho(d, v) { if (v === '@buy' || v === '@finish') { d.src = v.slice(1); d.head = ''; } else { delete d.src; d.head = v; } d.manual = true; }
-const svcDishKey = list => list.map(d => JSON.stringify([d.name.trim(), d.cat || '', d.type || '', d.diet || [], d.head || '', d.src || ''])).join('\n');
+const whoValue = d => d.src ? '@' + d.src : d.head || (d.at === 'venue' ? '@venue' : '');
+function setWho(d, v) { delete d.part; delete d.at;
+  if (v === '@buy' || v === '@finish') { d.src = v.slice(1); d.head = ''; } else if (v === '@venue') { delete d.src; d.head = ''; d.at = 'venue'; } else { delete d.src; d.head = v; } d.manual = true; }
+const svcDishKey = list => list.map(d => JSON.stringify([d.name.trim(), d.cat || '', d.type || '', d.diet || [], d.head || '', d.src || '', d.part || false, d.at || ''])).join('\n');
 function svcLabel(ev, s, all) {
   const repeat = all.filter(x => x.meal === s.meal).length > 1, other = s.date && s.date !== ev.date;
   return svcTitle(s, all) + (repeat || other ? ` · ${fmtDate(s.date || ev.date)}` : '');
@@ -2999,7 +3072,7 @@ function renderServiceSheet() {
     return `<div class="svc-dish field" data-sd="${i}">
       <div class="svc-dish-h"><input type="text" data-k="name" value="${esc(x.name)}" maxlength="200" aria-label="Dish name"><button type="button" class="icon-btn" data-sd-del="${i}" aria-label="Remove ${esc(x.name)}">${icon('x', 16)}</button></div>
       <div class="svc-dish-who">
-        ${outsourced ? '' : `<select data-k="head" aria-label="${esc(x.name)}: prepared by"><option value="">Our kitchen – आपले किचन</option>${opt(SRC_OPTS, whoValue(x))}${opt(LIVE_HEADS().map(h => [h, h]), whoValue(x))}${x.head && !LIVE_HEADS().includes(x.head) ? opt([[x.head, x.head]], x.head) : ''}</select>`}
+        ${outsourced ? '' : `<select data-k="head" aria-label="${esc(x.name)}: prepared by"><option value="">Our kitchen – आपले किचन</option>${opt([['@venue', 'We cook it at the venue – साइटवर']], whoValue(x))}${opt(SRC_OPTS, whoValue(x))}${opt(LIVE_HEADS().map(h => [h, h]), whoValue(x))}${x.head && !LIVE_HEADS().includes(x.head) ? opt([[x.head, x.head]], x.head) : ''}</select>`}
         <button type="button" class="f-chip svc-diet-btn" data-diet-toggle="${i}" aria-expanded="${!!open}">${esc(marks.length ? marks.join(', ') : 'Diet')}</button>
       </div>
       ${open ? `<div class="chips-row svc-diet" role="group" aria-label="${esc(x.name)}: diet marks">${DIET_TAGS.map(([k, label]) => {

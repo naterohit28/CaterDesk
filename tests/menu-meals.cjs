@@ -151,7 +151,7 @@ const pickTime = async (p, id, hhmm = '19:30') => { if (await p.inputValue('#' +
     const chai = rows.filter({ hasText: 'Masala Chai' });
     assert.deepEqual([await chai.nth(0).locator('[data-k="meal"]').inputValue(), await chai.nth(1).locator('[data-k="meal"]').inputValue()], ['breakfast', 'dinner']);
     assert.equal(await rows.filter({ hasText: 'Veg Biryani' }).locator('[data-k="meal"]').inputValue(), 'lunch', 'a heading for a meal the event lacks keeps that meal (not served until chosen), never all meals');
-    await chai.nth(1).locator('[data-k="head"]').selectOption({ index: 3 });   // dinner chai from a counter; breakfast chai stays in our kitchen
+    await chai.nth(1).locator('[data-k="head"]').selectOption({ index: 4 });   // dinner chai from a counter (after kitchen, at the venue, ready-made, buy & finish); breakfast chai stays in our kitchen
     const counter = await chai.nth(1).locator('[data-k="head"]').inputValue();
     await p.locator('#btn-save-menu').click(); await p.waitForTimeout(500);
     const e = await ev('e1');

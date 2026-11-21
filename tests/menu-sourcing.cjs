@@ -106,7 +106,7 @@ const pickTime = async (p, id, hhmm = '19:30') => { if (await p.inputValue('#' +
     await p.locator('.svc-card[data-meal-menu="dinner"] [data-action="svc-edit"]').click(); await p.waitForSelector('#svc-modal.active');
     const sel = p.locator('#svc-dishes .svc-dish').filter({ has: p.locator('input[data-k="name"][value="Ice Cream"]') }).locator('[data-k="head"]');
     assert.equal(await sel.inputValue(), '@buy');
-    assert.deepEqual((await sel.locator('option').allInnerTexts()).slice(0, 3), ['Our kitchen', 'Buy ready-made', 'Buy & finish']);
+    assert.deepEqual((await sel.locator('option').allInnerTexts()).slice(0, 4), ['Our kitchen', 'We cook it at the venue', 'Buy ready-made', 'Buy & finish']);
     await sel.selectOption(''); await p.locator('#btn-save-svc').click(); await p.waitForTimeout(600);
     await openEvent();
     assert.match(await p.locator('#menu-approval').innerText(), /Approved v1/, 'sourcing is internal: no new client approval');
