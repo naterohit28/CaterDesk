@@ -37,10 +37,14 @@ const filesAt = ref => { const m = new Map();
       await p.goto(url, { waitUntil: 'domcontentloaded' }); await p.waitForSelector('#kpi .card');
       await p.waitForFunction(() => document.getElementById('app-build').textContent !== 'v?'); return p; };   // the label is filled in when the app starts
     // The version label, once the app has started and filled it in (it reads "v?" until then)
-    const build = async p => { await p.waitForFunction(() => document.getElementById('app-build').textContent !== 'v?'); return p.locator('#app-build').textContent(); };
+    const build = async p => { for (let i = 0; ; i++) { try { await p.waitForFunction(() => document.getElementById('app-build')?.textContent !== 'v?'); return await p.locator('#app-build').textContent(); }
+      catch (e) { if (i === 3 || !/context was destroyed|navigation/i.test(e.message)) throw e; await p.waitForLoadState('domcontentloaded'); } } };   // same as marker: a reload while opening
     // The records themselves, money included (independent release audit of #100): each event's name, bill and meals,
     // each client payment's amount, date and mode, each expense's amount, item, payment state and mode
-    const marker = p => p.evaluate(async () => { const db = await import('./db.js');
+    // Read again if the page reloads itself while opening (seen on GitHub's runner offline, run 44926720829)
+    const marker = async p => { for (let i = 0; ; i++) { try { return await readRecords(p); } catch (e) {
+      if (i === 3 || !/context was destroyed|navigation/i.test(e.message)) throw e; await p.waitForLoadState('domcontentloaded'); await p.waitForSelector('#kpi .card'); } } };
+    const readRecords = p => p.evaluate(async () => { const db = await import('./db.js');
       const [events, cPays, expenses] = await Promise.all(['events', 'cPays', 'expenses'].map(s => db.getAll(s)));
       return JSON.stringify({
         events: events.map(e => [e.id, e.name, e.billing, e.guests, JSON.stringify(e.mealPlan || null)]).sort(),
