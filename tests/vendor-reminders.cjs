@@ -55,7 +55,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     await acts('o1').locator('[data-action="order-remind"]').click(); await p.waitForTimeout(500);
     const url = await p.evaluate(() => window.__opened.at(-1)), msg = decodeURIComponent(url.split('text=')[1]);
     assert.match(url, /^https:\/\/wa\.me\/(91)?9000000001\?text=/);
-    assert.match(msg, /^Namaste Sample Chaat Stall! A reminder for Sample Tomorrow Wedding:\nDate: .*, 19:00 \(Dinner\)\nVenue: Sample Lawns\nChaat for 250 plates\nItems: Pani Puri\nGuests: 300\n\nPlease confirm everything is on track\. Thank you!$/);
+    assert.match(msg, /^Namaste Sample Chaat Stall! A reminder for Sample Tomorrow Wedding:\nCounter: Chaat\nItems: Pani Puri\nQuantity: 250 plates\nDate: .* \(Dinner\)\nReady by: 7:00 PM\nVenue: Sample Lawns\nGuests: 300\n\nPlease confirm everything is on track\. Thank you!$/);
     assert.match(await p.locator('#toast-msg').innerText(), /WhatsApp opened with a reminder for Sample Chaat Stall\. Tap Confirmed when they reply/);
     const o = await order('o1');
     assert.equal(o.status, 'sent', 'a reminder is not a confirmation'); assert.equal(o.reminded.length, 1);
