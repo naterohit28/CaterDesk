@@ -166,7 +166,8 @@ export function guestCountStatus(ev, key) {
    Returns the sheet expense that already covers this item, or null. */
 export function labourCovers(ev, expenses, cat, head, excludeId = '') {
   const ids = ev?.labour?.expIds; if (!ids) return null;
-  const id = ids[`${cat}|${head}`]; if (!id || id === excludeId) return null;
+  // 5.1.0: a worker type can have one expense per contractor ("cat|head|contractor")
+  const id = Object.entries(ids).find(([k, v]) => (k === `${cat}|${head}` || k.startsWith(`${cat}|${head}|`)) && v !== excludeId)?.[1]; if (!id) return null;
   return expenses.find(x => x.id === id) || null;
 }
 // Hand-typed expenses on this event that a sheet saved now would duplicate (not the sheet's own, not marked extra)

@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '5.0.0';
+const APP_BUILD = '5.1.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1369,10 +1369,14 @@ const labName = r => isExtra(r) ? (r.label || short(EXTRAS[r.extra].name)) : sho
 
 /* A line whose rate was cleared keeps its earlier expense (nothing is deleted for a blank rate): the card shows that
    amount and counts it, so the card never shows less than what the event's costs count (audit of #102, F-05) */
-const labExpKey = r => isExtra(r) ? `${EXTRAS[r.extra].cat}|${EXTRAS[r.extra].head}` : `Labour|${r.role}`;
+/* 5.1.0 (owner): each line has its own contractor, so a line is saved as one expense per worker type and contractor
+   ("cat|head|contractor"). Sheets saved before used "cat|head" for the whole type; that key is still found. */
+const labBaseKey = r => isExtra(r) ? `${EXTRAS[r.extra].cat}|${EXTRAS[r.extra].head}` : `Labour|${r.role}`;
+const labExpKey = r => labBaseKey(r) + (r.venId ? '|' + r.venId : '');
+const labExpId = (ids, r) => ids?.[labExpKey(r)] || (r.venId ? ids?.[labBaseKey(r)] : '') || '';
 function labKept(ev, rows, r) {
   if (r.rate > 0 || ev.labour?.billTotal) return 0;
-  const key = labExpKey(r), id = ev.labour?.expIds?.[key];
+  const key = labExpKey(r), id = labExpId(ev.labour?.expIds, r);
   if (!id || rows.some(o => o.rate > 0 && labExpKey(o) === key) || rows.find(o => !(o.rate > 0) && labExpKey(o) === key) !== r) return 0;
   return Number(D.expenses.find(x => x.id === id)?.amt) || 0;
 }
@@ -1388,7 +1392,7 @@ function labourCard(ev) {
     ${rows.length ? `<div class="card list" id="labour-card">${rows.map(r => `
       <div class="row" style="min-height:52px">
         <div class="row-ic">${icon(isExtra(r) ? (r.extra === 'travel' ? 'truck' : 'clipboard') : 'users', 18)}</div>
-        <div class="row-body"><div class="title-sm trunc" data-nl>${esc(labName(r))}</div>
+        <div class="row-body"><div class="title-sm trunc" data-nl>${esc(labName(r))}${r.venId ? `<span class="meta" data-lab-ven> · ${esc(venName(r.venId))}</span>` : ''}</div>
           <div class="meta">${isExtra(r)
             ? `${r.count > 1 ? `${r.count} × ` : ''}${r.rate > 0 ? fmtCurrency(r.rate) : ''}`
             : `${esc(shiftList(r))} · ${r.rate > 0 ? `${fmtCurrency(r.rate)} ${tr('each', 'प्रत्येकी')}` : ''}`}${r.rate > 0 ? '' : `<span class="due" data-no-rate>${tr('Rate not set', 'दर नाही')}</span>${labKept(ev, rows, r) ? `<span class="meta" data-kept> · ${tr('earlier amount still counted', 'आधीची रक्कम धरली')}</span>` : ''}`}</div></div>
@@ -1400,9 +1404,31 @@ function labourCard(ev) {
         <div class="amt-sm">${adj > 0 ? '+' : '−'}${fmtCurrency(Math.abs(adj))}</div>
       </div>` : ''}
       <div class="row" style="min-height:48px"><div class="row-body title-sm">${tr(`Total · ${shifts} shift${shifts === 1 ? '' : 's'}`, `एकूण · ${shifts} शिफ्ट`)}</div><div class="amt-md">${fmtCurrency(bill || lines)}</div></div>
+      ${[...new Set(rows.map(r => r.venId).filter(id => id && D.vendors.some(v => v.id === id)))].length ? `<div class="row" style="flex-wrap:wrap;gap:var(--s2);min-height:52px" id="lab-send">${[...new Set(rows.map(r => r.venId).filter(id => id && D.vendors.some(v => v.id === id)))].map(id =>
+        `<button type="button" class="btn-sm" data-action="lab-send" data-id="${esc(id)}">${icon('message', 16)}${tr(`Send list to ${esc(venName(id))}`, `${esc(venName(id))} ला यादी पाठवा`)}</button>`).join('')}</div>` : ''}
     </div>` : `<div class="card pad"><div class="meta">${tr('Add workers by type with how many came for each shift — the app remembers your rates and saves the total as Labour expenses.', 'प्रकारानुसार प्रत्येक शिफ्टचे मजूर जोडा — दर लक्षात राहतात व एकूण खर्च म्हणून नोंदवला जातो.')}</div></div>`}`;
 }
 
+// A line's contractor box: this worker type's contractors first, then the others, then + New (5.1.0)
+function labVenBox(r, i) {
+  const [mine, inCat, others] = labContractors(isExtra(r) ? '' : r.role, r.venId || '');
+  const opt = v => `<option value="${esc(v.id)}"${v.id === r.venId ? ' selected' : ''}>${esc(v.name + (v.oneTime ? ' (one-time)' : ''))}</option>`;
+  return `<div class="field" style="margin:0 0 var(--s2)"><label for="lab-ven-${i}">Contractor – ठेकेदार</label><select id="lab-ven-${i}" data-k="venId" data-prev="${esc(r.venId || '')}">
+    <option value="">${r.venId ? 'No contractor' : 'Choose contractor (optional)'}</option>${[...mine, ...inCat, ...others].map(opt).join('')}${NEW_VENDOR_OPTS.map(o => `<option value="${o.v}">${esc(o.l)}</option>`).join('')}</select></div>`;
+}
+/* Send a contractor their own list on WhatsApp (5.1.0): their lines only — worker type and how many per shift — with
+   the date and venue. No client or event name, and a rate only if you have entered one. WhatsApp opens; you send it. */
+function labourListText(ev, venId) {
+  const rows = (ev.labour?.rows || []).map(labRow).filter(r => r.venId === venId);
+  const lines = rows.map(r => isExtra(r) ? `${labName(r)}: ${r.count}${r.rate > 0 ? ' × ' + fmtCurrency(r.rate) : ''}` : `${labName(r)}: ${shiftList(r)}${r.rate > 0 ? ' @ ' + fmtCurrency(r.rate) : ''}`);
+  return `Namaste ${venName(venId)}! Labour needed:\nDate: ${fmtDate(ev.date)}\n${lines.join('\n')}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n\nPlease confirm. Thank you!`;
+}
+function sendLabourList(venId) {
+  const ev = D.events.find(e => e.id === curRef), ven = D.vendors.find(v => v.id === venId); if (!ev || !ven) return;
+  const phone = phoneDigits(ven.phone);
+  if (!phone) { showToast(`${ven.name} has no phone number – add it to send the list on WhatsApp.`, 'error'); return; }
+  if (openWa(phone, labourListText(ev, venId)) === 'blocked') showToast('WhatsApp did not open – try again', 'error');
+}
 function renderLabRows() {
   const roles = LAB_ROLES();
   const del = i => `<button type="button" class="del-btn" data-lab-del="${i}" aria-label="Remove">${icon('trash', 16)}</button>`;
@@ -1412,6 +1438,7 @@ function renderLabRows() {
         <div class="field" style="margin:0"><label>Extra – जादा</label><select data-k="extra">${Object.entries(EXTRAS).map(([k, x]) => `<option value="${k}"${k === r.extra ? ' selected' : ''}>${esc(short(x.name))}</option>`).join('')}</select></div>
         <div class="field" style="margin:0"><label>Note – नोंद</label><input type="text" data-k="label" placeholder="${r.extra === 'other' ? 'e.g. Ice cream cutting' : 'optional'}" value="${esc(r.label || '')}"></div>
       </div>
+      ${labVenBox(r, i)}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s2)">
         <div class="field" style="margin:0"><label>Count – संख्या</label><input type="number" data-k="count" min="1" step="1" inputmode="numeric" value="${r.count || ''}"></div>
         <div class="field" style="margin:0"><label>Rate ₹ (later) – दर</label><input type="number" data-k="rate" min="1" inputmode="decimal" placeholder="${esc(rateHint(r))}" value="${r.rate || ''}"></div>
@@ -1425,6 +1452,7 @@ function renderLabRows() {
         <div class="field" style="margin:0"><label>Worker – मजूर</label><select data-k="role" aria-label="Worker type">${roles.map(h => `<option value="${esc(h)}"${h === r.role ? ' selected' : ''}>${esc(h)}</option>`).join('')}</select></div>
         <div class="field" style="margin:0"><label>Rate ₹ per shift (later) – दर</label><input type="number" data-k="rate" min="1" inputmode="decimal" placeholder="${esc(rateHint(r))}" value="${r.rate || ''}"></div>
       </div>
+      ${labVenBox(r, i)}
       <div class="label" style="margin-bottom:6px">${tr('How many in each shift', 'प्रत्येक शिफ्टमध्ये किती')}</div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s2)">${Object.entries(SHIFTS).map(([k, l]) => `
         <div class="field" style="margin:0"><label>${esc(l.split(' – ')[0])}</label><input type="number" data-k="c-${k}" min="0" step="0.5" inputmode="decimal" placeholder="0" value="${r.counts?.[k] || ''}"></div>`).join('')}
@@ -1448,16 +1476,28 @@ function setLabPay(pay) {
   q('lab-pay').dataset.value = pay;
   q('lab-pay').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.pay === pay)));
   q('lab-mode-field').hidden = pay === 'credit';
-  q('lab-ven-field').hidden = pay !== 'credit';
+  q('lab-ven-field').hidden = true;   // 5.1.0: each line has its own contractor
 }
 
-function newWorkerRow(role) { return { id: uid('LB'), role, rate: '', counts: {} }; }   // the rate comes with the bill (owner, 4.31.24)
+function newWorkerRow(role) { return { id: uid('LB'), role, rate: '', counts: {}, venId: autoContractor(role), venAuto: true }; }
+/* Contractors for a worker type: those whose specialty is that type first, then the other labour contractors, then the
+   rest. One is picked for you only when exactly one has that specialty, or else the one you used last for it (5.1.0). */
+const labContractors = (role, keep = '') => rankVendors('Labour', role, keep);
+function autoContractor(role) {
+  const own = D.vendors.filter(v => !isPerson(v) && !v.oneTime && normal(v.cat) === normal('Labour') && role && normal(v.specialty) === normal(role));
+  if (own.length === 1) return own[0].id;
+  if (own.length > 1) return '';   // two for this type: you choose
+  for (const e of [...D.events].sort((a, b) => b.date.localeCompare(a.date))) for (const r of e.labour?.rows || [])
+    if (!isExtra(r) && r.role === role && r.venId && D.vendors.some(v => v.id === r.venId)) return r.venId;
+  return '';
+}
+const venName = id => D.vendors.find(v => v.id === id)?.name || '';   // the rate comes with the bill (owner, 4.31.24)
 const rateHint = r => { const last = isExtra(r) ? lastLabourRate('', r.extra) : lastLabourRate(r.role); return last ? `Last time ₹${last}` : 'From the bill'; };
 
 function openLabModal() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const sheet = ev.labour || {};
-  labRows = (sheet.rows || []).map(labRow);
+  labRows = (sheet.rows || []).map(labRow).map(r => r.venId || !sheet.venId ? r : { ...r, venId: sheet.venId });   // before 5.1.0: one contractor for the sheet
   if (!labRows.length) labRows = [newWorkerRow(LAB_ROLES()[0])];
   const prev = D.events.filter(e => e.id !== ev.id && e.labour?.rows?.length).sort((a, b) => b.date.localeCompare(a.date))[0];
   q('btn-lab-copy').hidden = !prev;
@@ -1478,31 +1518,34 @@ function openLabModal() {
 async function saveLabour() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const clean = c => Object.fromEntries(Object.entries(c || {}).map(([k, n]) => [k, money(Number(n) || 0)]).filter(([, n]) => n > 0));
+  const withVen = r => r.venId ? { venId: r.venId } : {};
   const rows = labRows.map(r => isExtra(r)
-      ? { id: r.id, kind: 'x', extra: r.extra, label: String(r.label || '').trim(), count: Math.round(Number(r.count) || 0), rate: Number(r.rate) || 0 }
-      : { id: r.id, role: r.role, rate: Number(r.rate) || 0, counts: clean(r.counts) })
+      ? { id: r.id, kind: 'x', extra: r.extra, label: String(r.label || '').trim(), count: Math.round(Number(r.count) || 0), rate: Number(r.rate) || 0, ...withVen(r) }
+      : { id: r.id, role: r.role, rate: Number(r.rate) || 0, counts: clean(r.counts), ...withVen(r) })
     .filter(r => isExtra(r) ? r.count > 0 : heads(r) > 0);   // a line with people but no rate yet is kept (owner, 4.31.24)
   const unpriced = rows.filter(r => !(r.rate > 0));   // with no rate yet; a cleared rate keeps its earlier expense (shown on the card)
   const billTotal = money(Number(qv('lab-bill')) || 0);
   const pay = q('lab-pay').dataset.value || 'paid';
-  const venId = pay === 'credit' ? qv('lab-ven') : '';
-  if (pay === 'credit' && !venId) { showFieldErrors({ 'lab-ven': 'Choose the contractor you owe – ठेकेदार निवडा' }); return; }
+  // To pay: each line with an amount needs the contractor it is owed to; one bill total only when one contractor (5.1.0)
+  const noVen = rows.filter(r => !r.venId && (r.rate > 0 || billTotal));
+  if (pay === 'credit' && noVen.length) { showToast(`Choose the contractor for ${noVen.map(labName).join(', ')} – ठेकेदार निवडा`, 'error'); return; }
+  if (billTotal && new Set(rows.map(r => r.venId || '')).size > 1) { showFieldErrors({ 'lab-bill': 'Several contractors: put each line\'s rate instead of one bill total – प्रत्येक ओळीचा दर लिहा' }); return; }
   const oldIds = ev.labour?.expIds || {};
   const byKey = new Map();   // "cat|head" → lines saved as that expense
   for (const r of rows.filter(r => r.rate > 0)) {
-    const key = isExtra(r) ? `${EXTRAS[r.extra].cat}|${EXTRAS[r.extra].head}` : `Labour|${r.role}`;
+    const key = labExpKey(r);
     if (!byKey.has(key)) byKey.set(key, []);
     byKey.get(key).push(r);
   }
-  const labKey = r => isExtra(r) ? `${EXTRAS[r.extra].cat}|${EXTRAS[r.extra].head}` : `Labour|${r.role}`;
+  const labKey = labExpKey;
   // No rate anywhere but a contractor's bill: the bill is the expense (on a line that already had one, else the first)
-  if (!byKey.size && billTotal && rows.length) { const r = rows.find(r => oldIds[labKey(r)]) || rows[0]; byKey.set(labKey(r), [r]); }
+  if (!byKey.size && billTotal && rows.length) { const r = rows.find(r => labExpId(oldIds, r)) || rows[0]; byKey.set(labKey(r), [r]); }
   // Without a bill, a line whose rate was there before and is now blank keeps its earlier expense (a blank rate deletes nothing)
   const hadRate = new Set((ev.labour?.rows || []).filter(r => Number(r.rate) > 0).map(r => r.id));
   const keptOld = billTotal ? [] : Object.entries(oldIds).filter(([key, id]) => !byKey.has(key) && D.expenses.some(x => x.id === id)
-    && unpriced.some(r => hadRate.has(r.id) && labKey(r) === key));
+    && unpriced.some(r => hadRate.has(r.id) && labExpId(oldIds, r) === id)).map(([, id]) => [labExpKey(unpriced.find(r => labExpId(oldIds, r) === id)), id]);
   // Items already typed in by hand for this event (G-14): the sheet would count them twice. Never deleted here.
-  const dupes = labourDuplicates(ev, D.expenses, [...byKey.keys()]);
+  const dupes = labourDuplicates(ev, D.expenses, [...byKey.keys()].map(k => k.split('|').slice(0, 2).join('|')));
   if (dupes.length) {
     const keep = await askSheet({ title: 'Already entered by hand – आधी नोंदवले',
       message: `${dupes.map(x => `${short(x.head)} ${fmtCurrency(x.amt)}`).join(', ')} ${dupes.length > 1 ? 'were' : 'was'} entered separately for this event, and this sheet includes the same item${dupes.length > 1 ? 's' : ''}. Keep both only if ${dupes.length > 1 ? 'they are' : 'it is'} extra, on top of the contractor's bill; otherwise delete the separate entry first.`,
@@ -1511,9 +1554,11 @@ async function saveLabour() {
   }
   const changes = [], expIds = {}, saved = [];
   for (const d of dupes) { const { _rev, ...r } = d; changes.push({ store: 'expenses', record: { ...r, additional: true }, expected: d }); }
+  const claimed = new Set();   // an older sheet's one expense for a worker type goes to one line only
   for (const [key, rs] of byKey) {
-    const [cat, head] = key.split('|');
-    const old = D.expenses.find(x => x.id === oldIds[key]);
+    const [cat, head] = key.split('|'), venId = rs[0].venId || '';
+    const oldId = [oldIds[key], venId ? oldIds[labBaseKey(rs[0])] : ''].find(id => id && !claimed.has(id)); if (oldId) claimed.add(oldId);
+    const old = D.expenses.find(x => x.id === oldId);
     const record = { ...(old || {}), id: old?.id || uid('EX'), evId: ev.id, cat, head,
       amt: money(rs.reduce((s, r) => s + lineAmt(r), 0)), date: old?.date || ev.date, pay, mode: pay === 'paid' ? qv('lab-mode') : '',
       venId, dueDate: pay === 'credit' ? old?.dueDate || '' : '', billIds: old?.billIds || [],
@@ -1547,9 +1592,10 @@ async function saveLabour() {
     r.amt = (billP - othersP) / 100;
     for (const o of others) { const { _rev, ...rec } = o; changes.push({ store: 'expenses', record: { ...rec, split: { ...o.split, total: r.split.total } }, expected: o }); saved.push({ ...rec, split: { ...o.split, total: r.split.total } }); }
   }
-  const removed = Object.entries(oldIds).filter(([key, id]) => !byKey.has(key) && !expIds[key] && D.expenses.some(x => x.id === id)).map(([, id]) => id);
+  const used = new Set(Object.values(expIds));
+  const removed = [...new Set(Object.values(oldIds))].filter(id => !used.has(id) && D.expenses.some(x => x.id === id));
   for (const id of removed) changes.push({ store: 'expenses', id, expected: D.expenses.find(x => x.id === id) });
-  const evRecord = { ...ev, labour: { rows, pay, mode: pay === 'paid' ? qv('lab-mode') : '', venId, expIds, ...(billTotal && rows.length ? { billTotal } : {}) } };
+  const evRecord = { ...ev, labour: { rows, pay, mode: pay === 'paid' ? qv('lab-mode') : '', expIds, ...(billTotal && rows.length ? { billTotal } : {}) } };
   await commitChanges([{ store: 'events', record: evRecord, expected: ev }, ...changes], { check: true, extraStores: ['vendors'] });
   D.events = D.events.map(e => e.id === ev.id ? evRecord : e);
   D.expenses = D.expenses.filter(x => !removed.includes(x.id) && !saved.some(r => r.id === x.id)).concat(saved)
@@ -1559,9 +1605,9 @@ async function saveLabour() {
   const keptKeys = new Set(keptOld.map(([key]) => key)), kept = unpriced.filter(r => !billTotal && keptKeys.has(labExpKey(r))), none = billTotal ? [] : unpriced.filter(r => !kept.includes(r));
   const keptText = kept.length ? `. ${kept.map(labName).join(', ')}: rate cleared, earlier amount still counted` : '';
   showToast(!rows.length ? 'Labour sheet cleared – मजूर यादी काढली'
-    : !saved.length && !kept.length ? `Labour sheet saved. No rate yet for ${none.map(labName).join(', ')}, so no expense yet – add the rate or the contractor's bill later`
+    : !saved.length && !kept.length ? `Labour sheet saved. Rates to add when the bill comes: ${none.map(labName).join(', ')} – मजूर यादी जतन`
     : `Labour ${fmtCurrency(saved.reduce((s, r) => s + r.amt, 0) + [...keptKeys].reduce((s, key) => s + (Number(D.expenses.find(x => x.id === expIds[key])?.amt) || 0), 0))} saved${none.length ? `. No rate yet for ${none.map(labName).join(', ')}: not in the total` : ''}${keptText} – मजूर खर्च जतन`,
-    !saved.length && !kept.length ? 'error' : 'success');
+    'success');
   refreshCurrent();
 }
 
@@ -5442,9 +5488,10 @@ function openVenModal(id, kind = 'vendor') {
   q('ven-notes').value = vn?.notes || '';
   q('ven-gstin').value = vn?.gstin || '';
   q('ven-legal').value = vn?.legalName || '';
-  const fromOrder = !vn && pickVendorForOrder === 'ord', fromBuy = !vn && pickVendorForOrder === 'buy';
-  populateSelect('ven-cat', Object.keys(EXPENSE_HEADS), vn?.cat || (pickVendorForExpense ? qv('exp-cat') : pickVendorForEvent ? 'Operations' : fromOrder ? 'Live Counter' : fromBuy ? 'Raw Material' : ''));
-  loadVenSpecialty(vn?.specialty || (pickVendorForExpense ? qv('exp-head') : pickVendorForEvent ? 'Outsourced Event – आउटसोर्स कार्यक्रम' : fromOrder ? qv('ord-head') : ''));
+  const fromOrder = !vn && pickVendorForOrder === 'ord', fromBuy = !vn && pickVendorForOrder === 'buy', fromLab = !vn && pickVendorForOrder.startsWith('lab:');
+  const labLine = fromLab ? labRows[Number(pickVendorForOrder.slice(4))] : null;
+  populateSelect('ven-cat', Object.keys(EXPENSE_HEADS), vn?.cat || (pickVendorForExpense ? qv('exp-cat') : pickVendorForEvent ? 'Operations' : fromOrder ? 'Live Counter' : fromBuy ? 'Raw Material' : fromLab ? 'Labour' : ''));
+  loadVenSpecialty(vn?.specialty || (pickVendorForExpense ? qv('exp-head') : pickVendorForEvent ? 'Outsourced Event – आउटसोर्स कार्यक्रम' : fromOrder ? qv('ord-head') : labLine && !isExtra(labLine) ? labLine.role : ''));
   setVenKind(vn ? (isPerson(vn) ? 'person' : 'vendor') : kind);
   q('ven-mtitle').textContent = vn ? 'Edit – संपादित करा' : kind === 'person' ? 'New person – नवीन व्यक्ती' : newVendorOneTime ? 'One-time vendor – एकदाच' : 'New vendor – नवीन विक्रेता';
   q('ven-onetime-note').hidden = !(vn ? vn.oneTime : newVendorOneTime);
@@ -5483,7 +5530,9 @@ async function saveVendor() {
   await closeModals();
   if (backToExpense) populateVendorSelect(record.id);
   if (backToEvent) { fillOutVendors(record.id); updateOutHint(); }
-  if (backToOrder) {   // back in the order or purchase, with this vendor picked
+  if (backToOrder.startsWith('lab:')) {   // back on the labour line, with this contractor picked (5.1.0)
+    const line = labRows[Number(backToOrder.slice(4))]; if (line) { line.venId = record.id; line.venAuto = false; renderLabRows(); }
+  } else if (backToOrder) {   // back in the order or purchase, with this vendor picked
     const box = q(backToOrder === 'ord' ? 'ord-ven' : 'buy-ven');
     box.querySelector('option[value="__new"]').insertAdjacentHTML('beforebegin', `<option value="${esc(record.id)}">${esc(record.name + (record.oneTime ? ' (one-time)' : ''))}</option>`);
     box.value = record.id; box.dataset.prev = record.id; box.dispatchEvent(new Event('change', { bubbles: true })); fitSelects(box.closest('.field'));
@@ -6260,6 +6309,7 @@ function bindAllEvents() {
       case 'svc-use':      useServiceTemplate(id); break;
       case 'lab-edit':     openLabModal(); break;
       case 'dish-assign':  assignDish(Number(id)); break;
+      case 'lab-send':     sendLabourList(id); break;
       case 'buy-new':      openBuyModal({ key: id }); break;
       case 'buy-status':   buyAction(id); break;
       case 'order-new':    openOrderModal({ head: id, svc: el.dataset.svc || '' }); break;
@@ -6439,7 +6489,8 @@ function bindAllEvents() {
   q('btn-lab-copy').addEventListener('click', e => {
     const from = D.events.find(x => x.id === e.currentTarget.dataset.from);
     labRows = (from?.labour?.rows || []).map(r => ({ ...labRow(r), id: uid('LB'), rate: '' }));   // heads copied; rates come with this event's bill
-    if (from?.labour) { setLabPay(from.labour.pay || 'paid'); q('lab-mode').value = from.labour.mode || q('lab-mode').value; q('lab-ven').value = from.labour.venId || ''; }
+    labRows = labRows.map(r => r.venId || !from?.labour?.venId ? r : { ...r, venId: from.labour.venId });
+    if (from?.labour) { setLabPay(from.labour.pay || 'paid'); q('lab-mode').value = from.labour.mode || q('lab-mode').value; }
     renderLabRows();
   });
   q('lab-bill').addEventListener('input', updateLabTotal);
@@ -6450,7 +6501,12 @@ function bindAllEvents() {
     const r = labRows[Number(box.dataset.lab)];
     const num = e.target.value === '' ? '' : Number(e.target.value);
     if (k.startsWith('c-')) r.counts = { ...r.counts, [k.slice(2)]: num };   // headcount for one shift
+    else if (k === 'venId') {
+      if (e.target.value.startsWith('__new')) { e.target.value = e.target.dataset.prev || ''; pickVendorForOrder = 'lab:' + box.dataset.lab; newVendorOneTime = e.target.value === '__newonce'; openVenModal(null, 'vendor'); return; }
+      r.venId = e.target.value; r.venAuto = false; e.target.dataset.prev = r.venId; return;
+    }
     else r[k] = ['role', 'extra', 'label'].includes(k) ? e.target.value : num;
+    if (k === 'role' && (r.venAuto || !r.venId)) { r.venId = autoContractor(r.role); r.venAuto = true; renderLabRows(); return; }
     if (['role', 'extra'].includes(k)) box.querySelector('[data-k="rate"]').placeholder = rateHint(r);
     const filled = isExtra(r) ? r.count && r.rate : heads(r) && r.rate;
     q('lab-rows').querySelector(`[data-lab-line="${box.dataset.lab}"]`).textContent = filled ? lineText(r) : '';

@@ -28,7 +28,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
 
   await test('sharing a labour-sheet bill, then saving the sheet again, never makes the parts exceed the bill', async () => {
     await openSheet(); await p.locator('#btn-save-lab').click(); await p.waitForTimeout(500);   // ₹6,000 boys entry on A
-    const sheetId = (await dump()).events.find(e => e.id === 'A').labour.expIds['Labour|Boys – बॉईज'];
+    const sheetId = Object.values((await dump()).events.find(e => e.id === 'A').labour.expIds)[0]   /* 5.1.0: keyed by type and contractor */;
     // Share ₹6,000 as ₹4,000 (A) + ₹2,000 (B)
     await fresh(); await p.locator('#n-expenses:visible').click(); await p.locator(`#exp-list [data-action="edit-exp"][data-id="${sheetId}"]:visible`).first().click();
     await p.waitForSelector('#exp-modal.active'); await p.locator('#btn-share-exp').click(); await p.waitForSelector('#split-modal.active');
@@ -59,7 +59,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
   });
 
   await test('Share bill cannot move a labour-sheet entry off the event whose sheet it belongs to', async () => {
-    const sheetId = (await dump()).events.find(e => e.id === 'A').labour.expIds['Labour|Boys – बॉईज'];
+    const sheetId = Object.values((await dump()).events.find(e => e.id === 'A').labour.expIds)[0]   /* 5.1.0: keyed by type and contractor */;
     await fresh(); await p.locator('#n-expenses:visible').click(); await p.locator(`#exp-list [data-action="edit-exp"][data-id="${sheetId}"]:visible`).first().click();
     await p.waitForSelector('#exp-modal.active'); await p.locator('#btn-share-exp').click(); await p.waitForSelector('#split-modal.active');
     const rowA = await p.locator('#split-rows [data-sp]').evaluateAll(rs => rs.findIndex(r => r.querySelector('[data-k="evId"]').value === 'A'));
@@ -67,7 +67,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     await p.locator('#btn-save-split').click(); await p.waitForTimeout(400);
     assert.match(await p.locator('#toast-msg').innerText(), /labour sheet/); assert.equal(total(await boys()), 7200);
     const ids = (await dump()).events.find(e => e.id === 'A').labour.expIds;
-    assert((await boys()).some(x => x.id === ids['Labour|Boys – बॉईज'] && x.evId === 'A'), 'sheet entry still on its event');
+    assert((await boys()).some(x => x.id === Object.values(ids)[0] && x.evId === 'A'), 'sheet entry still on its event');
   });
 
   assert.deepEqual(errors, []);
