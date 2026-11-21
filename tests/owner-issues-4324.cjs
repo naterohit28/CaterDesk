@@ -104,8 +104,9 @@ const pickTime = async (p, id) => { await p.fill(`#${id}-t`, '7:30'); await p.lo
   await test('3: part of a dish from a vendor, the rest from our kitchen; a dish cooked at the venue', async () => {
     await openEvent();
     await p.locator('[data-action="dish-assign"]', { hasText: 'Paneer Tikka' }).click(); await p.waitForSelector('#ask-modal.active');
+    await p.locator('#ask-actions button', { hasText: 'Only part from outside' }).click(); await p.waitForTimeout(300);
     await p.locator('#ask-actions button', { hasText: 'Chaat' }).click(); await p.waitForTimeout(300);
-    await p.locator('#ask-actions button', { hasText: 'Part; rest from our kitchen' }).click(); await p.waitForTimeout(600);
+    await p.locator('#ask-actions button', { hasText: 'In our kitchen' }).click(); await p.waitForTimeout(600);
     await openEvent();
     await p.locator('[data-action="dish-assign"]', { hasText: 'Dal Tadka' }).click(); await p.waitForSelector('#ask-modal.active');
     await p.locator('#ask-actions button', { hasText: 'We cook it at the venue' }).click(); await p.waitForTimeout(600);

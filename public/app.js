@@ -2010,22 +2010,24 @@ async function saveMenu() {
 async function assignDish(i) {
   const ev = D.events.find(e => e.id === curRef); const d = ev?.dishes?.[i]; if (!d) return;
   const heads = EXPENSE_HEADS['Live Counter'].filter(h => !/counter setup/i.test(h));
-  const head = await askSheet({
+  // One tap for the usual choice; "Only part from outside" asks who supplies it and where the rest is made (owner, 4.31.24)
+  const sources = [...SRC_OPTS.map(([v, l]) => ({ label: l, value: v })), ...heads.map(h => ({ label: h, value: h }))];
+  let head = await askSheet({
     title: `${d.name} – comes from?`,
     actions: [{ label: 'Our kitchen – आपले किचन', value: '__kitchen', style: !d.src && !d.head && d.at !== 'venue' ? 'btn-primary' : 'btn-secondary' },
               { label: 'We cook it at the venue – साइटवर बनवू', value: '@venue', style: !d.src && !d.head && d.at === 'venue' ? 'btn-primary' : 'btn-secondary' },
-              ...SRC_OPTS.map(([v, l]) => ({ label: l, value: v, style: whoValue(d) === v ? 'btn-primary' : 'btn-secondary' })),
-              ...heads.map(h => ({ label: h, value: h, style: h === d.head ? 'btn-primary' : 'btn-secondary' }))]
+              { label: 'Only part from outside, rest by us – थोडे बाहेरून', value: '__part', style: d.part ? 'btn-primary' : 'btn-secondary' },
+              ...sources.map(x => ({ ...x, style: !d.part && whoValue(d) === x.value ? 'btn-primary' : 'btn-secondary' }))]
   });
   if (!head) return;
-  // From a vendor or bought: all of it, or only part (the quantity goes on its order or purchase) with the rest made by us
   let share = '';
-  if (head !== '__kitchen' && head !== '@venue') {
-    share = await askSheet({ title: `${d.name} – all of it from them?`,
-      message: 'For part of it, put their quantity on the order or purchase; the rest shows under Our kitchen.',
-      actions: [{ label: 'All of it – सगळे', value: 'all', style: !d.part ? 'btn-primary' : 'btn-secondary' },
-                { label: 'Part; rest from our kitchen – थोडे, बाकी किचन', value: 'kitchen', style: d.part && d.at !== 'venue' ? 'btn-primary' : 'btn-secondary' },
-                { label: 'Part; rest cooked at the venue – थोडे, बाकी साइटवर', value: 'venue', style: d.part && d.at === 'venue' ? 'btn-primary' : 'btn-secondary' }] });
+  if (head === '__part') {
+    head = await askSheet({ title: `${d.name} – part from whom?`, message: 'Put their quantity on the order or purchase; the rest shows under Our kitchen.',
+      actions: sources.map(x => ({ ...x, style: d.part && whoValue(d) === x.value ? 'btn-primary' : 'btn-secondary' })) });
+    if (!head) return;
+    share = await askSheet({ title: `${d.name} – the rest is made`,
+      actions: [{ label: 'In our kitchen – आपल्या किचनमध्ये', value: 'kitchen', style: d.at !== 'venue' ? 'btn-primary' : 'btn-secondary' },
+                { label: 'At the venue – साइटवर', value: 'venue', style: d.at === 'venue' ? 'btn-primary' : 'btn-secondary' }] });
     if (!share) return;
   }
   const dishes = ev.dishes.map((x, j) => { if (j !== i) return x; const y = { ...x }; setWho(y, head === '__kitchen' ? '' : head);
