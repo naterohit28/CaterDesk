@@ -744,9 +744,9 @@ button.d-brand:focus-visible { outline: 2px solid var(--brand-text); outline-off
 .rk-key { font: 600 18px/1.7 ui-monospace, 'Cascadia Mono', Consolas, monospace; letter-spacing: .04em; word-spacing: .3em; background: var(--surface-2); border-radius: var(--r-md); padding: var(--s3); color: var(--text); overflow-wrap: anywhere; user-select: all; }
 #rk-typed, #rki-typed { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; letter-spacing: .04em; }
 
-/* Time pickers: Hour, Minute, AM/PM (owner's phone review, 4.31.21) */
-.time-pick { display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: var(--s1); }
-.time-pick select { min-width: 0; }
+/* Time: one typed box and an AM / PM switch (4.31.22) */
+.time-pick { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s2); align-items: center; }
+.time-ap { min-width: 132px; }
 
 /* Button labels stay centred when they wrap to two lines (owner's phone review, 4.31.21): "Cancel order", "Save order",
    "Send on WhatsApp" in a three-button footer were left-aligned inside their buttons. */
@@ -756,4 +756,3 @@ button.d-brand:focus-visible { outline: 2px solid var(--brand-text); outline-off
 /* The three time boxes get a row of their own (beside Date they were too narrow to tap and made the sheet scroll sideways) */
 .f2 > .field:has(.time-pick) { grid-column: 1 / -1; }
 .field:has(.time-pick), .time-pick { min-width: 0; }
-.time-pick select { width: 100%; }

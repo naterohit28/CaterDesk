@@ -11,7 +11,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
   events: [{ id: 'E1', name: 'Sample Vendor Event', date: day(6), venue: 'Sample Hall', type: 'Wedding – लग्न', billing: 160000, photoIds: [],
     meals: ['dinner'], mealPlan: { dinner: { guests: 200, rate: 800 } },
     dishes: [{ name: 'Masala Dosa', head: 'Dosa – डोसा', meal: 'dinner' }, { name: 'Pani Puri', head: 'Chaat – चाट', meal: 'dinner' }, { name: 'Gulab Jamun', src: 'buy', meal: 'dinner' }] }] };
-const pickTime = async (p, id) => { await p.selectOption(`#${id}-h`, '7'); await p.selectOption(`#${id}-m`, '30'); await p.selectOption(`#${id}-ap`, 'PM'); };
+const pickTime = async (p, id) => { await p.fill(`#${id}-t`, '7:30'); await p.locator(`#${id}-pm`).click(); };
 
 (async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });

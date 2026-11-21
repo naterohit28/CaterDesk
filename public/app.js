@@ -1797,7 +1797,7 @@ async function sendBuy() {
   if (!(qty > 0) || Math.round(qty * 1000) !== qty * 1000) errs['buy-qty'] = 'Enter the quantity – संख्या लिहा';
   if (!UNIT_NAME[unit]) errs['buy-unit'] = 'Choose a unit – एकक निवडा';
   if (!date) errs['buy-date'] = 'Delivery date – दिनांक';
-  if (!/^\d{2}:\d{2}$/.test(qv('buy-time'))) errs['buy-time-h'] = 'Deliver by: choose hour and AM/PM – वेळ निवडा';
+  if (!/^\d{2}:\d{2}$/.test(qv('buy-time'))) errs['buy-time-t'] = 'Deliver by: type the time and tap AM or PM – वेळ लिहा';
   if (est !== '' && !(Number(est) >= 0 && Math.round(Number(est) * 100) === Number(est) * 100)) errs['buy-est'] = 'An amount in ₹ (up to 2 decimals) – रक्कम';
   if (Object.keys(errs).length) { showFieldErrors(errs); return; }
   const ven = D.vendors.find(v => v.id === venId), phoneOk = !!phoneDigits(ven?.phone);
@@ -2057,28 +2057,46 @@ function fmtTime(t) {
   const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || '')); if (!m) return '';
   const h = Number(m[1]); return `${h % 12 || 12}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
 }
-/* Time pickers: Hour, Minute and AM/PM boxes instead of the phone's clock dial (owner's phone review). The hidden
-   input keeps its id and HH:MM value, so every place that reads or sets it works as before. */
+/* Time: one box to type the time in ("7:30", "7.30", "730" or just "7") and an AM / PM switch (owner, 4.31.22: no
+   clock dial, no hour/minute lists). A 24-hour time ("19:30") is understood too and sets the switch. The hidden
+   input keeps its id and HH:MM value, so every place that reads or sets it works as before. Nothing is guessed:
+   without AM or PM (for 1–12) the time stays empty and the form asks for it. */
+function splitTime(text) {
+  const t = String(text || '').trim().replace(/\s+/g, '');
+  const sep = /^(\d{1,2})[:.](\d{1,2})$/.exec(t);
+  if (sep) return { h: Number(sep[1]), m: Number(sep[2]) * (sep[2].length === 1 ? 10 : 1) };
+  if (/^\d{1,2}$/.test(t)) return { h: Number(t), m: 0 };
+  if (/^\d{3,4}$/.test(t)) return { h: Number(t.slice(0, -2)), m: Number(t.slice(-2)) };
+  return null;
+}
+function parseTimeText(text, ap) {
+  const x = splitTime(text); if (!x || !(x.h >= 0 && x.h <= 23) || !(x.m >= 0 && x.m <= 59)) return '';
+  const mm = String(x.m).padStart(2, '0');
+  if (x.h === 0 || x.h >= 13) return `${String(x.h).padStart(2, '0')}:${mm}`;   // already 24-hour
+  if (ap !== 'AM' && ap !== 'PM') return '';
+  return `${String((x.h % 12) + (ap === 'PM' ? 12 : 0)).padStart(2, '0')}:${mm}`;
+}
 function initTimePickers() {
   const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
   for (const box of document.querySelectorAll('.time-pick[data-time]')) {
     const id = box.dataset.time, inp = q(id);
-    const opt = (v, l) => `<option value="${v}">${l}</option>`;
-    box.innerHTML = `<select id="${id}-h" aria-label="Hour">${opt('', 'Hour')}${[12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(h => opt(h, h)).join('')}</select>`
-      + `<select id="${id}-m" aria-label="Minutes">${opt('', 'Min')}${Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0')).map(m => opt(m, m)).join('')}</select>`
-      + `<select id="${id}-ap" aria-label="AM or PM">${opt('', 'AM/PM')}${opt('AM', 'AM')}${opt('PM', 'PM')}</select>`;
-    const [h, m, ap] = ['h', 'm', 'ap'].map(k => q(`${id}-${k}`));
+    box.innerHTML = `<input type="text" id="${id}-t" inputmode="decimal" autocomplete="off" placeholder="e.g. 7:30" aria-label="Time" maxlength="5">`
+      + `<div class="seg time-ap" role="group" aria-label="AM or PM"><button type="button" id="${id}-am" data-ap="AM" aria-pressed="false">AM</button><button type="button" id="${id}-pm" data-ap="PM" aria-pressed="false">PM</button></div>`;
+    const txt = q(`${id}-t`), am = q(`${id}-am`), pm = q(`${id}-pm`);
+    const apNow = () => am.getAttribute('aria-pressed') === 'true' ? 'AM' : pm.getAttribute('aria-pressed') === 'true' ? 'PM' : '';
+    const setAp = v => { am.setAttribute('aria-pressed', String(v === 'AM')); pm.setAttribute('aria-pressed', String(v === 'PM')); };
     const show = v => { const x = /^(\d{1,2}):(\d{2})$/.exec(String(v || ''));
-      if (!x) { h.value = m.value = ap.value = ''; return; }
-      const hh = Number(x[1]), mm = x[2]; h.value = String(hh % 12 || 12); ap.value = hh < 12 ? 'AM' : 'PM';
-      if (![...m.options].some(o => o.value === mm)) m.insertAdjacentHTML('beforeend', opt(mm, mm));   // an older time like 7:32 stays exact
-      m.value = mm; };
+      if (!x) { txt.value = ''; setAp(''); return; }
+      const hh = Number(x[1]); txt.value = `${hh % 12 || 12}:${x[2]}`; setAp(hh < 12 ? 'AM' : 'PM'); };
     Object.defineProperty(inp, 'value', { configurable: true, get() { return desc.get.call(inp); }, set(v) { desc.set.call(inp, v); show(v); } });
     const pick = () => {
-      if (h.value && !m.value) m.value = '00';
-      const v = h.value && ap.value ? `${String((Number(h.value) % 12) + (ap.value === 'PM' ? 12 : 0)).padStart(2, '0')}:${m.value || '00'}` : '';
-      desc.set.call(inp, v); inp.dispatchEvent(new Event('input', { bubbles: true })); inp.dispatchEvent(new Event('change', { bubbles: true })); };
-    for (const s of [h, m, ap]) s.addEventListener('change', pick);
+      const x = splitTime(txt.value);
+      if (x && (x.h === 0 || (x.h >= 13 && x.h <= 23))) setAp(x.h >= 13 ? 'PM' : 'AM');   // a 24-hour time sets the switch
+      desc.set.call(inp, parseTimeText(txt.value, apNow()));
+      inp.dispatchEvent(new Event('input', { bubbles: true })); inp.dispatchEvent(new Event('change', { bubbles: true })); };
+    txt.addEventListener('input', pick);
+    txt.addEventListener('blur', () => { const v = desc.get.call(inp); if (v) show(v); });   // "730" PM shows as 7:30
+    for (const b of [am, pm]) b.addEventListener('click', () => { setAp(b.dataset.ap); pick(); });
   }
 }
 
@@ -2116,7 +2134,7 @@ async function sendOrder(mode = 'send') {
   const platesTxt = String(qv('ord-plates')).trim(), plates = Number(platesTxt), dd = qv('ord-date');
   if (!platesTxt || !Number.isInteger(plates) || plates < 1) { showFieldErrors({ 'ord-plates': 'Plates: a whole number, 1 or more – ताटांची संख्या' }); return; }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dd) || localDay(new Date(dd + 'T00:00:00')) !== dd) { showFieldErrors({ 'ord-date': 'Choose the delivery date – दिनांक निवडा' }); return; }
-  if (!/^\d{2}:\d{2}$/.test(qv('ord-time'))) { showFieldErrors({ 'ord-time-h': 'Ready by: choose hour and AM/PM – वेळ निवडा' }); return; }
+  if (!/^\d{2}:\d{2}$/.test(qv('ord-time'))) { showFieldErrors({ 'ord-time-t': 'Ready by: type the time and tap AM or PM – वेळ लिहा' }); return; }
   const below = orderBelowMinimum(ev);
   if (below && !qv('ord-notes')) { showFieldErrors({ 'ord-notes': `Below the vendor minimum of ${minimum}: add a note why – कारण लिहा` }); return; }
   const id = qv('ord-id') || uid('OR');
