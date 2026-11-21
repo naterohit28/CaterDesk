@@ -60,7 +60,7 @@ const pickTime = async (p, id, hhmm = '19:30') => { if (await p.inputValue('#' +
   await test('Gulab Jamun from a sweet supplier: quantity and unit, delivery from the meal, WhatsApp, no expense made (scenario 1)', async () => {
     await order('svc-lunch|gulab jamun', { ven: 'vs', qty: 300, unit: 'pcs', notes: 'Packed in boxes of 50' });
     const msg = await lastMessage();
-    assert.match(msg, /^Namaste Sample Sweet Mart! Purchase order for Sample Sourcing Wedding:\nItem: Gulab Jamun\nQuantity: 300 pieces\nDate: .* \(Lunch\)\nDeliver by: 12:30 PM\nVenue: Sample Lawns\nNote: Packed in boxes of 50/);
+    assert.match(msg, /^Namaste Sample Sweet Mart! Purchase order:\nItem: Gulab Jamun\nQuantity: 300 pieces\nDate: .* \(Lunch\)\nDeliver by: 12:30 PM\nVenue: Sample Lawns\nNote: Packed in boxes of 50/);
     const pu = (await ev()).purchases[0];
     assert.deepEqual([pu.item, pu.src, pu.svc, pu.qty, pu.unit, pu.time, pu.status, pu.basis], ['Gulab Jamun', 'buy', 'svc-lunch', 300, 'pcs', '12:30', 'opened', { item: 'Gulab Jamun', src: 'buy', meal: 'lunch' }]);
     assert.equal((await dump()).expenses.length, 0, 'preparing or sending makes no expense');

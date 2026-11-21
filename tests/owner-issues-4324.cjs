@@ -59,6 +59,17 @@ const pickTime = async (p, id) => { await p.fill(`#${id}-t`, '7:30'); await p.lo
     assert.deepEqual((await labourExp()).map(x => [x.head, x.amt]), [[HELPER, 1200]], 'the earlier Helper amount stays');
   });
 
+  await test('1: labour is ordered by heads per shift: a new worker line or a copied sheet gets no rate (it comes with the bill); the last rate is only a hint', async () => {
+    await openEvent(); await p.locator('[data-action="lab-edit"]').click(); await p.waitForSelector('#lab-modal.active');
+    await p.locator('#btn-lab-add').click(); await p.waitForTimeout(200);
+    const row = p.locator('[data-lab]').last();
+    await row.locator('[data-k="role"]').selectOption('Boys – बॉईज'); await p.waitForTimeout(150);
+    assert.equal(await row.locator('[data-k="rate"]').inputValue(), '', 'no rate filled in');
+    assert.equal(await row.locator('[data-k="rate"]').getAttribute('placeholder'), 'From the bill', 'no earlier rate: the box says the rate comes from the bill');   // a remembered rate shows as "Last time ₹…" (regression.cjs)
+    await p.locator('#lab-modal [data-action="close-modal"]').first().click(); await p.waitForTimeout(300);
+    if (await p.locator('#ask-modal.active').count()) await p.locator('#ask-actions button').first().click();
+  });
+
   await test('2: an order with a price is saved as an expense to pay its vendor; a new price updates it; the real bill is kept', async () => {
     await openEvent();
     await p.locator('[data-action="order-new"][data-id^="Chaat"]').click(); await p.waitForSelector('#ord-modal.active');
@@ -125,6 +136,21 @@ const pickTime = async (p, id) => { await p.fill(`#${id}-t`, '7:30'); await p.lo
     const r = await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest; d.events[0].dishes[0].part = 'half';
       try { await db.importAllData(d, 'replace'); return 'accepted'; } catch (e) { return e.message; } });
     assert.match(r, /Invalid menu/);
+  });
+
+  await test('3: one event with 4 ready-made, 3 bought-and-finished and 5 outsourced items: each is listed where it belongs', async () => {
+    const B = n => ({ name: n, src: 'buy', meal: 'dinner' }), F = n => ({ name: n, src: 'finish', meal: 'dinner' }), C = (n, h) => ({ name: n, head: h, meal: 'dinner' });
+    await p.evaluate(async dishes => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest; d.events[0].dishes = dishes; d.events[0].orders = []; d.events[0].purchases = [];
+      d.expenses = d.expenses.filter(e => !e.order); await db.importAllData(d, 'replace'); },
+      [B('Gulab Jamun'), B('Rasmalai'), B('Papad'), B('Ice Cream'), F('Spring Rolls'), F('Samosa'), F('Paneer Cubes'),
+       C('Pani Puri', 'Chaat – चाट'), C('Sev Puri', 'Chaat – चाट'), C('Masala Dosa', 'Dosa – डोसा'), C('Jalebi', 'Dessert Counter'), C('Pasta', 'Pizza / Italian Counter'), { name: 'Dal Tadka', meal: 'dinner' }]);
+    await openEvent();
+    const buy = await p.locator('#buy-list').innerText(), menu = await p.locator('#menu-orders').innerText();
+    for (const n of ['Gulab Jamun', 'Rasmalai', 'Papad', 'Ice Cream', 'Spring Rolls', 'Samosa', 'Paneer Cubes']) assert.match(buy, new RegExp(n), n + ' under To buy');
+    assert.equal((buy.match(/Buy & finish/g) || []).length >= 3 || /finish/i.test(buy), true, 'bought-and-finished are marked');
+    assert.match(menu, /Pani Puri, Sev Puri/); assert.match(menu, /Masala Dosa/); assert.match(menu, /Jalebi/); assert.match(menu, /Pasta/);
+    assert.match(menu, /Our kitchen[\s\S]*Dal Tadka/);
+    assert.equal(await p.locator('#menu-orders [data-action="order-new"]').count(), 4, 'one order to send per outsourced counter');
   });
 
   await test('4: back from a phone call in the middle of an entry, the field being typed in keeps the cursor', async () => {

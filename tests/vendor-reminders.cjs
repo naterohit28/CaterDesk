@@ -55,7 +55,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     await acts('o1').locator('[data-action="order-remind"]').click(); await p.waitForTimeout(500);
     const url = await p.evaluate(() => window.__opened.at(-1)), msg = decodeURIComponent(url.split('text=')[1]);
     assert.match(url, /^https:\/\/wa\.me\/(91)?9000000001\?text=/);
-    assert.match(msg, /^Namaste Sample Chaat Stall! A reminder for Sample Tomorrow Wedding:\nCounter: Chaat\nItems: Pani Puri\nQuantity: 250 plates\nDate: .* \(Dinner\)\nReady by: 7:00 PM\nVenue: Sample Lawns\nGuests: 300\n\nPlease confirm everything is on track\. Thank you!$/);
+    assert.match(msg, /^Namaste Sample Chaat Stall! A reminder for this order:\nCounter: Chaat\nItems: Pani Puri\nQuantity: 250 plates\nDate: .* \(Dinner\)\nReady by: 7:00 PM\nVenue: Sample Lawns\n\nPlease confirm everything is on track\. Thank you!$/);
     assert.match(await p.locator('#toast-msg').innerText(), /WhatsApp opened with a reminder for Sample Chaat Stall\. Tap Confirmed when they reply/);
     const o = await order('o1');
     assert.equal(o.status, 'sent', 'a reminder is not a confirmation'); assert.equal(o.reminded.length, 1);
@@ -82,7 +82,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     await p.evaluate(() => { window.__opened = []; window.open = u => { window.__opened.push(u); return null; }; });
     await p.locator('#menu-orders [data-action="order-status"]').first().click(); await p.waitForSelector('#ask-modal.active');
     await p.locator('#ask-actions button', { hasText: 'Remind to confirm' }).click(); await p.waitForTimeout(500);
-    assert.match(decodeURIComponent(await p.evaluate(() => window.__opened.at(-1))), /A reminder for Sample Day After Party:[\s\S]*Items: Sev Puri/);
+    assert.match(decodeURIComponent(await p.evaluate(() => window.__opened.at(-1))), /A reminder for this order:[\s\S]*Items: Sev Puri/);
     assert.equal((await order('o4')).reminded.length, 1);
     await p.locator('#menu-orders [data-action="order-status"]').first().click(); await p.waitForSelector('#ask-modal.active');
     await p.locator('#ask-actions button', { hasText: 'Vendor confirmed' }).click(); await p.waitForTimeout(400);

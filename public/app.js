@@ -1405,7 +1405,7 @@ function renderLabRows() {
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s2)">
         <div class="field" style="margin:0"><label>Count – संख्या</label><input type="number" data-k="count" min="1" step="1" inputmode="numeric" value="${r.count || ''}"></div>
-        <div class="field" style="margin:0"><label>Rate ₹ – दर</label><input type="number" data-k="rate" min="1" inputmode="decimal" value="${r.rate || ''}"></div>
+        <div class="field" style="margin:0"><label>Rate ₹ (later) – दर</label><input type="number" data-k="rate" min="1" inputmode="decimal" placeholder="${esc(rateHint(r))}" value="${r.rate || ''}"></div>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--s2);margin-top:var(--s2)">
         <div class="meta" data-lab-line="${i}">${r.count && r.rate ? lineText(r) : ''}</div>${del(i)}
@@ -1414,7 +1414,7 @@ function renderLabRows() {
     <div class="card pad" style="margin-bottom:var(--s3)" data-lab="${i}">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);margin-bottom:var(--s2)">
         <div class="field" style="margin:0"><label>Worker – मजूर</label><select data-k="role" aria-label="Worker type">${roles.map(h => `<option value="${esc(h)}"${h === r.role ? ' selected' : ''}>${esc(h)}</option>`).join('')}</select></div>
-        <div class="field" style="margin:0"><label>Rate ₹ per shift – दर</label><input type="number" data-k="rate" min="1" inputmode="decimal" value="${r.rate || ''}"></div>
+        <div class="field" style="margin:0"><label>Rate ₹ per shift (later) – दर</label><input type="number" data-k="rate" min="1" inputmode="decimal" placeholder="${esc(rateHint(r))}" value="${r.rate || ''}"></div>
       </div>
       <div class="label" style="margin-bottom:6px">${tr('How many in each shift', 'प्रत्येक शिफ्टमध्ये किती')}</div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s2)">${Object.entries(SHIFTS).map(([k, l]) => `
@@ -1442,7 +1442,8 @@ function setLabPay(pay) {
   q('lab-ven-field').hidden = pay !== 'credit';
 }
 
-function newWorkerRow(role) { return { id: uid('LB'), role, rate: lastLabourRate(role), counts: {} }; }
+function newWorkerRow(role) { return { id: uid('LB'), role, rate: '', counts: {} }; }   // the rate comes with the bill (owner, 4.31.24)
+const rateHint = r => { const last = isExtra(r) ? lastLabourRate('', r.extra) : lastLabourRate(r.role); return last ? `Last time ₹${last}` : 'From the bill'; };
 
 function openLabModal() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
@@ -1811,7 +1812,7 @@ function buyMessage(ev, p, ven) {
   const all = eventServices(ev).services, s = p.svc ? all.find(x => x.id === p.svc) : null, meal = s?.meal ? svcLabel(ev, s, all) : '';
   // One fact per line, in the order a supplier needs them; venue notes and your contact only when you have entered them
   const venue = venueNotes(ev), me = getProfile(), contact = [me.contact || me.name, me.phone].filter(Boolean).join(', ');
-  return `Namaste ${ven.name}! Purchase order for ${ev.name}:\nItem: ${p.item}\nQuantity: ${qtyText(p)}\n`
+  return `Namaste ${ven.name}! Purchase order:\nItem: ${p.item}\nQuantity: ${qtyText(p)}\n`
     + `Date: ${fmtDate(p.date)}${meal ? ' (' + meal + ')' : ''}\nDeliver by: ${fmtTime(p.time) || '-'}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n`
     + (venue ? `At the venue: ${venue}\n` : '') + (p.notes ? `Note: ${p.notes}\n` : '') + (contact ? `Contact: ${contact}\n` : '') + `\nPlease confirm. Thank you!`;
 }
@@ -1879,7 +1880,7 @@ async function buyAction(id) {
   if (next === 'remind') {
     const phone = phoneDigits(ven?.phone);
     if (!phone) { showToast(`${ven?.name || 'This supplier'} has no phone number – add it to send a reminder on WhatsApp.`, 'error'); return; }
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(`Namaste ${ven.name}! A reminder for ${ev.name}:\nItem: ${p.item}\nQuantity: ${qtyText(p)}\nDate: ${fmtDate(p.date)}\nDeliver by: ${fmtTime(p.time) || '-'}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n\nPlease confirm everything is on track. Thank you!`)}`, '_blank', 'noopener');
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(`Namaste ${ven.name}! A reminder for this purchase:\nItem: ${p.item}\nQuantity: ${qtyText(p)}\nDate: ${fmtDate(p.date)}\nDeliver by: ${fmtTime(p.time) || '-'}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n\nPlease confirm everything is on track. Thank you!`)}`, '_blank', 'noopener');
     await patchEvent(ev.id, { purchases: ev.purchases.map(x => x.id === id ? { ...x, reminded: [...(x.reminded || []), new Date().toISOString()].slice(-20) } : x) });
     refreshCurrent(); return;
   }
@@ -2147,15 +2148,14 @@ function orderMessage(ev, o, ven) {
   const items = orderItems(ev, o).join(', ');
   const all = eventServices(ev).services, s = o.svc ? all.find(x => x.id === o.svc) : null;
   const meal = s ? svcLabel(ev, s, all) : ev.meals?.length ? mealLabel(ev) : '';
-  const ver = o.menuVersion ? approvedMenus(ev).find(v => v.id === o.menuVersion) : null, venue = venueNotes(ev);
-  // One fact per line, always in this order, never left out (owner's phone review): what, items, how many, date, ready-by time, venue
-  return `Namaste ${ven.name}! Order for ${ev.name}:\n`
+  const venue = venueNotes(ev);
+  // One fact per line, always in this order, never left out (owner's phone review): what, items, how many, date, ready-by time, venue.
+  // Never the client's or event's name, the guest count or the client's approval (owner, 4.31.24)
+  return `Namaste ${ven.name}! New order:\n`
     + (ev.outsourced ? `Order: Full event catering\nMenu: ${items || '-'}\nQuantity: ${o.plates || '-'} guests\n`
                      : `Counter: ${short(o.head)}\nItems: ${items || '-'}\nQuantity: ${o.plates || '-'} plates\n`)
     + `Date: ${fmtDate(o.date)}${meal ? ' (' + meal + ')' : ''}\nReady by: ${fmtTime(o.time) || '-'}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n`
-    + (o.basis?.guests && !ev.outsourced ? `Guests: ${o.basis.guests}\n` : '')
     + (venue ? `At the venue: ${venue}\n` : '')
-    + (ver ? `Menu: version ${ver.n}, approved by the client\n` : '')
     + (o.notes ? `Note: ${o.notes}\n` : '') + `\nPlease confirm. Thank you!`;
 }
 
@@ -2385,11 +2385,10 @@ function reminderMessage(ev, o, ven) {
   const all = eventServices(ev).services, s = o.svc ? all.find(x => x.id === o.svc) : null;
   const meal = s ? svcLabel(ev, s, all) : ev.meals?.length ? mealLabel(ev) : '', items = orderItems(ev, o).join(', ');
   // The same fixed lines as the order itself (owner's rule, 4.31.23): what, items, quantity, date, ready-by time, venue
-  return `Namaste ${ven.name}! A reminder for ${ev.name}:\n`
+  return `Namaste ${ven.name}! A reminder for this order:\n`
     + (ev.outsourced ? `Order: Full event catering\nMenu: ${items || '-'}\nQuantity: ${o.plates || '-'} guests\n`
                      : `Counter: ${short(o.head)}\nItems: ${items || '-'}\nQuantity: ${o.plates || '-'} plates\n`)
     + `Date: ${fmtDate(o.date)}${meal ? ' (' + meal + ')' : ''}\nReady by: ${fmtTime(o.time) || '-'}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n`
-    + (o.basis?.guests && !ev.outsourced ? `Guests: ${o.basis.guests}\n` : '')
     + `\nPlease confirm everything is on track. Thank you!`;
 }
 async function remindOrder(evId, orderId) {
@@ -6418,28 +6417,25 @@ function bindAllEvents() {
   });
   q('btn-lab-extra').addEventListener('click', () => {
     const extra = ['travel', 'fee', 'other'].find(x => !labRows.some(r => isExtra(r) && r.extra === x)) || 'other';
-    labRows.push({ id: uid('LB'), kind: 'x', extra, label: '', count: 1, rate: lastLabourRate('', extra) });
+    labRows.push({ id: uid('LB'), kind: 'x', extra, label: '', count: 1, rate: '' });
     renderLabRows();
   });
   q('btn-lab-copy').addEventListener('click', e => {
     const from = D.events.find(x => x.id === e.currentTarget.dataset.from);
-    labRows = (from?.labour?.rows || []).map(r => ({ ...labRow(r), id: uid('LB') }));
+    labRows = (from?.labour?.rows || []).map(r => ({ ...labRow(r), id: uid('LB'), rate: '' }));   // heads copied; rates come with this event's bill
     if (from?.labour) { setLabPay(from.labour.pay || 'paid'); q('lab-mode').value = from.labour.mode || q('lab-mode').value; q('lab-ven').value = from.labour.venId || ''; }
     renderLabRows();
   });
   q('lab-bill').addEventListener('input', updateLabTotal);
   q('lab-pay').addEventListener('click', e => { const b = e.target.closest('[data-pay]'); if (b) setLabPay(b.dataset.pay); });
-  // Row edits: picking a type or shift fills the rate you used last time (if the rate is empty)
+  // Row edits: picking a type shows the rate used last time as a hint; it is never filled in (rates come with the bill)
   q('lab-rows').addEventListener('input', e => {
     const box = e.target.closest('[data-lab]'), k = e.target.dataset.k; if (!box || !k) return;
     const r = labRows[Number(box.dataset.lab)];
     const num = e.target.value === '' ? '' : Number(e.target.value);
     if (k.startsWith('c-')) r.counts = { ...r.counts, [k.slice(2)]: num };   // headcount for one shift
     else r[k] = ['role', 'extra', 'label'].includes(k) ? e.target.value : num;
-    if (['role', 'extra'].includes(k) && !r.rate) {
-      r.rate = isExtra(r) ? lastLabourRate('', r.extra) : lastLabourRate(r.role);
-      box.querySelector('[data-k="rate"]').value = r.rate || '';
-    }
+    if (['role', 'extra'].includes(k)) box.querySelector('[data-k="rate"]').placeholder = rateHint(r);
     const filled = isExtra(r) ? r.count && r.rate : heads(r) && r.rate;
     q('lab-rows').querySelector(`[data-lab-line="${box.dataset.lab}"]`).textContent = filled ? lineText(r) : '';
     updateLabTotal();
