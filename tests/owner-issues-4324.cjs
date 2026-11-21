@@ -54,7 +54,7 @@ const pickTime = async (p, id) => { await p.fill(`#${id}-t`, '7:30'); await p.lo
     await saveLabour(async () => { await p.locator('[data-lab="1"] [data-k="rate"]').fill('600'); await p.fill('#lab-bill', ''); await p.locator('#lab-bill').dispatchEvent('input'); });
     assert.deepEqual((await labourExp()).map(x => [x.head, x.amt]), [[HELPER, 1200]]);
     await saveLabour(async () => { await p.locator('[data-lab="1"] [data-k="rate"]').fill(''); });
-    assert.match(await p.locator('#toast-msg').innerText(), /Labour sheet saved\. No rate yet for Cook, Helper/);
+    assert.match(await p.locator('#toast-msg').innerText(), /Labour ₹1,200 saved\. No rate yet for Cook: not in the total\. Helper: rate cleared, earlier amount still counted/);   // audit F-05
     assert.equal((await ev()).labour.rows.length, 2);
     assert.deepEqual((await labourExp()).map(x => [x.head, x.amt]), [[HELPER, 1200]], 'the earlier Helper amount stays');
   });
@@ -87,7 +87,7 @@ const pickTime = async (p, id) => { await p.fill(`#${id}-t`, '7:30'); await p.lo
     d = await dump(); x = d.expenses.filter(e => e.order === o.id);
     assert.deepEqual(x.map(e => e.amt), [13500], 'the same expense, updated');
     // The bill came in at a different amount: the order never overwrites it again
-    await p.evaluate(async id => { const db = await import('./db.js'); const all = await db.getAll('expenses'); const e = all.find(r => r.order === id); await db.putOne('expenses', { ...e, amt: 14000 }); }, o.id);
+    await p.evaluate(async id => { const db = await import('./db.js'); const all = await db.getAll('expenses'); const e = all.find(r => r.order === id); const { fromOrder, _rev, ...bill } = e; await db.putOne('expenses', { ...bill, amt: 14000 }); }, o.id);   // recorded as the bill (as the expense sheet does)
     await openEvent(); await p.locator('#menu-orders [data-action="order-status"]').first().click(); await p.waitForSelector('#ask-modal.active');
     await p.locator('#ask-actions button', { hasText: 'Edit / send again' }).click(); await p.waitForSelector('#ord-modal.active');
     await p.fill('#ord-price', '9000'); await p.locator('#btn-save-ord').click(); await p.waitForTimeout(700);
