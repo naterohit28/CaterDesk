@@ -19,7 +19,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
       { name: 'Gulab Jamun', head: '', meal: 'dinner' }, { name: 'Ice Cream', head: '', src: 'buy', meal: 'dinner' }, { name: 'Spring Rolls', head: '', src: 'finish', meal: 'dinner' },
       { name: 'Pani Puri', head: CHAAT, meal: 'dinner' }, { name: 'Mineral Water', head: '', src: 'buy' }] }] };
 
-const pickTime = async (p, id, hhmm = '19:30') => { if (await p.inputValue('#' + id)) return; const [h, m] = hhmm.split(':').map(Number); await p.selectOption('#' + id + '-h', String(h % 12 || 12)); await p.selectOption('#' + id + '-m', String(m).padStart(2, '0')); await p.selectOption('#' + id + '-ap', h < 12 ? 'AM' : 'PM'); };
+const pickTime = async (p, id, hhmm = '19:30') => { if (await p.inputValue('#' + id)) return; const [h, m] = hhmm.split(':').map(Number); await p.fill('#' + id + '-t', `${h % 12 || 12}:${String(m).padStart(2, '0')}`); await p.locator('#' + id + (h < 12 ? '-am' : '-pm')).click(); };
 (async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   const ctx = await browser.newContext({ ...devices['Pixel 5'], viewport: { width: 360, height: 780 } });

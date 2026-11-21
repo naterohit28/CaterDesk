@@ -422,6 +422,7 @@
       </div>
       <div class="meta" id="ven-kind-hint" hidden style="margin-top:6px">Someone who lent you money or paid a bill for you – ज्यांनी उधार दिले किंवा तुमच्यासाठी पैसे भरले</div>
     </div>
+    <div class="meta" id="ven-onetime-note" hidden style="margin-bottom:var(--s3)">For this order only. Its bills and payments are kept like any vendor's, but it is not suggested for other orders. – फक्त या ऑर्डरसाठी</div>
     <div class="field"><label for="ven-name" id="ven-name-lbl">Vendor name – विक्रेत्याचे नाव <span class="req">*</span></label><input type="text" id="ven-name" placeholder="Business / supplier name" autocapitalize="words"></div>
     <div class="f2" id="ven-cat-row">
       <div class="field"><label for="ven-cat">Category – प्रकार <span class="req">*</span></label><select id="ven-cat"></select></div>
@@ -467,7 +468,7 @@
       <div class="meta" id="svc-facts" style="margin:-6px 0 var(--s3)"></div>
       <div class="f2">
         <div class="field"><label for="svc-date">Date – तारीख</label><input type="date" id="svc-date"></div>
-        <div class="field"><label for="svc-time-h">Time – वेळ</label><input type="hidden" id="svc-time"><div class="time-pick" data-time="svc-time"></div></div>
+        <div class="field"><label for="svc-time-t">Time – वेळ</label><input type="hidden" id="svc-time"><div class="time-pick" data-time="svc-time"></div></div>
       </div>
       <div class="field"><label for="svc-tpl">2 · Menu from the library (optional) – मेनू</label><select id="svc-tpl"></select></div>
       <div id="svc-tpl-note"></div>
@@ -599,7 +600,7 @@
     <div class="meta" id="ord-plan" data-nl hidden style="margin:-6px 0 var(--s3)"></div>
     <div class="f2">
       <div class="field"><label for="ord-plates">Plates – ताट</label><input type="number" id="ord-plates" min="1" inputmode="numeric"></div>
-      <div class="field"><label for="ord-time-h">Ready by <span class="req">*</span> – कधी तयार</label><input type="hidden" id="ord-time"><div class="time-pick" data-time="ord-time"></div></div>
+      <div class="field"><label for="ord-time-t">Ready by – कधी तयार <span class="req">*</span></label><input type="hidden" id="ord-time"><div class="time-pick" data-time="ord-time"></div></div>
     </div>
     <div class="field"><label for="ord-date">Date – दिनांक</label><input type="date" id="ord-date"></div>
     <div class="field"><label for="ord-notes">Notes – नोंदी</label><input type="text" id="ord-notes" placeholder="e.g. Jain option, 2 staff, setup by 6 pm"></div>
@@ -625,7 +626,7 @@
     </div>
     <div class="f2">
       <div class="field"><label for="buy-date">Delivery date – दिनांक</label><input type="date" id="buy-date"></div>
-      <div class="field"><label for="buy-time-h">Deliver by <span class="req">*</span> – कधीपर्यंत</label><input type="hidden" id="buy-time"><div class="time-pick" data-time="buy-time"></div></div>
+      <div class="field"><label for="buy-time-t">Deliver by – कधीपर्यंत <span class="req">*</span></label><input type="hidden" id="buy-time"><div class="time-pick" data-time="buy-time"></div></div>
     </div>
     <div class="field"><label for="buy-notes">Delivery instructions – सूचना</label><input type="text" id="buy-notes" maxlength="500" placeholder="e.g. chilled, deliver to the kitchen gate"></div>
     <div class="field"><label for="buy-est">Estimated cost ₹ (optional) – अंदाजे खर्च</label><input type="number" id="buy-est" min="0" step="0.01" inputmode="decimal" placeholder="Only a note; not added to costs"></div>

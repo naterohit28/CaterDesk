@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.31.21';
+const APP_BUILD = '4.31.22';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -50,6 +50,8 @@ document.addEventListener('click', e => { overlayTrigger = e.target.closest('but
 let lastExport = null;      // ISO time of the last backup export
 let pickVendorForExpense = null;  // set while "+ New vendor" is opened from the expense sheet
 let pickVendorForEvent = false;   // ... or from an outsourced event's "Done by"
+let pickVendorForOrder = '';      // ... or from a vendor order ('ord') or purchase ('buy'): "+ New vendor" / "One-time vendor"
+let newVendorOneTime = false;     // the vendor being added is a one-time vendor (kept for its bills and payments, not suggested again)
 let billTarget = 'sheet';         // where the next bill photo goes: the open expense sheet, or a new draft ('snap')
 let lbOnDelete = null;            // what the lightbox Delete button does for the photo on show
 
@@ -170,7 +172,7 @@ changesChannel?.addEventListener('message', async () => {
 });
 
 /* ── BOOT ────────────────────────────────────────── */
-/* The field being typed in stays in view above the phone keyboard (owner's phone review, 4.31.21): when a field in a
+/* The field being typed in stays in view above the phone keyboard (owner's phone review, 4.31.22): when a field in a
    sheet gets focus, and again when the keyboard has finished opening (the visible area shrinks), it is scrolled to the
    middle of what can still be seen. */
 function keepFocusVisible() {
@@ -550,7 +552,10 @@ window.addEventListener('popstate', onPopState);
 function getActiveOverlay() {
   if (q('ask-modal').classList.contains('active')) return q('ask-modal');
   if (q('pin-screen').classList.contains('active')) return q('pin-screen');
-  return [...document.querySelectorAll('#drawer.active, .modal-ov.active, #lightbox.active')].at(-1) || null;
+  // The sheet opened last is on top (a vendor sheet opened over an order comes earlier in the page, 4.31.22); sheets
+  // without an opening mark keep page order, as before
+  return [...document.querySelectorAll('#drawer.active, .modal-ov.active, #lightbox.active')]
+    .reduce((top, el) => !top || Number(el.dataset.openedAt || 0) >= Number(top.dataset.openedAt || 0) ? el : top, null);
 }
 function syncOverlayAccessibility() {
   const top = getActiveOverlay();
@@ -1614,6 +1619,20 @@ function orderSteps(o) {
 }
 
 // Usual vendor for a counter: listed speciality or who supplied it before. No guess beyond that.
+// The last two choices in an order's or purchase's vendor box (owner, 4.31.22)
+const NEW_VENDOR_OPTS = [{ v: '__new', l: '+ New vendor – नवीन विक्रेता' }, { v: '__newonce', l: '+ One-time vendor (just this order) – एकदाच' }];
+// "+ New vendor" / "+ One-time vendor" in an order or purchase: the vendor sheet opens over it, and on saving the new
+// vendor is picked in the box it came from. A one-time vendor is a normal vendor record (its bills, payments and dues
+// add up like any other) marked oneTime: it is labelled as such and never suggested for other orders.
+function vendorBoxChange(which, e) {
+  const v = e.target.value;
+  if (v !== '__new' && v !== '__newonce') { e.target.dataset.prev = v; return false; }
+  e.target.value = e.target.dataset.prev || '';
+  pickVendorForOrder = which; newVendorOneTime = v === '__newonce';
+  openVenModal(null, 'vendor');
+  return true;
+}
+
 function counterVendor(head) {
   return rankVendors('Live Counter', head)[0][0]?.id || '';
 }
@@ -1753,8 +1772,9 @@ function openBuyModal({ key = '', id = '' }) {
   q('buy-id').value = p?.id || ''; q('buy-svc').value = svc; q('buy-item').value = item; q('buy-src').value = src;
   q('buy-mtitle').textContent = `${item}${s?.meal ? ` · ${svcLabel(ev, s, all)}` : ''}`;
   q('buy-what').textContent = `${SRC_NAME[src]}${src === 'finish' ? ' – our kitchen finishes it' : ''}`;
-  const sup = D.vendors.filter(v => !isPerson(v)).sort((a, b) => a.name.localeCompare(b.name));
-  populateSelect('buy-ven', [{ v: '', l: 'Choose supplier – पुरवठादार निवडा' }, ...sup.map(v => ({ v: v.id, l: v.name + (v.gstin ? ` · ${v.gstin}` : '') + (v.phone ? '' : ' (no phone)') }))], p?.venId || '');
+  const sup = D.vendors.filter(v => !isPerson(v) && (!v.oneTime || v.id === p?.venId)).sort((a, b) => a.name.localeCompare(b.name));
+  populateSelect('buy-ven', [{ v: '', l: 'Choose supplier – पुरवठादार निवडा' }, ...sup.map(v => ({ v: v.id, l: v.name + (v.oneTime ? ' (one-time)' : '') + (v.gstin ? ` · ${v.gstin}` : '') + (v.phone ? '' : ' (no phone)') })), ...NEW_VENDOR_OPTS], p?.venId || '');
+  q('buy-ven').dataset.prev = qv('buy-ven');
   q('buy-qty').value = p?.qty || ''; populateSelect('buy-unit', BUY_UNITS.map(([v, l]) => ({ v, l })), p?.unit || 'pcs');
   q('buy-date').value = p?.date || s?.date || ev.date; q('buy-time').value = p?.time || s?.time || '';
   q('buy-notes').value = p?.notes || ''; q('buy-est').value = p?.estCost ?? '';
@@ -1777,7 +1797,7 @@ async function sendBuy() {
   if (!(qty > 0) || Math.round(qty * 1000) !== qty * 1000) errs['buy-qty'] = 'Enter the quantity – संख्या लिहा';
   if (!UNIT_NAME[unit]) errs['buy-unit'] = 'Choose a unit – एकक निवडा';
   if (!date) errs['buy-date'] = 'Delivery date – दिनांक';
-  if (!/^\d{2}:\d{2}$/.test(qv('buy-time'))) errs['buy-time-h'] = 'Deliver by: choose hour and AM/PM – वेळ निवडा';
+  if (!/^\d{2}:\d{2}$/.test(qv('buy-time'))) errs['buy-time-t'] = 'Deliver by: type a time like 7:30 or 7:05 and tap AM or PM – वेळ लिहा';
   if (est !== '' && !(Number(est) >= 0 && Math.round(Number(est) * 100) === Number(est) * 100)) errs['buy-est'] = 'An amount in ₹ (up to 2 decimals) – रक्कम';
   if (Object.keys(errs).length) { showFieldErrors(errs); return; }
   const ven = D.vendors.find(v => v.id === venId), phoneOk = !!phoneDigits(ven?.phone);
@@ -1991,10 +2011,11 @@ function openOrderModal({ head, svc = '', orderId }) {
   q('ord-head').value = head; q('ord-svc').value = svc;
   q('ord-mtitle').textContent = ev.outsourced ? 'Menu to caterer – केटररला मेनू' : `${short(head)} order${s ? ` · ${svcLabel(ev, s, all)}` : ''} – ऑर्डर`;
   q('ord-items').textContent = orderItems(ev, { head, svc }).join(', ');
-  const [usual, inCat, others] = rankVendors('Live Counter', head);
-  const opt = v => ({ v: v.id, l: v.name + (v.phone ? '' : ' (no phone)') });
-  populateSelect('ord-ven', [{ v: '', l: 'Choose vendor – विक्रेता निवडा' }, ...[...usual, ...inCat, ...others].map(opt)],
+  const [usual, inCat, others] = rankVendors('Live Counter', head, o?.venId || '');
+  const opt = v => ({ v: v.id, l: v.name + (v.oneTime ? ' (one-time)' : '') + (v.phone ? '' : ' (no phone)') });
+  populateSelect('ord-ven', [{ v: '', l: 'Choose vendor – विक्रेता निवडा' }, ...[...usual, ...inCat, ...others].map(opt), ...NEW_VENDOR_OPTS],
     o?.venId || (ev.outsourced ? ev.outVenId : counterVendor(head)));
+  q('ord-ven').dataset.prev = qv('ord-ven');
   // Counter plan: this event's, else the last one used for this counter (a starting point; nothing assumed)
   const own = ev.counterPlan?.[head], prev = own ? null : lastCounterPlan(D.events, head, ev.id);
   const plan = own || prev || {};
@@ -2036,28 +2057,47 @@ function fmtTime(t) {
   const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || '')); if (!m) return '';
   const h = Number(m[1]); return `${h % 12 || 12}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
 }
-/* Time pickers: Hour, Minute and AM/PM boxes instead of the phone's clock dial (owner's phone review). The hidden
-   input keeps its id and HH:MM value, so every place that reads or sets it works as before. */
+/* Time: one box to type the time in ("7:30", "7.30", "730" or just "7") and an AM / PM switch (owner, 4.31.22: no
+   clock dial, no hour/minute lists). A 24-hour time ("19:30") is understood too and sets the switch. The hidden
+   input keeps its id and HH:MM value, so every place that reads or sets it works as before. Nothing is guessed:
+   without AM or PM (for 1–12) the time stays empty and the form asks for it, and minutes after ":" or "." need two
+   digits — "7:5" could mean 7:05 or 7:50, so it is not taken (independent review of 4.31.22). */
+function splitTime(text) {
+  const t = String(text || '').trim().replace(/\s+/g, '');
+  const sep = /^(\d{1,2})[:.](\d{2})$/.exec(t);
+  if (sep) return { h: Number(sep[1]), m: Number(sep[2]) };
+  if (/^\d{1,2}$/.test(t)) return { h: Number(t), m: 0 };
+  if (/^\d{3,4}$/.test(t)) return { h: Number(t.slice(0, -2)), m: Number(t.slice(-2)) };
+  return null;
+}
+function parseTimeText(text, ap) {
+  const x = splitTime(text); if (!x || !(x.h >= 0 && x.h <= 23) || !(x.m >= 0 && x.m <= 59)) return '';
+  const mm = String(x.m).padStart(2, '0');
+  if (x.h === 0 || x.h >= 13) return `${String(x.h).padStart(2, '0')}:${mm}`;   // already 24-hour
+  if (ap !== 'AM' && ap !== 'PM') return '';
+  return `${String((x.h % 12) + (ap === 'PM' ? 12 : 0)).padStart(2, '0')}:${mm}`;
+}
 function initTimePickers() {
   const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
   for (const box of document.querySelectorAll('.time-pick[data-time]')) {
     const id = box.dataset.time, inp = q(id);
-    const opt = (v, l) => `<option value="${v}">${l}</option>`;
-    box.innerHTML = `<select id="${id}-h" aria-label="Hour">${opt('', 'Hour')}${[12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(h => opt(h, h)).join('')}</select>`
-      + `<select id="${id}-m" aria-label="Minutes">${opt('', 'Min')}${Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0')).map(m => opt(m, m)).join('')}</select>`
-      + `<select id="${id}-ap" aria-label="AM or PM">${opt('', 'AM/PM')}${opt('AM', 'AM')}${opt('PM', 'PM')}</select>`;
-    const [h, m, ap] = ['h', 'm', 'ap'].map(k => q(`${id}-${k}`));
+    box.innerHTML = `<input type="text" id="${id}-t" inputmode="decimal" autocomplete="off" placeholder="e.g. 7:30" aria-label="Time" maxlength="5">`
+      + `<div class="seg time-ap" role="group" aria-label="AM or PM"><button type="button" id="${id}-am" data-ap="AM" aria-pressed="false">AM</button><button type="button" id="${id}-pm" data-ap="PM" aria-pressed="false">PM</button></div>`;
+    const txt = q(`${id}-t`), am = q(`${id}-am`), pm = q(`${id}-pm`);
+    const apNow = () => am.getAttribute('aria-pressed') === 'true' ? 'AM' : pm.getAttribute('aria-pressed') === 'true' ? 'PM' : '';
+    const setAp = v => { am.setAttribute('aria-pressed', String(v === 'AM')); pm.setAttribute('aria-pressed', String(v === 'PM')); };
     const show = v => { const x = /^(\d{1,2}):(\d{2})$/.exec(String(v || ''));
-      if (!x) { h.value = m.value = ap.value = ''; return; }
-      const hh = Number(x[1]), mm = x[2]; h.value = String(hh % 12 || 12); ap.value = hh < 12 ? 'AM' : 'PM';
-      if (![...m.options].some(o => o.value === mm)) m.insertAdjacentHTML('beforeend', opt(mm, mm));   // an older time like 7:32 stays exact
-      m.value = mm; };
+      if (!x) { txt.value = ''; setAp(''); return; }
+      const hh = Number(x[1]); txt.value = `${hh % 12 || 12}:${x[2]}`; setAp(hh < 12 ? 'AM' : 'PM'); };
     Object.defineProperty(inp, 'value', { configurable: true, get() { return desc.get.call(inp); }, set(v) { desc.set.call(inp, v); show(v); } });
     const pick = () => {
-      if (h.value && !m.value) m.value = '00';
-      const v = h.value && ap.value ? `${String((Number(h.value) % 12) + (ap.value === 'PM' ? 12 : 0)).padStart(2, '0')}:${m.value || '00'}` : '';
-      desc.set.call(inp, v); inp.dispatchEvent(new Event('input', { bubbles: true })); inp.dispatchEvent(new Event('change', { bubbles: true })); };
-    for (const s of [h, m, ap]) s.addEventListener('change', pick);
+      const x = splitTime(txt.value);
+      if (x && (x.h === 0 || (x.h >= 13 && x.h <= 23))) setAp(x.h >= 13 ? 'PM' : 'AM');   // a 24-hour time sets the switch
+      desc.set.call(inp, parseTimeText(txt.value, apNow()));
+      inp.dispatchEvent(new Event('input', { bubbles: true })); inp.dispatchEvent(new Event('change', { bubbles: true })); };
+    txt.addEventListener('input', pick);
+    txt.addEventListener('blur', () => { const v = desc.get.call(inp); if (v) show(v); });   // "730" PM shows as 7:30
+    for (const b of [am, pm]) b.addEventListener('click', () => { setAp(b.dataset.ap); pick(); });
   }
 }
 
@@ -2095,7 +2135,7 @@ async function sendOrder(mode = 'send') {
   const platesTxt = String(qv('ord-plates')).trim(), plates = Number(platesTxt), dd = qv('ord-date');
   if (!platesTxt || !Number.isInteger(plates) || plates < 1) { showFieldErrors({ 'ord-plates': 'Plates: a whole number, 1 or more – ताटांची संख्या' }); return; }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dd) || localDay(new Date(dd + 'T00:00:00')) !== dd) { showFieldErrors({ 'ord-date': 'Choose the delivery date – दिनांक निवडा' }); return; }
-  if (!/^\d{2}:\d{2}$/.test(qv('ord-time'))) { showFieldErrors({ 'ord-time-h': 'Ready by: choose hour and AM/PM – वेळ निवडा' }); return; }
+  if (!/^\d{2}:\d{2}$/.test(qv('ord-time'))) { showFieldErrors({ 'ord-time-t': 'Ready by: type a time like 7:30 or 7:05 and tap AM or PM – वेळ लिहा' }); return; }
   const below = orderBelowMinimum(ev);
   if (below && !qv('ord-notes')) { showFieldErrors({ 'ord-notes': `Below the vendor minimum of ${minimum}: add a note why – कारण लिहा` }); return; }
   const id = qv('ord-id') || uid('OR');
@@ -3856,7 +3896,7 @@ function rVen() {
       <div class="avatar" data-nl>${esc(initials(v.name))}</div>
       <div class="row-body">
         <div class="title-sm ven-name" data-nl>${esc(v.name)}</div>
-        <div class="meta trunc">${isPerson(v) ? tr('Other person', 'इतर व्यक्ती') : esc(v.cat || '') + (v.specialty ? ' · ' + esc(v.specialty) : '')}</div>
+        <div class="meta trunc">${isPerson(v) ? tr('Other person', 'इतर व्यक्ती') : (v.oneTime ? tr('One-time · ', 'एकदाच · ') : '') + esc(v.cat || '') + (v.specialty ? ' · ' + esc(v.specialty) : '')}</div>
       </div>
       <div class="row-end">${balanceView(b)}</div>
     </div>`;
@@ -4143,11 +4183,13 @@ function rSummary() {
 }
 
 /* ── SHEETS ──────────────────────────────────────── */
+let sheetSeq = 0;
 function openSheet(id, after, guard) {
   const el = q(id);
+  el.dataset.openedAt = String(++sheetSeq); el.style.zIndex = String(200 + Math.min(overlays.length, 50));   // above any sheet already open
   el.classList.add('active');
   el.querySelector('.sheet').scrollTop = 0;
-  openOverlay(() => el.classList.remove('active'), after, guard);
+  openOverlay(() => { el.classList.remove('active'); el.style.zIndex = ''; delete el.dataset.openedAt; }, after, guard);
   requestAnimationFrame(() => { fitSelects(el); syncRequired(); });
 }
 
@@ -4843,7 +4885,7 @@ async function saveEvent() {
     message: `The event is now on ${fmtDate(record.date)}. These were sent for another date and keep it until you change them:\n`
       + moved.map(m => `• ${m.what}${m.ven ? ` · ${m.ven}` : ''} · ${fmtDate(m.date)}`).join('\n')
       + '\n\nOpen each one and use Edit / send again if the vendor must come on the new date. – गरज असल्यास प्रत्येक ऑर्डर उघडून पुन्हा पाठवा.',
-    actions: [{ label: 'OK – ठीक', value: true, style: 'btn-primary' }] });
+    actions: [{ label: 'OK – ठीक', value: true, style: 'btn-primary' }], cancel: null });
 }
 
 /* ── EXPENSE SHEET ───────────────────────────────── */
@@ -4884,7 +4926,7 @@ function headsByUse(cat) {
    [1] same category        — listed category, or who has supplied this category before
    [2] everyone else
    Within a group: speciality match first, then most used, then name. */
-function rankVendors(cat, head) {
+function rankVendors(cat, head, keep = '') {
   const c = normal(cat), h = normal(head);
   const usesFor = new Map(), usesIn = new Map();
   for (const x of D.expenses) {
@@ -4896,7 +4938,7 @@ function rankVendors(cat, head) {
   }
   const groups = [[], [], []];
   for (const v of D.vendors) {
-    if (isPerson(v)) continue;
+    if (isPerson(v) || (v.oneTime && v.id !== keep)) continue;
     const specialty = c && h && normal(v.cat) === c && normal(v.specialty) === h;
     const forItem = specialty || usesFor.has(v.id);
     const inCat = (c && normal(v.cat) === c) || usesIn.has(v.id);
@@ -5306,12 +5348,14 @@ function openVenModal(id, kind = 'vendor') {
   q('ven-notes').value = vn?.notes || '';
   q('ven-gstin').value = vn?.gstin || '';
   q('ven-legal').value = vn?.legalName || '';
-  populateSelect('ven-cat', Object.keys(EXPENSE_HEADS), vn?.cat || (pickVendorForExpense ? qv('exp-cat') : pickVendorForEvent ? 'Operations' : ''));
-  loadVenSpecialty(vn?.specialty || (pickVendorForExpense ? qv('exp-head') : pickVendorForEvent ? 'Outsourced Event – आउटसोर्स कार्यक्रम' : ''));
+  const fromOrder = !vn && pickVendorForOrder === 'ord', fromBuy = !vn && pickVendorForOrder === 'buy';
+  populateSelect('ven-cat', Object.keys(EXPENSE_HEADS), vn?.cat || (pickVendorForExpense ? qv('exp-cat') : pickVendorForEvent ? 'Operations' : fromOrder ? 'Live Counter' : fromBuy ? 'Raw Material' : ''));
+  loadVenSpecialty(vn?.specialty || (pickVendorForExpense ? qv('exp-head') : pickVendorForEvent ? 'Outsourced Event – आउटसोर्स कार्यक्रम' : fromOrder ? qv('ord-head') : ''));
   setVenKind(vn ? (isPerson(vn) ? 'person' : 'vendor') : kind);
-  q('ven-mtitle').textContent = vn ? 'Edit – संपादित करा' : kind === 'person' ? 'New person – नवीन व्यक्ती' : 'New vendor – नवीन विक्रेता';
+  q('ven-mtitle').textContent = vn ? 'Edit – संपादित करा' : kind === 'person' ? 'New person – नवीन व्यक्ती' : newVendorOneTime ? 'One-time vendor – एकदाच' : 'New vendor – नवीन विक्रेता';
+  q('ven-onetime-note').hidden = !(vn ? vn.oneTime : newVendorOneTime);
   clearFieldErrors();
-  openSheet('ven-modal', () => { pickVendorForExpense = null; pickVendorForEvent = false; });
+  openSheet('ven-modal', () => { pickVendorForExpense = null; pickVendorForEvent = false; pickVendorForOrder = ''; newVendorOneTime = false; });
   if (!vn) q('ven-name').focus({ preventScroll: true });
 }
 
@@ -5332,7 +5376,8 @@ async function saveVendor() {
   const base = id ? formBase.ven : null;
   // Same id, so every bill and payment stays linked; empty GST fields are removed rather than kept blank
   const record = editedRecord(base, { id: id || uid('VN'), name: data.name, cat: person ? '' : qv('ven-cat'), specialty: person ? '' : qv('ven-specialty'),
-                   phone: data.phone, notes: qv('ven-notes'), ...(person ? { kind: 'person' } : {}), ...(gstin ? { gstin } : {}), ...(legalName ? { legalName } : {}) },
+                   phone: data.phone, notes: qv('ven-notes'), ...(person ? { kind: 'person' } : {}), ...(gstin ? { gstin } : {}), ...(legalName ? { legalName } : {}),
+                   ...(!id && !person && newVendorOneTime ? { oneTime: true } : {}) },
                    [...(person ? [] : ['kind']), ...(gstin ? [] : ['gstin']), ...(legalName ? [] : ['legalName'])]);
 
   await putChecked('vendors', record, base);
@@ -5340,11 +5385,16 @@ async function saveVendor() {
   else    D.vendors.push(record);
 
   // Opened from the expense sheet's "+ New vendor": go back to it with this vendor picked
-  const backToExpense = pickVendorForExpense, backToEvent = pickVendorForEvent;
+  const backToExpense = pickVendorForExpense, backToEvent = pickVendorForEvent, backToOrder = pickVendorForOrder;
   await closeModals();
   if (backToExpense) populateVendorSelect(record.id);
   if (backToEvent) { fillOutVendors(record.id); updateOutHint(); }
-  const openIt = !id && !backToExpense && !backToEvent && CT !== 'vendetail';
+  if (backToOrder) {   // back in the order or purchase, with this vendor picked
+    const box = q(backToOrder === 'ord' ? 'ord-ven' : 'buy-ven');
+    box.querySelector('option[value="__new"]').insertAdjacentHTML('beforebegin', `<option value="${esc(record.id)}">${esc(record.name + (record.oneTime ? ' (one-time)' : ''))}</option>`);
+    box.value = record.id; box.dataset.prev = record.id; box.dispatchEvent(new Event('change', { bubbles: true })); fitSelects(box.closest('.field'));
+  }
+  const openIt = !id && !backToExpense && !backToEvent && !backToOrder && CT !== 'vendetail';
   showToast(person ? 'Saved – जतन झाले' : 'Vendor saved – विक्रेता जतन झाला', 'success',
     openIt ? { label: 'Open – उघडा', run: () => showVenDetail(record.id) } : null);
   if (openIt) setTimeout(hideToast, 6000);
@@ -6269,6 +6319,8 @@ function bindAllEvents() {
     renderVendorQuick();
     fitSelects(sel.closest('.field'));   // the full-name line under the picker follows the chip (Codex on #83)
   });
+  q('ord-ven').addEventListener('change', e => vendorBoxChange('ord', e));
+  q('buy-ven').addEventListener('change', e => vendorBoxChange('buy', e));
   q('exp-vendor').addEventListener('change', e => {
     const v = e.target.value;
     if (!v.startsWith('__new')) { e.target.dataset.prev = v; if (v) applyVendorHabits(v); renderVendorQuick(); return; }
