@@ -4866,7 +4866,7 @@ async function saveEvent() {
     message: `The event is now on ${fmtDate(record.date)}. These were sent for another date and keep it until you change them:\n`
       + moved.map(m => `• ${m.what}${m.ven ? ` · ${m.ven}` : ''} · ${fmtDate(m.date)}`).join('\n')
       + '\n\nOpen each one and use Edit / send again if the vendor must come on the new date. – गरज असल्यास प्रत्येक ऑर्डर उघडून पुन्हा पाठवा.',
-    actions: [{ label: 'OK – ठीक', value: true, style: 'btn-primary' }] });
+    actions: [{ label: 'OK – ठीक', value: true, style: 'btn-primary' }], cancel: null });
 }
 
 /* ── EXPENSE SHEET ───────────────────────────────── */
