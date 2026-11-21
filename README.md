@@ -35,7 +35,7 @@ Four things carry version numbers, and they are **independent**: the **hosted we
 | Component | State (checked 20 November 2026 unless noted) | Meaning |
 | --- | --- | --- |
 | Source and hosted web app | **5.0.0** | Current UI, data/export version, service worker and error reporter |
-| Service-worker release cache | `flavor-fusion-v2-cache-v102` | Installed web assets; this number is not the database schema version |
+| Service-worker release cache | `flavor-fusion-v2-cache-v103` | Installed web assets; this number is not the database schema version |
 | Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** (inspected 3 November 2026) | APK package inspected locally; launches the hosted app, which can run 4.31.16 |
 | Android requirements for that local wrapper | min API **24**, target API **36** | Android 7.0+ and a compatible browser provider |
 | Latest GitHub Release with downloadable binaries | **2.4.7** | APK and desktop ZIP; later source tags do not imply newer binaries were uploaded |
@@ -354,6 +354,7 @@ Not part of v5.0.0. Each needs the owner's decision before any work starts.
 | Dish list with suggestions while typing (5.1) | From the owner's menu card (dish names only), never limiting what can be typed; until then the "Card – …" section menus (loaded with Restore → Merge) serve the purpose |
 | Interface polish from the phone run | About a dozen small items: the floating Add button over figures, notices over titles, wording and ₹ formatting; none changes a figure |
 | Bill per plate after extra plates are billed; the temporary-change note in the reconciliation history | Display and history wording only; totals are correct |
+| A purchase's bill pre-fills an unrelated item when the supplier has no counter or item set | Found in the detailed phone run; totals are correct, only the Reports category is affected until changed |
 | Play Store listing and commercial use | Launch kit prepared (docs/PLAY_STORE.md); account, domain/email and launch date are the owner's decisions |
 | Name and trademark check | CaterDesk is used by others in this industry; a decision, not a code change |
 | Licence | None is granted; adding one is the owner's decision |
@@ -368,7 +369,8 @@ This is a short source-feature history, not a list of available binary downloads
 
 | Version | Main changes |
 | --- | --- |
-| 5.0.0 | **Stable internal release.** Same app as 4.31.22, renumbered after the owner's Android acceptance (all 25 checks of the full-event test on the owner's phone, offline included; the owner confirmed the installed app) and the independent money check. Development moves to Maintenance Mode. Updating from 4.31.13, 4.31.14 and 4.31.22 keeps records and open entries, online and offline (tests/update-from-4313.cjs). |
+| 5.0.0 | **Stable internal release.** Same app as 4.31.23, renumbered after the owner's Android acceptance (all 25 checks of the full-event test on the owner's phone, run twice, offline included; the owner confirmed the installed app) and the independent money check. Development moves to Maintenance Mode. Updating from 4.31.13, 4.31.14, 4.31.22 and 4.31.23 keeps records (bill, payments and expenses compared exactly) and open entries, online and offline (tests/update-from-4313.cjs). |
+| 4.31.23 | From the detailed phone run before v5.0.0: a purchase still sent for an earlier date showed display code in the To-buy list (now a plain warning line, as on order rows); a purchase's status sheet shows its time as 6:30 PM, not 18:30; the order and purchase reminders use the same fixed lines as the orders (counter or item, quantity, date, ready-by / deliver-by time, venue). |
 | 4.31.22 | Times are typed in one box (7:30, 7.05, 730 or 7) with an AM / PM switch; minutes after : or . need two digits, so 7:5 is never read as 7:50 or 7:05 by guess, instead of hour, minute and AM/PM lists. Owner's request: when ordering or buying from an event, the vendor box offers + New vendor (the vendor sheet opens over the order with its counter filled in, and the new vendor comes back picked) and + One-time vendor (kept for its bills, payments and dues, labelled one-time, never suggested for other orders). The sheet opened last is now always the one on top and in use. |
 | 4.31.21 | From the owner's phone review: vendor orders and purchases always list counter/item, items, quantity, date, ready-by (or deliver-by) time and venue, one per line, and cannot be saved without the time; times are picked as Hour / Minute / AM-PM instead of the clock dial; one Save saves a typed menu; the field being typed scrolls above the keyboard; button labels stay centred when they wrap. |
 | 4.31.20 | The new-date notice added in 4.31.19 showed display code instead of its words on the phone; it is plain English – Marathi text now, and the test checks that no code appears. |

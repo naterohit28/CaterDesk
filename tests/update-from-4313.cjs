@@ -19,7 +19,7 @@ const filesAt = ref => { const m = new Map();
   let failed = 0;
   const test = async (name, fn) => { try { await fn(); console.log(name + ' PASS'); } catch (e) { failed++; console.error(e); console.log(name + ' FAIL'); } };
 
-  for (const from of ['4.31.13', '4.31.14', '4.31.22']) {
+  for (const from of ['4.31.13', '4.31.14', '4.31.22', '4.31.23']) {
     const old = filesAt('v' + from);
     let serveNew = false;
     const server = http.createServer((req, res) => {
@@ -115,6 +115,6 @@ const filesAt = ref => { const m = new Map();
   }
 
   await browser.close();
-  console.log(failed ? 'update from 4.31.13 FAIL' : `update from 4.31.13 / 4.31.14 / 4.31.22 to ${NEW} PASS`);
+  console.log(failed ? 'update from 4.31.13 FAIL' : `update from 4.31.13 / 4.31.14 / 4.31.22 / 4.31.23 to ${NEW} PASS`);
   if (failed) process.exitCode = 1;
 })().catch(e => { console.error(e); console.log('update from 4.31.13 FAIL'); process.exitCode = 1; });

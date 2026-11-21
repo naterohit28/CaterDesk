@@ -49,6 +49,8 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [{ id: 'vp1', venI
     assert.equal(ev.date, day(-1)); assert.deepEqual(ev.orders.map(o => o.date), [day(7), day(7)], 'orders keep the date they were sent with');
     assert.equal(await p.locator('[data-counter] [data-off-date]').count(), 1, 'the dosa row says it was sent for another date');
     assert.match(await p.locator('#buy-list').innerText(), /Sent for .*not the event date/);
+    assert.doesNotMatch(await p.locator('#buy-list').innerText(), /<span|class=/, 'plain words in the To-buy row, no markup (detailed phone run, 4.31.23)');
+    assert.equal(await p.locator('#buy-list [data-off-date]').count(), 1, 'the warning is its own line, as on order rows');
   });
 
   await test('1: the reconcile sheet shows what is still to pay after vendor payments, and nothing once all is paid', async () => {

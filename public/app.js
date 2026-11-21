@@ -172,7 +172,7 @@ changesChannel?.addEventListener('message', async () => {
 });
 
 /* ── BOOT ────────────────────────────────────────── */
-/* The field being typed in stays in view above the phone keyboard (owner's phone review, 5.0.0): when a field in a
+/* The field being typed in stays in view above the phone keyboard (owner's phone review, 4.31.21): when a field in a
    sheet gets focus, and again when the keyboard has finished opening (the visible area shrinks), it is scrolled to the
    middle of what can still be seen. */
 function keepFocusVisible() {
@@ -552,7 +552,7 @@ window.addEventListener('popstate', onPopState);
 function getActiveOverlay() {
   if (q('ask-modal').classList.contains('active')) return q('ask-modal');
   if (q('pin-screen').classList.contains('active')) return q('pin-screen');
-  // The sheet opened last is on top (a vendor sheet opened over an order comes earlier in the page, 5.0.0); sheets
+  // The sheet opened last is on top (a vendor sheet opened over an order comes earlier in the page, 4.31.22); sheets
   // without an opening mark keep page order, as before
   return [...document.querySelectorAll('#drawer.active, .modal-ov.active, #lightbox.active')]
     .reduce((top, el) => !top || Number(el.dataset.openedAt || 0) >= Number(top.dataset.openedAt || 0) ? el : top, null);
@@ -1619,7 +1619,7 @@ function orderSteps(o) {
 }
 
 // Usual vendor for a counter: listed speciality or who supplied it before. No guess beyond that.
-// The last two choices in an order's or purchase's vendor box (owner, 5.0.0)
+// The last two choices in an order's or purchase's vendor box (owner, 4.31.22)
 const NEW_VENDOR_OPTS = [{ v: '__new', l: '+ New vendor – नवीन विक्रेता' }, { v: '__newonce', l: '+ One-time vendor (just this order) – एकदाच' }];
 // "+ New vendor" / "+ One-time vendor" in an order or purchase: the vendor sheet opens over it, and on saving the new
 // vendor is picked in the box it came from. A one-time vendor is a normal vendor record (its bills, payments and dues
@@ -1747,12 +1747,14 @@ function buyCard(ev) {
   if (!rows.length && !off.size) return '';
   const chip = p => { const st = buyStatus(p), ven = D.vendors.find(v => v.id === p.venId);
     return `<button type="button" class="chip ${p.changed ? 'due' : st.tone}" data-action="buy-status" data-id="${esc(p.id)}">${p.changed ? tr('Menu changed · review', 'मेनू बदलला · तपासा') : tr(st.en, st.mr)}</button>`; };
-  const line = (title, meta, end, key) => `<div class="row" style="min-height:56px"${key ? ` data-buy="${esc(key)}"` : ''}><div class="row-ic">${icon('basket', 18)}</div>
-      <div class="row-body"><div class="title-sm trunc" data-nl>${title}</div><div class="meta trunc" data-nl>${meta}</div></div>${end}</div>`;
+  // warn: the "sent for another date" line (built with tr(), so it is HTML and must not go through esc() — 4.31.23)
+  const line = (title, meta, end, key, warn = '') => `<div class="row" style="min-height:56px"${key ? ` data-buy="${esc(key)}"` : ''}><div class="row-ic">${icon('basket', 18)}</div>
+      <div class="row-body"><div class="title-sm trunc" data-nl>${title}</div><div class="meta trunc" data-nl>${meta}</div>${warn}</div>${end}</div>`;
   return `<div class="sec"><span class="sec-title">${tr('To buy', 'विकत घ्यायचे')}</span><span class="meta">${tr('bought ready-made or to finish', 'तयार / आपण पूर्ण करू')}</span></div>
     <div class="card list" id="buy-list">${rows.map(r => { const p = buyOf(ev, r.key), ven = p && D.vendors.find(v => v.id === p.venId);
-      return line(esc(r.name), [offDate(ev, p) ? offDateText(p.date) : '', r.label, SRC_NAME[r.src], p ? `${ven?.name || ''} · ${qtyText(p)}` : ''].filter(Boolean).map(esc).join(' · '),
-        p ? chip(p) : `<button type="button" class="btn-sm" data-action="buy-new" data-id="${esc(r.key)}">${icon('message', 16)}${tr('Order', 'ऑर्डर')}</button>`, r.key); }).join('')}
+      return line(esc(r.name), [r.label, SRC_NAME[r.src], p ? `${ven?.name || ''} · ${qtyText(p)}` : ''].filter(Boolean).map(esc).join(' · '),
+        p ? chip(p) : `<button type="button" class="btn-sm" data-action="buy-new" data-id="${esc(r.key)}">${icon('message', 16)}${tr('Order', 'ऑर्डर')}</button>`, r.key,
+        offDate(ev, p) ? `<div class="meta due" data-off-date>${offDateText(p.date)}</div>` : ''); }).join('')}
     ${[...off.values()].map(p => line(esc(p.item), `${tr('Not on the current menu', 'सध्याच्या मेनूत नाही')} · ${esc(qtyText(p))}`, chip(p))).join('')}</div>`;
 }
 // Purchases already given to a supplier whose item later left the menu, moved to another meal or changed sourcing
@@ -1828,7 +1830,7 @@ async function setBuyStatus(ev, id, next) {
 async function buyAction(id) {
   const ev = D.events.find(e => e.id === curRef); const p = ev?.purchases?.find(x => x.id === id); if (!p) return;
   const ven = D.vendors.find(v => v.id === p.venId);
-  const next = await askSheet({ title: `${p.item} · ${ven?.name || ''} – ${buyStatus(p).en}`, message: `${qtyText(p)} · ${fmtDate(p.date)}${p.time ? ' ' + p.time : ''}${p.estCost != null ? ` · estimate ${fmtCurrency(p.estCost)}` : ''}\n${orderSteps(p)}`,
+  const next = await askSheet({ title: `${p.item} · ${ven?.name || ''} – ${buyStatus(p).en}`, message: `${qtyText(p)} · ${fmtDate(p.date)}${p.time ? ' ' + fmtTime(p.time) : ''}${p.estCost != null ? ` · estimate ${fmtCurrency(p.estCost)}` : ''}\n${orderSteps(p)}`,
     actions: [
       // Not sent yet: open the saved message in WhatsApp inside this tap
       ...(['prepared', 'opened'].includes(p.status) && !p.changed && p.messages?.length && phoneDigits(ven?.phone)
@@ -1853,7 +1855,7 @@ async function buyAction(id) {
   if (next === 'remind') {
     const phone = phoneDigits(ven?.phone);
     if (!phone) { showToast(`${ven?.name || 'This supplier'} has no phone number – add it to send a reminder on WhatsApp.`, 'error'); return; }
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(`Namaste ${ven.name}! A reminder for ${ev.name}:\nItem: ${p.item}\nQuantity: ${qtyText(p)}\nDeliver: ${fmtDate(p.date)}${p.time ? ', ' + p.time : ''}\n\nPlease confirm everything is on track. Thank you!`)}`, '_blank', 'noopener');
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(`Namaste ${ven.name}! A reminder for ${ev.name}:\nItem: ${p.item}\nQuantity: ${qtyText(p)}\nDate: ${fmtDate(p.date)}\nDeliver by: ${fmtTime(p.time) || '-'}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n\nPlease confirm everything is on track. Thank you!`)}`, '_blank', 'noopener');
     await patchEvent(ev.id, { purchases: ev.purchases.map(x => x.id === id ? { ...x, reminded: [...(x.reminded || []), new Date().toISOString()].slice(-20) } : x) });
     refreshCurrent(); return;
   }
@@ -2057,11 +2059,11 @@ function fmtTime(t) {
   const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || '')); if (!m) return '';
   const h = Number(m[1]); return `${h % 12 || 12}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
 }
-/* Time: one box to type the time in ("7:30", "7.30", "730" or just "7") and an AM / PM switch (owner, 5.0.0: no
+/* Time: one box to type the time in ("7:30", "7.30", "730" or just "7") and an AM / PM switch (owner, 4.31.22: no
    clock dial, no hour/minute lists). A 24-hour time ("19:30") is understood too and sets the switch. The hidden
    input keeps its id and HH:MM value, so every place that reads or sets it works as before. Nothing is guessed:
    without AM or PM (for 1–12) the time stays empty and the form asks for it, and minutes after ":" or "." need two
-   digits — "7:5" could mean 7:05 or 7:50, so it is not taken (independent review of 5.0.0). */
+   digits — "7:5" could mean 7:05 or 7:50, so it is not taken (independent review of 4.31.22). */
 function splitTime(text) {
   const t = String(text || '').trim().replace(/\s+/g, '');
   const sep = /^(\d{1,2})[:.](\d{2})$/.exec(t);
@@ -2309,10 +2311,12 @@ function deliveriesCard() {
 function reminderMessage(ev, o, ven) {
   const all = eventServices(ev).services, s = o.svc ? all.find(x => x.id === o.svc) : null;
   const meal = s ? svcLabel(ev, s, all) : ev.meals?.length ? mealLabel(ev) : '', items = orderItems(ev, o).join(', ');
+  // The same fixed lines as the order itself (owner's rule, 4.31.23): what, items, quantity, date, ready-by time, venue
   return `Namaste ${ven.name}! A reminder for ${ev.name}:\n`
-    + `Date: ${fmtDate(o.date)}${o.time ? ', ' + o.time : ''}${meal ? ' (' + meal + ')' : ''}\nVenue: ${ev.venue || '-'}\n`
-    + (ev.outsourced ? `Full event catering for ${o.plates || '-'} guests\n` : `${short(o.head)} for ${o.plates || '-'} plates\n`)
-    + (items ? `${ev.outsourced ? 'Menu' : 'Items'}: ${items}\n` : '') + (o.basis?.guests && !ev.outsourced ? `Guests: ${o.basis.guests}\n` : '')
+    + (ev.outsourced ? `Order: Full event catering\nMenu: ${items || '-'}\nQuantity: ${o.plates || '-'} guests\n`
+                     : `Counter: ${short(o.head)}\nItems: ${items || '-'}\nQuantity: ${o.plates || '-'} plates\n`)
+    + `Date: ${fmtDate(o.date)}${meal ? ' (' + meal + ')' : ''}\nReady by: ${fmtTime(o.time) || '-'}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n`
+    + (o.basis?.guests && !ev.outsourced ? `Guests: ${o.basis.guests}\n` : '')
     + `\nPlease confirm everything is on track. Thank you!`;
 }
 async function remindOrder(evId, orderId) {
