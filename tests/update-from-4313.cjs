@@ -21,8 +21,11 @@ const filesAt = ref => { const m = new Map();
 
   for (const from of ['4.31.13', '4.31.14', '4.31.22', '4.31.23', '4.31.24', '5.0.0']) {
     const old = filesAt('v' + from);
-    let serveNew = false;
+    let serveNew = false, offline = false;
+    // Offline means the server cannot be reached at all: the browser's offline switch does not cover the app's update
+    // worker on every runner (run 44940048900 attempt 2), so the server also drops every request while offline
     const server = http.createServer((req, res) => {
+      if (offline) { req.socket.destroy(); return; }
       let key = new URL(req.url, 'http://local').pathname; if (key === '/') key = '/index.html';
       let body = null;
       if (serveNew) { const file = path.resolve('public', '.' + key); if (file.startsWith(path.resolve('public') + path.sep) && fs.existsSync(file)) body = fs.readFileSync(file); }
@@ -57,6 +60,7 @@ const filesAt = ref => { const m = new Map();
       const c = new MessageChannel(); const t = setTimeout(() => res(null), 500); c.port1.onmessage = e => { clearTimeout(t); res(e.data.release); }; r.active.postMessage({ type: 'GET_RELEASE' }, [c.port2]); })));
     // A new tab after the update: reopened until it runs the new release (a phone shows it on the next open at the latest)
     const openNew = async ctx => { for (let i = 0; ; i++) { const p = await open(ctx); if (await build(p) === 'v' + NEW || i === 4) return p; await p.close(); await new Promise(r => setTimeout(r, 1000)); } };
+    const goOffline = async (ctx, v) => { offline = v; await ctx.setOffline(v); };
     const install = async ctx => {
       const p = await open(ctx);
       await p.evaluate(() => navigator.serviceWorker.ready); await p.reload({ waitUntil: 'domcontentloaded' }); await p.waitForSelector('#kpi .card');
@@ -90,11 +94,11 @@ const filesAt = ref => { const m = new Map();
       await fresh.locator('#drawer-toggle').click(); await fresh.locator('#check-app-update').click();
       await fresh.waitForFunction(v => document.querySelector('#app-update-status').textContent.includes('using CaterDesk v' + v), NEW);
       // Offline afterwards: the new release opens from the phone with the same records
-      await ctx.setOffline(true);
+      await goOffline(ctx, true);
       await fresh.reload({ waitUntil: 'domcontentloaded' }); await fresh.waitForSelector('#kpi .card');
       assert.equal(await build(fresh), 'v' + NEW, 'opens offline');
       assert.equal(await marker(fresh), before);
-      } finally { await ctx.close(); serveNew = false; }
+      } finally { await ctx.close(); serveNew = false; offline = false; }
     });
 
     await test(`from ${from}: an update published while the phone is offline: ${from} keeps working offline, and updates once back online`, async () => {
@@ -103,19 +107,19 @@ const filesAt = ref => { const m = new Map();
       const p = await install(ctx);
       const before = await marker(p);
       assert.equal(before, MONEY, 'the installed release holds the exact bill, payment and expense');
-      await ctx.setOffline(true);
+      await goOffline(ctx, true);
       serveNew = true;   // published only once the phone is offline (run 44928858429: the old order let the update in first)
       await p.reload({ waitUntil: 'domcontentloaded' }); await p.waitForSelector('#kpi .card');
       assert.equal(await build(p), 'v' + from, 'offline: the installed release opens');
       assert.equal(await marker(p), before);
-      await ctx.setOffline(false);
+      await goOffline(ctx, false);
       await p.evaluate(async () => (await navigator.serviceWorker.getRegistration()).update());
       await p.waitForFunction(v => navigator.serviceWorker.getRegistration().then(r => !r?.active ? false : new Promise(res => {
         const c = new MessageChannel(); const t = setTimeout(() => res(false), 300); c.port1.onmessage = e => { clearTimeout(t); res(e.data.release === v); }; r.active.postMessage({ type: 'GET_RELEASE' }, [c.port2]); })), NEW, { polling: 500, timeout: 60000 });
       const fresh = await openNew(ctx);
       assert.equal(await build(fresh), 'v' + NEW);
       assert.equal(await marker(fresh), before, 'records kept');
-      } finally { await ctx.close(); serveNew = false; }
+      } finally { await ctx.close(); serveNew = false; offline = false; }
     });
 
     await test(`from ${from}: no page errors`, async () => { assert.deepEqual(errors, []); });
