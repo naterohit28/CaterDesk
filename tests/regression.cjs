@@ -308,7 +308,8 @@ await test('labour sheet matches real contractor bills (shifts, fare, mukadam fe
  await p.locator('#btn-lab-extra').click();assert.equal(await row(3).locator('[data-k="extra"]').inputValue(),'fee');await row(3).locator('[data-k="rate"]').fill('500');
  await p.locator('#btn-lab-extra').click();assert.equal(await row(4).locator('[data-k="extra"]').inputValue(),'other');await row(4).locator('[data-k="label"]').fill('Ice cream cutting');await row(4).locator('[data-k="rate"]').fill('200');
  assert.equal(await p.locator('#lab-total').innerText(),'₹11,364','same total as the bill');
- await p.locator('#lab-pay [data-pay="credit"]').click();await p.locator('#lab-ven').selectOption('muk');await p.locator('#btn-save-lab').click();await p.waitForTimeout(400);
+ await p.locator('#lab-pay [data-pay="credit"]').click();for(let i=0;i<5;i++)await row(i).locator('[data-k="venId"]').selectOption('muk');   // 5.1.0: a contractor on each line
+ await p.locator('#btn-save-lab').click();await p.waitForTimeout(400);
  const xs=(await db(async d=>d.getAll('expenses'))).filter(x=>x.evId==='lw');
  const by=h=>xs.find(x=>x.head.startsWith(h));
  assert.equal(xs.reduce((s,x)=>s+x.amt,0),11364);assert.equal(by('Boys').amt,3250);assert.equal(by('Rojiya').amt,7150);
@@ -323,7 +324,7 @@ await test('labour sheet matches real contractor bills (shifts, fare, mukadam fe
  assert.equal(await p.locator('#lab-total').innerText(),'₹10,100');await p.locator('#btn-save-lab').click();await p.waitForTimeout(400);
  // The mukadam's page shows what you owe across both events (to check against his running bill)
  await p.locator('#n-vendors').click();await p.locator('#ven-list [data-action="vendetail"]',{hasText:'Mukadam'}).click();await p.waitForSelector('#tab-vendetail .detail-name');
- const owed=(await db(async d=>d.getAll('expenses'))).filter(x=>x.venId==='muk').reduce((s,x)=>s+x.amt,0);assert.equal(owed,11364,'second sheet paid now by default, so only the first is owed');
+ const owed=(await db(async d=>d.getAll('expenses'))).filter(x=>x.venId==='muk'&&x.pay==='credit').reduce((s,x)=>s+x.amt,0);assert.equal(owed,11364,'second sheet paid now by default, so only the first is owed (5.1.0: a paid line keeps its contractor, not owed)');
 });
 await test('meals (any mix of breakfast, lunch, high tea, dinner), headcount per shift and bill total',async()=>{
  const H=await p.evaluate(async()=>(await import('./utils.js')).EXPENSE_HEADS);const boys=H.Labour.find(h=>h.startsWith('Boys'));
