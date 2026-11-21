@@ -51,6 +51,8 @@ const filesAt = ref => { const m = new Map();
     // The running worker's release (the service worker answers GET_RELEASE)
     const swRelease = p => p.evaluate(() => navigator.serviceWorker.getRegistration().then(r => !r?.active ? null : new Promise(res => {
       const c = new MessageChannel(); const t = setTimeout(() => res(null), 500); c.port1.onmessage = e => { clearTimeout(t); res(e.data.release); }; r.active.postMessage({ type: 'GET_RELEASE' }, [c.port2]); })));
+    // A new tab after the update: reopened until it runs the new release (a phone shows it on the next open at the latest)
+    const openNew = async ctx => { for (let i = 0; ; i++) { const p = await open(ctx); if (await build(p) === 'v' + NEW || i === 4) return p; await p.close(); await new Promise(r => setTimeout(r, 1000)); } };
     const install = async ctx => {
       const p = await open(ctx);
       await p.evaluate(() => navigator.serviceWorker.ready); await p.reload({ waitUntil: 'domcontentloaded' }); await p.waitForSelector('#kpi .card');
@@ -65,6 +67,7 @@ const filesAt = ref => { const m = new Map();
 
     await test(`from ${from}: Check for app updates brings ${NEW}; records and an unsaved form are kept; it then opens offline`, async () => {
       const ctx = await browser.newContext(); await ctx.route('https://fonts.**', r => r.abort());
+      try {
       const p = await install(ctx);
       const before = await marker(p);
       assert.equal(before, MONEY, 'the installed release holds the exact bill, payment and expense');
@@ -76,7 +79,7 @@ const filesAt = ref => { const m = new Map();
       // The open form is not thrown away by the update
       assert.equal(await p.locator('#ev-name').inputValue(), 'Sample unsaved event');
       // A new tab gets the new release; the records are the same
-      const fresh = await open(ctx);
+      const fresh = await openNew(ctx);
       assert.equal(await build(fresh), 'v' + NEW);
       assert.equal(await swRelease(fresh), NEW);
       assert.equal(await marker(fresh), before, 'records kept');
@@ -87,11 +90,12 @@ const filesAt = ref => { const m = new Map();
       await fresh.reload({ waitUntil: 'domcontentloaded' }); await fresh.waitForSelector('#kpi .card');
       assert.equal(await build(fresh), 'v' + NEW, 'opens offline');
       assert.equal(await marker(fresh), before);
-      await ctx.close(); serveNew = false;
+      } finally { await ctx.close(); serveNew = false; }
     });
 
     await test(`from ${from}: an update published while the phone is offline: ${from} keeps working offline, and updates once back online`, async () => {
       const ctx = await browser.newContext(); await ctx.route('https://fonts.**', r => r.abort());
+      try {
       const p = await install(ctx);
       const before = await marker(p);
       assert.equal(before, MONEY, 'the installed release holds the exact bill, payment and expense');
@@ -104,10 +108,10 @@ const filesAt = ref => { const m = new Map();
       await p.evaluate(async () => (await navigator.serviceWorker.getRegistration()).update());
       await p.waitForFunction(v => navigator.serviceWorker.getRegistration().then(r => !r?.active ? false : new Promise(res => {
         const c = new MessageChannel(); const t = setTimeout(() => res(false), 300); c.port1.onmessage = e => { clearTimeout(t); res(e.data.release === v); }; r.active.postMessage({ type: 'GET_RELEASE' }, [c.port2]); })), NEW, { polling: 500, timeout: 60000 });
-      const fresh = await open(ctx);
+      const fresh = await openNew(ctx);
       assert.equal(await build(fresh), 'v' + NEW);
       assert.equal(await marker(fresh), before, 'records kept');
-      await ctx.close(); serveNew = false;
+      } finally { await ctx.close(); serveNew = false; }
     });
 
     await test(`from ${from}: no page errors`, async () => { assert.deepEqual(errors, []); });
