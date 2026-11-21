@@ -529,6 +529,7 @@ export async function prepareImport(payload) {
       // Vendor GSTIN and registered business name (4.27.0): optional; a person has neither
       if (name === 'vendors' && ((row.gstin !== undefined && !gstinValid(row.gstin)) || (row.legalName !== undefined && (typeof row.legalName !== 'string' || row.legalName.length > 200))
         || (row.kind === 'person' && (row.gstin !== undefined || row.legalName !== undefined)))) throw new Error('Invalid vendor GSTIN');
+      if (name === 'vendors' && row.oneTime !== undefined && row.oneTime !== true) throw new Error('Invalid one-time vendor flag');   // 4.31.22
       if (name === 'events') { amount(row.billing, 'billing'); if (row.budget !== undefined) amount(row.budget, 'budget'); }
       if (['expenses', 'cPays', 'vPays'].includes(name)) amount(row.amt ?? (row.draft ? 0 : undefined), name);
       if (['events', 'expenses', 'cPays', 'vPays'].includes(name) && !row.draft && !validDate(row.date)) throw new Error('Invalid date in ' + name);
@@ -723,7 +724,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '4.31.21';
+export const APP_VERSION = '4.31.22';
 const COUNT_METHOD_IDS = ['tokens', 'tally', 'gate', 'coupons', 'joint', 'other'];
 // v4.18.0 kept menus in their own store (database version 5): copy them into meta once and empty that store
 export async function migrateLegacyMenus() {

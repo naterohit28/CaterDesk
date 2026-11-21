@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.31.21';
+const APP_BUILD = '4.31.22';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -50,6 +50,8 @@ document.addEventListener('click', e => { overlayTrigger = e.target.closest('but
 let lastExport = null;      // ISO time of the last backup export
 let pickVendorForExpense = null;  // set while "+ New vendor" is opened from the expense sheet
 let pickVendorForEvent = false;   // ... or from an outsourced event's "Done by"
+let pickVendorForOrder = '';      // ... or from a vendor order ('ord') or purchase ('buy'): "+ New vendor" / "One-time vendor"
+let newVendorOneTime = false;     // the vendor being added is a one-time vendor (kept for its bills and payments, not suggested again)
 let billTarget = 'sheet';         // where the next bill photo goes: the open expense sheet, or a new draft ('snap')
 let lbOnDelete = null;            // what the lightbox Delete button does for the photo on show
 
@@ -170,7 +172,7 @@ changesChannel?.addEventListener('message', async () => {
 });
 
 /* ── BOOT ────────────────────────────────────────── */
-/* The field being typed in stays in view above the phone keyboard (owner's phone review, 4.31.21): when a field in a
+/* The field being typed in stays in view above the phone keyboard (owner's phone review, 4.31.22): when a field in a
    sheet gets focus, and again when the keyboard has finished opening (the visible area shrinks), it is scrolled to the
    middle of what can still be seen. */
 function keepFocusVisible() {
@@ -550,7 +552,10 @@ window.addEventListener('popstate', onPopState);
 function getActiveOverlay() {
   if (q('ask-modal').classList.contains('active')) return q('ask-modal');
   if (q('pin-screen').classList.contains('active')) return q('pin-screen');
-  return [...document.querySelectorAll('#drawer.active, .modal-ov.active, #lightbox.active')].at(-1) || null;
+  // The sheet opened last is on top (a vendor sheet opened over an order comes earlier in the page, 4.31.22); sheets
+  // without an opening mark keep page order, as before
+  return [...document.querySelectorAll('#drawer.active, .modal-ov.active, #lightbox.active')]
+    .reduce((top, el) => !top || Number(el.dataset.openedAt || 0) >= Number(top.dataset.openedAt || 0) ? el : top, null);
 }
 function syncOverlayAccessibility() {
   const top = getActiveOverlay();
@@ -1614,6 +1619,20 @@ function orderSteps(o) {
 }
 
 // Usual vendor for a counter: listed speciality or who supplied it before. No guess beyond that.
+// The last two choices in an order's or purchase's vendor box (owner, 4.31.22)
+const NEW_VENDOR_OPTS = [{ v: '__new', l: '+ New vendor – नवीन विक्रेता' }, { v: '__once', l: '+ One-time vendor (just this order) – एकदाच' }];
+// "+ New vendor" / "+ One-time vendor" in an order or purchase: the vendor sheet opens over it, and on saving the new
+// vendor is picked in the box it came from. A one-time vendor is a normal vendor record (its bills, payments and dues
+// add up like any other) marked oneTime: it is labelled as such and never suggested for other orders.
+function vendorBoxChange(which, e) {
+  const v = e.target.value;
+  if (v !== '__new' && v !== '__once') { e.target.dataset.prev = v; return false; }
+  e.target.value = e.target.dataset.prev || '';
+  pickVendorForOrder = which; newVendorOneTime = v === '__once';
+  openVenModal(null, 'vendor');
+  return true;
+}
+
 function counterVendor(head) {
   return rankVendors('Live Counter', head)[0][0]?.id || '';
 }
@@ -1753,8 +1772,9 @@ function openBuyModal({ key = '', id = '' }) {
   q('buy-id').value = p?.id || ''; q('buy-svc').value = svc; q('buy-item').value = item; q('buy-src').value = src;
   q('buy-mtitle').textContent = `${item}${s?.meal ? ` · ${svcLabel(ev, s, all)}` : ''}`;
   q('buy-what').textContent = `${SRC_NAME[src]}${src === 'finish' ? ' – our kitchen finishes it' : ''}`;
-  const sup = D.vendors.filter(v => !isPerson(v)).sort((a, b) => a.name.localeCompare(b.name));
-  populateSelect('buy-ven', [{ v: '', l: 'Choose supplier – पुरवठादार निवडा' }, ...sup.map(v => ({ v: v.id, l: v.name + (v.gstin ? ` · ${v.gstin}` : '') + (v.phone ? '' : ' (no phone)') }))], p?.venId || '');
+  const sup = D.vendors.filter(v => !isPerson(v) && (!v.oneTime || v.id === p?.venId)).sort((a, b) => a.name.localeCompare(b.name));
+  populateSelect('buy-ven', [{ v: '', l: 'Choose supplier – पुरवठादार निवडा' }, ...sup.map(v => ({ v: v.id, l: v.name + (v.oneTime ? ' (one-time)' : '') + (v.gstin ? ` · ${v.gstin}` : '') + (v.phone ? '' : ' (no phone)') })), ...NEW_VENDOR_OPTS], p?.venId || '');
+  q('buy-ven').dataset.prev = qv('buy-ven');
   q('buy-qty').value = p?.qty || ''; populateSelect('buy-unit', BUY_UNITS.map(([v, l]) => ({ v, l })), p?.unit || 'pcs');
   q('buy-date').value = p?.date || s?.date || ev.date; q('buy-time').value = p?.time || s?.time || '';
   q('buy-notes').value = p?.notes || ''; q('buy-est').value = p?.estCost ?? '';
@@ -1991,10 +2011,11 @@ function openOrderModal({ head, svc = '', orderId }) {
   q('ord-head').value = head; q('ord-svc').value = svc;
   q('ord-mtitle').textContent = ev.outsourced ? 'Menu to caterer – केटररला मेनू' : `${short(head)} order${s ? ` · ${svcLabel(ev, s, all)}` : ''} – ऑर्डर`;
   q('ord-items').textContent = orderItems(ev, { head, svc }).join(', ');
-  const [usual, inCat, others] = rankVendors('Live Counter', head);
-  const opt = v => ({ v: v.id, l: v.name + (v.phone ? '' : ' (no phone)') });
-  populateSelect('ord-ven', [{ v: '', l: 'Choose vendor – विक्रेता निवडा' }, ...[...usual, ...inCat, ...others].map(opt)],
+  const [usual, inCat, others] = rankVendors('Live Counter', head, o?.venId || '');
+  const opt = v => ({ v: v.id, l: v.name + (v.oneTime ? ' (one-time)' : '') + (v.phone ? '' : ' (no phone)') });
+  populateSelect('ord-ven', [{ v: '', l: 'Choose vendor – विक्रेता निवडा' }, ...[...usual, ...inCat, ...others].map(opt), ...NEW_VENDOR_OPTS],
     o?.venId || (ev.outsourced ? ev.outVenId : counterVendor(head)));
+  q('ord-ven').dataset.prev = qv('ord-ven');
   // Counter plan: this event's, else the last one used for this counter (a starting point; nothing assumed)
   const own = ev.counterPlan?.[head], prev = own ? null : lastCounterPlan(D.events, head, ev.id);
   const plan = own || prev || {};
@@ -3856,7 +3877,7 @@ function rVen() {
       <div class="avatar" data-nl>${esc(initials(v.name))}</div>
       <div class="row-body">
         <div class="title-sm ven-name" data-nl>${esc(v.name)}</div>
-        <div class="meta trunc">${isPerson(v) ? tr('Other person', 'इतर व्यक्ती') : esc(v.cat || '') + (v.specialty ? ' · ' + esc(v.specialty) : '')}</div>
+        <div class="meta trunc">${isPerson(v) ? tr('Other person', 'इतर व्यक्ती') : (v.oneTime ? tr('One-time · ', 'एकदाच · ') : '') + esc(v.cat || '') + (v.specialty ? ' · ' + esc(v.specialty) : '')}</div>
       </div>
       <div class="row-end">${balanceView(b)}</div>
     </div>`;
@@ -4143,11 +4164,13 @@ function rSummary() {
 }
 
 /* ── SHEETS ──────────────────────────────────────── */
+let sheetSeq = 0;
 function openSheet(id, after, guard) {
   const el = q(id);
+  el.dataset.openedAt = String(++sheetSeq); el.style.zIndex = String(200 + Math.min(overlays.length, 50));   // above any sheet already open
   el.classList.add('active');
   el.querySelector('.sheet').scrollTop = 0;
-  openOverlay(() => el.classList.remove('active'), after, guard);
+  openOverlay(() => { el.classList.remove('active'); el.style.zIndex = ''; delete el.dataset.openedAt; }, after, guard);
   requestAnimationFrame(() => { fitSelects(el); syncRequired(); });
 }
 
@@ -4884,7 +4907,7 @@ function headsByUse(cat) {
    [1] same category        — listed category, or who has supplied this category before
    [2] everyone else
    Within a group: speciality match first, then most used, then name. */
-function rankVendors(cat, head) {
+function rankVendors(cat, head, keep = '') {
   const c = normal(cat), h = normal(head);
   const usesFor = new Map(), usesIn = new Map();
   for (const x of D.expenses) {
@@ -4896,7 +4919,7 @@ function rankVendors(cat, head) {
   }
   const groups = [[], [], []];
   for (const v of D.vendors) {
-    if (isPerson(v)) continue;
+    if (isPerson(v) || (v.oneTime && v.id !== keep)) continue;
     const specialty = c && h && normal(v.cat) === c && normal(v.specialty) === h;
     const forItem = specialty || usesFor.has(v.id);
     const inCat = (c && normal(v.cat) === c) || usesIn.has(v.id);
@@ -5306,12 +5329,14 @@ function openVenModal(id, kind = 'vendor') {
   q('ven-notes').value = vn?.notes || '';
   q('ven-gstin').value = vn?.gstin || '';
   q('ven-legal').value = vn?.legalName || '';
-  populateSelect('ven-cat', Object.keys(EXPENSE_HEADS), vn?.cat || (pickVendorForExpense ? qv('exp-cat') : pickVendorForEvent ? 'Operations' : ''));
-  loadVenSpecialty(vn?.specialty || (pickVendorForExpense ? qv('exp-head') : pickVendorForEvent ? 'Outsourced Event – आउटसोर्स कार्यक्रम' : ''));
+  const fromOrder = !vn && pickVendorForOrder === 'ord', fromBuy = !vn && pickVendorForOrder === 'buy';
+  populateSelect('ven-cat', Object.keys(EXPENSE_HEADS), vn?.cat || (pickVendorForExpense ? qv('exp-cat') : pickVendorForEvent ? 'Operations' : fromOrder ? 'Live Counter' : fromBuy ? 'Raw Material' : ''));
+  loadVenSpecialty(vn?.specialty || (pickVendorForExpense ? qv('exp-head') : pickVendorForEvent ? 'Outsourced Event – आउटसोर्स कार्यक्रम' : fromOrder ? qv('ord-head') : ''));
   setVenKind(vn ? (isPerson(vn) ? 'person' : 'vendor') : kind);
-  q('ven-mtitle').textContent = vn ? 'Edit – संपादित करा' : kind === 'person' ? 'New person – नवीन व्यक्ती' : 'New vendor – नवीन विक्रेता';
+  q('ven-mtitle').textContent = vn ? 'Edit – संपादित करा' : kind === 'person' ? 'New person – नवीन व्यक्ती' : newVendorOneTime ? 'One-time vendor – एकदाच' : 'New vendor – नवीन विक्रेता';
+  q('ven-onetime-note').hidden = !(vn ? vn.oneTime : newVendorOneTime);
   clearFieldErrors();
-  openSheet('ven-modal', () => { pickVendorForExpense = null; pickVendorForEvent = false; });
+  openSheet('ven-modal', () => { pickVendorForExpense = null; pickVendorForEvent = false; pickVendorForOrder = ''; newVendorOneTime = false; });
   if (!vn) q('ven-name').focus({ preventScroll: true });
 }
 
@@ -5332,7 +5357,8 @@ async function saveVendor() {
   const base = id ? formBase.ven : null;
   // Same id, so every bill and payment stays linked; empty GST fields are removed rather than kept blank
   const record = editedRecord(base, { id: id || uid('VN'), name: data.name, cat: person ? '' : qv('ven-cat'), specialty: person ? '' : qv('ven-specialty'),
-                   phone: data.phone, notes: qv('ven-notes'), ...(person ? { kind: 'person' } : {}), ...(gstin ? { gstin } : {}), ...(legalName ? { legalName } : {}) },
+                   phone: data.phone, notes: qv('ven-notes'), ...(person ? { kind: 'person' } : {}), ...(gstin ? { gstin } : {}), ...(legalName ? { legalName } : {}),
+                   ...(!id && !person && newVendorOneTime ? { oneTime: true } : {}) },
                    [...(person ? [] : ['kind']), ...(gstin ? [] : ['gstin']), ...(legalName ? [] : ['legalName'])]);
 
   await putChecked('vendors', record, base);
@@ -5340,11 +5366,16 @@ async function saveVendor() {
   else    D.vendors.push(record);
 
   // Opened from the expense sheet's "+ New vendor": go back to it with this vendor picked
-  const backToExpense = pickVendorForExpense, backToEvent = pickVendorForEvent;
+  const backToExpense = pickVendorForExpense, backToEvent = pickVendorForEvent, backToOrder = pickVendorForOrder;
   await closeModals();
   if (backToExpense) populateVendorSelect(record.id);
   if (backToEvent) { fillOutVendors(record.id); updateOutHint(); }
-  const openIt = !id && !backToExpense && !backToEvent && CT !== 'vendetail';
+  if (backToOrder) {   // back in the order or purchase, with this vendor picked
+    const box = q(backToOrder === 'ord' ? 'ord-ven' : 'buy-ven');
+    box.querySelector('option[value="__new"]').insertAdjacentHTML('beforebegin', `<option value="${esc(record.id)}">${esc(record.name + (record.oneTime ? ' (one-time)' : ''))}</option>`);
+    box.value = record.id; box.dataset.prev = record.id; box.dispatchEvent(new Event('change', { bubbles: true })); fitSelects(box.closest('.field'));
+  }
+  const openIt = !id && !backToExpense && !backToEvent && !backToOrder && CT !== 'vendetail';
   showToast(person ? 'Saved – जतन झाले' : 'Vendor saved – विक्रेता जतन झाला', 'success',
     openIt ? { label: 'Open – उघडा', run: () => showVenDetail(record.id) } : null);
   if (openIt) setTimeout(hideToast, 6000);
@@ -6269,6 +6300,8 @@ function bindAllEvents() {
     renderVendorQuick();
     fitSelects(sel.closest('.field'));   // the full-name line under the picker follows the chip (Codex on #83)
   });
+  q('ord-ven').addEventListener('change', e => vendorBoxChange('ord', e));
+  q('buy-ven').addEventListener('change', e => vendorBoxChange('buy', e));
   q('exp-vendor').addEventListener('change', e => {
     const v = e.target.value;
     if (!v.startsWith('__new')) { e.target.dataset.prev = v; if (v) applyVendorHabits(v); renderVendorQuick(); return; }
