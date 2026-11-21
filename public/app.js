@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.31.22';
+const APP_BUILD = '5.0.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -172,7 +172,7 @@ changesChannel?.addEventListener('message', async () => {
 });
 
 /* ── BOOT ────────────────────────────────────────── */
-/* The field being typed in stays in view above the phone keyboard (owner's phone review, 4.31.22): when a field in a
+/* The field being typed in stays in view above the phone keyboard (owner's phone review, 5.0.0): when a field in a
    sheet gets focus, and again when the keyboard has finished opening (the visible area shrinks), it is scrolled to the
    middle of what can still be seen. */
 function keepFocusVisible() {
@@ -552,7 +552,7 @@ window.addEventListener('popstate', onPopState);
 function getActiveOverlay() {
   if (q('ask-modal').classList.contains('active')) return q('ask-modal');
   if (q('pin-screen').classList.contains('active')) return q('pin-screen');
-  // The sheet opened last is on top (a vendor sheet opened over an order comes earlier in the page, 4.31.22); sheets
+  // The sheet opened last is on top (a vendor sheet opened over an order comes earlier in the page, 5.0.0); sheets
   // without an opening mark keep page order, as before
   return [...document.querySelectorAll('#drawer.active, .modal-ov.active, #lightbox.active')]
     .reduce((top, el) => !top || Number(el.dataset.openedAt || 0) >= Number(top.dataset.openedAt || 0) ? el : top, null);
@@ -1619,7 +1619,7 @@ function orderSteps(o) {
 }
 
 // Usual vendor for a counter: listed speciality or who supplied it before. No guess beyond that.
-// The last two choices in an order's or purchase's vendor box (owner, 4.31.22)
+// The last two choices in an order's or purchase's vendor box (owner, 5.0.0)
 const NEW_VENDOR_OPTS = [{ v: '__new', l: '+ New vendor – नवीन विक्रेता' }, { v: '__newonce', l: '+ One-time vendor (just this order) – एकदाच' }];
 // "+ New vendor" / "+ One-time vendor" in an order or purchase: the vendor sheet opens over it, and on saving the new
 // vendor is picked in the box it came from. A one-time vendor is a normal vendor record (its bills, payments and dues
@@ -2057,11 +2057,11 @@ function fmtTime(t) {
   const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || '')); if (!m) return '';
   const h = Number(m[1]); return `${h % 12 || 12}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
 }
-/* Time: one box to type the time in ("7:30", "7.30", "730" or just "7") and an AM / PM switch (owner, 4.31.22: no
+/* Time: one box to type the time in ("7:30", "7.30", "730" or just "7") and an AM / PM switch (owner, 5.0.0: no
    clock dial, no hour/minute lists). A 24-hour time ("19:30") is understood too and sets the switch. The hidden
    input keeps its id and HH:MM value, so every place that reads or sets it works as before. Nothing is guessed:
    without AM or PM (for 1–12) the time stays empty and the form asks for it, and minutes after ":" or "." need two
-   digits — "7:5" could mean 7:05 or 7:50, so it is not taken (independent review of 4.31.22). */
+   digits — "7:5" could mean 7:05 or 7:50, so it is not taken (independent review of 5.0.0). */
 function splitTime(text) {
   const t = String(text || '').trim().replace(/\s+/g, '');
   const sep = /^(\d{1,2})[:.](\d{2})$/.exec(t);
