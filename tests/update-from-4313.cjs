@@ -59,7 +59,16 @@ const filesAt = ref => { const m = new Map();
     const swRelease = p => p.evaluate(() => navigator.serviceWorker.getRegistration().then(r => !r?.active ? null : new Promise(res => {
       const c = new MessageChannel(); const t = setTimeout(() => res(null), 500); c.port1.onmessage = e => { clearTimeout(t); res(e.data.release); }; r.active.postMessage({ type: 'GET_RELEASE' }, [c.port2]); })));
     // A new tab after the update: reopened until it runs the new release (a phone shows it on the next open at the latest)
-    const openNew = async ctx => { for (let i = 0; ; i++) { const p = await open(ctx); if (await build(p) === 'v' + NEW || i === 4) return p; await p.close(); await new Promise(r => setTimeout(r, 1000)); } };
+    // A tab that does not open within 30 s right after the update (GitHub runs 44940048900 and 44957445158, never on a PC
+    // or phone) is closed and opened again, at most twice, with a warning in the log; the version, records and page-error
+    // checks still decide the result.
+    const openNew = async ctx => { let slow = 0;
+      for (let i = 0; ; i++) {
+        let p; try { p = await open(ctx); } catch (e) {
+          if (!/Timeout/.test(e.message) || slow === 2) throw e;
+          slow++; console.log(`WARNING from ${from}: a new tab did not open within 30 s after the update; opening it again (${slow} of 2)`);
+          for (const pg of ctx.pages().slice(1)) await pg.close().catch(() => {}); continue; }
+        if (await build(p) === 'v' + NEW || i >= 4) return p; await p.close(); await new Promise(r => setTimeout(r, 1000)); } };
     const goOffline = async (ctx, v) => { offline = v; await ctx.setOffline(v); };
     const install = async ctx => {
       const p = await open(ctx);
