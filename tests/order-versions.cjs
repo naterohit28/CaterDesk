@@ -10,6 +10,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
   events: [{ id: 'E', name: 'Sample Wedding', date: day(8), venue: 'Sample Hall', type: 'Wedding – लग्न', billing: 300000, guests: 300, photoIds: [],
     dishes: [{ name: 'Masala Dosa', head: 'Dosa – डोसा' }, { name: 'Pani Puri', head: 'Chaat – चाट' }] }] };
 
+const pickTime = async (p, id, hhmm = '19:30') => { if (await p.inputValue('#' + id)) return; const [h, m] = hhmm.split(':').map(Number); await p.selectOption('#' + id + '-h', String(h % 12 || 12)); await p.selectOption('#' + id + '-m', String(m).padStart(2, '0')); await p.selectOption('#' + id + '-ap', h < 12 ? 'AM' : 'PM'); };
 (async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   const p = await (await browser.newContext({ ...devices['Pixel 5'], viewport: { width: 390, height: 844 } })).newPage(); p.setDefaultTimeout(10000);
@@ -27,11 +28,11 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
 
   await test('G-10: opening WhatsApp and backing out leaves the order "WhatsApp opened", never sent', async () => {
     await openEvent(); await p.locator('[data-action="order-new"][data-id^="Dosa"]').click(); await p.waitForSelector('#ord-modal.active');
-    await p.selectOption('#ord-ven', 'vd'); await p.fill('#ord-plates', '250'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
+    await p.selectOption('#ord-ven', 'vd'); await p.fill('#ord-plates', '250'); await pickTime(p, 'ord-time'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
     const o = await order('Dosa');
     assert.equal(o.status, 'opened'); assert.equal(o.messages.length, 1);
-    assert.deepEqual([o.messages[0].v, o.messages[0].status], [1, 'opened']); assert.match(o.messages[0].text, /Dosa for 250 plates/);
-    assert.equal((await p.evaluate(() => window.__opens))[0].includes('Dosa for 250 plates'), true, 'WhatsApp got the same text that was kept');
+    assert.deepEqual([o.messages[0].v, o.messages[0].status], [1, 'opened']); assert.match(o.messages[0].text, /Counter: Dosa\nItems: .*\nQuantity: 250 plates/);
+    assert.equal((await p.evaluate(() => window.__opens))[0].includes('Quantity: 250 plates'), true, 'WhatsApp got the same text that was kept');
   });
 
   await test('G-26: a revised message after confirmation is a new version; the old one keeps "Vendor confirmed"', async () => {
@@ -39,11 +40,11 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     let o = await order('Dosa'); assert.deepEqual([o.status, o.messages[0].status], ['confirmed', 'confirmed']); assert(o.messages[0].confirmedAt);
     // Same text again: no new version
     await openEvent(); await statusSheet('Dosa'); await pick('Edit / send again'); await p.waitForSelector('#ord-modal.active');
-    await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
+    await pickTime(p, 'ord-time'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
     o = await order('Dosa'); assert.equal(o.messages.length, 1, 'unchanged message: no new version'); assert.equal(o.status, 'confirmed');
     // Revised: 280 plates
     await openEvent(); await statusSheet('Dosa'); await pick('Edit / send again'); await p.waitForSelector('#ord-modal.active');
-    await p.fill('#ord-plates', '280'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
+    await p.fill('#ord-plates', '280'); await pickTime(p, 'ord-time'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
     o = await order('Dosa');
     assert.equal(o.messages.length, 2);
     assert.deepEqual(o.messages.map(m => [m.v, m.status]), [[1, 'confirmed'], [2, 'opened']], 'old version keeps its real status');
@@ -62,7 +63,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
 
   await test('a vendor without a phone: the message is kept as "Not sent yet"', async () => {
     await openEvent(); await p.locator('[data-action="order-new"][data-id^="Chaat"]').click(); await p.waitForSelector('#ord-modal.active');
-    await p.selectOption('#ord-ven', 'vn'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
+    await p.selectOption('#ord-ven', 'vn'); await pickTime(p, 'ord-time'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
     const o = await order('Chaat'); assert.deepEqual([o.status, o.messages[0].status], ['prepared', 'prepared']);
     const bad = await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest; d.events[0].orders[0].messages = [{ text: 'x', status: 'delivered' }];
       try { await db.importAllData(d, 'replace'); return 'accepted'; } catch (e) { return e.message; } });

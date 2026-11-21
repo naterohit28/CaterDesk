@@ -17,6 +17,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     { id: 'e4', name: 'Sample Outsourced', date: day(40), venue: 'Sample Hall', type: 'Birthday – वाढदिवस', billing: 90000, guests: 100, outsourced: true, outVenId: 'vc', photoIds: [],
       dishes: [{ name: 'Thali', head: '' }] }] };
 
+const pickTime = async (p, id, hhmm = '19:30') => { if (await p.inputValue('#' + id)) return; const [h, m] = hhmm.split(':').map(Number); await p.selectOption('#' + id + '-h', String(h % 12 || 12)); await p.selectOption('#' + id + '-m', String(m).padStart(2, '0')); await p.selectOption('#' + id + '-ap', h < 12 ? 'AM' : 'PM'); };
 (async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   const ctx = await browser.newContext({ ...devices['Pixel 5'], viewport: { width: 390, height: 844 } });
@@ -43,7 +44,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     await p.fill('#ord-plates', '400'); await p.fill('#ord-takeup', '80');
     assert.equal(await p.inputValue('#ord-plates'), '400', 'a number you typed is not replaced');
     await p.fill('#ord-takeup', '75');
-    await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
+    await pickTime(p, 'ord-time'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
     const e = await ev('e1'); const o = e.orders[0];
     assert.deepEqual([o.plates, o.suggested, 'served' in o, 'actualServed' in o], [400, 375, false, false], 'ordered 400, suggested 375, served unknown');
     assert.deepEqual(e.counterPlan, { 'Dosa – डोसा': { takeUp: 75 } });
@@ -53,7 +54,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
 
   await test('counter take-ups are independent and need not add up to 100%', async () => {
     await openOrder('Chaat'); await p.fill('#ord-takeup', '75'); assert.equal(await p.inputValue('#ord-plates'), '375');
-    await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
+    await pickTime(p, 'ord-time'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
     const e = await ev('e1');
     assert.deepEqual(e.counterPlan, { 'Dosa – डोसा': { takeUp: 75 }, 'Chaat – चाट': { takeUp: 75 } }, '75% + 75% accepted');
   });
@@ -66,11 +67,11 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     assert.match(await p.locator('#ord-plan').innerText(), /300 guests × 73\.4% = 221 suggested · vendor minimum 250/);
     await p.fill('#ord-plates', '230');
     assert.match(await p.locator('#ord-plan').innerText(), /Below the vendor minimum of 250: add a note why/);
-    await p.locator('#btn-send-ord').click(); await p.waitForTimeout(300); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
+    await pickTime(p, 'ord-time'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(300); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
     assert.equal(await p.locator('#ord-modal.active').count(), 1, 'not sent without a note');
     assert.match(await p.locator('#ord-modal').innerText(), /add a note why/);
     assert.equal((await ev('e2')).orders, undefined);
-    await p.fill('#ord-notes', 'Client confirmed smaller crowd'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
+    await p.fill('#ord-notes', 'Client confirmed smaller crowd'); await pickTime(p, 'ord-time'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
     const e = await ev('e2'); const o = e.orders[0];
     assert.deepEqual([o.plates, o.suggested, o.belowMinimum], [230, 250, 250]);
     assert.deepEqual(e.counterPlan['Dosa – डोसा'], { takeUp: 73.4, minimum: 250 });

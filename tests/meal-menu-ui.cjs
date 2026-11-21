@@ -27,6 +27,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [], 
       services: [{ id: 'svc-dinner', meal: 'dinner', time: '20:00' }, { id: 'svc-d2', meal: 'dinner', date: day(21), time: '20:30', guests: 80, rate: 500, template: { id: 'golden', name: 'Golden' } }],
       dishes: [{ name: 'Dal Tadka', head: '', meal: 'lunch' }, { name: 'Paneer Tikka', head: 'Tandoor – तंदूर', meal: 'dinner' }] }] };
 
+const pickTime = async (p, id, hhmm = '19:30') => { if (await p.inputValue('#' + id)) return; const [h, m] = hhmm.split(':').map(Number); await p.selectOption('#' + id + '-h', String(h % 12 || 12)); await p.selectOption('#' + id + '-m', String(m).padStart(2, '0')); await p.selectOption('#' + id + '-ap', h < 12 ? 'AM' : 'PM'); };
 (async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   const ctx = await browser.newContext({ ...devices['Pixel 5'], viewport: { width: 360, height: 780 } });
@@ -120,7 +121,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [], 
     assert.deepEqual(await p.locator('#svc-dishes input[data-k="name"]').evaluateAll(i => i.map(x => x.value)), ['Poha', 'Masala Tea', 'Idli', 'Medu Vada', 'Fruit Bowl']);
     assert.equal(await sheetDish('Masala Tea').locator('[data-diet-toggle]').innerText(), 'Jain', 'marks stay with their dish after a removal');
     assert.equal(await p.evaluate(() => document.querySelector('#svc-modal .sheet').scrollWidth <= document.querySelector('#svc-modal .sheet').clientWidth), true);
-    await p.fill('#svc-time', '08:00');
+    await p.evaluate(() => { document.getElementById('svc-time').value = ''; }); await pickTime(p, 'svc-time', '08:00');
     await p.locator('#btn-save-svc').click(); await p.waitForTimeout(600);
     assert.match(await toast(), /^Breakfast menu saved for this event/);
     const e = await ev('e3'), notBf = x => x.dishes.filter(d => d.meal !== 'breakfast');

@@ -13,6 +13,7 @@ const base = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
       { id: 'od', head: 'Dosa – डोसा', venId: 'v2', plates: 250, date: day(6), time: '19:00', status: 'cancelled', at: '2026-11-01T00:00:00.000Z' }] }],
   expenses: [] });
 
+const pickTime = async (p, id, hhmm = '19:30') => { if (await p.inputValue('#' + id)) return; const [h, m] = hhmm.split(':').map(Number); await p.selectOption('#' + id + '-h', String(h % 12 || 12)); await p.selectOption('#' + id + '-m', String(m).padStart(2, '0')); await p.selectOption('#' + id + '-ap', h < 12 ? 'AM' : 'PM'); };
 (async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   const ctx = await browser.newContext({ ...devices['Pixel 5'], viewport: { width: 390, height: 844 } });
@@ -53,7 +54,7 @@ const base = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
     await p.locator('#menu-orders [data-action="order-status"]').first().click(); await p.waitForSelector('#ask-modal.active');
     await p.locator('#ask-actions button', { hasText: 'Edit / send again' }).click(); await p.waitForSelector('#ord-modal.active');
     await p.evaluate(() => { window.__opens = []; window.open = url => { window.__opens.push(String(url)); return {}; }; });
-    await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
+    await pickTime(p, 'ord-time'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
     assert.match((await p.evaluate(() => window.__opens))[0] || '', /^https:\/\/wa\.me\/919000000001/, 'WhatsApp opened');
     let o = (await ev('e1')).orders.find(x => x.id === 'oc');
     assert.equal(o.menuChanged, true, 'warning stays after WhatsApp opened'); assert.equal(o.status, 'opened', 'the revised message is opened, not sent (4.9.0 versions)'); assert(o.openedAt);
@@ -65,7 +66,7 @@ const base = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
     // A new order: opened (not sent) when WhatsApp opens; prepared when the vendor has no phone
     await openEvent('Sample Reception');
     await p.locator('[data-action="order-new"]').first().click(); await p.waitForSelector('#ord-modal.active');
-    await p.selectOption('#ord-ven', 'v2'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
+    await p.selectOption('#ord-ven', 'v2'); await pickTime(p, 'ord-time'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
     const fresh = (await ev('e1')).orders.find(x => !['oc', 'od'].includes(x.id));
     assert.equal(fresh.status, 'opened');
     await openEvent('Sample Reception');

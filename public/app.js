@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '4.31.20';
+const APP_BUILD = '4.31.21';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -170,8 +170,19 @@ changesChannel?.addEventListener('message', async () => {
 });
 
 /* ── BOOT ────────────────────────────────────────── */
+/* The field being typed in stays in view above the phone keyboard (owner's phone review, 4.31.21): when a field in a
+   sheet gets focus, and again when the keyboard has finished opening (the visible area shrinks), it is scrolled to the
+   middle of what can still be seen. */
+function keepFocusVisible() {
+  const typing = el => el && el.closest?.('.sheet, .modal-ov') && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) && el.type !== 'hidden';
+  const reveal = () => { const el = document.activeElement; if (typing(el)) el.scrollIntoView({ block: 'center', behavior: 'smooth' }); };
+  document.addEventListener('focusin', e => { if (typing(e.target)) setTimeout(reveal, 350); });
+  window.visualViewport?.addEventListener('resize', () => setTimeout(reveal, 60));
+}
+
 async function boot() {
   q('app-build').textContent = 'v' + APP_BUILD;
+  initTimePickers(); keepFocusVisible();
   let readyRelease = null;
   q('check-app-update').addEventListener('click', async () => {
     const button = q('check-app-update'), status = q('app-update-status');
@@ -1755,7 +1766,7 @@ function buyMessage(ev, p, ven) {
   // One fact per line, in the order a supplier needs them; venue notes and your contact only when you have entered them
   const venue = venueNotes(ev), me = getProfile(), contact = [me.contact || me.name, me.phone].filter(Boolean).join(', ');
   return `Namaste ${ven.name}! Purchase order for ${ev.name}:\nItem: ${p.item}\nQuantity: ${qtyText(p)}\n`
-    + `Deliver: ${fmtDate(p.date)}${p.time ? ', ' + p.time : ''}${meal ? ' (' + meal + ')' : ''}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n`
+    + `Date: ${fmtDate(p.date)}${meal ? ' (' + meal + ')' : ''}\nDeliver by: ${fmtTime(p.time) || '-'}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n`
     + (venue ? `At the venue: ${venue}\n` : '') + (p.notes ? `Note: ${p.notes}\n` : '') + (contact ? `Contact: ${contact}\n` : '') + `\nPlease confirm. Thank you!`;
 }
 async function sendBuy() {
@@ -1766,6 +1777,7 @@ async function sendBuy() {
   if (!(qty > 0) || Math.round(qty * 1000) !== qty * 1000) errs['buy-qty'] = 'Enter the quantity – संख्या लिहा';
   if (!UNIT_NAME[unit]) errs['buy-unit'] = 'Choose a unit – एकक निवडा';
   if (!date) errs['buy-date'] = 'Delivery date – दिनांक';
+  if (!/^\d{2}:\d{2}$/.test(qv('buy-time'))) errs['buy-time-h'] = 'Deliver by: choose hour and AM/PM – वेळ निवडा';
   if (est !== '' && !(Number(est) >= 0 && Math.round(Number(est) * 100) === Number(est) * 100)) errs['buy-est'] = 'An amount in ₹ (up to 2 decimals) – रक्कम';
   if (Object.keys(errs).length) { showFieldErrors(errs); return; }
   const ven = D.vendors.find(v => v.id === venId), phoneOk = !!phoneDigits(ven?.phone);
@@ -2019,15 +2031,46 @@ function updateCounterPlan() {
   hint.innerHTML = parts.join('<br>'); hint.hidden = !parts.length;
 }
 
+// "19:30" → "7:30 PM" (stored times stay HH:MM, 24-hour)
+function fmtTime(t) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || '')); if (!m) return '';
+  const h = Number(m[1]); return `${h % 12 || 12}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
+}
+/* Time pickers: Hour, Minute and AM/PM boxes instead of the phone's clock dial (owner's phone review). The hidden
+   input keeps its id and HH:MM value, so every place that reads or sets it works as before. */
+function initTimePickers() {
+  const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+  for (const box of document.querySelectorAll('.time-pick[data-time]')) {
+    const id = box.dataset.time, inp = q(id);
+    const opt = (v, l) => `<option value="${v}">${l}</option>`;
+    box.innerHTML = `<select id="${id}-h" aria-label="Hour">${opt('', 'Hour')}${[12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(h => opt(h, h)).join('')}</select>`
+      + `<select id="${id}-m" aria-label="Minutes">${opt('', 'Min')}${Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0')).map(m => opt(m, m)).join('')}</select>`
+      + `<select id="${id}-ap" aria-label="AM or PM">${opt('', 'AM/PM')}${opt('AM', 'AM')}${opt('PM', 'PM')}</select>`;
+    const [h, m, ap] = ['h', 'm', 'ap'].map(k => q(`${id}-${k}`));
+    const show = v => { const x = /^(\d{1,2}):(\d{2})$/.exec(String(v || ''));
+      if (!x) { h.value = m.value = ap.value = ''; return; }
+      const hh = Number(x[1]), mm = x[2]; h.value = String(hh % 12 || 12); ap.value = hh < 12 ? 'AM' : 'PM';
+      if (![...m.options].some(o => o.value === mm)) m.insertAdjacentHTML('beforeend', opt(mm, mm));   // an older time like 7:32 stays exact
+      m.value = mm; };
+    Object.defineProperty(inp, 'value', { configurable: true, get() { return desc.get.call(inp); }, set(v) { desc.set.call(inp, v); show(v); } });
+    const pick = () => {
+      if (h.value && !m.value) m.value = '00';
+      const v = h.value && ap.value ? `${String((Number(h.value) % 12) + (ap.value === 'PM' ? 12 : 0)).padStart(2, '0')}:${m.value || '00'}` : '';
+      desc.set.call(inp, v); inp.dispatchEvent(new Event('input', { bubbles: true })); inp.dispatchEvent(new Event('change', { bubbles: true })); };
+    for (const s of [h, m, ap]) s.addEventListener('change', pick);
+  }
+}
+
 function orderMessage(ev, o, ven) {
   const items = orderItems(ev, o).join(', ');
   const all = eventServices(ev).services, s = o.svc ? all.find(x => x.id === o.svc) : null;
   const meal = s ? svcLabel(ev, s, all) : ev.meals?.length ? mealLabel(ev) : '';
   const ver = o.menuVersion ? approvedMenus(ev).find(v => v.id === o.menuVersion) : null, venue = venueNotes(ev);
+  // One fact per line, always in this order, never left out (owner's phone review): what, items, how many, date, ready-by time, venue
   return `Namaste ${ven.name}! Order for ${ev.name}:\n`
-    + `Date: ${fmtDate(o.date)}${o.time ? ', ' + o.time : ''}${meal ? ' (' + meal + ')' : ''}\nVenue: ${ev.venue || '-'}\n`
-    + (ev.outsourced ? `Full event catering for ${o.plates || '-'} guests\n` + (items ? `Menu: ${items}\n` : '')
-                     : `${short(o.head)} for ${o.plates || '-'} plates\n` + (items ? `Items: ${items}\n` : ''))
+    + (ev.outsourced ? `Order: Full event catering\nMenu: ${items || '-'}\nQuantity: ${o.plates || '-'} guests\n`
+                     : `Counter: ${short(o.head)}\nItems: ${items || '-'}\nQuantity: ${o.plates || '-'} plates\n`)
+    + `Date: ${fmtDate(o.date)}${meal ? ' (' + meal + ')' : ''}\nReady by: ${fmtTime(o.time) || '-'}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n`
     + (o.basis?.guests && !ev.outsourced ? `Guests: ${o.basis.guests}\n` : '')
     + (venue ? `At the venue: ${venue}\n` : '')
     + (ver ? `Menu: version ${ver.n}, approved by the client\n` : '')
@@ -2052,6 +2095,7 @@ async function sendOrder(mode = 'send') {
   const platesTxt = String(qv('ord-plates')).trim(), plates = Number(platesTxt), dd = qv('ord-date');
   if (!platesTxt || !Number.isInteger(plates) || plates < 1) { showFieldErrors({ 'ord-plates': 'Plates: a whole number, 1 or more – ताटांची संख्या' }); return; }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dd) || localDay(new Date(dd + 'T00:00:00')) !== dd) { showFieldErrors({ 'ord-date': 'Choose the delivery date – दिनांक निवडा' }); return; }
+  if (!/^\d{2}:\d{2}$/.test(qv('ord-time'))) { showFieldErrors({ 'ord-time-h': 'Ready by: choose hour and AM/PM – वेळ निवडा' }); return; }
   const below = orderBelowMinimum(ev);
   if (below && !qv('ord-notes')) { showFieldErrors({ 'ord-notes': `Below the vendor minimum of ${minimum}: add a note why – कारण लिहा` }); return; }
   const id = qv('ord-id') || uid('OR');
@@ -2949,12 +2993,10 @@ async function saveServiceSheet() {
   const ev = D.events.find(e => e.id === curRef); if (!ev || !svcState?.id) return;
   // Dishes typed in the box but not yet added (Add dishes not tapped) are never dropped by Save: they are added to the
   // list and the sheet stays open so each can be set to kitchen, bought or a counter before saving (full-event test #4)
+  // One tap saves (owner's phone review): dishes typed in the box but not added yet are added and saved with the rest;
+  // each starts as kitchen, or where you served it before, and can be changed later from the event page
   const pending = parseMenu(q('svc-add').value).map(d => d.name);
-  if (pending.length) {
-    q('svc-add').value = ''; addServiceDishes(pending);
-    showToast(`${pending.length} dish${pending.length > 1 ? 'es' : ''} added. Check kitchen or counter for each, then tap Save. – पदार्थ जोडले, तपासून जतन करा`);
-    return;
-  }
+  if (pending.length) { q('svc-add').value = ''; addServiceDishes(pending); }
   const st = svcState, lib = st.mode === 'library';
   st.draft = st.draft.map(d => ({ ...d, name: String(d.name).replace(/\s+/g, ' ').trim() })).filter(d => d.name);
   for (const d of st.draft) { const why = dishProblem(d); if (why) { showToast(`${d.name}: ${why} – तपासा`, 'error'); renderServiceSheet(); return; } }

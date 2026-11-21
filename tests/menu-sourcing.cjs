@@ -19,6 +19,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
       { name: 'Gulab Jamun', head: '', meal: 'dinner' }, { name: 'Ice Cream', head: '', src: 'buy', meal: 'dinner' }, { name: 'Spring Rolls', head: '', src: 'finish', meal: 'dinner' },
       { name: 'Pani Puri', head: CHAAT, meal: 'dinner' }, { name: 'Mineral Water', head: '', src: 'buy' }] }] };
 
+const pickTime = async (p, id, hhmm = '19:30') => { if (await p.inputValue('#' + id)) return; const [h, m] = hhmm.split(':').map(Number); await p.selectOption('#' + id + '-h', String(h % 12 || 12)); await p.selectOption('#' + id + '-m', String(m).padStart(2, '0')); await p.selectOption('#' + id + '-ap', h < 12 ? 'AM' : 'PM'); };
 (async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   const ctx = await browser.newContext({ ...devices['Pixel 5'], viewport: { width: 360, height: 780 } });
@@ -37,7 +38,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     await buyRow(key).locator('[data-action="buy-new"]').click(); await p.waitForSelector('#buy-modal.active');
     await p.selectOption('#buy-ven', ven); await p.fill('#buy-qty', String(qty)); await p.selectOption('#buy-unit', unit);
     if (est != null) await p.fill('#buy-est', String(est)); if (notes) await p.fill('#buy-notes', notes);
-    await p.locator('#btn-send-buy').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); } };
+    await pickTime(p, 'buy-time'); await p.locator('#btn-send-buy').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); } };
   const status = async (key, label) => { await buyRow(key).locator('[data-action="buy-status"]').click(); await p.waitForSelector('#ask-modal.active');
     await p.locator('#ask-actions button', { hasText: label }).click(); await p.waitForTimeout(500); };
   await p.goto(BASE_URL); await p.waitForSelector('#kpi .card');
@@ -59,7 +60,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
   await test('Gulab Jamun from a sweet supplier: quantity and unit, delivery from the meal, WhatsApp, no expense made (scenario 1)', async () => {
     await order('svc-lunch|gulab jamun', { ven: 'vs', qty: 300, unit: 'pcs', notes: 'Packed in boxes of 50' });
     const msg = await lastMessage();
-    assert.match(msg, /^Namaste Sample Sweet Mart! Purchase order for Sample Sourcing Wedding:\nItem: Gulab Jamun\nQuantity: 300 pieces\nDeliver: .*, 12:30 \(Lunch\)\nVenue: Sample Lawns\nNote: Packed in boxes of 50/);
+    assert.match(msg, /^Namaste Sample Sweet Mart! Purchase order for Sample Sourcing Wedding:\nItem: Gulab Jamun\nQuantity: 300 pieces\nDate: .* \(Lunch\)\nDeliver by: 12:30 PM\nVenue: Sample Lawns\nNote: Packed in boxes of 50/);
     const pu = (await ev()).purchases[0];
     assert.deepEqual([pu.item, pu.src, pu.svc, pu.qty, pu.unit, pu.time, pu.status, pu.basis], ['Gulab Jamun', 'buy', 'svc-lunch', 300, 'pcs', '12:30', 'opened', { item: 'Gulab Jamun', src: 'buy', meal: 'lunch' }]);
     assert.equal((await dump()).expenses.length, 0, 'preparing or sending makes no expense');
@@ -91,7 +92,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     assert.equal((await ev()).purchases[0].status, 'sent');
     await openEvent(); await status('svc-lunch|gulab jamun', 'Edit / send again');
     await p.waitForSelector('#buy-modal.active'); assert.equal(await p.inputValue('#buy-qty'), '300');
-    await p.fill('#buy-qty', '320'); await p.locator('#btn-send-buy').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
+    await p.fill('#buy-qty', '320'); await pickTime(p, 'buy-time'); await p.locator('#btn-send-buy').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
     const pu = (await ev()).purchases[0];
     assert.deepEqual([pu.qty, pu.status, pu.messages.length, pu.messages[0].status], [320, 'opened', 2, 'sent']);
     assert.match(pu.messages[1].text, /Quantity: 320 pieces/);

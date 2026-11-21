@@ -1,5 +1,6 @@
 const BASE_URL = process.env.TEST_BASE_URL; if (!BASE_URL || !/^http:\/\/127\.0\.0\.1:\d+$/.test(BASE_URL)) throw new Error('Use npm test to run against the isolated local test server.');
 const {chromium}=require('playwright');const fs=require('fs');const assert=require('assert/strict');
+const pickTime = async (p, id, hhmm = '19:30') => { if (await p.inputValue('#' + id)) return; const [h, m] = hhmm.split(':').map(Number); await p.selectOption('#' + id + '-h', String(h % 12 || 12)); await p.selectOption('#' + id + '-m', String(m).padStart(2, '0')); await p.selectOption('#' + id + '-ap', h < 12 ? 'AM' : 'PM'); };
 (async()=>{const browser=await chromium.launch({channel:'msedge',headless:true});const c=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,timezoneId:'Asia/Kolkata'});const p=await c.newPage();p.setDefaultTimeout(10000);const errors=[];p.on('pageerror',e=>errors.push(e.message));const results=[];const test=async(name,fn)=>{try{const detail=await fn();results.push({name,pass:true,detail})}catch(e){results.push({name,pass:false,error:e.stack})}fs.writeFileSync('test-artifacts/repair-test-results.json',JSON.stringify(results,null,2));console.log(name,results.at(-1).pass?'PASS':'FAIL');};await p.goto(BASE_URL);await p.waitForSelector('#kpi .card');
 const ev={id:'e',name:'Wedding',date:'2026-10-25',venue:'Pune',billing:10000,photoIds:[]};const empty=()=>({version:'ffv2',events:[],expenses:[],vendors:[],cPays:[],vPays:[],photos:[]});
 const db=(fn,arg)=>p.evaluate(async({fn,arg})=>new Function('d','arg','return ('+fn+')(d,arg)')(await import('./db.js'),arg),{fn:fn.toString(),arg});
@@ -207,8 +208,8 @@ await test('event menu becomes counter orders sent on WhatsApp, tracked to deliv
  // Order the chaat counter: vendor and plates filled, WhatsApp message written
  await p.locator('[data-action="order-new"][data-id^="Chaat"]').click();await p.waitForSelector('#ord-modal.active');
  assert.equal(await p.locator('#ord-ven').inputValue(),'rajiv');assert.equal(await p.locator('#ord-plates').inputValue(),'300');
- await p.locator('#ord-time').fill('19:00');await p.locator('#btn-send-ord').click(); await p.waitForTimeout(300); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
- const url=decodeURIComponent((await p.evaluate(()=>window.__opened))[0]);assert.match(url,/^https:\/\/wa\.me\/919876543210\?text=Namaste Rajiv Chaat! Order for Wedding:[\s\S]*19:00[\s\S]*Venue: Lawn[\s\S]*Chaat for 300 plates[\s\S]*Items: Pani Puri, Sev Puri/);
+ await p.evaluate(() => { document.getElementById('ord-time').value = ''; }); await pickTime(p, 'ord-time', '19:00');await pickTime(p, 'ord-time'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(300); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
+ const url=decodeURIComponent((await p.evaluate(()=>window.__opened))[0]);assert.match(url,/^https:\/\/wa\.me\/919876543210\?text=Namaste Rajiv Chaat! Order for Wedding:\nCounter: Chaat\nItems: Pani Puri, Sev Puri\nQuantity: 300 plates\nDate: [^\n]*\nReady by: 7:00 PM\nVenue: Lawn/);
  assert.match(await p.locator('#menu-orders').innerText(),/WhatsApp opened\s*· 300/,'opening WhatsApp is not marked as sent (v4.4.1)');assert.match(await p.locator('#menu-orders').innerText(),/Dessert Counter\n/,'no guessed vendor for an unknown counter');
  // Home shows tomorrow's delivery
  await p.locator('#n-home').click();assert.match(await p.locator('#deliveries').innerText(),/Tomorrow 19:00 · Rajiv Chaat[\s\S]*Chaat · 300 plates/);
@@ -219,7 +220,7 @@ await test('event menu becomes counter orders sent on WhatsApp, tracked to deliv
  await p.locator('#exp-amt').fill('27000');await p.locator('#btn-save-exp').click();await p.waitForTimeout(300);
  assert.equal((await db(async d=>d.getOne('events','e'))).orders[0].status,'delivered');
  // Murugan has no phone: the order is saved and the app says why WhatsApp did not open
- await p.locator('[data-action="order-new"][data-id^="Dosa"]').click();await p.waitForSelector('#ord-modal.active');await p.locator('#btn-send-ord').click(); await p.waitForTimeout(300); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
+ await p.locator('[data-action="order-new"][data-id^="Dosa"]').click();await p.waitForSelector('#ord-modal.active');await pickTime(p, 'ord-time'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(300); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
  assert.match(await p.locator('#toast').innerText(),/no phone number/);assert.equal((await p.evaluate(()=>window.__opened)).length,1);
  assert.equal((await db(async d=>d.getOne('events','e'))).orders.find(o=>/^Dosa/.test(o.head)).status,'prepared','saved but not sent: no phone');
 });
@@ -240,8 +241,8 @@ await test('v3.3.1: new caterer on the go, outsourced menu, expenses by event, r
  await p.locator('#menu-text').fill('Pani Puri\nMasala Dosa\nDal Makhani');await p.locator('#btn-save-menu').click();await p.waitForSelector('#menu-orders');
  const card=await p.locator('#menu-orders').innerText();assert.match(card,/Whole event · Kaka Caterers[\s\S]*Pani Puri, Masala Dosa, Dal Makhani/);assert.equal(await p.locator('[data-action="dish-assign"]').count(),0);assert.equal(await p.locator('[data-action="order-new"]').count(),1);
  await p.locator('[data-action="order-new"]').click();await p.waitForSelector('#ord-modal.active');assert.equal(await p.locator('#ord-ven').inputValue(),'kaka');assert.equal(await p.locator('#ord-plates').inputValue(),'80');
- await p.locator('#btn-send-ord').click(); await p.waitForTimeout(300); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
- assert.match(decodeURIComponent((await p.evaluate(()=>window.__opened))[0]),/Full event catering for 80 guests[\s\S]*Menu: Pani Puri, Masala Dosa, Dal Makhani/);
+ await pickTime(p, 'ord-time'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(300); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
+ assert.match(decodeURIComponent((await p.evaluate(()=>window.__opened))[0]),/Order: Full event catering\nMenu: Pani Puri, Masala Dosa, Dal Makhani\nQuantity: 80 guests/);
  await p.locator('[data-action="order-status"]').click();await p.locator('#ask-actions button',{hasText:'Delivered'}).click();await p.waitForTimeout(300);
  assert.match(await p.locator('#toast').innerText(),/already recorded/);assert.equal(await p.locator('#exp-modal.active').count(),0,'charge not counted twice');
  // 4. expenses of one event, and Add goes to that event
