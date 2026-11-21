@@ -1050,7 +1050,8 @@ export function menuCostPerPlate(menuId, events, expenses, excludeId = '') {
 export function deliveredWithoutBill(ev, expenses) {
   if (ev.outsourced) return [];
   const live = expenses.filter(x => !x.draft);
-  const linked = new Set(live.flatMap(x => [x.order, x.purchase].filter(Boolean)));
+  // An order's own price (fromOrder) is an estimate, not its bill (audit of #102, F-01)
+  const linked = new Set(live.flatMap(x => [x.fromOrder ? null : x.order, x.purchase].filter(Boolean)));
   const spare = new Map();
   for (const x of live) if (x.evId === ev.id && x.venId && !x.order && !x.purchase) spare.set(x.venId, (spare.get(x.venId) || 0) + 1);
   const items = [...(ev.orders || []).map(o => ({ ...o, kind: 'order' })), ...(ev.purchases || []).map(p => ({ ...p, kind: 'purchase' }))]

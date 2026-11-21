@@ -209,7 +209,7 @@ await test('event menu becomes counter orders sent on WhatsApp, tracked to deliv
  await p.locator('[data-action="order-new"][data-id^="Chaat"]').click();await p.waitForSelector('#ord-modal.active');
  assert.equal(await p.locator('#ord-ven').inputValue(),'rajiv');assert.equal(await p.locator('#ord-plates').inputValue(),'300');
  await p.evaluate(() => { document.getElementById('ord-time').value = ''; }); await pickTime(p, 'ord-time', '19:00');await pickTime(p, 'ord-time'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(300); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
- const url=decodeURIComponent((await p.evaluate(()=>window.__opened))[0]);assert.match(url,/^https:\/\/wa\.me\/919876543210\?text=Namaste Rajiv Chaat! Order for Wedding:\nCounter: Chaat\nItems: Pani Puri, Sev Puri\nQuantity: 300 plates\nDate: [^\n]*\nReady by: 7:00 PM\nVenue: Lawn/);
+ const url=decodeURIComponent((await p.evaluate(()=>window.__opened))[0]);assert.match(url,/^https:\/\/wa\.me\/919876543210\?text=Namaste Rajiv Chaat! New order:\nCounter: Chaat\nItems: Pani Puri, Sev Puri\nQuantity: 300 plates\nDate: [^\n]*\nReady by: 7:00 PM\nVenue: Lawn/);
  assert.match(await p.locator('#menu-orders').innerText(),/WhatsApp opened\s*· 300/,'opening WhatsApp is not marked as sent (v4.4.1)');assert.match(await p.locator('#menu-orders').innerText(),/Dessert Counter\n/,'no guessed vendor for an unknown counter');
  // Home shows tomorrow's delivery
  await p.locator('#n-home').click();assert.match(await p.locator('#deliveries').innerText(),/Tomorrow 19:00 · Rajiv Chaat[\s\S]*Chaat · 300 plates/);
@@ -317,9 +317,9 @@ await test('labour sheet matches real contractor bills (shifts, fare, mukadam fe
  assert.match(await p.locator('#labour-card').innerText(),/Ice cream cutting[\s\S]*Total · 16 shifts[\s\S]*₹11,364/);
  // Second bill: 13 boys evening × 700 + vehicle 1,000 = 10,100; copy the last sheet then adjust
  await p.locator('#n-events').click();await p.locator('#ev-list [data-action="evdetail"]',{hasText:'Second'}).click();await p.waitForSelector('[data-action="lab-edit"]');await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');
- await row(0).locator('[data-k="role"]').selectOption(boys);assert.equal(await row(0).locator('[data-k="rate"]').inputValue(),'650','Boys rate remembered from the last bill');
+ await row(0).locator('[data-k="role"]').selectOption(boys);assert.equal(await row(0).locator('[data-k="rate"]').inputValue(),'','no rate filled in: it comes with the bill (owner, 4.31.24)');assert.equal(await row(0).locator('[data-k="rate"]').getAttribute('placeholder'),'Last time ₹650','last rate shown as a hint');
  await row(0).locator('[data-k="c-e"]').fill('13');await row(0).locator('[data-k="rate"]').fill('700');
- await p.locator('#btn-lab-extra').click();assert.equal(await row(1).locator('[data-k="rate"]').inputValue(),'24','last fare rate remembered');await row(1).locator('[data-k="count"]').fill('1');await row(1).locator('[data-k="rate"]').fill('1000');
+ await p.locator('#btn-lab-extra').click();assert.equal(await row(1).locator('[data-k="rate"]').getAttribute('placeholder'),'Last time ₹24','last fare shown as a hint');await row(1).locator('[data-k="count"]').fill('1');await row(1).locator('[data-k="rate"]').fill('1000');
  assert.equal(await p.locator('#lab-total').innerText(),'₹10,100');await p.locator('#btn-save-lab').click();await p.waitForTimeout(400);
  // The mukadam's page shows what you owe across both events (to check against his running bill)
  await p.locator('#n-vendors').click();await p.locator('#ven-list [data-action="vendetail"]',{hasText:'Mukadam'}).click();await p.waitForSelector('#tab-vendetail .detail-name');

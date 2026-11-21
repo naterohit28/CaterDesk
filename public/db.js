@@ -530,6 +530,7 @@ export async function prepareImport(payload) {
       if (name === 'vendors' && ((row.gstin !== undefined && !gstinValid(row.gstin)) || (row.legalName !== undefined && (typeof row.legalName !== 'string' || row.legalName.length > 200))
         || (row.kind === 'person' && (row.gstin !== undefined || row.legalName !== undefined)))) throw new Error('Invalid vendor GSTIN');
       if (name === 'vendors' && row.oneTime !== undefined && row.oneTime !== true) throw new Error('Invalid one-time vendor flag');   // 4.31.22
+      if (name === 'expenses' && row.fromOrder !== undefined && (row.fromOrder !== true || !row.order)) throw new Error('Invalid order price');   // 4.31.24
       if (name === 'events') { amount(row.billing, 'billing'); if (row.budget !== undefined) amount(row.budget, 'budget'); }
       if (['expenses', 'cPays', 'vPays'].includes(name)) amount(row.amt ?? (row.draft ? 0 : undefined), name);
       if (['events', 'expenses', 'cPays', 'vPays'].includes(name) && !row.draft && !validDate(row.date)) throw new Error('Invalid date in ' + name);
@@ -591,7 +592,8 @@ export async function prepareImport(payload) {
       // An order's meal, the approved menu it follows and the guests it was planned on (4.26.0)
       if (row.orders?.some(o => o && ((o.svc !== undefined && (typeof o.svc !== 'string' || !o.svc || o.svc.length > 40)) || (o.menuVersion !== undefined && (typeof o.menuVersion !== 'string' || o.menuVersion.length > 40))
         || (o.basis !== undefined && (!o.basis || !Number.isSafeInteger(o.basis.guests) || o.basis.guests < 0 || !['meal', 'event'].includes(o.basis.from)))
-        || (o.reminded !== undefined && (!Array.isArray(o.reminded) || o.reminded.length > 20 || o.reminded.some(t => typeof t !== 'string' || t.length > 40)))))) throw new Error('Invalid order');
+        || (o.reminded !== undefined && (!Array.isArray(o.reminded) || o.reminded.length > 20 || o.reminded.some(t => typeof t !== 'string' || t.length > 40)))
+        || (o.price !== undefined && !(typeof o.price === 'number' && Number.isFinite(o.price) && o.price > 0 && o.price < 1e9))))) throw new Error('Invalid order');   // price: 4.31.24
       if (row.orders?.some(o => o?.messages !== undefined && (!Array.isArray(o.messages) || o.messages.some(m => !m || typeof m.text !== 'string' || !['prepared', 'opened', 'sent', 'confirmed'].includes(m.status))))) throw new Error('Invalid order messages');
       // Purchases of bought items (4.28.0)
       if (row.purchases !== undefined && (!Array.isArray(row.purchases) || row.purchases.length > 500 || new Set(row.purchases.map(p => p?.id)).size !== row.purchases.length
@@ -618,7 +620,8 @@ export async function prepareImport(payload) {
       if (row.counterPlan !== undefined && (typeof row.counterPlan !== 'object' || row.counterPlan === null || Array.isArray(row.counterPlan) || Object.values(row.counterPlan).some(c => !c || typeof c !== 'object'
         || (c.takeUp !== undefined && !(typeof c.takeUp === 'number' && c.takeUp > 0 && c.takeUp <= 100)) || (c.minimum !== undefined && !(Number.isSafeInteger(c.minimum) && c.minimum >= 0))))) throw new Error('Invalid counter plan');
       if (row.mealPlan !== undefined && (typeof row.mealPlan !== 'object' || row.mealPlan === null || Array.isArray(row.mealPlan) || Object.entries(row.mealPlan).some(([m, v]) => (v?.menu !== undefined && (typeof v.menu !== 'string' || v.menu.length > 64)) || !['breakfast', 'lunch', 'hightea', 'dinner', 'latenight'].includes(m) || !v || !Number.isSafeInteger(v.guests) || v.guests < 0 || (amount(v.rate, 'meal rate'), false)))) throw new Error('Invalid meal pricing');
-      if (row.dishes?.some(d => !d || typeof d.name !== 'string' || (d.meal !== undefined && !['breakfast', 'lunch', 'hightea', 'dinner', 'latenight'].includes(d.meal)))) throw new Error('Invalid menu');
+      if (row.dishes?.some(d => !d || typeof d.name !== 'string' || (d.meal !== undefined && !['breakfast', 'lunch', 'hightea', 'dinner', 'latenight'].includes(d.meal))
+        || (d.part !== undefined && d.part !== true) || (d.at !== undefined && d.at !== 'venue'))) throw new Error('Invalid menu');   // part, at: 4.31.24
       if (row.menuVersions !== undefined && (!Array.isArray(row.menuVersions) || row.menuVersions.some(v => !v || !Array.isArray(v.dishes)))) throw new Error('Invalid menu history');
       /* Meal-by-meal menus (4.22.0). Dish details: one food type, diet marks (Jain, no onion-garlic and vegan never on
          an egg or non-veg dish), course (usual or your own), the service it belongs to. Services: unique ids, a meal (or none). */

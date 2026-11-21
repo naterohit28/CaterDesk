@@ -603,6 +603,8 @@
       <div class="field"><label for="ord-time-t">Ready by – कधी तयार <span class="req">*</span></label><input type="hidden" id="ord-time"><div class="time-pick" data-time="ord-time"></div></div>
     </div>
     <div class="field"><label for="ord-date">Date – दिनांक</label><input type="date" id="ord-date"></div>
+    <div class="field"><label for="ord-price">Price of this order (optional) – किंमत</label><input type="number" id="ord-price" min="0" step="any" inputmode="decimal" placeholder="e.g. 12000">
+      <div class="meta" data-nl>With a price, it is saved now as an expense to pay this vendor. Without one, record the bill when it comes.</div></div>
     <div class="field"><label for="ord-notes">Notes – नोंदी</label><input type="text" id="ord-notes" placeholder="e.g. Jain option, 2 staff, setup by 6 pm"></div>
     <div class="s-foot"><div class="btn-row">
       <button type="button" class="btn btn-ghost danger" id="btn-cancel-ord" hidden>Cancel order – रद्द</button>
