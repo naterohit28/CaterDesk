@@ -42,11 +42,11 @@ const setTime = async (p, id, text, ap) => { await p.fill(`#${id}-t`, text); if 
     const v = () => p.inputValue('#ord-time');
     await setTime(p, 'ord-time', '7:30', ''); assert.equal(await v(), '', '7:30 alone is not a time yet');
     await p.locator('#ord-time-pm').click(); assert.equal(await v(), '19:30');
-    for (const [typed, want] of [['7.30', '19:30'], ['730', '19:30'], ['7', '19:00'], ['12', '12:00'], ['7:5', '19:50']]) { await p.fill('#ord-time-t', typed); assert.equal(await v(), want, typed); }
+    for (const [typed, want] of [['7.30', '19:30'], ['730', '19:30'], ['7', '19:00'], ['12', '12:00'], ['7:05', '19:05'], ['7.05', '19:05'], ['705', '19:05']]) { await p.fill('#ord-time-t', typed); assert.equal(await v(), want, typed); }
     await p.locator('#ord-time-am').click(); await p.fill('#ord-time-t', '12:15'); assert.equal(await v(), '00:15', '12:15 AM is just after midnight');
     await p.fill('#ord-time-t', '19:30'); assert.equal(await v(), '19:30');
     assert.equal(await p.locator('#ord-time-pm').getAttribute('aria-pressed'), 'true', 'a 24-hour time sets PM');
-    for (const bad of ['25:00', '7:75', 'abc']) { await p.fill('#ord-time-t', bad); assert.equal(await v(), '', bad); }
+    for (const bad of ['7:5', '7.5', '25:00', '7:75', 'abc']) { await p.fill('#ord-time-t', bad); assert.equal(await v(), '', bad); }
     await p.locator('#ord-modal [data-action="close-modal"]').first().click().catch(() => {});
     if (await p.locator('#ask-modal.active').count()) await p.locator('#ask-actions button').first().click();
   });
@@ -56,7 +56,7 @@ const setTime = async (p, id, text, ap) => { await p.fill(`#${id}-t`, text); if 
     await p.locator('[data-action="order-new"][data-id^="Dosa"]').click(); await p.waitForSelector('#ord-modal.active');
     await p.selectOption('#ord-ven', 'vd'); await p.fill('#ord-plates', '150');
     await setTime(p, 'ord-time', '', ''); await p.locator('#btn-save-ord').click(); await p.waitForTimeout(300);
-    assert.match(await p.locator('#ord-modal').innerText(), /Ready by: type the time and tap AM or PM/);
+    assert.match(await p.locator('#ord-modal').innerText(), /Ready by: type a time like 7:30 or 7:05 and tap AM or PM/);
     assert.equal(((await ev()).orders || []).filter(o => o.status !== 'cancelled').length, 0, 'nothing saved without a time');
     await setTime(p, 'ord-time', '7:30', 'PM'); assert.equal(await p.inputValue('#ord-time'), '19:30');
     await p.locator('#btn-send-ord').click(); await p.waitForSelector('#ask-modal.active');
@@ -83,7 +83,7 @@ const setTime = async (p, id, text, ap) => { await p.fill(`#${id}-t`, text); if 
     await p.locator('[data-action="buy-new"]').first().click(); await p.waitForSelector('#buy-modal.active');
     await p.selectOption('#buy-ven', 'vs'); await p.fill('#buy-qty', '300'); await p.selectOption('#buy-unit', 'pcs');
     await p.locator('#btn-send-buy').click(); await p.waitForTimeout(300);
-    assert.match(await p.locator('#buy-modal').innerText(), /Deliver by: type the time and tap AM or PM/);
+    assert.match(await p.locator('#buy-modal').innerText(), /Deliver by: type a time like 7:30 or 7:05 and tap AM or PM/);
     await setTime(p, 'buy-time', '6', 'PM'); await p.locator('#btn-send-buy').click(); await p.waitForSelector('#ask-modal.active');
     await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(300);
     const text = decodeURIComponent((await p.evaluate(() => window.__opened[0])).split('?text=')[1]);

@@ -1797,7 +1797,7 @@ async function sendBuy() {
   if (!(qty > 0) || Math.round(qty * 1000) !== qty * 1000) errs['buy-qty'] = 'Enter the quantity – संख्या लिहा';
   if (!UNIT_NAME[unit]) errs['buy-unit'] = 'Choose a unit – एकक निवडा';
   if (!date) errs['buy-date'] = 'Delivery date – दिनांक';
-  if (!/^\d{2}:\d{2}$/.test(qv('buy-time'))) errs['buy-time-t'] = 'Deliver by: type the time and tap AM or PM – वेळ लिहा';
+  if (!/^\d{2}:\d{2}$/.test(qv('buy-time'))) errs['buy-time-t'] = 'Deliver by: type a time like 7:30 or 7:05 and tap AM or PM – वेळ लिहा';
   if (est !== '' && !(Number(est) >= 0 && Math.round(Number(est) * 100) === Number(est) * 100)) errs['buy-est'] = 'An amount in ₹ (up to 2 decimals) – रक्कम';
   if (Object.keys(errs).length) { showFieldErrors(errs); return; }
   const ven = D.vendors.find(v => v.id === venId), phoneOk = !!phoneDigits(ven?.phone);
@@ -2060,11 +2060,12 @@ function fmtTime(t) {
 /* Time: one box to type the time in ("7:30", "7.30", "730" or just "7") and an AM / PM switch (owner, 4.31.22: no
    clock dial, no hour/minute lists). A 24-hour time ("19:30") is understood too and sets the switch. The hidden
    input keeps its id and HH:MM value, so every place that reads or sets it works as before. Nothing is guessed:
-   without AM or PM (for 1–12) the time stays empty and the form asks for it. */
+   without AM or PM (for 1–12) the time stays empty and the form asks for it, and minutes after ":" or "." need two
+   digits — "7:5" could mean 7:05 or 7:50, so it is not taken (independent review of 4.31.22). */
 function splitTime(text) {
   const t = String(text || '').trim().replace(/\s+/g, '');
-  const sep = /^(\d{1,2})[:.](\d{1,2})$/.exec(t);
-  if (sep) return { h: Number(sep[1]), m: Number(sep[2]) * (sep[2].length === 1 ? 10 : 1) };
+  const sep = /^(\d{1,2})[:.](\d{2})$/.exec(t);
+  if (sep) return { h: Number(sep[1]), m: Number(sep[2]) };
   if (/^\d{1,2}$/.test(t)) return { h: Number(t), m: 0 };
   if (/^\d{3,4}$/.test(t)) return { h: Number(t.slice(0, -2)), m: Number(t.slice(-2)) };
   return null;
@@ -2134,7 +2135,7 @@ async function sendOrder(mode = 'send') {
   const platesTxt = String(qv('ord-plates')).trim(), plates = Number(platesTxt), dd = qv('ord-date');
   if (!platesTxt || !Number.isInteger(plates) || plates < 1) { showFieldErrors({ 'ord-plates': 'Plates: a whole number, 1 or more – ताटांची संख्या' }); return; }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dd) || localDay(new Date(dd + 'T00:00:00')) !== dd) { showFieldErrors({ 'ord-date': 'Choose the delivery date – दिनांक निवडा' }); return; }
-  if (!/^\d{2}:\d{2}$/.test(qv('ord-time'))) { showFieldErrors({ 'ord-time-t': 'Ready by: type the time and tap AM or PM – वेळ लिहा' }); return; }
+  if (!/^\d{2}:\d{2}$/.test(qv('ord-time'))) { showFieldErrors({ 'ord-time-t': 'Ready by: type a time like 7:30 or 7:05 and tap AM or PM – वेळ लिहा' }); return; }
   const below = orderBelowMinimum(ev);
   if (below && !qv('ord-notes')) { showFieldErrors({ 'ord-notes': `Below the vendor minimum of ${minimum}: add a note why – कारण लिहा` }); return; }
   const id = qv('ord-id') || uid('OR');
