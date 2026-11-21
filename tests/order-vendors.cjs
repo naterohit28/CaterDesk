@@ -47,7 +47,7 @@ const pickTime = async (p, id) => { await p.fill(`#${id}-t`, '7:30'); await p.lo
   });
 
   await test('+ One-time vendor: marked as such, picked, and the order is saved with it', async () => {
-    await p.selectOption('#ord-ven', '__once'); await p.waitForSelector('#ven-modal.active');
+    await p.selectOption('#ord-ven', '__newonce'); await p.waitForSelector('#ven-modal.active');
     assert.match(await p.locator('#ven-mtitle').innerText(), /One-time vendor/);
     assert.match(await p.locator('#ven-onetime-note').innerText(), /For this order only/);
     await p.fill('#ven-name', 'Sample Roadside Dosa Wala'); await p.fill('#ven-phone', '9000000012'); await p.locator('#btn-save-ven').click(); await p.waitForTimeout(600);

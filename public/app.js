@@ -1620,15 +1620,15 @@ function orderSteps(o) {
 
 // Usual vendor for a counter: listed speciality or who supplied it before. No guess beyond that.
 // The last two choices in an order's or purchase's vendor box (owner, 4.31.22)
-const NEW_VENDOR_OPTS = [{ v: '__new', l: '+ New vendor – नवीन विक्रेता' }, { v: '__once', l: '+ One-time vendor (just this order) – एकदाच' }];
+const NEW_VENDOR_OPTS = [{ v: '__new', l: '+ New vendor – नवीन विक्रेता' }, { v: '__newonce', l: '+ One-time vendor (just this order) – एकदाच' }];
 // "+ New vendor" / "+ One-time vendor" in an order or purchase: the vendor sheet opens over it, and on saving the new
 // vendor is picked in the box it came from. A one-time vendor is a normal vendor record (its bills, payments and dues
 // add up like any other) marked oneTime: it is labelled as such and never suggested for other orders.
 function vendorBoxChange(which, e) {
   const v = e.target.value;
-  if (v !== '__new' && v !== '__once') { e.target.dataset.prev = v; return false; }
+  if (v !== '__new' && v !== '__newonce') { e.target.dataset.prev = v; return false; }
   e.target.value = e.target.dataset.prev || '';
-  pickVendorForOrder = which; newVendorOneTime = v === '__once';
+  pickVendorForOrder = which; newVendorOneTime = v === '__newonce';
   openVenModal(null, 'vendor');
   return true;
 }
