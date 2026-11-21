@@ -38,7 +38,16 @@ const filesAt = ref => { const m = new Map();
       await p.waitForFunction(() => document.getElementById('app-build').textContent !== 'v?'); return p; };   // the label is filled in when the app starts
     // The version label, once the app has started and filled it in (it reads "v?" until then)
     const build = async p => { await p.waitForFunction(() => document.getElementById('app-build').textContent !== 'v?'); return p.locator('#app-build').textContent(); };
-    const marker = p => p.evaluate(async () => (await (await import('./db.js')).getAll('events')).map(e => e.name).sort().join('|'));
+    // The records themselves, money included (independent release audit of #100): each event's name, bill and meals,
+    // each client payment's amount, date and mode, each expense's amount, item, payment state and mode
+    const marker = p => p.evaluate(async () => { const db = await import('./db.js');
+      const [events, cPays, expenses] = await Promise.all(['events', 'cPays', 'expenses'].map(s => db.getAll(s)));
+      return JSON.stringify({
+        events: events.map(e => [e.id, e.name, e.billing, e.guests, JSON.stringify(e.mealPlan || null)]).sort(),
+        cPays: cPays.map(c => [c.id, c.evId, c.amt, c.date, c.mode]).sort(),
+        expenses: expenses.map(x => [x.id, x.evId, x.amt, x.head, x.pay, x.mode || '']).sort() }); });
+    const MONEY = JSON.stringify({ events: [['e1', 'Sample Update Wedding', 160000, 200, JSON.stringify({ dinner: { guests: 200, rate: 800 } })]],
+      cPays: [['p1', 'e1', 35000, '2026-11-01', 'UPI']], expenses: [['x1', 'e1', 4200, 'Vegetables – भाजी', 'paid', 'UPI']] });
     // The running worker's release (the service worker answers GET_RELEASE)
     const swRelease = p => p.evaluate(() => navigator.serviceWorker.getRegistration().then(r => !r?.active ? null : new Promise(res => {
       const c = new MessageChannel(); const t = setTimeout(() => res(null), 500); c.port1.onmessage = e => { clearTimeout(t); res(e.data.release); }; r.active.postMessage({ type: 'GET_RELEASE' }, [c.port2]); })));
@@ -58,6 +67,7 @@ const filesAt = ref => { const m = new Map();
       const ctx = await browser.newContext(); await ctx.route('https://fonts.**', r => r.abort());
       const p = await install(ctx);
       const before = await marker(p);
+      assert.equal(before, MONEY, 'the installed release holds the exact bill, payment and expense');
       await p.locator('[data-action="quick"][data-id="event"]').click(); await p.locator('#ev-name').fill('Sample unsaved event');
       serveNew = true;
       await p.evaluate(async () => (await navigator.serviceWorker.getRegistration()).update());
@@ -84,6 +94,7 @@ const filesAt = ref => { const m = new Map();
       const ctx = await browser.newContext(); await ctx.route('https://fonts.**', r => r.abort());
       const p = await install(ctx);
       const before = await marker(p);
+      assert.equal(before, MONEY, 'the installed release holds the exact bill, payment and expense');
       serveNew = true;
       await ctx.setOffline(true);
       await p.reload({ waitUntil: 'domcontentloaded' }); await p.waitForSelector('#kpi .card');

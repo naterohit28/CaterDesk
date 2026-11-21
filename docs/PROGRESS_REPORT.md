@@ -1,5 +1,7 @@
 # CaterDesk progress report: v4.0.1 → v4.31.13
 
+> **Historical report, superseded.** This describes the project as it stood at v4.31.13 (19 November 2026). The current release and its status are in the [README](../README.md) (v5.0.0, Stable — Maintenance Mode) and its release history.
+
 **As of 19 November 2026.** The live web app is **v4.31.13** at expense-calculator-kohl.vercel.app. Releases go live
 one at a time after the owner approves each one. The installed Android app (wrapper 3.0.0, versionCode 9) loads the live web app, so it always runs
 whatever version is live.
