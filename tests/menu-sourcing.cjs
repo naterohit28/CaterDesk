@@ -60,7 +60,7 @@ const pickTime = async (p, id, hhmm = '19:30') => { if (await p.inputValue('#' +
   await test('Gulab Jamun from a sweet supplier: quantity and unit, delivery from the meal, WhatsApp, no expense made (scenario 1)', async () => {
     await order('svc-lunch|gulab jamun', { ven: 'vs', qty: 300, unit: 'pcs', notes: 'Packed in boxes of 50' });
     const msg = await lastMessage();
-    assert.match(msg, /^Namaste Sample Sweet Mart! Purchase order for Sample Sourcing Wedding:\nItem: Gulab Jamun\nQuantity: 300 pieces\nDate: .* \(Lunch\)\nDeliver by: 12:30 PM\nVenue: Sample Lawns\nNote: Packed in boxes of 50/);
+    assert.match(msg, /^Namaste Sample Sweet Mart! Purchase order:\nItem: Gulab Jamun\nQuantity: 300 pieces\nDate: .* \(Lunch\)\nDeliver by: 12:30 PM\nVenue: Sample Lawns\nNote: Packed in boxes of 50/);
     const pu = (await ev()).purchases[0];
     assert.deepEqual([pu.item, pu.src, pu.svc, pu.qty, pu.unit, pu.time, pu.status, pu.basis], ['Gulab Jamun', 'buy', 'svc-lunch', 300, 'pcs', '12:30', 'opened', { item: 'Gulab Jamun', src: 'buy', meal: 'lunch' }]);
     assert.equal((await dump()).expenses.length, 0, 'preparing or sending makes no expense');
@@ -106,7 +106,7 @@ const pickTime = async (p, id, hhmm = '19:30') => { if (await p.inputValue('#' +
     await p.locator('.svc-card[data-meal-menu="dinner"] [data-action="svc-edit"]').click(); await p.waitForSelector('#svc-modal.active');
     const sel = p.locator('#svc-dishes .svc-dish').filter({ has: p.locator('input[data-k="name"][value="Ice Cream"]') }).locator('[data-k="head"]');
     assert.equal(await sel.inputValue(), '@buy');
-    assert.deepEqual((await sel.locator('option').allInnerTexts()).slice(0, 3), ['Our kitchen', 'Buy ready-made', 'Buy & finish']);
+    assert.deepEqual((await sel.locator('option').allInnerTexts()).slice(0, 4), ['Our kitchen', 'We cook it at the venue', 'Buy ready-made', 'Buy & finish']);
     await sel.selectOption(''); await p.locator('#btn-save-svc').click(); await p.waitForTimeout(600);
     await openEvent();
     assert.match(await p.locator('#menu-approval').innerText(), /Approved v1/, 'sourcing is internal: no new client approval');

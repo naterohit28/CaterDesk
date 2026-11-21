@@ -55,7 +55,7 @@ const pickTime = async (p, id, hhmm = '19:30') => { if (await p.inputValue('#' +
     assert.match(await p.locator('#ord-plan').innerText(), /Based on 300 dinner guests; change it if needed/);
     await p.selectOption('#ord-ven', 'v1'); await p.fill('#ord-plates', '280'); await pickTime(p, 'ord-time'); await p.locator('#btn-send-ord').click(); await p.waitForTimeout(500); if (await p.locator('#ask-modal.active #ask-actions .btn-wa').count()) { await p.locator('#ask-modal.active #ask-actions .btn-wa').click(); await p.waitForTimeout(400); }
     const msg = await lastMessage();
-    assert.match(msg, /^Namaste Sample Chaat Stall! Order for Sample Order Wedding:\nCounter: Chaat\nItems: Sev Puri\nQuantity: 280 plates\nDate: .* \(Dinner\)\nReady by: 8:00 PM\nVenue: Sample Lawns\nGuests: 300\nAt the venue: Cooking at venue: Gas allowed · Parking & loading: Restricted\nMenu: version 1, approved by the client\n/);
+    assert.match(msg, /^Namaste Sample Chaat Stall! New order:\nCounter: Chaat\nItems: Sev Puri\nQuantity: 280 plates\nDate: .* \(Dinner\)\nReady by: 8:00 PM\nVenue: Sample Lawns\nAt the venue: Cooking at venue: Gas allowed · Parking & loading: Restricted\n/); assert.doesNotMatch(msg, /Sample Order Wedding|Guests:|approved by the client/, 'no client or event name, guest count or approval (owner, 4.31.24)');
     assert.doesNotMatch(msg, /Pani Puri|Kitchen: /, 'lunch dishes and unrelated venue details left out');
     const o = (await ev()).orders.find(x => x.svc === 'svc-dinner');
     assert.deepEqual([o.head, o.plates, o.status, o.menuVersion, o.basis], [CHAAT, 280, 'opened', (await ev()).menuApproved[0].id, { guests: 300, from: 'meal' }]);
@@ -127,14 +127,14 @@ const pickTime = async (p, id, hhmm = '19:30') => { if (await p.inputValue('#' +
       await p.locator('#ask-actions button', { hasText: 'Edit / send again' }).click(); return send(); };
     // 1. Unchanged since approval: the order states version 1
     await openE9(); await p.locator(`#menu-orders [data-counter="${TANDOOR}"] [data-action="order-new"]`).click();
-    assert.match(await send(), /Menu: version 1, approved by the client/); assert.equal((await o9()).menuVersion, 'MA1-e9');
+    assert.doesNotMatch(await send(), /approved by the client/);   // the vendor is not told about the client (owner, 4.31.24); the order still records the version assert.equal((await o9()).menuVersion, 'MA1-e9');
     // 2. Paneer Tikka becomes non-veg: the menu is no longer the approved one; a resend claims no approved version
     await edit("e.dishes.find(d => d.name === 'Paneer Tikka').type = 'nonveg';");
     assert.equal(await p.evaluate(async () => { const u = await import('./utils.js'), db = await import('./db.js'); return u.menuSinceApproved((await db.exportAllData()).events.find(e => e.id === 'e9')).count; }), 1);
     const m2 = await resend(); assert.doesNotMatch(m2, /Menu: version/); assert.equal((await o9()).menuVersion, undefined);
     // 3. Approved again as version 2: the next send states version 2
     await edit("e.menuApproved.push(u.approvedVersion(e, { by: 'verbal', who: 'Sample Client', id: 'MA2-e9' }));");
-    assert.match(await resend(), /Menu: version 2, approved by the client/); assert.equal((await o9()).menuVersion, 'MA2-e9');
+    assert.doesNotMatch(await resend(), /approved by the client/); assert.equal((await o9()).menuVersion, 'MA2-e9');
     // 4. A diet mark added to the vendor's dish (through the meal sheet) flags the confirmed order; nothing is sent
     await openE9(); await p.locator('#menu-orders [data-action="order-status"]').first().click(); await p.waitForSelector('#ask-modal.active');
     await p.locator('#ask-actions button', { hasText: 'Vendor confirmed' }).click(); await p.waitForTimeout(400);
