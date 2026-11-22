@@ -198,7 +198,8 @@ const pickTime = async (p, id, hhmm = '19:30') => { if (await p.inputValue('#' +
       dishes: [{ name: 'Pani Puri', head: CHAAT, meal: 'dinner' }, { name: 'Jeera Rice', head: '', meal: 'dinner' }] };
     await p.evaluate(async e => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest; d.events.push(e); await db.importAllData(d, 'replace'); }, E3);
     await p.reload(); await p.waitForSelector('#kpi .card'); await p.locator('#n-events:visible').click();
-    await p.locator('#ev-list [data-action="evdetail"]:visible', { hasText: 'Sample Single Dinner' }).first().click(); await p.waitForSelector('#tab-evdetail .detail-name');
+    // By id: an earlier test's event e9 has the same name (5.1.2 lists the nearer one first)
+    await p.locator('#ev-list [data-action="evdetail"][data-id="e3"]:visible').click(); await p.waitForSelector('#tab-evdetail .detail-name');
     await p.locator(`#menu-orders [data-counter="${CHAAT}"] [data-action="order-new"]`).click(); await p.waitForSelector('#ord-modal.active');
     assert.deepEqual([await p.inputValue('#ord-date'), await p.inputValue('#ord-time')], [day(31), '19:30']);
     await p.locator('#ord-modal [data-action="close-modal"]').first().click();
