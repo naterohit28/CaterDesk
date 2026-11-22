@@ -79,16 +79,41 @@ const pickTime = async (p, id, hhmm = '19:30') => { if (await p.inputValue('#' +
     assert.deepEqual(linkedOne.missing, ['OC']);
     assert.ok(linkedOne.blockers.includes('1 delivered order has no bill from that vendor yet'));
     assert.deepEqual(linkedBoth.missing, []);
-    assert.equal(legacyOne.missing.length, 1, 'one unlinked bill covers one delivered order, not both');
-    assert.deepEqual(legacyTwo.missing, []);
-    assert.deepEqual(mixed.missing, [], 'a linked bill for one and an unlinked bill for the other');
+    // 5.1.1 (F-COM-01): a bill linked to nothing is no longer taken as either order's bill; the owner links it
+    assert.deepEqual(legacyOne.missing, ['OD', 'OC'], 'an unlinked bill clears no order by itself');
+    assert.deepEqual(legacyTwo.missing, ['OD', 'OC']);
+    assert.deepEqual(mixed.missing, ['OC'], 'only the linked bill counts');
+    assert.deepEqual(legacyTwo.blockers.filter(b => /delivered/.test(b)), ['2 delivered orders need their bills linked: a bill from that vendor is on this event but not linked to it']);
   });
 
-  await test('unchanged: one delivered order with an older unlinked bill from its vendor is covered; outsourced events are never blocked', async () => {
+  await test('5.1.1: one delivered order and an older unlinked bill from its vendor: listed as a bill to link, not cleared; outsourced events are never blocked', async () => {
     const ev = { ...PAST, orders: [{ id: 'OD', head: 'Dosa – डोसा', venId: 'vd', plates: 150, status: 'delivered' }] };
     const [legacy, out] = await check([{ ev, expenses: [bill('x1')] }, { ev: { ...ev, outsourced: true }, expenses: [] }]);
-    assert.deepEqual(legacy.missing, []);
+    assert.deepEqual(legacy.missing, ['OD']);
+    assert.ok(legacy.blockers.includes('1 delivered order needs its bill linked: a bill from that vendor is on this event but not linked to it'), legacy.blockers.join(' | '));
     assert.deepEqual(out.missing, []);
+  });
+
+  // Independent due-diligence finding F-COM-01, both reproduced cases, on synthetic records
+  await test('F-COM-01 case A: an unrelated transport bill from the same vendor does not hide the missing dosa bill', async () => {
+    const ev = { ...PAST, orders: [{ id: 'OD', head: 'Dosa – डोसा', venId: 'vd', plates: 150, status: 'delivered' }] };
+    const transport = bill('xt', { cat: 'Transport', head: 'Tempo', amt: 500 });
+    const [r] = await check([{ ev, expenses: [transport] }]);
+    assert.deepEqual(r.missing, ['OD']);
+    assert.ok(r.blockers.some(b => /^1 delivered order needs its bill linked/.test(b)), 'reconciling stays blocked');
+  });
+
+  await test('F-COM-01 case B: one combined bill linked to both orders of its vendor clears both, and is counted once', async () => {
+    const ev = { ...PAST, orders: [{ id: 'OD', head: 'Dosa – डोसा', venId: 'vd', plates: 150, status: 'delivered' }, { id: 'OC', head: 'Chaat – चाट', venId: 'vd', plates: 120, status: 'delivered' }] };
+    const both = bill('x1', { amt: 18000, order: 'OD', alsoOrders: ['OC'] });
+    const [r] = await check([{ ev, expenses: [both] }]);
+    assert.deepEqual(r.missing, []);
+    assert.equal(r.blockers.filter(b => /delivered/.test(b)).length, 0);
+    const cost = await p.evaluate(async x => (await import('./utils.js')).calcEventExpenses('P1', [x]), both);
+    assert.equal(cost, 18000, 'the combined bill is one cost, not one per order');
+    // An order's price (an estimate) still never counts as its bill, even with an extra order on it
+    const [est] = await check([{ ev, expenses: [bill('x2', { order: 'OD', fromOrder: true })] }]);
+    assert.deepEqual(est.missing, ['OD', 'OC']);
   });
 
   await test('Books check counts delivered purchases without a bill too', async () => {

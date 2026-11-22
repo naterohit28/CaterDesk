@@ -4,7 +4,7 @@
 
 An offline-first app for catering events, expenses, vendor credit, client collections, menus and vendor orders. Business records stay in the device's browser storage; the hosted app also sends limited error diagnostics to its server.
 
-**Current source and hosted web build: v5.1.0.** Documentation checked on **22 November 2026**.
+**Current source and hosted web build: v5.1.1.** Documentation checked on **22 November 2026**.
 
 **Development status: Stable — Maintenance Mode.** v5.0.0 is the stable internal release (catering operations and financial management): the owner's full 25-check event test passed on their Android phone, the owner confirmed the installed app, and the money is checked against hand-worked figures. From here only these changes are made: defects, security, data integrity and backup/recovery, compatibility, and essential dependency updates. New features wait on the [deferred list](#deferred-improvements) and the owner's decision.
 
@@ -34,16 +34,16 @@ Four things carry version numbers, and they are **independent**: the **hosted we
 
 | Component | State (checked 20 November 2026 unless noted) | Meaning |
 | --- | --- | --- |
-| Source and hosted web app | **5.1.0** | Current UI, data/export version, service worker and error reporter |
-| Service-worker release cache | `flavor-fusion-v2-cache-v105` | Installed web assets; this number is not the database schema version |
+| Source and hosted web app | **5.1.1** | Current UI, data/export version, service worker and error reporter |
+| Service-worker release cache | `flavor-fusion-v2-cache-v106` | Installed web assets; this number is not the database schema version |
 | Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** (inspected 3 November 2026) | APK package inspected locally; launches the hosted app, which can run 4.31.16 |
 | Android requirements for that local wrapper | min API **24**, target API **36** | Android 7.0+ and a compatible browser provider |
 | Latest GitHub Release with downloadable binaries | **2.4.7** | APK and desktop ZIP; later source tags do not imply newer binaries were uploaded |
 | Desktop package currently in the owner's `Apps/Desktop` folder | **2.4.7** | A static older bundle, not the current source build |
-| Desktop launcher source/instructions | **5.1.0** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
+| Desktop launcher source/instructions | **5.1.1** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
 | IndexedDB schema | **4** | Kept separate from application version changes |
 
-Do not relabel an older package as 5.1.0. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
+Do not relabel an older package as 5.1.1. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
 
 ## Current features
 
@@ -161,13 +161,13 @@ The APK is a **Trusted Web Activity** wrapper around the hosted site. It does no
 1. Keep a business-data backup.
 2. Obtain the intended APK from its actual release assets or the owner's prepared local package. Install over the existing app with the same package/signing identity.
 3. Open online to download updates. Check the **web build in Settings**, not just Android App info.
-4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **5.1.0**.
+4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **5.1.1**.
 
 A newer web release may reload automatically during the first 20 seconds of startup when no active form/save/overlay prevents it, at most once per release per session. Otherwise it waits for a later start or explicit reload. Refresh can also switch versions when no form/save is open. Service-worker cache mappings preserve matching assets for older open pages until navigation.
 
 Do not uninstall or clear browser/site storage to force an update. If Android rejects an APK, check package, versionCode and signing certificate before proceeding. The public certificate association is [`public/.well-known/assetlinks.json`](public/.well-known/assetlinks.json).
 
-The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **5.1.0**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
+The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **5.1.1**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
 
 ## Windows desktop testing
 
@@ -369,6 +369,7 @@ This is a short source-feature history, not a list of available binary downloads
 
 | Version | Main changes |
 | --- | --- |
+| 5.1.1 | Bill matching (due-diligence finding F-COM-01): a delivered order or purchase counts as billed only when a bill is linked to it. Another bill from the same vendor on the event (transport, an older bill entered before links) no longer clears it by itself: the order reads **Delivered · bill to link** and the reconciliation checklist says so until you link the bill or record it. One bill can be linked to several orders of its vendor and is still counted once; linking a bill to an order that has a price saved removes that price in the same step. Backups check the new links. |
 | 5.1.0 | Labour contractors (owner): each labour line has its own contractor. A contractor whose specialty is that worker type is picked for you only when there is exactly one (otherwise the one you used last for it; with two you choose). Two contractors for the same worker type are two lines and two expenses, each owed to its own contractor. Each contractor can be sent their own list on WhatsApp (their worker types and heads per shift, date and venue; no client or event name). "+ New vendor" on a line adds a Labour contractor with that worker type. To pay, each priced line needs its contractor; one bill total is for one contractor only. Sheets saved before (one contractor) show it on every line and keep their expenses, bill photos and dues. The save message is no longer shown as an error when rates are still to come. Cache v105 |
 | 5.0.0 | **Stable internal release.** Same app as 4.31.24, renumbered after the owner's Android acceptance (all 25 checks of the full-event test on the owner's phone, run twice, offline included; the owner confirmed the installed app) and the independent money check. Development moves to Maintenance Mode. Updating from 4.31.13, 4.31.14, 4.31.22, 4.31.23 and 4.31.24 keeps records (bill, payments and expenses compared exactly) and open entries, online and offline (tests/update-from-4313.cjs). |
 | 4.31.24 | Owner's requests before v5.0.0: a labour line with workers but no rate is kept on the sheet (it was dropped on save) and says "Rate not set"; only priced lines become expenses, a contractor's bill with no rates is saved as the expense, and a blank rate never deletes an earlier amount. Labour is ordered by heads per shift: the sheet never fills in a rate (last time's rate shows only as a hint), so nothing is counted before the contractor's bill. A vendor order can have a price: it is saved, in the same step as the order, as an expense to pay that vendor, marked as the order's price and not its bill (the order still reads "bill not in" and the event cannot be closed on it). Recording the bill confirms it; a recorded, paid or numbered bill is never changed or removed by its order, and cancelling removes only an unconfirmed price. Prices take whole paise only. Without a price the order says its cost comes with the bill (independent audit of #102, F-01 to F-03, F-07). Part of a dish can come from a vendor or be bought, with the rest made by us (shown under Our kitchen as "(rest)"); a dish can be marked as cooked at the venue, in the event page or the meal editor; a dish on a sent order becoming only part from that counter flags the order for review (F-04, F-06). A cleared labour rate keeps its earlier amount, shown and counted on the labour card (F-05). Coming back to the app after a call, the field being typed in keeps the cursor. Messages to vendors (order, purchase, reminder) no longer name the client or event, the guest count or the client's approval: what, how many, date, time and venue only. Cache v103 |

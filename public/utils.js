@@ -1044,20 +1044,24 @@ export function menuCostPerPlate(menuId, events, expenses, excludeId = '') {
   return n ? { n, perPlate: Math.round(fromPaise(cost) / guests) } : null;
 }
 
-/* Delivered vendor orders and purchases whose bill is not in. A bill counts when it is linked to that order (`order`)
-   or purchase (`purchase`). Older bills entered before links existed: each bill from the same vendor on this event
-   that is linked to nothing covers ONE delivered item from that vendor, so two delivered orders from one vendor need
-   two bills. A purchase with no vendor needs its linked bill. An outsourced event's charge was recorded at booking. */
+// The vendor orders a bill is for: its order (`order`) and, for one bill covering several orders, the others
+// (`alsoOrders`, 5.1.1). An order's own price (`fromOrder`) is an estimate, not a bill (audit of #102, F-01).
+export const billOrderIds = x => x.fromOrder ? [] : [x.order, ...(x.alsoOrders || [])].filter(Boolean);
+
+/* Delivered vendor orders and purchases whose bill is not in. Only a bill linked to that order or purchase counts
+   (5.1.1, due-diligence finding F-COM-01): any other bill from the same vendor – transport, an older bill entered
+   before links existed, a bill for something else – no longer clears it, since nothing says it is this delivery's
+   bill. Such an item is marked `toLink` (a bill from that vendor is on the event, not linked to anything): the owner
+   links it from the order, or records the bill. One bill can be linked to several orders of its vendor. A purchase
+   with no vendor needs its linked bill. An outsourced event's charge was recorded at booking. */
 export function deliveredWithoutBill(ev, expenses) {
   if (ev.outsourced) return [];
   const live = expenses.filter(x => !x.draft);
-  // An order's own price (fromOrder) is an estimate, not its bill (audit of #102, F-01)
-  const linked = new Set(live.flatMap(x => [x.fromOrder ? null : x.order, x.purchase].filter(Boolean)));
-  const spare = new Map();
-  for (const x of live) if (x.evId === ev.id && x.venId && !x.order && !x.purchase) spare.set(x.venId, (spare.get(x.venId) || 0) + 1);
-  const items = [...(ev.orders || []).map(o => ({ ...o, kind: 'order' })), ...(ev.purchases || []).map(p => ({ ...p, kind: 'purchase' }))]
-    .filter(o => o.status === 'delivered' && !linked.has(o.id));
-  return items.filter(o => { const n = o.venId ? spare.get(o.venId) || 0 : 0; if (n) { spare.set(o.venId, n - 1); return false; } return true; });
+  const linked = new Set(live.flatMap(x => [...billOrderIds(x), x.purchase].filter(Boolean)));
+  const unlinkedFrom = new Set(live.filter(x => x.evId === ev.id && x.venId && !x.order && !x.purchase).map(x => x.venId));
+  return [...(ev.orders || []).map(o => ({ ...o, kind: 'order' })), ...(ev.purchases || []).map(p => ({ ...p, kind: 'purchase' }))]
+    .filter(o => o.status === 'delivered' && !linked.has(o.id))
+    .map(o => o.venId && unlinkedFrom.has(o.venId) ? { ...o, toLink: true } : o);
 }
 
 
@@ -1227,7 +1231,11 @@ export function reconBlockers(ev, expenses, drafts = []) {
   if (!costRows(ev.id, expenses).length) out.push({ en: 'No costs are recorded for this event', mr: 'या कार्यक्रमाचा खर्च नोंदवलेला नाही' });
   const open = drafts.filter(d => d.evId === ev.id).length;
   if (open) out.push({ en: `${open} bill photo${open > 1 ? 's' : ''} for this event still to be filled in`, mr: `या कार्यक्रमाची ${open} बिले भरायची बाकी` });
-  const missing = deliveredWithoutBill(ev, expenses), unbilled = missing.length, buys = missing.filter(o => o.kind === 'purchase').length;
+  const all = deliveredWithoutBill(ev, expenses), toLink = all.filter(o => o.toLink);
+  const missing = all.filter(o => !o.toLink), unbilled = missing.length, buys = missing.filter(o => o.kind === 'purchase').length;
+  // A bill from that vendor is on the event but not linked to the delivery: the owner says which delivery it is for (F-COM-01)
+  if (toLink.length) { const n = toLink.length, what = toLink.some(o => o.kind === 'purchase') ? 'order or purchase' : 'order';
+    out.push({ en: `${n} delivered ${what}${n > 1 ? 's need their bills' : ' needs its bill'} linked: a bill from that vendor is on this event but not linked to it`, mr: `${n} आलेल्या ऑर्डरचे बिल जोडायचे बाकी` }); }
   if (unbilled) out.push(buys
     ? { en: `${unbilled} delivered order${unbilled > 1 ? 's or purchases have' : ' or purchase has'} no bill recorded yet`, mr: `${unbilled} आलेल्या ऑर्डर / खरेदीचे बिल नोंदवले नाही` }
     : { en: `${unbilled} delivered order${unbilled > 1 ? 's have' : ' has'} no bill from that vendor yet`, mr: `${unbilled} आलेल्या ऑर्डरचे बिल नोंदवले नाही` });

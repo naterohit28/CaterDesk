@@ -89,6 +89,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [],
     await p.locator('[data-action="order-status"][data-id="o1"]').click(); await p.locator('#ask-actions button', { hasText: 'Delivered' }).click();
     await p.waitForSelector('#ask-modal.active'); await p.waitForTimeout(300);
     assert.match(await p.locator('#ask-msg').innerText(), /Sample Dosa Counter already has a bill on this event/);
+    assert.match(await p.locator('[data-action="order-status"][data-id="o1"]').innerText(), /Delivered · bill to link/, '5.1.1: an unlinked bill is not taken as the order\'s bill');
     await p.locator('#ask-actions button', { hasText: 'Link: Dosa · ₹24,000' }).click(); await p.waitForTimeout(500);
     const d = await dump();
     assert.equal(d.expenses.length, before, 'no second expense');
@@ -110,6 +111,34 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [],
     const x = (await dump()).expenses.find(e => e.order === 'o3');
     assert.deepEqual([x.evId, x.venId, x.amt, x.head], ['C', 'vg', 9000, 'Chaat – चाट']);
     assert.match(await p.locator('[data-action="order-status"][data-id="o3"]').innerText(), /Delivered · billed/);
+  });
+
+  await test('5.1.1 (F-COM-01): one combined bill for two orders of a vendor: linked to the second order too, counted once', async () => {
+    await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); const { _rev, ...r } = d.events.find(x => x.id === 'C');
+      await db.putOne('events', { ...r, orders: [...r.orders, { id: 'o4', head: 'Dosa – डोसा', venId: 'vd', plates: 40, status: 'confirmed' }] }); });
+    const before = await dump(), costBefore = await cost('C');
+    await p.reload(); await p.waitForSelector('#kpi .card'); await p.locator('#n-events:visible').click();
+    await p.locator('#ev-list [data-action="evdetail"][data-id="C"]:visible').click(); await p.waitForSelector('#tab-evdetail .detail-name');
+    await p.locator('[data-action="order-status"][data-id="o4"]').click(); await p.locator('#ask-actions button', { hasText: 'Delivered' }).click();
+    await p.waitForSelector('#ask-modal.active'); await p.waitForTimeout(300);
+    assert.match(await p.locator('#ask-msg').innerText(), /one bill can cover several orders/);
+    assert.match(await p.locator('[data-action="order-status"][data-id="o4"]').innerText(), /Delivered · bill not in/, 'the other order\'s bill is not taken as this one\'s on its own');
+    await p.locator('#ask-actions button', { hasText: /Link: Dosa · ₹24,000 .* also for Dosa/ }).click(); await p.waitForTimeout(500);
+    const d = await dump(), x = d.expenses.find(e => e.id === 'dosa');
+    assert.deepEqual([x.order, x.alsoOrders], ['o1', ['o4']]);
+    assert.equal(d.expenses.length, before.expenses.length, 'no new expense');
+    assert.equal(await cost('C'), costBefore, 'the combined bill still counts once');
+    assert.match(await p.locator('[data-action="order-status"][data-id="o4"]').innerText(), /Delivered · billed/);
+    const missing = await p.evaluate(async () => { const u = await import('./utils.js'); const d = await (await import('./db.js')).exportAllData(); return u.deliveredWithoutBill(d.events.find(e => e.id === 'C'), d.expenses).map(o => o.id); });
+    assert.deepEqual(missing, []);
+    // A backup with a broken combined-bill link is refused; a good one restores as it was
+    const r = await p.evaluate(async () => { const db = await import('./db.js'); const out = [];
+      for (const f of [x => { x.alsoOrders = ['o1']; }, x => { x.alsoOrders = []; }, x => { delete x.order; }, x => { x.alsoOrders = [7]; }, x => { x.alsoOrders = ['o4', 'o4']; }]) {
+        const d = await db.exportAllData(); delete d.manifest; f(d.expenses.find(e => e.id === 'dosa'));
+        try { await db.importAllData(d, 'replace'); out.push('accepted'); } catch (e) { out.push(e.message.split(':')[0]); } }
+      return out; });
+    assert.deepEqual(r, Array(5).fill('Invalid order links'));
+    assert.deepEqual((await dump()).expenses.find(e => e.id === 'dosa').alsoOrders, ['o4'], 'nothing changed by the refused restores');
   });
 
   await test('backup keeps bill targets, credit notes and order links; bad values are refused', async () => {

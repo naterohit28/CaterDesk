@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, billSet, billingSplit, calcVendorBalance, normGstin, gstinValid, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, keepPaidMilestones, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, learnedDishes, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, billOrderIds, deliveredWithoutBill, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, keepPaidMilestones, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, learnedDishes, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '5.1.0';
+const APP_BUILD = '5.1.1';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1626,7 +1626,10 @@ function orderStatus(o, ev) {
   const st = ORDER_STATUS[o.status] || ORDER_STATUS.sent;
   if (o.status !== 'delivered' || ev?.outsourced) return st;
   if (!orderBillOf(o) && D.expenses.some(x => x.order === o.id)) return { en: 'Delivered · bill not in (order price only)', mr: 'आले · बिल नाही', tone: 'due' };
-  return orderBillOf(o) ? { en: 'Delivered · billed', mr: 'आले · बिल', tone: 'pos' } : { en: 'Delivered · bill not in', mr: 'आले · बिल नाही', tone: 'due' };
+  if (orderBillOf(o)) return { en: 'Delivered · billed', mr: 'आले · बिल', tone: 'pos' };
+  // A bill from this vendor is on the event but not linked to this order: it is not taken as this order's bill (F-COM-01)
+  if (ev && linkableBills(ev, o).some(x => !x.order)) return { en: 'Delivered · bill to link', mr: 'आले · बिल जोडा', tone: 'due' };
+  return { en: 'Delivered · bill not in', mr: 'आले · बिल नाही', tone: 'due' };
 }
 
 // How a dish made by us is listed: the rest of a part-bought dish, and dishes cooked at the venue (owner, 4.31.24)
@@ -2350,7 +2353,12 @@ async function orderAction(orderId) {
 }
 
 // The bill recorded for an order (an expense carrying `order: id`). The order's own price is not a bill (audit F-01).
-const orderBillOf = o => D.expenses.find(x => x.order === o.id && !x.fromOrder) || null;
+const orderBillOf = o => D.expenses.find(x => billOrderIds(x).includes(o.id)) || null;
+/* Bills this order's vendor already has on the event that could be its bill (5.1.1, F-COM-01): not linked to anything,
+   or linked to another order of the same vendor (one combined bill for several orders). Never an order's price, a
+   purchase's bill or a draft. Unlinked ones first. */
+const linkableBills = (ev, o) => D.expenses.filter(x => x.evId === ev.id && x.venId && x.venId === o.venId && !x.draft && !x.fromOrder && !x.purchase && !billOrderIds(x).includes(o.id))
+  .sort((a, b) => !!a.order - !!b.order);
 /* An order's price (owner, 4.31.24): an order with a price is saved as an expense to pay its vendor, linked to the order
    and marked as the order's price (`fromOrder`), so the event's costs and the vendor's dues show it before the bill
    comes. It is an estimate, not a bill: the order still reads "bill not in" and the event cannot be closed on it.
@@ -2360,7 +2368,7 @@ const orderBillOf = o => D.expenses.find(x => x.order === o.id && !x.fromOrder) 
 const orderPriceOf = o => D.expenses.find(x => x.order === o.id && x.fromOrder && !(x.billIds || []).length && x.pay !== 'paid' && !x.billNo) || null;
 function orderCostChanges(ev, o) {
   const est = orderPriceOf(o);
-  if (D.expenses.some(x => x.order === o.id && x.id !== est?.id)) return { changes: [], note: '' };   // its bill is in: the bill decides
+  if (D.expenses.some(x => (x.order === o.id && x.id !== est?.id) || billOrderIds(x).includes(o.id))) return { changes: [], note: '' };   // its bill is in: the bill decides
   const want = o.status !== 'cancelled' && o.price > 0 && !ev.outsourced;
   if (!want) return est ? { changes: [{ store: 'expenses', id: est.id, expected: est }], note: ' Its price was removed from the expenses.' }
     : { changes: [], note: o.status === 'cancelled' || ev.outsourced ? '' : ' No price yet: the cost is added when you record its bill.' };
@@ -2382,27 +2390,34 @@ async function commitOrder(ev, patch, o) {
 }
 /* Delivered: the vendor's actual bill. If a bill from this vendor is already on the event (entered from the bill
    itself, or a shared bill), link it instead of recording it again (G-23); otherwise record it, linked. */
+/* A bill already on the event is never taken as the order's bill on its own (5.1.1, F-COM-01): the owner picks it.
+   A bill linked to another order of the same vendor can be linked to this one too (one combined bill for several
+   orders); it is still counted once. If the order has a price saved as an expense, linking a bill removes that price
+   in the same step, so the cost is not counted twice. */
 async function orderBill(ev, o) {
-  const priced = D.expenses.find(x => x.order === o.id && x.fromOrder);
-  if (priced) { openExpModal(priced); showToast('This is the order\'s price. Change it to the bill amount if it differs; saving it records it as the vendor\'s bill – बिल म्हणून जतन'); return; }
   if (orderBillOf(o)) { showToast('Its bill is already recorded – बिल आधीच नोंदवले'); return; }
+  const priced = D.expenses.find(x => x.order === o.id && x.fromOrder);
   const ven = D.vendors.find(v => v.id === o.venId);
-  const open = D.expenses.filter(x => x.evId === ev.id && x.venId === o.venId && !x.order && !x.purchase && !x.draft).slice(0, 3);
-  if (open.length) {
-    const pick = await askSheet({ title: 'Bill already recorded? – बिल आधीच नोंदवले?',
-      message: `${ven?.name || 'This vendor'} already has ${open.length === 1 ? 'a bill' : 'bills'} on this event. If the delivery's bill is one of these, link it so it is not counted twice.`,
-      actions: [...open.map(x => ({ label: `Link: ${short(x.head || x.cat)} · ${fmtCurrency(x.split?.total ?? x.amt)} · ${fmtDate(x.date)}`, value: x.id, style: 'btn-primary' })),
-        { label: 'No, record a new bill – नवीन बिल', value: 'new', style: 'btn-secondary' }] });
-    if (!pick) return;
-    if (pick !== 'new') {
-      const x = D.expenses.find(e => e.id === pick); if (!x) return;
-      const { _rev, ...rec } = x;
-      await commitChanges([{ store: 'expenses', record: { ...rec, order: o.id }, expected: x }], { check: true, extraStores: ['events', 'vendors'] });
-      await loadAll(); refreshCurrent();
-      showToast('Bill linked to the order – बिल ऑर्डरला जोडले'); return;
-    }
-  }
-  openExpModal({ prefill: { evId: ev.id, cat: ev.outsourced ? 'Operations' : 'Live Counter', head: o.head, venId: o.venId, order: o.id } });
+  const open = linkableBills(ev, o).slice(0, 4);
+  const usePrice = () => { openExpModal(priced); showToast('This is the order\'s price. Change it to the bill amount if it differs; saving it records it as the vendor\'s bill – बिल म्हणून जतन'); };
+  if (!open.length) { if (priced) usePrice(); else openExpModal({ prefill: { evId: ev.id, cat: ev.outsourced ? 'Operations' : 'Live Counter', head: o.head, venId: o.venId, order: o.id } }); return; }
+  const orderName = id => short((ev.orders || []).find(x => x.id === id)?.head) || 'another order';
+  const pick = await askSheet({ title: 'Which bill is it? – कोणते बिल?',
+    message: `${ven?.name || 'This vendor'} already has ${open.length === 1 ? 'a bill' : 'bills'} on this event. If this delivery's bill is one of these (one bill can cover several orders), link it so it is not counted twice.`
+      + (priced ? ` Linking a bill removes this order's price (${fmtCurrency(priced.amt)}) from the expenses.` : ''),
+    actions: [...open.map(x => ({ label: `Link: ${short(x.head || x.cat)} · ${fmtCurrency(x.split?.total ?? x.amt)} · ${fmtDate(x.date)}${x.order ? ` · also for ${orderName(x.order)}` : ''}`, value: x.id, style: 'btn-primary' })),
+      priced ? { label: 'Use the order\'s price as the bill – किंमत हेच बिल', value: 'price', style: 'btn-secondary' } : { label: 'No, record a new bill – नवीन बिल', value: 'new', style: 'btn-secondary' }] });
+  if (!pick) return;
+  if (pick === 'price') { usePrice(); return; }
+  if (pick === 'new') { openExpModal({ prefill: { evId: ev.id, cat: ev.outsourced ? 'Operations' : 'Live Counter', head: o.head, venId: o.venId, order: o.id } }); return; }
+  const x = D.expenses.find(e => e.id === pick); if (!x) return;
+  const { _rev, ...rec } = x;
+  const record = rec.order ? { ...rec, alsoOrders: [...(rec.alsoOrders || []), o.id] } : { ...rec, order: o.id };
+  const est = priced && orderPriceOf(o);
+  if (priced && !est) { showToast('This order\'s price has a bill photo or a payment: open it from the expenses first – आधी खर्च उघडा'); return; }
+  await commitChanges([{ store: 'expenses', record, expected: x }, ...(est ? [{ store: 'expenses', id: est.id, expected: est }] : [])], { check: true, extraStores: ['events', 'vendors'] });
+  await loadAll(); refreshCurrent();
+  showToast(est ? 'Bill linked to the order; its price was removed from the expenses – बिल ऑर्डरला जोडले' : 'Bill linked to the order – बिल ऑर्डरला जोडले');
 }
 
 async function cancelOrderFromSheet() {
