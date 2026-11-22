@@ -56,7 +56,7 @@ DATA.photos = [{ id: 'ph1', evId: 'E0', expId: 'old1', mime: 'image/png', data: 
     assert.equal(await line(3).locator('[data-k="venId"]').inputValue(), 'pd', 'no PRO specialty: the one used last for PRO');
     await setLine(4, GHATI, 1, 'ge');   // a second Ghati contractor on this event
     assert.equal(await p.locator('#lab-ven-field').isHidden(), true, 'no single contractor box for the sheet');
-    await p.locator('#lab-pay [data-pay="credit"]').click();
+    assert.equal(await p.locator('#lab-pay').count(), 0, '5.1.3: no paid / credit switch for the whole sheet');
     await p.locator('#btn-save-lab').click(); await p.waitForTimeout(600);
     assert.match(await p.locator('#toast-msg').innerText(), /^Labour sheet saved. Rates to add when the bill comes: Ghati, Rojiya Labour, Boys, PRO, Ghati/);
     assert.equal(await p.locator('#toast').getAttribute('class').then(c => /error/.test(c || '')), false, 'not shown as an error');
@@ -90,10 +90,11 @@ DATA.photos = [{ id: 'ph1', evId: 'E0', expId: 'old1', mime: 'image/png', data: 
     assert.doesNotMatch(msg, /Sample Gala Event|Extra Ghati|Boys|Rojiya/, 'only their own lines, no event name');
   });
 
-  await test('to pay: a priced line without a contractor is refused; one bill total for several contractors is refused', async () => {
+  await test('a line without a contractor asks how it was paid directly; one bill total for several contractors is refused', async () => {
     await openSheet('E1');
-    await line(2).locator('[data-k="venId"]').selectOption(''); await p.locator('#btn-save-lab').click(); await p.waitForTimeout(400);
-    assert.match(await p.locator('#toast-msg').innerText(), /Choose the contractor for Boys/); assert.equal(await p.locator('#lab-modal.active').count(), 1);
+    assert.equal(await p.locator('#lab-mode-field').isHidden(), true, 'every line has a contractor: nothing paid directly');
+    await line(2).locator('[data-k="venId"]').selectOption('');
+    assert.equal(await p.locator('#lab-mode-field').isVisible(), true, '5.1.3: a line with no contractor was paid directly');
     await line(2).locator('[data-k="venId"]').selectOption('b2');
     await p.fill('#lab-bill', '9000'); await p.locator('#lab-bill').dispatchEvent('input'); await p.locator('#btn-save-lab').click(); await p.waitForTimeout(400);
     assert.match(await p.locator('#lab-modal').innerText(), /Several contractors: put each line's rate/);
@@ -127,6 +128,36 @@ DATA.photos = [{ id: 'ph1', evId: 'E0', expId: 'old1', mime: 'image/png', data: 
     const r = await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest; d.events.find(e => e.id === 'E1').labour.rows[0].venId = 7;
       try { await db.importAllData(d, 'replace'); return 'accepted'; } catch (e) { return e.message; } });
     assert.match(r, /Invalid labour sheet/);
+  });
+
+  await test('5.1.3: each contractor is paid on their own from the labour card; the others stay owed', async () => {
+    await openEvent('E1');
+    const due = async id => p.locator(`#lab-send [data-lab-contractor="${id}"] [data-lab-due]`).innerText();
+    assert.match(await due('ga'), /₹2,100 to pay/); assert.match(await due('b2'), /₹2,400 to pay/); assert.match(await p.locator('#lab-send').innerText(), /Sample New Rojiya\s*Rate not set yet/, 'Rojiya: no rate yet, nothing to pay');
+    await p.locator('#lab-send [data-lab-contractor="ga"] [data-action="open-vpay"]').click(); await p.waitForSelector('#vpay-modal.active');
+    assert.deepEqual([await p.inputValue('#vpay-venid'), await p.inputValue('#vpay-amt'), await p.inputValue('#vpay-ev')], ['ga', '2100', 'E1'], 'this contractor, this event\'s amount');
+    await p.selectOption('#vpay-mode', 'UPI'); await p.locator('#btn-save-vpay').click(); await p.waitForTimeout(600);
+    const d = await dump(), vp = d.vPays.find(v => v.venId === 'ga');
+    assert.deepEqual([vp.amt, vp.mode, vp.evId], [2100, 'UPI', 'E1']);
+    await openEvent('E1');
+    assert.match(await due('ga'), /^Paid/); assert.match(await due('b2'), /₹2,400 to pay/, 'Boys Two still owed');
+    assert.equal(await p.locator('#lab-send [data-lab-contractor="ga"] [data-action="open-vpay"]').count(), 0);
+  });
+
+  await test('5.1.3: a line with no contractor is saved as paid directly with its method; a contractor\'s expense saved as paid before stays paid', async () => {
+    // Boys Two's expense was marked paid (cash) before 5.1.3: saving the sheet again keeps it paid, not owed
+    await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); const { _rev, ...x } = d.expenses.find(e => e.evId === 'E1' && e.venId === 'b2');
+      await db.putOne('expenses', { ...x, pay: 'paid', mode: 'Cash – रोख', dueDate: '' }); });
+    await openSheet('E1');
+    await setLine(5, PRO, 1, ''); await line(5).locator('[data-k="rate"]').fill('500');
+    await p.selectOption('#lab-mode', 'Cash – रोख');
+    await p.locator('#btn-save-lab').click(); await p.waitForTimeout(600);
+    const x = (await dump()).expenses.filter(e => e.evId === 'E1' && e.cat === 'Labour');
+    const pro = x.find(e => e.head === PRO && !e.venId), boys = x.find(e => e.venId === 'b2'), ghati = x.find(e => e.venId === 'ge');
+    assert.deepEqual([pro.amt, pro.pay, pro.mode], [500, 'paid', 'Cash – रोख'], 'paid to the workers directly');
+    assert.deepEqual([boys.pay, boys.mode], ['paid', 'Cash – रोख'], 'not re-labelled as owed');
+    assert.deepEqual([ghati.pay, ghati.mode], ['credit', ''], 'a contractor line is owed to that contractor');
+    assert.equal((await dump()).events.find(e => e.id === 'E1').labour.pay, undefined, 'no sheet-wide setting is saved');
   });
 
   await test('no page errors', async () => { assert.deepEqual(errors, []); });
