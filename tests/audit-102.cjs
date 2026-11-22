@@ -82,6 +82,20 @@ const pickTime = async (p, id) => { await p.fill(`#${id}-t`, '7:30'); await p.lo
     }
   });
 
+  await test('5.1.1 (F-COM-01): a priced order whose bill is already on the event: linking that bill removes the price in the same step, counted once', async () => {
+    const d = DATA(); d.expenses.push({ id: 'xb', evId: 'E1', cat: 'Live Counter', head: CHAAT, amt: 11000, date: day(6), pay: 'credit', venId: 'vc', dueDate: '', billIds: [] });
+    await reset(d); await newPricedOrder('12000');
+    assert.deepEqual((await dump()).expenses.map(x => [x.amt, !!x.fromOrder]).sort(), [[11000, false], [12000, true]]);
+    await openEvent(); await p.locator('#menu-orders [data-action="order-status"]').first().click(); await p.waitForSelector('#ask-modal.active');
+    await p.locator('#ask-actions button', { hasText: 'Delivered' }).click(); await p.waitForTimeout(500);
+    assert.match(await p.locator('#ask-msg').innerText(), /Linking a bill removes this order's price \(₹12,000\)/);
+    assert.equal(await p.locator('#ask-actions button', { hasText: 'Use the order\'s price as the bill' }).count(), 1);
+    await p.locator('#ask-actions button', { hasText: 'Link: Chaat · ₹11,000' }).click(); await p.waitForTimeout(700);
+    const o = (await dump()).events[0].orders[0], xs = (await dump()).expenses;
+    assert.deepEqual(xs.map(x => [x.id, x.amt, x.order, x.fromOrder]), [['xb', 11000, o.id, undefined]], 'the price is gone, the bill is linked');
+    assert.deepEqual(await unbilled(), []);
+  });
+
   await test('F-03: cancelling from the status sheet removes only the order price, in the same step', async () => {
     await reset(DATA()); await newPricedOrder('8000');
     await statusAction('Cancel order');

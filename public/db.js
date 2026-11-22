@@ -531,6 +531,9 @@ export async function prepareImport(payload) {
         || (row.kind === 'person' && (row.gstin !== undefined || row.legalName !== undefined)))) throw new Error('Invalid vendor GSTIN');
       if (name === 'vendors' && row.oneTime !== undefined && row.oneTime !== true) throw new Error('Invalid one-time vendor flag');   // 4.31.22
       if (name === 'expenses' && row.fromOrder !== undefined && (row.fromOrder !== true || !row.order)) throw new Error('Invalid order price');   // 4.31.24
+      // One bill for several orders of its vendor (5.1.1): the other orders, besides its own `order`, each once
+      if (name === 'expenses' && row.alsoOrders !== undefined && (!row.order || row.fromOrder || row.purchase !== undefined || !Array.isArray(row.alsoOrders) || !row.alsoOrders.length || row.alsoOrders.length > 50
+        || row.alsoOrders.some(id => typeof id !== 'string' || !id || id.length > 40 || id === row.order) || new Set(row.alsoOrders).size !== row.alsoOrders.length)) throw new Error('Invalid order links');
       if (name === 'events') { amount(row.billing, 'billing'); if (row.budget !== undefined) amount(row.budget, 'budget'); }
       if (['expenses', 'cPays', 'vPays'].includes(name)) amount(row.amt ?? (row.draft ? 0 : undefined), name);
       if (['events', 'expenses', 'cPays', 'vPays'].includes(name) && !row.draft && !validDate(row.date)) throw new Error('Invalid date in ' + name);
@@ -728,7 +731,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '5.1.0';
+export const APP_VERSION = '5.1.1';
 const COUNT_METHOD_IDS = ['tokens', 'tally', 'gate', 'coupons', 'joint', 'other'];
 // v4.18.0 kept menus in their own store (database version 5): copy them into meta once and empty that store
 export async function migrateLegacyMenus() {
