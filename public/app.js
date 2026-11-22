@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '5.1.1';
+const APP_BUILD = '5.1.2';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1086,8 +1086,9 @@ function rEvents() {
     return;
   }
   const t = today();
-  // Latest date first throughout: the newest booking is always at the top
-  const upcoming = list.filter(e => e.date >= t).sort((a, b) => b.date.localeCompare(a.date));
+  // Upcoming: nearest date first, so today's and tomorrow's events are at the top (owner, 5.1.2; before, the furthest
+  // date came first). Past: the most recent first.
+  const upcoming = list.filter(e => e.date >= t).sort((a, b) => a.date.localeCompare(b.date));
   const past     = list.filter(e => e.date <  t).sort((a, b) => b.date.localeCompare(a.date));
   q('ev-list').innerHTML =
     (upcoming.length ? `<div class="sec"><span class="sec-title">Upcoming – आगामी</span><span class="meta">${upcoming.length}</span></div>${upcoming.map(eventCard).join('')}` : '') +
