@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '5.1.2';
+const APP_BUILD = '5.1.3';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1381,12 +1381,21 @@ function labKept(ev, rows, r) {
   if (!id || rows.some(o => o.rate > 0 && labExpKey(o) === key) || rows.find(o => !(o.rate > 0) && labExpKey(o) === key) !== r) return 0;
   return Number(D.expenses.find(x => x.id === id)?.amt) || 0;
 }
+/* What this event's labour sheet owes one contractor (5.1.3): their sheet expenses on this event that are still unpaid,
+   after payments and credit notes. `billed`: the sheet has saved at least one expense for them. */
+function labDue(ev, venId) {
+  const ids = new Set(Object.values(ev.labour?.expIds || {}));
+  const mine = D.expenses.filter(x => ids.has(x.id) && x.venId === venId);
+  const bills = unpaidBills(D.expenses, D.vPays).filter(b => b.venId === venId && b.parts.some(p => mine.some(x => x.id === p.id)));   // a shared bill: its whole amount left
+  return { left: money(bills.reduce((s, b) => s + b.left, 0)), bills, billed: mine.length > 0 };
+}
 function labourCard(ev) {
   if (ev.outsourced) return '';
   const rows = (ev.labour?.rows || []).map(labRow);
   const lines = money(rows.reduce((s, r) => s + lineAmt(r) + labKept(ev, rows, r), 0));
   const bill = ev.labour?.billTotal || 0, adj = bill ? money(bill - lines) : 0;
   const shifts = rows.filter(r => !isExtra(r)).reduce((s, r) => s + heads(r), 0);
+  const labVens = [...new Set(rows.map(r => r.venId).filter(id => id && D.vendors.some(v => v.id === id)))];
   return `
     <div class="sec"><span class="sec-title">Labour – मजूर</span>
       <button type="button" class="btn-sm" data-action="lab-edit">${icon(rows.length ? 'pencil' : 'plus', 16)}${rows.length ? tr('Edit', 'बदला') : tr('Labour sheet', 'मजूर यादी')}</button></div>
@@ -1405,8 +1414,13 @@ function labourCard(ev) {
         <div class="amt-sm">${adj > 0 ? '+' : '−'}${fmtCurrency(Math.abs(adj))}</div>
       </div>` : ''}
       <div class="row" style="min-height:48px"><div class="row-body title-sm">${tr(`Total · ${shifts} shift${shifts === 1 ? '' : 's'}`, `एकूण · ${shifts} शिफ्ट`)}</div><div class="amt-md">${fmtCurrency(bill || lines)}</div></div>
-      ${[...new Set(rows.map(r => r.venId).filter(id => id && D.vendors.some(v => v.id === id)))].length ? `<div class="row" style="flex-wrap:wrap;gap:var(--s2);min-height:52px" id="lab-send">${[...new Set(rows.map(r => r.venId).filter(id => id && D.vendors.some(v => v.id === id)))].map(id =>
-        `<button type="button" class="btn-sm" data-action="lab-send" data-id="${esc(id)}">${icon('message', 16)}${tr(`Send list to ${esc(venName(id))}`, `${esc(venName(id))} ला यादी पाठवा`)}</button>`).join('')}</div>` : ''}
+      ${labVens.length ? `<div id="lab-send">${labVens.map(id => { const d = labDue(ev, id);
+        return `<div class="row" style="flex-wrap:wrap;gap:var(--s2);min-height:52px" data-lab-contractor="${esc(id)}">
+          <div class="row-body" style="flex-basis:100%"><div class="title-sm" data-nl style="overflow-wrap:anywhere">${esc(venName(id))}</div>
+            <div class="meta" data-lab-due>${d.left > 0 ? `<span class="due">${tr(`${fmtCurrency(d.left)} to pay`, `${fmtCurrency(d.left)} देणे`)}</span>` : d.billed ? tr('Paid', 'दिले') : tr('Rate not set yet', 'दर नाही')}</div></div>
+          ${d.left > 0 ? `<button type="button" class="btn-sm" data-action="open-vpay" data-id="${esc(id)}" data-bill="${esc(d.bills.length === 1 ? d.bills[0].key : '')}" data-amt="${d.left}" data-ev="${esc(ev.id)}">${tr('Pay', 'द्या')}</button>` : ''}
+          <button type="button" class="btn-sm" data-action="lab-send" data-id="${esc(id)}" aria-label="${esc(`Send list to ${venName(id)}`)}">${icon('message', 16)}${tr('Send list', 'यादी पाठवा')}</button>
+        </div>`; }).join('')}</div>` : ''}
     </div>` : `<div class="card pad"><div class="meta">${tr('Add workers by type with how many came for each shift — the app remembers your rates and saves the total as Labour expenses.', 'प्रकारानुसार प्रत्येक शिफ्टचे मजूर जोडा — दर लक्षात राहतात व एकूण खर्च म्हणून नोंदवला जातो.')}</div></div>`}`;
 }
 
@@ -1466,6 +1480,7 @@ function renderLabRows() {
 }
 
 function updateLabTotal() {
+  setLabModeField();
   const lines = money(labRows.reduce((s, r) => s + lineAmt(r), 0)), bill = Number(qv('lab-bill')) || 0;
   q('lab-total').textContent = fmtCurrency(bill || lines);
   q('lab-bill-hint').textContent = bill && bill !== lines
@@ -1473,10 +1488,9 @@ function updateLabTotal() {
     : '';
 }
 
-function setLabPay(pay) {
-  q('lab-pay').dataset.value = pay;
-  q('lab-pay').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.pay === pay)));
-  q('lab-mode-field').hidden = pay === 'credit';
+// 5.1.3: "Paid directly by" is asked only when a line has no contractor (that line was paid to the workers directly)
+function setLabModeField() {
+  q('lab-mode-field').hidden = !labRows.some(r => !r.venId);
   q('lab-ven-field').hidden = true;   // 5.1.0: each line has its own contractor
 }
 
@@ -1506,7 +1520,6 @@ function openLabModal() {
   populateSelect('lab-mode', PAY_MODES, sheet.mode || '');
   populateSelect('lab-ven', [{ v: '', l: 'Choose contractor – ठेकेदार निवडा' },
     ...D.vendors.filter(v => !isPerson(v)).sort((a, b) => String(a.name).localeCompare(String(b.name))).map(v => ({ v: v.id, l: v.name }))], sheet.venId || '');
-  setLabPay(sheet.pay || 'paid');
   q('lab-bill').value = sheet.billTotal || '';
   renderLabRows();
   clearFieldErrors();
@@ -1526,10 +1539,12 @@ async function saveLabour() {
     .filter(r => isExtra(r) ? r.count > 0 : heads(r) > 0);   // a line with people but no rate yet is kept (owner, 4.31.24)
   const unpriced = rows.filter(r => !(r.rate > 0));   // with no rate yet; a cleared rate keeps its earlier expense (shown on the card)
   const billTotal = money(Number(qv('lab-bill')) || 0);
-  const pay = q('lab-pay').dataset.value || 'paid';
-  // To pay: each line with an amount needs the contractor it is owed to; one bill total only when one contractor (5.1.0)
-  const noVen = rows.filter(r => !r.venId && (r.rate > 0 || billTotal));
-  if (pay === 'credit' && noVen.length) { showToast(`Choose the contractor for ${noVen.map(labName).join(', ')} – ठेकेदार निवडा`, 'error'); return; }
+  /* 5.1.3 (owner): how each line is paid follows its contractor, not one switch for the sheet. A line with a contractor
+     is owed to that contractor (credit), and each contractor is paid on their own from the labour card. A line with no
+     contractor was paid to the workers directly ("Paid directly by"). An expense already saved as paid stays paid with
+     its method: nothing saved before is re-labelled. One bill total only when one contractor (5.1.0). */
+  const payOf = (venId, old) => old?.pay === 'paid' && (old.venId || '') === venId ? { pay: 'paid', mode: old.mode || '' }
+    : venId ? { pay: 'credit', mode: '' } : { pay: 'paid', mode: qv('lab-mode') };
   if (billTotal && new Set(rows.map(r => r.venId || '')).size > 1) { showFieldErrors({ 'lab-bill': 'Several contractors: put each line\'s rate instead of one bill total – प्रत्येक ओळीचा दर लिहा' }); return; }
   const oldIds = ev.labour?.expIds || {};
   const byKey = new Map();   // "cat|head" → lines saved as that expense
@@ -1561,8 +1576,8 @@ async function saveLabour() {
     const oldId = [oldIds[key], venId ? oldIds[labBaseKey(rs[0])] : ''].find(id => id && !claimed.has(id)); if (oldId) claimed.add(oldId);
     const old = D.expenses.find(x => x.id === oldId);
     const record = { ...(old || {}), id: old?.id || uid('EX'), evId: ev.id, cat, head,
-      amt: money(rs.reduce((s, r) => s + lineAmt(r), 0)), date: old?.date || ev.date, pay, mode: pay === 'paid' ? qv('lab-mode') : '',
-      venId, dueDate: pay === 'credit' ? old?.dueDate || '' : '', billIds: old?.billIds || [],
+      amt: money(rs.reduce((s, r) => s + lineAmt(r), 0)), date: old?.date || ev.date, ...payOf(venId, old),
+      venId, dueDate: venId && old?.pay !== 'paid' ? old?.dueDate || '' : '', billIds: old?.billIds || [],
       notes: 'Labour sheet: ' + rs.map(r => isExtra(r)
         ? `${labName(r)} ${r.count > 1 ? r.count + ' × ' : ''}${fmtCurrency(r.rate)}`
         : `${shiftList(r)}${r.rate > 0 ? ` @ ${fmtCurrency(r.rate)}` : ''}`).join(', ') + (rs.every(r => !(r.rate > 0)) ? ` · contractor's bill ${fmtCurrency(billTotal)}` : '') };
@@ -1596,7 +1611,8 @@ async function saveLabour() {
   const used = new Set(Object.values(expIds));
   const removed = [...new Set(Object.values(oldIds))].filter(id => !used.has(id) && D.expenses.some(x => x.id === id));
   for (const id of removed) changes.push({ store: 'expenses', id, expected: D.expenses.find(x => x.id === id) });
-  const evRecord = { ...ev, labour: { rows, pay, mode: pay === 'paid' ? qv('lab-mode') : '', expIds, ...(billTotal && rows.length ? { billTotal } : {}) } };
+  // 5.1.3: the sheet no longer has one paid / credit setting; only how lines with no contractor were paid
+  const evRecord = { ...ev, labour: { rows, mode: rows.some(r => !r.venId) ? qv('lab-mode') : '', expIds, ...(billTotal && rows.length ? { billTotal } : {}) } };
   await commitChanges([{ store: 'events', record: evRecord, expected: ev }, ...changes], { check: true, extraStores: ['vendors'] });
   D.events = D.events.map(e => e.id === ev.id ? evRecord : e);
   D.expenses = D.expenses.filter(x => !removed.includes(x.id) && !saved.some(r => r.id === x.id)).concat(saved)
@@ -4518,7 +4534,6 @@ const REQUIRED_WHEN = [
   ['#ma-by, #count-n, #st-amt, #st-reason', () => true],
   ['#ma-who', () => qv('ma-by') === 'verbal'],
   ['#vpay-notes', () => q('vpay-kind').dataset.value === 'credit'],
-  ['#lab-ven', () => (q('lab-pay').dataset.value || 'paid') === 'credit'],
   ['#ev-out-ven', () => q('ev-handling').dataset.value === 'out'],
   ['#ord-notes', () => orderBelowMinimum(D.events.find(e => e.id === curRef))],
   ['#cp-method', () => q('cp-confirmed').checked],
@@ -5561,7 +5576,8 @@ async function saveVendor() {
 }
 
 /* ── VENDOR PAYMENT SHEET ────────────────────────── */
-function openVPayModal(venId, payId, billKey = '') {
+// From a labour card (5.1.3): `amt` is what this event's sheet owes the contractor, `evId` the event it is for
+function openVPayModal(venId, payId, billKey = '', { amt = 0, evId = '' } = {}) {
   const p  = payId ? D.vPays.find(x => x.id === payId) : null;
   formBase.vpay = snapshot(p);
   const vid = p?.venId || venId;
@@ -5576,11 +5592,11 @@ function openVPayModal(venId, payId, billKey = '') {
   setVPayKind(p?.kind === 'credit' ? 'credit' : 'pay');
   q('vpay-venid').value = vid;
   q('vpay-id').value    = p?.id || '';
-  q('vpay-amt').value   = p?.amt || (selBill ? selBill.left : bal > 0 ? bal : '');
+  q('vpay-amt').value   = p?.amt || (selBill ? selBill.left : amt > 0 ? amt : bal > 0 ? bal : '');
   q('vpay-date').value  = p?.date || today();
   q('vpay-notes').value = p?.notes || '';
   q('vpay-due').textContent = bal > 0 ? `You owe ${fmtCurrency(bal)} – देणे ${fmtCurrency(bal)}` : '';
-  populateSelect('vpay-ev', [{ v: '', l: 'No event – कार्यक्रम नाही' }, ...eventOptions()], p?.evId || '');
+  populateSelect('vpay-ev', [{ v: '', l: 'No event – कार्यक्रम नाही' }, ...eventOptions()], p?.evId || evId);
   populateSelect('vpay-mode', PAY_MODES, p?.mode || '');
   q('vpay-mtitle').textContent = p ? 'Edit payment – संपादित करा'
     : isPerson(D.vendors.find(v => v.id === vid)) ? 'Repay – परत करा' : 'Pay vendor – विक्रेता देयक';
@@ -6315,7 +6331,7 @@ function bindAllEvents() {
       case 'vendetail':    showVenDetail(id); break;
       case 'open-cpay':    openCPayModal(id); break;
       case 'open-exp':     openExpModal(id); break;
-      case 'open-vpay':    openVPayModal(id, null, el.dataset.bill || ''); break;
+      case 'open-vpay':    openVPayModal(id, null, el.dataset.bill || '', { amt: Number(el.dataset.amt) || 0, evId: el.dataset.ev || '' }); break;
       case 'menu-edit':    openMenuModal(); break;
       case 'svc-edit':     openServiceSheet(id); break;
       case 'svc-add':      openServiceSheet(); break;
@@ -6506,11 +6522,10 @@ function bindAllEvents() {
     const from = D.events.find(x => x.id === e.currentTarget.dataset.from);
     labRows = (from?.labour?.rows || []).map(r => ({ ...labRow(r), id: uid('LB'), rate: '' }));   // heads copied; rates come with this event's bill
     labRows = labRows.map(r => r.venId || !from?.labour?.venId ? r : { ...r, venId: from.labour.venId });
-    if (from?.labour) { setLabPay(from.labour.pay || 'paid'); q('lab-mode').value = from.labour.mode || q('lab-mode').value; }
+    if (from?.labour) q('lab-mode').value = from.labour.mode || q('lab-mode').value;
     renderLabRows();
   });
   q('lab-bill').addEventListener('input', updateLabTotal);
-  q('lab-pay').addEventListener('click', e => { const b = e.target.closest('[data-pay]'); if (b) setLabPay(b.dataset.pay); });
   // Row edits: picking a type shows the rate used last time as a hint; it is never filled in (rates come with the bill)
   q('lab-rows').addEventListener('input', e => {
     const box = e.target.closest('[data-lab]'), k = e.target.dataset.k; if (!box || !k) return;
@@ -6519,7 +6534,7 @@ function bindAllEvents() {
     if (k.startsWith('c-')) r.counts = { ...r.counts, [k.slice(2)]: num };   // headcount for one shift
     else if (k === 'venId') {
       if (e.target.value.startsWith('__new')) { e.target.value = e.target.dataset.prev || ''; pickVendorForOrder = 'lab:' + box.dataset.lab; newVendorOneTime = e.target.value === '__newonce'; openVenModal(null, 'vendor'); return; }
-      r.venId = e.target.value; r.venAuto = false; e.target.dataset.prev = r.venId; return;
+      r.venId = e.target.value; r.venAuto = false; e.target.dataset.prev = r.venId; setLabModeField(); return;
     }
     else r[k] = ['role', 'extra', 'label'].includes(k) ? e.target.value : num;
     if (k === 'role' && (r.venAuto || !r.venId)) { r.venId = autoContractor(r.role); r.venAuto = true; renderLabRows(); return; }

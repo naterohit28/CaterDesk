@@ -650,13 +650,10 @@
       <button type="button" class="btn btn-secondary" id="btn-lab-extra">+ Fare / fee – गाडी भाडे</button>
     </div>
     <button type="button" class="btn btn-ghost" id="btn-lab-copy" hidden style="width:100%;margin:-8px 0 var(--s4)">Copy last event's sheet – मागील यादी</button>
-    <div class="field">
-      <div class="seg" role="group" aria-label="Payment" id="lab-pay">
-        <button type="button" data-pay="paid" aria-pressed="true">Paid now – दिले</button>
-        <button type="button" data-pay="credit" aria-pressed="false">Contractor credit – उधार</button>
-      </div>
-    </div>
-    <div class="field" id="lab-mode-field"><label for="lab-mode">Paid by – पद्धत</label><select id="lab-mode"></select></div>
+    <!-- 5.1.3 (owner): no sheet-wide paid / credit switch. A line with a contractor is owed to that contractor (pay each one
+         from the labour card); a line with no contractor was paid to the workers directly, and asks how. -->
+    <div class="meta" id="lab-pay-note" style="margin:0 0 var(--s3)">Each contractor's lines are saved as owed to them; pay each contractor from the labour card. – प्रत्येक ठेकेदाराचे देणे वेगळे; कार्डवरून द्या</div>
+    <div class="field" id="lab-mode-field" hidden><label for="lab-mode">Paid directly by (lines with no contractor) – पद्धत</label><select id="lab-mode"></select></div>
     <div class="field" id="lab-ven-field" hidden><label for="lab-ven">Labour contractor – ठेकेदार</label><select id="lab-ven"></select></div>
     <!-- Optional: the contractor's final figure. Any small difference is put on the biggest line, so the total matches the bill. -->
     <div class="field"><label for="lab-bill">Bill total ₹ (if different) – बिलाची एकूण रक्कम</label><input type="number" id="lab-bill" min="1" inputmode="decimal" placeholder="optional">
