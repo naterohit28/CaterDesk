@@ -64,11 +64,11 @@ await test('usual vendors are one-tap suggestions and pending credit is listed f
  await p.locator('#vpay-modal [data-action="close-modal"]').click();await p.waitForTimeout(150);
  await p.locator('#n-home').click();assert.match(await p.locator('#nudges').innerText(),/See all 2 to pay/);
 });
-await test('lender credit, booking advance, newest events first and staff tips',async()=>{
+await test('lender credit, booking advance, nearest upcoming events first and staff tips',async()=>{
  const H=await p.evaluate(async()=>(await import('./utils.js')).EXPENSE_HEADS);const tips=H.Labour.find(h=>h.startsWith('Vendor Staff Tips'));assert(tips&&H.Labour.some(h=>h.startsWith('Staff Tips')),'both tip items exist under Labour');
  await seed({...empty(),events:[ev,{...ev,id:'old',name:'Old Party',date:'2026-01-10'},{...ev,id:'far',name:'Far Wedding',date:'2027-05-01'},{...ev,id:'soon',name:'Soon Wedding',date:'2026-12-01'}],vendors:[{id:'rajiv',name:'Rajiv Chaat',cat:'Live Counter'},{id:'uncle',name:'Uncle Lender',kind:'person'}]});
  await p.locator('#n-events').click();
- assert.deepEqual(await p.locator('#ev-list [data-action="evdetail"] .title-sm').allInnerTexts(),['Far Wedding','Soon Wedding','Wedding','Old Party'],'latest date first');
+ assert.deepEqual(await p.locator('#ev-list [data-action="evdetail"] .title-sm').allInnerTexts(),['Soon Wedding','Far Wedding','Wedding','Old Party'],'upcoming: nearest first (5.1.2); past: most recent first');
  await p.locator('#fab').click();await p.waitForSelector('#ev-modal.active');assert(await p.locator('#ev-adv-field').isVisible(),'advance offered when booking');
  for(const [id,v] of [['ev-name','Advance Wedding'],['ev-date','2026-12-20'],['ev-venue','Hall'],['ev-billing','50000'], ['ev-guests', '100'],['ev-adv','60000']])await p.locator('#'+id).fill(v);
  await p.locator('#btn-save-event').click();await p.waitForTimeout(200);assert.match(await p.locator('#ev-modal').innerText(),/more than the total bill/);
