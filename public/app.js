@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '5.2.2';
+const APP_BUILD = '5.3.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -799,8 +799,55 @@ function periodLabel() {
   return { en, mr };
 }
 
+/* 5.3.0 Today (owner-approved Home = today's work): today's and tomorrow's events first, each with what is still
+   open (vendor orders to confirm, no labour list yet, client balance to collect), from the saved records only. With
+   none, the next upcoming event. The to-do cards (deliveries, bills to finish, vendors to pay, costs) follow it, and
+   the money overview moves below them. Nothing is calculated here that the event screen doesn't already show. */
+function todayCard() {
+  const t = today(), tm = addDays(t, 1);
+  const on = (ev, d) => ev.date === d || eventServices(ev).services.some(s => s.date === d);
+  const when = ev => on(ev, t) ? 'today' : on(ev, tm) ? 'tomorrow' : '';
+  const soon = D.events.map(ev => ({ ev, w: when(ev) })).filter(r => r.w)
+    .sort((a, b) => (a.w === b.w ? 0 : a.w === 'today' ? -1 : 1) || (a.ev.time || '').localeCompare(b.ev.time || ''));
+  const head = `<div class="sec"><span class="sec-title">${tr('Today', 'आज')} – ${esc(fmtDate(t))}</span>${soon.length ? `<span class="meta">${soon.length}</span>` : ''}</div>`;
+  if (!soon.length) {
+    const next = D.events.filter(e => e.date > tm).sort((a, b) => a.date.localeCompare(b.date))[0];
+    return head + `<div class="card list" id="today-list">${next ? `
+      <div class="row" role="button" tabindex="0" data-action="evdetail" data-id="${esc(next.id)}">
+        <div class="row-ic">${icon('calendar', 18)}</div>
+        <div class="row-body"><div class="title-sm trunc">${tr('No events today or tomorrow', 'आज-उद्या कार्यक्रम नाही')}</div>
+          <div class="meta trunc">${tr('Next', 'पुढील')}: <span data-nl>${esc(next.name)}</span> · ${esc(fmtDate(next.date))}</div></div>
+        ${icon('chevron', 18)}
+      </div>` : `<div class="row"><div class="row-body"><div class="meta">${tr('No upcoming events', 'आगामी कार्यक्रम नाहीत')}</div></div></div>`}</div>`;
+  }
+  return head + `<div class="card list" id="today-list">${soon.map(({ ev, w }) => {
+    const toConfirm = (ev.orders || []).filter(o => UNCONFIRMED.includes(o.status)).length;
+    const noLabour = !ev.outsourced && !(ev.labour?.rows || []).length;
+    const collect = Math.max(0, clientDue(ev) - calcEventReceived(ev.id, D.cPays));
+    // Every meal of that day in order (breakfast, lunch, high tea, dinner, late night), each with its own guests
+    const day = w === 'today' ? t : tm, guests = eventGuests(ev);
+    const meals = eventServices(ev).services.filter(s => s.meal && s.main && (s.date || ev.date) === day)
+      .map(s => `${MEALS[s.meal]}${s.guests ? ' ' + s.guests : ''}`).join(' · ');
+    const chips = [
+      toConfirm ? `<span class="due">${tr(`${toConfirm} order${toConfirm > 1 ? 's' : ''} to confirm`, `${toConfirm} ऑर्डर पक्की करायची`)}</span>` : '',
+      noLabour ? `<span class="due">${tr('No labour list', 'मजूर यादी नाही')}</span>` : '',
+      collect > 0 ? `<span>${tr(`${fmtCurrency(collect)} to collect`, `${fmtCurrency(collect)} येणे`)}</span>` : ''
+    ].filter(Boolean);
+    return `<div class="row today-ev" role="button" tabindex="0" data-action="evdetail" data-id="${esc(ev.id)}">
+      <div class="row-body">
+        <div class="title-sm trunc">${w === 'today' ? tr('Today', 'आज') : tr('Tomorrow', 'उद्या')} · <span data-nl>${esc(ev.name)}</span></div>
+        ${meals ? `<div class="meta today-meals">${esc(meals)}</div>` : ''}
+        <div class="meta trunc">${[!meals && guests ? tr(`${guests} guests`, `${guests} पाहुणे`) : '', ev.venue ? `<span data-nl>${esc(ev.venue)}</span>` : ''].filter(Boolean).join(' · ')}</div>
+        <div class="today-open">${chips.length ? chips.join(' · ') : `<span class="pos">${tr('Nothing pending', 'काही बाकी नाही')}</span>`}</div>
+      </div>
+      ${icon('chevron', 18)}
+    </div>`;
+  }).join('')}</div>`;
+}
+
 /* ── HOME ────────────────────────────────────────── */
 function rHome() {
+  q('today').innerHTML = todayCard();
   renderPeriodSegs();
   const P = sliceByPeriod(D, period);
   // Contribution, margin and what is still owed: events with a bill only (billingSplit). Costs of events without a
