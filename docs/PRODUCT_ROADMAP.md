@@ -73,10 +73,16 @@ The owner's spreadsheet was checked read-only, outside this repository, in Nov 2
   - Hindi and Marathi offline work through the keyboard 🎤, in English letters.
 - **Every result goes to review,** and the existing forms save it.
   - Never auto-save or auto-send.
-  - Never guess paid or credit. उधार, or उधर as it is often misheard, means credit.
+  - **Speech never decides the payment status on its own.**
+    - A clear word such as उधार or "credit" may pre-select it.
+    - A possibly misheard word such as उधर, or no word at all, leaves paid/credit unanswered and asks.
+    - The user always confirms before saving.
   - An advance is a client payment, never the bill.
   - "N waiters…" opens the labour sheet.
-  - "paid X to <vendor>" is a settlement, with a switch to "new expense".
+  - **"paid X to <vendor>" can mean two things,** and the app must tell them apart by context and confirmation:
+    - settling an existing unpaid bill;
+    - a new expense paid on the spot.
+    If the vendor has unpaid bills, propose the settlement and offer "new expense" as one tap. If not, propose a new paid expense. Always confirm.
   - Two events on one date, or two vendors with the same name, are always asked about.
 - **Amounts may arrive as** digits, words, "साडेआठ हजार", "dedh hazaar" or "8:30 hajar" (= ₹8,500).
 - **No paid speech or AI service without the owner's approval.** Tell the user once that online speech goes to the browser's speech service.
@@ -85,14 +91,9 @@ The owner's spreadsheet was checked read-only, outside this repository, in Nov 2
 ## Explicitly deferred
 Recipe-level costing; compulsory inventory; automatic procurement; payroll and HR; CRM pipelines; universal spreadsheet import; automatic WhatsApp sending; cloud and multi-user before there is demand; large visual redesigns; AI features without a clear recording benefit.
 
-## Conflicts with earlier decisions (for the owner to settle)
-1. **Offline audio recordings.**
-   - The directive allows short recordings as a fallback.
-   - An earlier decision was "no voice-recording archive"; CaterDesk keeps no audio.
-   - Proposal: none until v6 is in use. If added later, recordings stay on the phone, show until they are processed, are included in backups, and are deleted once turned into an entry.
-2. **Home = today's work.**
-   - On 23 Nov it was "not committed until validated".
-   - The directive now schedules it for 5.3.0, so it is scheduled.
-3. **The Google AI Studio prototype.**
-   - Use it for interaction ideas only.
-   - Its accounting, "reconciled profit" rule, labour save and database are not to be copied (independent review, 23 Nov 2026).
+## Decisions on earlier conflicts (settled by the owner, 26 Nov 2026)
+1. **Offline audio recordings: deferred** until structured voice entry is working. CaterDesk keeps no audio until then.
+2. **Home = today's work: approved for 5.3.0.**
+3. **The Google AI Studio prototype:**
+   - reuse its UX and voice-processing ideas;
+   - do not reuse its accounting engine, its "reconciled profit" rule, its labour save or its database.

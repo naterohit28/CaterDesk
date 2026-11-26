@@ -28,7 +28,11 @@ CaterDesk is the owner's catering operations and money app: a vanilla-JS PWA (In
 - Never create a financial record from an unverified source (AI, speech, a photo) without the user confirming it. Never guess paid vs credit, an advance vs the bill, or an ambiguous vendor or event.
 
 ## 3. Data safety
-- `DB_VERSION` stays 4. Never raise it: old open tabs break (see `tests/release-update.cjs`). New stores and fields must be additive and backward compatible; restores of older backups must keep working.
+- `DB_VERSION` is 4 today, and the current requirement is to keep it. Raising it is not banned forever, but it needs the owner's explicit approval plus:
+  - a safe migration;
+  - backup compatibility, both ways where possible;
+  - protection for old open tabs (raising it breaks them today; see `tests/release-update.cjs`).
+- Until then, new stores and fields must be additive and backward compatible, and restores of older backups must keep working.
 - Any storage or backup-format change needs an explanation first: why, migration, compatibility, rollback, risk. It also needs the **owner's approval** before it is built.
 - Tests use **synthetic sample data only**. Never commit or send real business data, names, phone numbers, invoices, backups, tokens or signing material. Never test against the live site's data or the owner's phone app.
 - Offline operation must keep working: records always save without internet.
