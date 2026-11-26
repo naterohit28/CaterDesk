@@ -1,6 +1,6 @@
 # CaterDesk product roadmap
 
-**Status:** live version 5.1.3. Development resumed on 26 Nov 2026 under the owner's final development directive. Engineering rules: [AGENTS.md](../AGENTS.md).
+**Status:** live version 5.2.2 (5.3.0 in review). Development resumed on 26 Nov 2026 under the owner's final development directive. Engineering rules: [AGENTS.md](../AGENTS.md).
 
 ## Objective
 Make CaterDesk a compact, reliable catering operations and money app that cuts paperwork, admin time, repeated entry and forgotten transactions for independent Indian caterers (operators aged 40–70, coming from paper, Excel and WhatsApp).
@@ -57,7 +57,7 @@ The owner's spreadsheet was checked read-only, outside this repository, in Nov 2
 | **5.2.0** | Faster recording: quick add, shorter expense entry, photo-first capture | Small steps, each shipped on its own. **Shipped:** one-tap "Usual items" in the expense form (5.2.0) |
 | 5.2.x | Meals, menus and sourcing as caterers actually work (owner's additional requirements, 26 Nov) | In order, each step its own small PR (details below). **Shipped:** meal headings (5.2.1), Ice and Milk & Dairy (5.2.2) |
 | 5.2.x | Category-wise multi-item supplier orders (grocery, vegetables, dairy…) | Item, quantity and free unit (kg, litre, packet, box, dozen, ladi); one WhatsApp message per order; prepared → sent → confirmed → delivered/cancelled; revisions, shortages, an estimated then actual bill; one invoice may cover several orders or events. Keep counter orders as they are. No recipe costing |
-| 5.3.0 | Home = today's work | Today's and tomorrow's events, orders to confirm, deliveries, unfinished photos, expected costs not recorded, labour to complete, collections due, payments due, events to reconcile, backup reminder. Built from real records only |
+| **5.3.0** | Home = today's work | **Shipped first step (5.3.0):** a Today card (today's and tomorrow's events with orders to confirm, no labour list, balance to collect), then the quick actions and to-do cards; the money overview moved below. Later steps: Today's and tomorrow's events, orders to confirm, deliveries, unfinished photos, expected costs not recorded, labour to complete, collections due, payments due, events to reconcile, backup reminder. Built from real records only |
 | 5.4.0 | Suppliers and labour contractors easier to use | Tell vendors and contractors apart; worker types with usual rates; requested vs actual attendance; extras and transport; searchable ledgers. Keep the current contractor accounting. No payroll or HR |
 | 5.x | Event Financial Closure Report and consolidated reports | Printable report built on the existing calculations: final bill, receipts, costs by category and supplier, labour by contractor, payables, shared and unallocated costs, estimated vs actual, cost per plate, contribution (not company profit), reconciliation status |
 | **6.0.0** | Voice and typed natural-language entry | Speak or type → interpret → review → confirm → save. See the rules below |
@@ -73,7 +73,7 @@ Principle: CaterDesk must follow how a caterer works, not make the caterer follo
    - Old "Ice + Milk" records stay as they are: readable, editable, reportable. Their amounts are never split by guessing.
    - The combined item leaves new-entry suggestions.
    - Drinking water, water tankers and oil/ghee stay separate.
-3. **Sourcing is never decided by the dish name alone.**
+3. **Deferred by the owner (26 Nov 2026) until CaterDesk is production grade.** Sourcing is never decided by the dish name alone.
    - A starter is a menu course, not automatically a live counter.
    - Each dish supports:
      - our kitchen;

@@ -758,3 +758,8 @@ button.d-brand:focus-visible { outline: 2px solid var(--brand-text); outline-off
 /* The three time boxes get a row of their own (beside Date they were too narrow to tap and made the sheet scroll sideways) */
 .f2 > .field:has(.time-pick) { grid-column: 1 / -1; }
 .field:has(.time-pick), .time-pick { min-width: 0; }
+
+/* 5.3.0 Today: what is still open for each event, under its name */
+.today-open { margin-top: 2px; font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); }
+.today-open .due { color: var(--due); }
+.today-open .pos { color: var(--pos); }
