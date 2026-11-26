@@ -69,7 +69,9 @@ const DATA = { version: 'ffv2', photos: [], vendors: [], vPays: [], cPays: [], e
     assert.equal(await p.locator('#ev-menu').isVisible(), false, 'with meals, each meal has its own menu');
     await p.locator('#ev-mp summary').click().catch(() => {});
     const groups = await p.locator('#ev-mp-breakfast-m optgroup').evaluateAll(gs => gs.map(g => [g.label, [...g.children].map(o => o.textContent)]));
-    assert.deepEqual(groups[0], ['For Breakfast', ['Sample Breakfast Deluxe']]);
+    // 5.3.2: the starter Breakfast / High Tea combinations are offered with your own breakfast menu
+    assert.equal(groups[0][0], 'For Breakfast'); assert.ok(groups[0][1].includes('Sample Breakfast Deluxe'));
+    assert.equal(groups[0][1].filter(t => t.startsWith('Breakfast / High Tea – ')).length, 8);
     assert.equal(groups.flatMap(g => g[1]).includes('Standard'), false, 'hidden menus are not offered');
     await p.fill('#ev-mp-breakfast-g', '350'); await p.selectOption('#ev-mp-breakfast-m', { label: 'Sample Breakfast Deluxe' });
     assert.equal(await p.inputValue('#ev-mp-breakfast-r'), '260', '350 guests: the 300+ price');

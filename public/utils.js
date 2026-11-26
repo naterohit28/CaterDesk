@@ -564,7 +564,26 @@ export const MENUS = [
   { id: 'maharashtrian', leaf: true, name: 'Maharashtrian', slabs: [{ min: 50, rate: 800 }, { min: 151, rate: 750 }], items: [
     '1 Mocktail, 1 Fruit Juice', 'Salt, Pickle, 2 Chutney (Sweet, Spicy)', 'Koshimbir, Papad, Kurdya', 'Any 1 (Mix Bhajya, Vadi)',
     'Any 2 (Puri, Phulka, Bhakri, Vade)', '1 Usal (Gravy Bhaji)', '1 Dry Veg, 1 Kurma / Mix Bhaji', 'Sadha Bhaat', 'Varan, Tup or Amti',
-    'Masale Bhaat / Pulav', 'Tomato Saar / Kadhi', '2 Sweet (Basic, Milk)', 'Chaas or Mattha or Solkadhi', 'Water Bottles'] }
+    'Masale Bhaat / Pulav', 'Tomato Saar / Kadhi', '2 Sweet (Basic, Milk)', 'Chaas or Mattha or Solkadhi', 'Water Bottles'] },
+  // 5.3.2 (owner's rate card): Breakfast or High-Tea combinations, offered first for breakfast and high tea. Dishes
+  // only, editable once chosen; who makes each dish and its diet marks are set per event like any other meal. The card
+  // price is only an indicator: it fills a blank price per plate and can be changed.
+  { id: 'bf-any1', meals: ['breakfast', 'hightea'], name: 'Breakfast / High Tea – Any 1 snack', slabs: [{ min: 1, rate: 90 }], items: [
+    'Any 1 (Upma, Kande Pohe, Sabudana Khichdi, Misal Pav)', 'Tea', 'Coffee'] },
+  { id: 'bf-upma-pohe', meals: ['breakfast', 'hightea'], name: 'Breakfast / High Tea – Upma & Kande Pohe', slabs: [{ min: 1, rate: 120 }], items: [
+    'Upma', 'Kande Pohe', 'Tea', 'Coffee'] },
+  { id: 'bf-upma-vada', meals: ['breakfast', 'hightea'], name: 'Breakfast / High Tea – Upma & Batata Vada', slabs: [{ min: 1, rate: 120 }], items: [
+    'Upma', 'Any 1 (Batata Vada, Upwas Snack, Misal Pav)', 'Tea', 'Coffee'] },
+  { id: 'bf-upma-idli', meals: ['breakfast', 'hightea'], name: 'Breakfast / High Tea – Upma & Idli', slabs: [{ min: 1, rate: 140 }], items: [
+    'Upma', 'Idli', 'Chutney', 'Sambhar', 'Tea', 'Coffee'] },
+  { id: 'bf-idli-vada', meals: ['breakfast', 'hightea'], name: 'Breakfast / High Tea – Idli & Medu Vada', slabs: [{ min: 1, rate: 150 }], items: [
+    'Idli', 'Medu Vada', 'Chutney', 'Sambhar', 'Tea', 'Coffee'] },
+  { id: 'bf-sheera-dosa', meals: ['breakfast', 'hightea'], name: 'Breakfast / High Tea – Sheera & Dosa', slabs: [{ min: 1, rate: 170 }], items: [
+    'Pineapple Sheera', 'Any 1 (Assorted Dosa, Idli & Medu Vada)', 'Chutney', 'Sambhar', 'Tea', 'Coffee'] },
+  { id: 'bf-jalebi-fafda', meals: ['breakfast', 'hightea'], name: 'Breakfast / High Tea – Jalebi & Fafda', slabs: [{ min: 1, rate: 170 }], items: [
+    'Jalebi', 'Fafda', 'Papaya Mirchi', 'Khaman Dhokla', 'Bread Butter', 'Tea', 'Coffee'] },
+  { id: 'bf-buffet', meals: ['breakfast', 'hightea'], name: 'Breakfast / High Tea – Buffet (4 items)', slabs: [{ min: 1, rate: 250 }], items: [
+    'Any 4 breakfast / high-tea items', 'Assorted Cookies', 'Tea', 'Coffee', 'Milk'] }
 ];
 
 /* The menu library: the starter menus above, overridden by your own saved copy of any of them (same id), plus menus

@@ -4,7 +4,7 @@
 
 An offline-first app for catering events, expenses, vendor credit, client collections, menus and vendor orders. Business records stay in the device's browser storage; the hosted app also sends limited error diagnostics to its server.
 
-**Current source and hosted web build: v5.3.1.** Documentation checked on **26 November 2026**.
+**Current source and hosted web build: v5.3.2.** Documentation checked on **26 November 2026**.
 
 **Development status: Active — focused improvements (from v5.2.0).** v5.0.0 was the stable internal release (the owner's full 25-check event test passed on their Android phone, the owner confirmed the installed app, and the money is checked against hand-worked figures); 5.1.x then fixed defects found in use. Since the owner's development directive of 26 Nov 2026, small recording-first improvements ship one at a time, each in its own reviewed PR with tests, following [AGENTS.md](AGENTS.md) and the [product roadmap](docs/PRODUCT_ROADMAP.md). Financial rules, stored data and backups stay compatible; nothing is merged or released without the owner's approval.
 
@@ -34,16 +34,16 @@ Four things carry version numbers, and they are **independent**: the **hosted we
 
 | Component | State (checked 20 November 2026 unless noted) | Meaning |
 | --- | --- | --- |
-| Source and hosted web app | **5.3.1** | Current UI, data/export version, service worker and error reporter |
-| Service-worker release cache | `flavor-fusion-v2-cache-v113` | Installed web assets; this number is not the database schema version |
+| Source and hosted web app | **5.3.2** | Current UI, data/export version, service worker and error reporter |
+| Service-worker release cache | `flavor-fusion-v2-cache-v114` | Installed web assets; this number is not the database schema version |
 | Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** (inspected 3 November 2026) | APK package inspected locally; launches the hosted app, which can run 4.31.16 |
 | Android requirements for that local wrapper | min API **24**, target API **36** | Android 7.0+ and a compatible browser provider |
 | Latest GitHub Release with downloadable binaries | **2.4.7** | APK and desktop ZIP; later source tags do not imply newer binaries were uploaded |
 | Desktop package currently in the owner's `Apps/Desktop` folder | **2.4.7** | A static older bundle, not the current source build |
-| Desktop launcher source/instructions | **5.3.1** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
+| Desktop launcher source/instructions | **5.3.2** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
 | IndexedDB schema | **4** | Kept separate from application version changes |
 
-Do not relabel an older package as 5.3.1. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
+Do not relabel an older package as 5.3.2. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
 
 ## Current features
 
@@ -161,13 +161,13 @@ The APK is a **Trusted Web Activity** wrapper around the hosted site. It does no
 1. Keep a business-data backup.
 2. Obtain the intended APK from its actual release assets or the owner's prepared local package. Install over the existing app with the same package/signing identity.
 3. Open online to download updates. Check the **web build in Settings**, not just Android App info.
-4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **5.3.1**.
+4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **5.3.2**.
 
 A newer web release may reload automatically during the first 20 seconds of startup when no active form/save/overlay prevents it, at most once per release per session. Otherwise it waits for a later start or explicit reload. Refresh can also switch versions when no form/save is open. Service-worker cache mappings preserve matching assets for older open pages until navigation.
 
 Do not uninstall or clear browser/site storage to force an update. If Android rejects an APK, check package, versionCode and signing certificate before proceeding. The public certificate association is [`public/.well-known/assetlinks.json`](public/.well-known/assetlinks.json).
 
-The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **5.3.1**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
+The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **5.3.2**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
 
 ## Windows desktop testing
 
@@ -369,6 +369,7 @@ This is a short source-feature history, not a list of available binary downloads
 
 | Version | Main changes |
 | --- | --- |
+| 5.3.2 | **Breakfast and high-tea menus** (owner's rate card). Eight Breakfast / High Tea combinations are starter menus, listed first when choosing a menu for breakfast or high tea (e.g. Upma & Kande Pohe, Idli & Medu Vada, Sheera & Dosa, Jalebi & Fafda, a 4-item buffet; each with tea and coffee). Choosing one fills the meal's dishes, editable before Save; each dish then has the same choices as lunch and dinner: who makes it (our kitchen, at the venue, bought ready-made, bought and finished, a counter) and diet marks. The card price only fills a blank price per plate. |
 | 5.3.1 | **Who supplies a dish is never guessed from its name** (owner's requirements, step 3). A new dish starts in our kitchen: "Paneer Tikka", "Kebab", "Soup" or "Idli" no longer go to a live counter by keyword. Confirmed choices are remembered and filled in next time (editable): dishes you assigned yourself, and dishes whose counter order was sent, confirmed or delivered. Every way is remembered: a vendor counter, cooked at the venue, bought ready-made, bought and finished, part bought, so one event can mix all of them. New labour type **Specialist Cook – स्पेशल आचारी** (starter, tandoor or Chinese cook is labour, not an outsourced counter). Saved dishes, orders and records are unchanged. |
 | 5.3.0 | **Home opens on today's work** (owner-approved). A **Today** card lists today's and tomorrow's events (also a meal on another day of the event), each with guests, meals and venue and what is still open: vendor orders to confirm, no labour list yet, client balance to collect, or "Nothing pending". With none, it shows the next event. The quick actions and the to-do cards (deliveries, bills to finish, vendors to pay, costs to check, backup) follow it; **Money overview** (period, contribution, next 30 days) and insights move below them. Built from saved records only; no calculation changed. |
 | 5.2.2 | Ice and Milk & Dairy as separate expense items (owner's requirements, step 2). New entries offer **Milk & Dairy – दूध व दुग्धजन्य पदार्थ** (milk, paneer, curd, cream, cheese, butter, mawa, khoya, basundi, buttermilk) and **Ice – बर्फ** (blocks, cubes, crushed, ladi) under Raw Material. The overlapping items **Ice + Milk**, **Paneer / Dairy** and **Ice Blocks** are retired for new entries only: old records keep their item exactly (readable, editable, in totals, reports and backups), and opening an old one no longer risks changing its item. Usual items, usual vendors and a vendor's speciality count Paneer / Dairy as Milk & Dairy and Ice Blocks as Ice; Ice + Milk is never split or mapped by guessing. The cost checklist treats an older event's Ice + Milk as covered by Milk & Dairy or Ice. Water, Water Tanker and Oil / Ghee stay separate. No money calculation change. |

@@ -91,7 +91,9 @@ const pickTime = async (p, id, hhmm = '19:30') => { if (await p.inputValue('#' +
   await test('2 menu dropdown: menus for the chosen meal first, then any-meal, then other meals, each with its dish count, and Create new menu', async () => {
     await openSheet(); await p.selectOption('#svc-meal', 'svc-breakfast');
     const groups = await p.locator('#svc-tpl optgroup').evaluateAll(gs => gs.map(g => [g.label, [...g.children].map(o => o.textContent)]));
-    assert.deepEqual(groups[0], ['For Breakfast', ['Sample Breakfast Menu · 3 dishes']]);
+    // 5.3.2: the 8 starter Breakfast / High Tea combinations are offered for breakfast too
+    assert.equal(groups[0][0], 'For Breakfast'); assert.ok(groups[0][1].includes('Sample Breakfast Menu · 3 dishes'));
+    assert.equal(groups[0][1].filter(t => t.startsWith('Breakfast / High Tea – ')).length, 8);
     assert.equal(groups[1][0], 'Any meal'); assert.ok(groups[1][1].includes(`Golden · ${golden.length} dishes`));
     assert.deepEqual(groups.at(-1), ['Other meals', ['Sample Dinner Menu · 4 dishes']], 'other saved menus still choosable');
     assert.deepEqual(await p.locator('#svc-tpl > option').allInnerTexts(), ['No library menu', '+ Create new menu']);
