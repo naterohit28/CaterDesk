@@ -1396,23 +1396,54 @@ export function dishCounter(name, learned) {
   return '';
 }
 
-// A meal heading in pasted text ("Lunch", "Dinner menu:", "Hi-tea –") → its meal key, else ''
-const MEAL_WORDS = [['breakfast', /^(breakfast|nashta|नाश्ता)$/], ['lunch', /^lunch$/], ['hightea', /^(high|hi)[ -]?tea$/],
-  ['dinner', /^dinner$/], ['latenight', /^(late[ -]?night|midnight)( snacks?)?$/]];
-export function mealHeading(text) {
-  const t = String(text || '').toLowerCase().replace(/[\s:\-–—]+$/, '').replace(/\s*\([^)]*\)$/, '').replace(/\s+menu$/, '').replace(/\s+/g, ' ').trim();
-  return (MEAL_WORDS.find(([, re]) => re.test(t)) || [''])[0];
+/* A meal heading in pasted text → its meal key, else ''. English, Hindi and Marathi, with common short forms
+   ("BF", "Hi-tea", "Eve tea/coffee", "नाश्ता", "दुपारचे जेवण"). Guest counts ("100 pax", "२५० पाहुणे"), times
+   ("9am - 11pm"), rates ("@ ₹120/-") and descriptors ("Maharashtrian Menu") around the meal word are allowed
+   (5.2.1, owner's requirements: "Breakfast - 100 pax" and "High Tea 100 pax" were missed before). */
+const MEAL_WORDS = [
+  ['breakfast', /^(breakfast|break fast|bf|b\/f|nashta|nasta|naashta|नाश्ता|नाष्टा|सकाळचा नाश्ता|सकाळचे नाश्ता|morning (tea|snacks?))$/],
+  ['lunch', /^(lunch|दुपारचे जेवण|दुपारचं जेवण|दुपारचे भोजन|दोपहर का (खाना|भोजन))$/],
+  ['hightea', /^((high|hi)[ -]?tea|eve(ning)?( tea| snacks?)?( ?(\/|&|and) ?coffee)?|tea time|(सायंकाळ|संध्याकाळ)(चा)?( चहा( (व|आणि|&) कॉफी)?)?|शाम की चाय)$/],
+  ['dinner', /^(dinner|रात्रीचे जेवण|रात्रीचं जेवण|रात्रीचे भोजन|रात का (खाना|भोजन))$/],
+  ['latenight', /^(late[ -]?night|midnight|मध्यरात्री)( snacks?)?$/]];
+const DEV_DIGITS = '०१२३४५६७८९';
+// The heading words without counts, times, rates or brackets; separators kept as ' | ' to tell the meal from descriptors
+function headingCore(text) {
+  return String(text || '').toLowerCase().replace(/[०-९]/g, c => DEV_DIGITS.indexOf(c))
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/@\s*₹?\s*[\d,]+(\.\d+)?\s*(\/-)?/g, ' ')
+    .replace(/\d{1,2}([:.]\d{2})?\s*(am|pm)(\s*(-|–|to)\s*\d{1,2}([:.]\d{2})?\s*(am|pm))?/g, ' ')
+    .replace(/\d+\s*(pax|guests?|people|persons?|plates?|पाहुणे|लोक|व्यक्ती)/g, ' ')
+    .replace(/\s*[:\-–—|]+\s*/g, ' | ').replace(/\s+/g, ' ').replace(/^[\s|]+|[\s|]+$/g, '').trim();
 }
+// Descriptors after the meal word ("Platinum Menu", "महाराष्ट्रीयन मेनू"); spaces, not \b, since \b ignores Devanagari
+const DECOR = /(^|\s)(menu|मेनू|मेन्यू|buffet|बुफे)(\s|$)/;
+export function mealHeading(text) {
+  const core = headingCore(text);
+  const find = t => (MEAL_WORDS.find(([, re]) => re.test(t.replace(/\s+menu$/, '').trim())) || [''])[0];
+  const whole = find(core.replace(/ \| /g, ' '));
+  if (whole) return whole;
+  // "Lunch - Maharashtrian Menu" / "दुपारचे जेवण - महाराष्ट्रीयन मेनू": the meal, then only descriptors
+  const [first, ...rest] = core.split(' | ');
+  const m = find(first || '');
+  return m && rest.every(r => !r || DECOR.test(r)) ? m : '';
+}
+// A line that looks like a meal heading but names no meal we know ("Special Menu - 200 pax", "संध्याकाळचे जेवण")
+const looksLikeHeading = text => /(\d|[०-९])\s*(pax|guests?|पाहुणे)|(^|\s)(menu|मेनू)(\s|:|$)|जेवण|भोजन|खाना/i.test(String(text || '')) && !/:./.test(String(text || ''));
 /* Pasted menu text (WhatsApp message, Google Lens copy, a typed list) → dishes, each with the meal whose heading it
    follows ('' before any heading). The same dish may be served at two meals, so a repeat is dropped only within the
-   same meal. "Lunch: Jeera Rice, Dal" and a "Dinner" line on its own both count as headings. */
+   same meal. "Lunch: Jeera Rice, Dal" and a "Dinner" line on its own both count as headings.
+   A line that looks like a heading but is not recognised stops the previous meal (its dishes are never silently added
+   to the meal above) and is listed in `unsure`, so the screen can ask which meal it is (5.2.1). */
 export function parseMenu(text) {
   const seen = new Set(), out = [];
+  out.unsure = [];
   let meal = '';
   for (let line of String(text || '').split(/\n|,|;|•|·|\|/)) {
     line = line.replace(/^\s*(\d+[.)]|[-*–>]+)\s*/, '').replace(/\s+/g, ' ').trim();
     const m = mealHeading(line);
     if (m) { meal = m; continue; }
+    if (looksLikeHeading(line)) { meal = ''; out.unsure.push(line); continue; }
     if (/:./.test(line)) {
       const lead = mealHeading(line.slice(0, line.indexOf(':')));
       if (lead) meal = lead;

@@ -54,7 +54,8 @@ The owner's spreadsheet was checked read-only, outside this repository, in Nov 2
 
 | Version | Priority | Notes |
 |---|---|---|
-| **5.2.0** | Faster recording: quick add, shorter expense entry, photo-first capture | Small steps, each shipped on its own. First step: one-tap "Usual items" in the expense form |
+| **5.2.0** | Faster recording: quick add, shorter expense entry, photo-first capture | Small steps, each shipped on its own. **Shipped:** one-tap "Usual items" in the expense form (5.2.0) |
+| 5.2.x | Meals, menus and sourcing as caterers actually work (owner's additional requirements, 26 Nov) | In order, each step its own small PR (details below). **Shipped:** meal headings (5.2.1) |
 | 5.2.x | Category-wise multi-item supplier orders (grocery, vegetables, dairy…) | Item, quantity and free unit (kg, litre, packet, box, dozen, ladi); one WhatsApp message per order; prepared → sent → confirmed → delivered/cancelled; revisions, shortages, an estimated then actual bill; one invoice may cover several orders or events. Keep counter orders as they are. No recipe costing |
 | 5.3.0 | Home = today's work | Today's and tomorrow's events, orders to confirm, deliveries, unfinished photos, expected costs not recorded, labour to complete, collections due, payments due, events to reconcile, backup reminder. Built from real records only |
 | 5.4.0 | Suppliers and labour contractors easier to use | Tell vendors and contractors apart; worker types with usual rates; requested vs actual attendance; extras and transport; searchable ledgers. Keep the current contractor accounting. No payroll or HR |
@@ -62,6 +63,51 @@ The owner's spreadsheet was checked read-only, outside this repository, in Nov 2
 | **6.0.0** | Voice and typed natural-language entry | Speak or type → interpret → review → confirm → save. See the rules below |
 | 6.x | Compact event workspace, Simple/Full view, multi-event coordination | Simple and Full show the same records |
 | Later | Excel export (and later import), optional AI document reading, sync and multi-user, commercial setup | |
+
+### 5.2.x: meals, menus and sourcing (owner's additional requirements, 26 Nov 2026)
+Principle: CaterDesk must follow how a caterer works, not make the caterer follow the software's assumptions. Keep historical records readable and editable, keep the financial engine, keep the interface compact.
+1. **Meal headings (done in 5.2.1).**
+   - English, Hindi and Marathi headings with short forms, guest counts, times and descriptors are recognised.
+   - A heading that can't be read is flagged, and its dishes are never silently added to the meal above.
+2. **Ice and Milk & Dairy as separate expense items** (Milk & Dairy: milk, paneer, curd, cream, cheese, butter, mawa, khoya, basundi, buttermilk; Ice: blocks, cubes, crushed, ladi).
+   - Old "Ice + Milk" records stay as they are: readable, editable, reportable. Their amounts are never split by guessing.
+   - The combined item leaves new-entry suggestions.
+   - Drinking water, water tankers and oil/ghee stay separate.
+3. **Sourcing is never decided by the dish name alone.**
+   - A starter is a menu course, not automatically a live counter.
+   - Each dish supports:
+     - our kitchen;
+     - our staff cooking at the venue;
+     - bought ready-made;
+     - bought semi-prepared or frozen and finished by us;
+     - part bought, part ours;
+     - an outsourced counter or service.
+   - Remember confirmed choices and suggest them later; a suggestion stays editable.
+   - With no reliable preference, don't assume "outsourced" from a keyword. Review `DISH_WORDS`, `dishCounter()`, `learnedDishes()` and the supplier suggestions.
+   - Money follows what actually happened:
+     - starter ingredients are raw material;
+     - frozen or semi-prepared starters are purchased food;
+     - a specialist starter cook is labour (Starter cook);
+     - Live Counter only when genuinely outsourced.
+   - Keep existing Starter-counter records and supplier links.
+4. **All five meals equal:** breakfast, lunch, high tea, dinner and late night each support:
+   - guests, date and time;
+   - a menu, plus adding and removing dishes;
+   - every sourcing method and specialist labour;
+   - vendor orders, delivery status and amendment history.
+   Reuse the existing meal-service model; one workflow for every meal.
+5. **Menu selection:** make the difference between previewing a library menu and the event's saved dishes obvious, and let the user confirm and go straight to kitchen and orders in few taps. Never create supplier commitments from an unconfirmed menu.
+6. **Meal-wise kitchen and function sheet:** for each meal, show:
+   - time and guests;
+   - our kitchen, cooking at the venue, specialist cooks;
+   - ready-made purchases, frozen or semi-prepared to finish;
+   - outsourced counters, supplier orders and delivery status.
+   No automatic labour costs, no production or recipe database.
+7. **Expense items:** keep 6 primary categories, with aliases, search and progressive disclosure for wider coverage. Keep expense heads, supplier specialities, labour roles, menu courses and procurement items distinct. No ingredient-level money categories.
+8. **Optional, editable menu templates** (breakfast, high tea, late night, Maharashtrian, South Indian, Punjabi, fasting), with no fixed prices or compulsory rules.
+9. **Connect to the multi-item supplier orders** (one frozen-food supplier, several starter items, one order) and to v6 voice.
+
+**An order is not an expense, and an assigned cook is not a confirmed labour cost.** Raw ingredients, purchased prepared food, specialist labour, outsourced services, orders, bills and settlements stay distinct.
 
 **Known maintenance issue:** the Expenses tab's **To pay** list draws every unpaid bill at once. A stress audit measured about 15 s at 5,000 expenses; the slowdown grows with the number of **unpaid** bills. It is deferred because the owner's real volume is far below that. Fix it with a page-by-page list (totals still from all data) if real volume grows.
 
