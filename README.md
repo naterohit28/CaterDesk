@@ -4,7 +4,7 @@
 
 An offline-first app for catering events, expenses, vendor credit, client collections, menus and vendor orders. Business records stay in the device's browser storage; the hosted app also sends limited error diagnostics to its server.
 
-**Current source and hosted web build: v5.2.0.** Documentation checked on **26 November 2026**.
+**Current source and hosted web build: v5.2.1.** Documentation checked on **26 November 2026**.
 
 **Development status: Active — focused improvements (from v5.2.0).** v5.0.0 was the stable internal release (the owner's full 25-check event test passed on their Android phone, the owner confirmed the installed app, and the money is checked against hand-worked figures); 5.1.x then fixed defects found in use. Since the owner's development directive of 26 Nov 2026, small recording-first improvements ship one at a time, each in its own reviewed PR with tests, following [AGENTS.md](AGENTS.md) and the [product roadmap](docs/PRODUCT_ROADMAP.md). Financial rules, stored data and backups stay compatible; nothing is merged or released without the owner's approval.
 
@@ -34,16 +34,16 @@ Four things carry version numbers, and they are **independent**: the **hosted we
 
 | Component | State (checked 20 November 2026 unless noted) | Meaning |
 | --- | --- | --- |
-| Source and hosted web app | **5.2.0** | Current UI, data/export version, service worker and error reporter |
-| Service-worker release cache | `flavor-fusion-v2-cache-v109` | Installed web assets; this number is not the database schema version |
+| Source and hosted web app | **5.2.1** | Current UI, data/export version, service worker and error reporter |
+| Service-worker release cache | `flavor-fusion-v2-cache-v110` | Installed web assets; this number is not the database schema version |
 | Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** (inspected 3 November 2026) | APK package inspected locally; launches the hosted app, which can run 4.31.16 |
 | Android requirements for that local wrapper | min API **24**, target API **36** | Android 7.0+ and a compatible browser provider |
 | Latest GitHub Release with downloadable binaries | **2.4.7** | APK and desktop ZIP; later source tags do not imply newer binaries were uploaded |
 | Desktop package currently in the owner's `Apps/Desktop` folder | **2.4.7** | A static older bundle, not the current source build |
-| Desktop launcher source/instructions | **5.2.0** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
+| Desktop launcher source/instructions | **5.2.1** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
 | IndexedDB schema | **4** | Kept separate from application version changes |
 
-Do not relabel an older package as 5.2.0. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
+Do not relabel an older package as 5.2.1. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
 
 ## Current features
 
@@ -161,13 +161,13 @@ The APK is a **Trusted Web Activity** wrapper around the hosted site. It does no
 1. Keep a business-data backup.
 2. Obtain the intended APK from its actual release assets or the owner's prepared local package. Install over the existing app with the same package/signing identity.
 3. Open online to download updates. Check the **web build in Settings**, not just Android App info.
-4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **5.2.0**.
+4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **5.2.1**.
 
 A newer web release may reload automatically during the first 20 seconds of startup when no active form/save/overlay prevents it, at most once per release per session. Otherwise it waits for a later start or explicit reload. Refresh can also switch versions when no form/save is open. Service-worker cache mappings preserve matching assets for older open pages until navigation.
 
 Do not uninstall or clear browser/site storage to force an update. If Android rejects an APK, check package, versionCode and signing certificate before proceeding. The public certificate association is [`public/.well-known/assetlinks.json`](public/.well-known/assetlinks.json).
 
-The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **5.2.0**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
+The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **5.2.1**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
 
 ## Windows desktop testing
 
@@ -369,6 +369,7 @@ This is a short source-feature history, not a list of available binary downloads
 
 | Version | Main changes |
 | --- | --- |
+| 5.2.1 | Meal headings in pasted menus (owner's requirements, step 1): English, Hindi and Marathi headings are recognised with short forms and extras, e.g. BF, "Breakfast - 100 pax", "High Tea 100 pax", "Evening Tea / Coffee", नाश्ता, दुपारचे जेवण, रात्रीचं जेवण, with guest counts, times, rates and words like "Platinum Menu". Before, only a bare "Breakfast"/"Lunch"… line was a heading, so dishes after "High Tea 100 pax" went to the lunch above. A line that looks like a heading but names no known meal now stops the meal above, and the menu sheet asks which meal it is. No data or money change. |
 | 5.2.0 | Faster recording, first step (owner's development directive): the expense sheet shows **Usual items**, one-tap buttons for the 6 items you record most (ties go to the latest). One tap sets the category and the item together, exactly like choosing them below, and shows that item's usual vendors. Labour-sheet lines and order prices are not counted. Nothing is chosen until tapped; the category chips and item list stay for everything else. No data or money change. |
 | 5.1.3 | Labour pay per contractor (owner): the labour sheet no longer has one Paid now / Contractor credit switch. A line with a contractor is owed to that contractor; the event's labour card lists each contractor with what this event owes them and a **Pay** button (amount and event filled in). A line with no contractor was paid to the workers directly and asks how (Paid directly by). Expenses already saved as paid stay paid: nothing is re-labelled. |
 | 5.1.2 | Events list (owner): upcoming events are listed nearest date first, so today's and tomorrow's events are at the top; past events stay most recent first. (Since 3.0.0 upcoming events were listed furthest date first.) |

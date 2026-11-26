@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '5.2.0';
+const APP_BUILD = '5.2.1';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -2008,6 +2008,7 @@ async function patchEvent(id, patch, drop = []) {
 /* Menu: paste or type the dishes; each is shown for review (counter, meal) before saving. Earlier choices for
    dishes that stay are kept; new dishes are matched to counters from what you chose before. */
 let menuDraft = [];
+let menuUnsure = [];   // lines that look like a meal heading but name no meal we know (5.2.1): shown for the user to check
 function openMenuModal() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   menuDraft = (ev.dishes || []).map(d => ({ ...d }));
@@ -2035,6 +2036,7 @@ function readMenuText() {
   const exact = new Map(prior.map(d => [draftKey(d.name, d.meal), d]));
   const byName = new Map(prior.map(d => [d.name.toLowerCase(), d]));
   const meals = MEAL_ORDER.filter(m => (ev.meals || []).includes(m));
+  menuUnsure = parseMenu(qv('menu-text')).unsure || [];
   menuDraft = parsedDishes(ev).map(({ name, meal }) => {
     const d = exact.get(draftKey(name, meal));
     if (d) return { ...d, name };
@@ -2050,14 +2052,18 @@ function renderMenuReview() {
   const meals = MEAL_ORDER.filter(m => (ev.meals || []).includes(m));
   const heads = EXPENSE_HEADS['Live Counter'].filter(h => !/counter setup/i.test(h));
   const sel = (i, k, opts, v) => `<select data-md="${i}" data-k="${k}" style="flex:1;min-width:0">${opts.map(([val, label]) => `<option value="${esc(val)}"${val === v ? ' selected' : ''}>${esc(label)}</option>`).join('')}</select>`;
-  q('menu-review').innerHTML = menuDraft.length ? `<div class="label" style="margin:var(--s2) 0">${tr(`Check ${menuDraft.length} dish${menuDraft.length > 1 ? 'es' : ''}`, `${menuDraft.length} पदार्थ तपासा`)}</div>`
+  // A heading we could not read: its dishes were not added to the meal above it; the user chooses (5.2.1)
+  const unsure = menuUnsure.length ? `<div class="meta due" role="status" data-menu-unsure style="margin:var(--s2) 0">${tr(
+    `Not sure which meal: ${menuUnsure.map(h => `“${esc(h)}”`).join(', ')}. The dishes after it are not added to the meal above. Choose their meal below, or write the heading as Breakfast, Lunch, High tea, Dinner or Late night.`,
+    `कोणते जेवण ते कळले नाही: ${menuUnsure.map(h => `“${esc(h)}”`).join(', ')}. खालील पदार्थांचे जेवण निवडा.`)}</div>` : '';
+  q('menu-review').innerHTML = (menuDraft.length ? unsure : '') + (menuDraft.length ? `<div class="label" style="margin:var(--s2) 0">${tr(`Check ${menuDraft.length} dish${menuDraft.length > 1 ? 'es' : ''}`, `${menuDraft.length} पदार्थ तपासा`)}</div>`
     + menuDraft.map((d, i) => `<div class="check-row" style="flex-direction:column;align-items:stretch;gap:6px;cursor:default">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--s2)"><span class="title-sm trunc" data-nl>${esc(d.name)}</span>
         <button type="button" class="icon-btn" data-md-del="${i}" aria-label="Remove dish">${icon('x', 16)}</button></div>
       <div style="display:flex;gap:var(--s2)">
         ${ev.outsourced ? '' : sel(i, 'head', [['', 'Our kitchen – आपले किचन'], ['@venue', 'We cook it at the venue – साइटवर'], ...SRC_OPTS, ...heads.map(h => [h, h])], whoValue(d))}${d.part ? `<span class="meta" style="align-self:center">${tr('part', 'थोडे')}</span>` : ''}
         ${meals.length > 1 || isUnassigned(ev, d) ? sel(i, 'meal', [...(isUnassigned(ev, d) ? [[d.meal, `${MEALS[d.meal]} (not in this event) – choose`]] : []), ['', 'All meals – सर्व जेवण'], ...meals.map(m => [m, MEALS[m]])], d.meal || '') : ''}
-      </div></div>`).join('') : '';
+      </div></div>`).join('') : '');
 }
 
 async function saveMenu() {
