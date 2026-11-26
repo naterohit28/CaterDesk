@@ -11,7 +11,7 @@ import {
 } from './db.js';
 
 import {
-  EXPENSE_HEADS, EVENT_TYPES, VENUE_TYPES, LOGISTICS, venueTypeLabel, logisticsPrompts, venueSuggestion, PAY_MODES, PERIODS, PERIOD_SHORT, MENUS, allMenus, setSavedMenus, menusForMeal, cleanSlabs, isEditedStarter, menuById, menuRate, menuCostPerPlate, costChecklist,
+  EXPENSE_HEADS, RETIRED_HEADS, headNow, catNow, EVENT_TYPES, VENUE_TYPES, LOGISTICS, venueTypeLabel, logisticsPrompts, venueSuggestion, PAY_MODES, PERIODS, PERIOD_SHORT, MENUS, allMenus, setSavedMenus, menusForMeal, cleanSlabs, isEditedStarter, menuById, menuRate, menuCostPerPlate, costChecklist,
   uid, today, localDay, localTime, localStamp, daysSince, fmtDate, fmtCurrency, esc,
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, billSet, billingSplit, calcVendorBalance, normGstin, gstinValid, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '5.2.1';
+const APP_BUILD = '5.2.2';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -5083,7 +5083,7 @@ function setExpCat(cat, head = '') {
   q('exp-cat').value = cat;
   q('exp-cats').innerHTML = Object.keys(EXPENSE_HEADS).map(c =>
     `<button type="button" class="cat-chip" data-cat="${esc(c)}" aria-pressed="${c === cat}">${catIcon(c, 20)}${esc(c)}</button>`).join('');
-  populateSelect('exp-head', headsByUse(cat), head);
+  populateSelect('exp-head', headsByUse(cat, head), head);
   populateVendorSelect(qv('exp-vendor'));
   renderItemQuick();
 }
@@ -5096,8 +5096,10 @@ function usualItems() {
   const sheet = new Set(D.events.flatMap(e => Object.values(e.labour?.expIds || {})));
   const uses = new Map();
   for (const x of D.expenses) {
-    if (!x.cat || !x.head || x.fromOrder || sheet.has(x.id) || !(EXPENSE_HEADS[x.cat] || []).includes(x.head)) continue;
-    const k = x.cat + '\u0000' + x.head, u = uses.get(k) || { cat: x.cat, head: x.head, n: 0, last: '' };
+    // A retired item counts as its successor ("Paneer / Dairy" → Milk & Dairy); "Ice + Milk" has none and is not offered (5.2.2)
+    const cat = catNow(x.cat, x.head), head = headNow(x.head);
+    if (!cat || !head || x.fromOrder || sheet.has(x.id) || !(EXPENSE_HEADS[cat] || []).includes(head)) continue;
+    const k = cat + '\u0000' + head, u = uses.get(k) || { cat, head, n: 0, last: '' };
     u.n++; if (String(x.date || '') > u.last) u.last = String(x.date || '');
     uses.set(k, u);
   }
@@ -5113,12 +5115,15 @@ function renderItemQuick() {
 // Compare category / item names ignoring the Marathi half, spacing and case
 const normal = value => String(value || '').normalize('NFKC').split(' – ')[0].trim().replace(/\s+/g, ' ').toLocaleLowerCase();
 
-// A category's items with the ones you record most at the top (the rest keep their usual order)
-function headsByUse(cat) {
+/* A category's items with the ones you record most at the top (the rest keep their usual order). `keep` is the item of
+   the entry being opened: if it is not in today's list (a retired item such as "Ice + Milk"), it is added at the end, so
+   opening and saving an old record never changes its item (the list would otherwise fall back to its first item). */
+function headsByUse(cat, keep = '') {
   const heads = EXPENSE_HEADS[cat] || [];
   const uses = new Map();
-  for (const x of D.expenses) if (x.cat === cat && x.head) uses.set(x.head, (uses.get(x.head) || 0) + 1);
-  return heads.map((h, i) => ({ h, i, n: uses.get(h) || 0 })).sort((a, b) => (b.n - a.n) || (a.i - b.i)).map(r => r.h);
+  for (const x of D.expenses) if (catNow(x.cat, x.head) === cat && x.head) { const h = headNow(x.head); uses.set(h, (uses.get(h) || 0) + 1); }
+  const list = heads.map((h, i) => ({ h, i, n: uses.get(h) || 0 })).sort((a, b) => (b.n - a.n) || (a.i - b.i)).map(r => r.h);
+  return keep && !list.includes(keep) ? [...list, keep] : list;
 }
 
 /* Vendors ranked for the chosen category and item:
@@ -5129,17 +5134,18 @@ function headsByUse(cat) {
 function rankVendors(cat, head, keep = '') {
   const c = normal(cat), h = normal(head);
   const usesFor = new Map(), usesIn = new Map();
+  // Retired items count as their successor here, so a "Paneer / Dairy" or "Ice Blocks" supplier stays usual (5.2.2)
   for (const x of D.expenses) {
     if (!x.venId) continue;
-    if (c && normal(x.cat) === c) {
+    if (c && normal(catNow(x.cat, x.head)) === c) {
       usesIn.set(x.venId, (usesIn.get(x.venId) || 0) + 1);
-      if (h && normal(x.head) === h) usesFor.set(x.venId, (usesFor.get(x.venId) || 0) + 1);
+      if (h && normal(headNow(x.head)) === h) usesFor.set(x.venId, (usesFor.get(x.venId) || 0) + 1);
     }
   }
   const groups = [[], [], []];
   for (const v of D.vendors) {
     if (isPerson(v) || (v.oneTime && v.id !== keep)) continue;
-    const specialty = c && h && normal(v.cat) === c && normal(v.specialty) === h;
+    const specialty = c && h && normal(catNow(v.cat, v.specialty)) === c && normal(headNow(v.specialty)) === h;
     const forItem = specialty || usesFor.has(v.id);
     const inCat = (c && normal(v.cat) === c) || usesIn.has(v.id);
     groups[forItem ? 0 : inCat ? 1 : 2].push({ v, specialty, n: (usesFor.get(v.id) || 0) * 100 + (usesIn.get(v.id) || 0) });
@@ -5561,7 +5567,9 @@ function openVenModal(id, kind = 'vendor') {
 }
 
 function loadVenSpecialty(selected = '') {
-  populateSelect('ven-specialty', [{ v: '', l: 'Not set – निवडा' }, ...(EXPENSE_HEADS[qv('ven-cat')] || [])], selected);
+  // A vendor saved with a retired speciality keeps it when edited (5.2.2); it is not offered to others
+  const specs = EXPENSE_HEADS[qv('ven-cat')] || [];
+  populateSelect('ven-specialty', [{ v: '', l: 'Not set – निवडा' }, ...specs, ...(selected && !specs.includes(selected) && RETIRED_HEADS[selected] ? [selected] : [])], selected);
 }
 
 async function saveVendor() {
@@ -6402,7 +6410,8 @@ function bindAllEvents() {
       case 'recon-reopen': reopenRecon(); break;
       case 'check-add': {
         const it = CHECKLIST[Number(id)];
-        if (it) openExpModal({ prefill: { evId: curRef, cat: it.cat, head: it.head, venId: it.venId, amt: it.amt } });
+        // "Ice + Milk" from an older event is now two items: the sheet opens on its category and you choose which (5.2.2)
+        if (it) openExpModal({ prefill: { evId: curRef, cat: it.cat, head: it.split ? '' : it.head, venId: it.venId, amt: it.amt } });
         break;
       }
       case 'open-link':    openLinkModal(id); break;
