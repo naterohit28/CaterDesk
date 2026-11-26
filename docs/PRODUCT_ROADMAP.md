@@ -55,7 +55,7 @@ The owner's spreadsheet was checked read-only, outside this repository, in Nov 2
 | Version | Priority | Notes |
 |---|---|---|
 | **5.2.0** | Faster recording: quick add, shorter expense entry, photo-first capture | Small steps, each shipped on its own. **Shipped:** one-tap "Usual items" in the expense form (5.2.0) |
-| 5.2.x | Meals, menus and sourcing as caterers actually work (owner's additional requirements, 26 Nov) | In order, each step its own small PR (details below). **Shipped:** meal headings (5.2.1) |
+| 5.2.x | Meals, menus and sourcing as caterers actually work (owner's additional requirements, 26 Nov) | In order, each step its own small PR (details below). **Shipped:** meal headings (5.2.1), Ice and Milk & Dairy (5.2.2) |
 | 5.2.x | Category-wise multi-item supplier orders (grocery, vegetables, dairy…) | Item, quantity and free unit (kg, litre, packet, box, dozen, ladi); one WhatsApp message per order; prepared → sent → confirmed → delivered/cancelled; revisions, shortages, an estimated then actual bill; one invoice may cover several orders or events. Keep counter orders as they are. No recipe costing |
 | 5.3.0 | Home = today's work | Today's and tomorrow's events, orders to confirm, deliveries, unfinished photos, expected costs not recorded, labour to complete, collections due, payments due, events to reconcile, backup reminder. Built from real records only |
 | 5.4.0 | Suppliers and labour contractors easier to use | Tell vendors and contractors apart; worker types with usual rates; requested vs actual attendance; extras and transport; searchable ledgers. Keep the current contractor accounting. No payroll or HR |
@@ -69,7 +69,7 @@ Principle: CaterDesk must follow how a caterer works, not make the caterer follo
 1. **Meal headings (done in 5.2.1).**
    - English, Hindi and Marathi headings with short forms, guest counts, times and descriptors are recognised.
    - A heading that can't be read is flagged, and its dishes are never silently added to the meal above.
-2. **Ice and Milk & Dairy as separate expense items** (Milk & Dairy: milk, paneer, curd, cream, cheese, butter, mawa, khoya, basundi, buttermilk; Ice: blocks, cubes, crushed, ladi).
+2. **Ice and Milk & Dairy as separate expense items (done in 5.2.2)** (Milk & Dairy: milk, paneer, curd, cream, cheese, butter, mawa, khoya, basundi, buttermilk; Ice: blocks, cubes, crushed, ladi).
    - Old "Ice + Milk" records stay as they are: readable, editable, reportable. Their amounts are never split by guessing.
    - The combined item leaves new-entry suggestions.
    - Drinking water, water tankers and oil/ghee stay separate.

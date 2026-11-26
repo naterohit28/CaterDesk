@@ -9,7 +9,7 @@ const assert = require('node:assert/strict');
 
 const day = n => { const d = new Date(); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const VEG = 'Vegetable – भाजी', GAS = 'Gas / Cylinder – सिलिंडर', GRO = 'Grocery – किराणा', TR = 'Transport – वाहतूक',
-  WATER = 'Water – पाणी', ICE = 'Ice + Milk – बर्फ + दूध', OIL = 'Oil / Ghee', GHATI = 'Ghati – घाटी', DOSA = 'Dosa – डोसा';
+  WATER = 'Water – पाणी', ICE = 'Ice – बर्फ', OIL = 'Oil / Ghee', GHATI = 'Ghati – घाटी', DOSA = 'Dosa – डोसा';
 const X = (id, cat, head, date, extra = {}) => ({ id, evId: 'E1', cat, head, amt: 1000, date, pay: 'paid', mode: 'UPI', billIds: [], ...extra });
 const EV = { id: 'E1', name: 'Sample Usual Wedding', date: day(1), venue: 'Sample Hall', type: 'Wedding – लग्न', billing: 100000, guests: 100, photoIds: [] };
 const HISTORY = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],

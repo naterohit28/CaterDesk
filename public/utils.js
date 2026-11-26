@@ -7,9 +7,9 @@
 export const EXPENSE_HEADS = {
   'Raw Material': [
     'Grocery – किराणा','Other Grocery – इतर किराणा','Vegetable – भाजी','Fruits',
-    'Juice – ज्यूस','Water – पाणी','Ice + Milk – बर्फ + दूध','Bread – ब्रेड',
+    'Juice – ज्यूस','Water – पाणी','Milk & Dairy – दूध व दुग्धजन्य पदार्थ','Ice – बर्फ','Bread – ब्रेड',
     'Pickle – लोणचे','Sweet – मिठाई','Dry Fruits','Spices / Masala',
-    'Oil / Ghee','Paneer / Dairy',
+    'Oil / Ghee',
     'Banana Leaves – केळीची पाने','Coconut – नारळ','Papad / Fryums – पापड','Farsan / Namkeen – फरसाण'
   ],
   'Live Counter': [
@@ -30,7 +30,7 @@ export const EXPENSE_HEADS = {
     'Transport – वाहतूक','Fuel / Diesel','Gas / Cylinder – सिलिंडर',
     'Rented Material – भाड्याचे साहित्य','Disposable – डिस्पोजेबल',
     'Packaging Material','New Utensils – नवीन भांडी','Equipment Repair',
-    'Generator / Power','Ice Blocks','Water Tanker','Outsourced Event – आउटसोर्स कार्यक्रम',
+    'Generator / Power','Water Tanker','Outsourced Event – आउटसोर्स कार्यक्रम',
     'Nadaswaram / Music – सनई','Thamboolam / Return Gift Bags – तांबूलम'
   ],
   'Admin': [
@@ -42,6 +42,21 @@ export const EXPENSE_HEADS = {
     'Damage / Breakage','Refund / Compensation','Staff Advance','Cash Difference'
   ]
 };
+
+/* 5.2.2 (owner): Ice and Milk & Dairy are separate items. Milk & Dairy covers milk, paneer, curd, cream, cheese, butter,
+   mawa, khoya, basundi and buttermilk; Ice covers blocks, cubes, crushed ice and ladi. The items they replace are
+   RETIRED: no longer offered for new entries, but old records keep them exactly (readable, editable, in reports and
+   backups). An item with one clear successor ('now') counts towards it in suggestions; "Ice + Milk" has two, so it is
+   never mapped to either one: its amounts are never split by guessing. */
+export const MILK_DAIRY = 'Milk & Dairy – दूध व दुग्धजन्य पदार्थ', ICE = 'Ice – बर्फ';
+export const RETIRED_HEADS = {
+  'Ice + Milk – बर्फ + दूध': { cat: 'Raw Material', split: [MILK_DAIRY, ICE] },
+  'Paneer / Dairy': { cat: 'Raw Material', now: MILK_DAIRY, nowCat: 'Raw Material' },
+  'Ice Blocks': { cat: 'Operations', now: ICE, nowCat: 'Raw Material' },
+};
+// The item a (possibly retired) item counts as today, and its category
+export const headNow = head => RETIRED_HEADS[head]?.now || head;
+export const catNow = (cat, head) => RETIRED_HEADS[head]?.nowCat || cat;
 
 export const CAT_ICONS = {
   'Raw Material':'🥘','Live Counter':'🍽','Labour':'👷',
@@ -1271,19 +1286,21 @@ export function costChecklist(ev, events, expenses) {
   const ref = (ev.menu && others.find(e => e.menu === ev.menu)) || others.find(e => e.type === ev.type);
   if (!ref) return null;
   const items = new Map();
+  // A retired item counts as its successor (5.2.2); "Ice + Milk" stays one line, done once either Milk & Dairy or Ice is in
   for (const x of expenses.filter(x => x.evId === ref.id).sort((a, b) => (a.date || '').localeCompare(b.date || ''))) {
-    const key = norm(x.head || x.cat);
-    const it = items.get(key) || { cat: x.cat, head: x.head, amt: 0, venId: '' };
+    const head = headNow(x.head), key = norm(head || x.cat);
+    const it = items.get(key) || { cat: catNow(x.cat, x.head), head, amt: 0, venId: '', ...(RETIRED_HEADS[x.head]?.split ? { split: RETIRED_HEADS[x.head].split } : {}) };
     it.amt += Number(x.amt) || 0;
     if (x.venId) it.venId = x.venId;
     items.set(key, it);
   }
   const mine = new Map();
   for (const x of expenses.filter(x => x.evId === ev.id)) {
-    const key = norm(x.head || x.cat);
+    const key = norm(headNow(x.head) || x.cat);
     mine.set(key, (mine.get(key) || 0) + (Number(x.amt) || 0));
   }
-  const list = [...items].map(([key, it]) => ({ ...it, done: mine.get(key) || 0 }))
+  const doneFor = (key, it) => (mine.get(key) || 0) + (it.split || []).reduce((s, h) => s + (mine.get(norm(h)) || 0), 0);
+  const list = [...items].map(([key, it]) => ({ ...it, done: doneFor(key, it) }))
     .sort((a, b) => (!!a.done - !!b.done) || (b.amt - a.amt));
   return { ref, list, missing: list.filter(i => !i.done).length };
 }
