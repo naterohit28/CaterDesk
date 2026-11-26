@@ -319,6 +319,8 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .f-chip::before { content: ''; position: absolute; inset: -4px 0; }
 /* Usual-vendor picks: a long vendor name wraps inside its chip instead of running off its edge */
 #exp-ven-quick { flex-wrap: wrap; overflow: visible; }
+/* 5.2.0 Usual items: big enough to read and tap at a glance (44px), long names wrap instead of clipping */
+#exp-item-quick .f-chip { min-height: 44px; font-size: var(--fs-md); padding: 4px var(--s4); flex-shrink: 1; max-width: 100%; white-space: normal; overflow-wrap: anywhere; text-align: start; }
 #exp-ven-quick .f-chip { flex-shrink: 1; min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; text-align: start; padding-block: 6px; }
 .f-chip[aria-pressed="true"] { background: var(--text); border-color: var(--text); color: var(--bg); }
 .f-chip .n { font-weight: 500; }
