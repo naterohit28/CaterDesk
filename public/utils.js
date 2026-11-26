@@ -20,7 +20,7 @@ export const EXPENSE_HEADS = {
     'Salad Counter – सॅलड','Fusion Counter – फ्यूजन'
   ],
   'Labour': [
-    'Rojiya Labour – रोजीया मजूर','Boys – बॉईज','Ghati – घाटी','Cook – स्वयंपाकी',
+    'Rojiya Labour – रोजीया मजूर','Boys – बॉईज','Ghati – घाटी','Cook – स्वयंपाकी','Specialist Cook – स्पेशल आचारी',
     'Helper Staff','Roti Labour – रोटी मजूर','Cleaner / Washing',
     'PRO – पी.आर.О.','Supervisor','Loading / Unloading Labour',
     'Staff Tips – स्टाफ टीप','Vendor Staff Tips – विक्रेता स्टाफ टीप',
@@ -1370,47 +1370,29 @@ export function addDays(iso, n) {
    its vendor (pay: 'credit'). Older records have no `pay` field; a vendor-linked
    one was always treated as owed, so it stays credit. */
 /* ── EVENT MENU → COUNTER ORDERS ─────────────────── */
-// Words in a dish name that tell which live counter supplies it. Anything not matched is
-// cooked in your own kitchen. Your own choices (tap a dish → counter) win over this list.
-const DISH_WORDS = [
-  ['Chaat', ['pani puri', 'panipuri', 'golgappa', 'gol gappa', 'sev puri', 'dahi puri', 'bhel', 'ragda', 'chaat', 'chat', 'papdi', 'aloo tikki', 'dahi vada', 'dahi bhalla', 'basket']],
-  ['Dosa', ['dosa', 'idli', 'uttapam', 'uthappam', 'appam', 'medu vada', 'dakshin', 'south indian']],
-  ['Chinese', ['noodle', 'manchurian', 'hakka', 'schezwan', 'szechuan', 'chopsuey', 'chop suey', 'wok', 'spring roll', 'momo', 'chilli paneer', 'chilli potato']],
-  ['Pav Bhaji Counter', ['pav bhaji', 'pavbhaji']],
-  ['Pizza / Italian Counter', ['pizza', 'pasta', 'garlic bread', 'lasagna', 'italian']],
-  ['Soup Station', ['soup']],
-  ['Barbeque / Tandoor', ['barbeque', 'barbecue', 'bbq', 'tandoor']],
-  ['Starter', ['tikka', 'kebab', 'kabab', 'cutlet', 'starter', 'crispy', 'nuggets', 'shashlik']],
-  ['Kulfi / Ice Gola', ['kulfi', 'gola']],
-  ['Ice Cream', ['ice cream', 'icecream', 'sundae', 'gelato']],
-  ['Paan Mukhwas', ['paan', 'mukhwas', 'beeda', 'meetha pan']],
-  ['Beverage Counter', ['mocktail', 'mojito', 'cold coffee', 'shake', 'lassi', 'soda', 'beverage']],
-  ['Fruit Counter', ['fruit counter', 'fruit platter', 'cut fruit']],
-  ['Salad Counter', ['salad counter']],
-  ['Dessert Counter', ['jalebi', 'rabdi', 'malpua', 'dessert counter']],
-  ['Fusion Counter', ['fusion', 'taco', 'nachos', 'burger', 'sizzler']]
-];
-
 const dishKey = name => String(name || '').toLowerCase().replace(/\s+/g, ' ').trim();
 
-// The full Live Counter item for a short name ('Chaat' → 'Chaat – चाट')
-export function counterHead(short) {
-  return EXPENSE_HEADS['Live Counter'].find(h => h.split(' – ')[0] === short) || '';
-}
-
-// What you have assigned dishes to before (latest wins), from every event's menu
+/* 5.3.1 (owner's requirements, step 3): who supplies a dish is never guessed from its name ("Paneer Tikka" is a
+   starter, not automatically a live counter). A new dish starts in our kitchen unless you have confirmed how it is
+   supplied before: you chose it yourself (tap a dish → made by), or its counter order was sent, confirmed or delivered.
+   The latest confirmed choice wins, and it is only a starting point you can change. Every way is remembered: a vendor
+   counter, cooked at the venue, bought ready-made, bought and finished, part bought. Saved dishes are never changed. */
+const SENT_ORDER = ['sent', 'confirmed', 'delivered'];
+const sourcing = d => ({ head: d.head || '', ...(d.src ? { src: d.src } : {}), ...(d.at ? { at: d.at } : {}), ...(d.part ? { part: d.part } : {}) });
 export function learnedDishes(events) {
   const map = new Map();
-  for (const e of [...events].sort((a, b) => (a.date || '').localeCompare(b.date || '')))
-    for (const d of e.dishes || []) if (d.manual) map.set(dishKey(d.name), d.head || '');
+  for (const e of [...events].sort((a, b) => (a.date || '').localeCompare(b.date || ''))) {
+    const ordered = new Set((e.orders || []).filter(o => SENT_ORDER.includes(o.status)).map(o => o.head));
+    for (const d of e.dishes || []) if (d.manual || (d.head && ordered.has(d.head))) map.set(dishKey(d.name), sourcing(d));
+  }
   return map;
 }
-
+// How a new dish is supplied: the confirmed choice for that name, else our kitchen
+export function dishSource(name, learned) {
+  return { head: '', ...(learned?.get(dishKey(name)) || {}) };
+}
 export function dishCounter(name, learned) {
-  const k = dishKey(name);
-  if (learned?.has(k)) return learned.get(k);
-  for (const [short, words] of DISH_WORDS) if (words.some(w => k.includes(w))) return counterHead(short);
-  return '';
+  return dishSource(name, learned).head;
 }
 
 /* A meal heading in pasted text → its meal key, else ''. English, Hindi and Marathi, with common short forms
