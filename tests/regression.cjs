@@ -198,7 +198,10 @@ await test('event menu becomes counter orders sent on WhatsApp, tracked to deliv
  await p.evaluate(()=>{window.__opened=[];window.open=u=>{window.__opened.push(u);return {}; }});
  await p.locator('#n-events').click();await p.locator('#ev-list [data-action="evdetail"]').first().click();await p.waitForSelector('[data-action="menu-edit"]');
  await p.locator('[data-action="menu-edit"]').click();await p.waitForSelector('#menu-modal.active');
- await p.locator('#menu-text').fill('1. Pani Puri\n2. Sev Puri, Masala Dosa\n• Dal Makhani\nStarters:\nGulab Jamun\npani puri');await p.locator('#btn-save-menu').click();await p.waitForSelector('#menu-orders');
+ await p.locator('#menu-text').fill('1. Pani Puri\n2. Sev Puri, Masala Dosa\n• Dal Makhani\nStarters:\nGulab Jamun\npani puri');await p.waitForTimeout(500);
+ // 5.3.1: who supplies a dish is chosen, never guessed from its name
+ for(const [n,h] of [['Pani Puri','Chaat – चाट'],['Sev Puri','Chaat – चाट'],['Masala Dosa','Dosa – डोसा']])await p.locator('#menu-review .check-row',{hasText:n}).locator('[data-k="head"]').selectOption(h);
+ await p.locator('#btn-save-menu').click();await p.waitForSelector('#menu-orders');
  const card=await p.locator('#menu-orders').innerText();assert.match(card,/Chaat · Rajiv Chaat[\s\S]*Pani Puri, Sev Puri/);assert.match(card,/Dosa · Murugan[\s\S]*Masala Dosa/);assert.match(card,/Our kitchen[\s\S]*Dal Makhani, Gulab Jamun/);
  assert.equal((await db(async d=>d.getOne('events','e'))).dishes.length,5,'duplicates and headings dropped');
  // Teach it a dish: Gulab Jamun comes from the dessert counter, and it is remembered

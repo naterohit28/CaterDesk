@@ -1,6 +1,6 @@
 # CaterDesk product roadmap
 
-**Status:** live version 5.2.2 (5.3.0 in review). Development resumed on 26 Nov 2026 under the owner's final development directive. Engineering rules: [AGENTS.md](../AGENTS.md).
+**Status:** live version 5.3.0 (5.3.1 in review). Development resumed on 26 Nov 2026 under the owner's final development directive. Engineering rules: [AGENTS.md](../AGENTS.md).
 
 ## Objective
 Make CaterDesk a compact, reliable catering operations and money app that cuts paperwork, admin time, repeated entry and forgotten transactions for independent Indian caterers (operators aged 40–70, coming from paper, Excel and WhatsApp).
@@ -55,7 +55,7 @@ The owner's spreadsheet was checked read-only, outside this repository, in Nov 2
 | Version | Priority | Notes |
 |---|---|---|
 | **5.2.0** | Faster recording: quick add, shorter expense entry, photo-first capture | Small steps, each shipped on its own. **Shipped:** one-tap "Usual items" in the expense form (5.2.0) |
-| 5.2.x | Meals, menus and sourcing as caterers actually work (owner's additional requirements, 26 Nov) | In order, each step its own small PR (details below). **Shipped:** meal headings (5.2.1), Ice and Milk & Dairy (5.2.2) |
+| 5.2.x | Meals, menus and sourcing as caterers actually work (owner's additional requirements, 26 Nov) | In order, each step its own small PR (details below). **Shipped:** meal headings (5.2.1), Ice and Milk & Dairy (5.2.2), dish sourcing never guessed from the name (5.3.1) |
 | 5.2.x | Category-wise multi-item supplier orders (grocery, vegetables, dairy…) | Item, quantity and free unit (kg, litre, packet, box, dozen, ladi); one WhatsApp message per order; prepared → sent → confirmed → delivered/cancelled; revisions, shortages, an estimated then actual bill; one invoice may cover several orders or events. Keep counter orders as they are. No recipe costing |
 | **5.3.0** | Home = today's work | **Shipped first step (5.3.0):** a Today card (today's and tomorrow's events with orders to confirm, no labour list, balance to collect), then the quick actions and to-do cards; the money overview moved below. Later steps: Today's and tomorrow's events, orders to confirm, deliveries, unfinished photos, expected costs not recorded, labour to complete, collections due, payments due, events to reconcile, backup reminder. Built from real records only |
 | 5.4.0 | Suppliers and labour contractors easier to use | Tell vendors and contractors apart; worker types with usual rates; requested vs actual attendance; extras and transport; searchable ledgers. Keep the current contractor accounting. No payroll or HR |
@@ -73,7 +73,7 @@ Principle: CaterDesk must follow how a caterer works, not make the caterer follo
    - Old "Ice + Milk" records stay as they are: readable, editable, reportable. Their amounts are never split by guessing.
    - The combined item leaves new-entry suggestions.
    - Drinking water, water tankers and oil/ghee stay separate.
-3. **Deferred by the owner (26 Nov 2026) until CaterDesk is production grade.** Sourcing is never decided by the dish name alone.
+3. **Sourcing is never decided by the dish name alone (first step done in 5.3.1:** no keyword guessing; confirmed choices of every kind remembered; Specialist Cook labour type).
    - A starter is a menu course, not automatically a live counter.
    - Each dish supports:
      - our kitchen;
@@ -133,6 +133,16 @@ Principle: CaterDesk must follow how a caterer works, not make the caterer follo
 - **Amounts may arrive as** digits, words, "साडेआठ हजार", "dedh hazaar" or "8:30 hajar" (= ₹8,500).
 - **No paid speech or AI service without the owner's approval.** Tell the user once that online speech goes to the browser's speech service.
 - **The live site blocks the microphone** (`Permissions-Policy: microphone=()` in `vercel.json`). Change it to `microphone=(self)` in its own reviewed PR, then test inside the installed app.
+
+## Building towards AI (owner, 26 Nov 2026)
+Every release should lay a little of the foundation for later intelligence, without adding complexity now:
+reusable business rules, personal sourcing and supplier preferences learned from confirmed choices, one set of
+English / Hindi / Marathi terms, and checks that catch a wrong or incomplete entry before it is saved. A later
+"CaterDesk Intelligence" stage (v7+) is proposed, not planned.
+
+**Owner request (26 Nov 2026), future update:** an event must not look finished or profitable while its costs are
+incomplete. Reconciling should warn when the usual costs (from `costChecklist`) or the labour cost are missing, and the
+event and its contribution should say "costs incomplete", not only "provisional".
 
 ## Explicitly deferred
 Recipe-level costing; compulsory inventory; automatic procurement; payroll and HR; CRM pipelines; universal spreadsheet import; automatic WhatsApp sending; cloud and multi-user before there is demand; large visual redesigns; AI features without a clear recording benefit.

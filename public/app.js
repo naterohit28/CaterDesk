@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, billSet, billingSplit, calcVendorBalance, normGstin, gstinValid, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, billOrderIds, deliveredWithoutBill, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, keepPaidMilestones, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, learnedDishes, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, billOrderIds, deliveredWithoutBill, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, keepPaidMilestones, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, dishSource, learnedDishes, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '5.3.0';
+const APP_BUILD = '5.3.1';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -2090,7 +2090,7 @@ function readMenuText() {
     const same = byName.get(name.toLowerCase());
     if (!meal && same) return { ...same, name };   // listed without a heading: keep the dish as it was
     const m = meal || (meals.length === 1 ? meals[0] : '');
-    return { name, head: same ? same.head || '' : dishCounter(name, learned), ...(same?.src ? { src: same.src } : {}), ...(same?.manual ? { manual: true } : {}), ...(m ? { meal: m } : {}) };
+    return { name, ...(same ? { head: same.head || '', ...(same.src ? { src: same.src } : {}), ...(same.at ? { at: same.at } : {}), ...(same.part ? { part: same.part } : {}), ...(same.manual ? { manual: true } : {}) } : dishSource(name, learned)), ...(m ? { meal: m } : {}) };
   });
   renderMenuReview();
 }
@@ -3171,7 +3171,7 @@ function loadService(id) {
   svcState = { id: s.id, meal: s.meal, label, rate: s.rate || 0, existing: own.length, draft: structuredClone(own), base: svcDishKey(own), shared: s.dishes.filter(d => d.shared).map(d => d.name),
     date0: q('svc-date').value, time0: '' + (s.time || ''), tpl0: q('svc-tpl').value, from: '', mode: 'event' };
   // A meal whose library menu was chosen but has no dishes yet: its dishes are shown to review (saved only with Save)
-  if (!own.length && s.fromTemplate) svcState.draft = s.dishes.filter(d => d.preview).map(d => ({ name: d.name, head: dishCounter(d.name, learnedDishes(D.events)) })), svcState.from = s.template.name, svcState.previewKey = svcDishKey(svcState.draft);
+  if (!own.length && s.fromTemplate) svcState.draft = s.dishes.filter(d => d.preview).map(d => ({ name: d.name, ...dishSource(d.name, learnedDishes(D.events)) })), svcState.from = s.template.name, svcState.previewKey = svcDishKey(svcState.draft);
   q('svc-facts').textContent = [s.guests ? `${s.guests} guests` : '', s.rate ? `${fmtCurrency(s.rate)} / plate` : 'No price yet', own.length ? `${own.length} dish${own.length > 1 ? 'es' : ''} saved` : 'No dishes saved yet'].filter(Boolean).join(' · ');
   setServiceMode('event');
   setServiceTitle(`${label} menu – मेनू`, `Save ${label} menu – जतन करा`, false);
@@ -3234,7 +3234,7 @@ function renderServiceSheet() {
 }
 function addServiceDishes(names, from = '') {
   const learned = learnedDishes(D.events), have = new Set(svcState.draft.map(d => d.name.toLowerCase()));
-  for (const name of names) if (!have.has(name.toLowerCase())) { have.add(name.toLowerCase()); svcState.draft.push({ name, head: dishCounter(name, learned) }); }
+  for (const name of names) if (!have.has(name.toLowerCase())) { have.add(name.toLowerCase()); svcState.draft.push({ name, ...dishSource(name, learned) }); }
   if (from) { svcState.from = from; if (!svcState.existing && svcState.draft.length === names.length) svcState.previewKey = svcDishKey(svcState.draft); }
   renderServiceSheet();
 }
@@ -3315,7 +3315,7 @@ async function useServiceTemplate(id) {
   const all = eventServices(ev).services, s = all.find(x => x.id === id); if (!s?.fromTemplate) return;
   const learned = learnedDishes(D.events);
   const next = all.map(x => x.id !== id ? { ...x, dishes: x.dishes.filter(d => !d.preview) }
-    : { ...x, dishes: x.dishes.map(d => d.preview ? { name: d.name, head: dishCounter(d.name, learned) } : d) });
+    : { ...x, dishes: x.dishes.map(d => d.preview ? { name: d.name, ...dishSource(d.name, learned) } : d) });
   const patch = applyServices(ev, next);
   try { await patchEvent(ev.id, patch); } catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
   showToast(`${svcTitle(s, all)}: ${s.dishes.filter(d => d.preview).length} dishes added from ${s.template.name} – पदार्थ जोडले`, 'success');

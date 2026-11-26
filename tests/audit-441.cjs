@@ -27,8 +27,11 @@ const pickTime = async (p, id, hhmm = '19:30') => { if (await p.inputValue('#' +
   const seed = async d => { await p.evaluate(async d => { const db = await import('./db.js'); await db.importAllData(d, 'replace'); }, d); await p.reload(); await p.waitForSelector('#kpi .card'); };
   const openEvent = async name => { await p.reload(); await p.waitForSelector('#kpi .card'); await p.locator('#n-events:visible').click();
     await p.locator('#ev-list [data-action="evdetail"]:visible', { hasText: name }).first().click(); await p.waitForSelector('#tab-evdetail .detail-name'); await p.waitForTimeout(200); };
-  const saveMenu = async text => { await p.locator('[data-action="menu-edit"]').first().click(); await p.waitForSelector('#menu-modal.active');
-    await p.fill('#menu-text', text); await p.waitForTimeout(450); await p.locator('#btn-save-menu').click(); await p.waitForTimeout(500); };
+  // `who`: dish → who prepares it, chosen by hand in the review (5.3.1: never guessed from the dish name)
+  const saveMenu = async (text, who = {}) => { await p.locator('[data-action="menu-edit"]').first().click(); await p.waitForSelector('#menu-modal.active');
+    await p.fill('#menu-text', text); await p.waitForTimeout(450);
+    for (const [name, head] of Object.entries(who)) await p.locator('#menu-review .check-row', { hasText: name }).locator('[data-k="head"]').selectOption(head);
+    await p.locator('#btn-save-menu').click(); await p.waitForTimeout(500); };
   await p.goto(BASE_URL); await p.waitForSelector('#kpi .card');
 
   await test('1. orders stay visible when their counter, or every dish, leaves the menu', async () => {
@@ -48,7 +51,7 @@ const pickTime = async (p, id, hhmm = '19:30') => { if (await p.inputValue('#' +
 
   await test('2. opening WhatsApp neither marks an order sent nor clears a menu-change warning', async () => {
     await seed(base()); await openEvent('Sample Reception');
-    await saveMenu('Pani Puri\nSev Puri\nMasala Dosa');   // chaat dishes changed: confirmed order flagged
+    await saveMenu('Pani Puri\nSev Puri\nMasala Dosa', { 'Sev Puri': 'Chaat – चाट' });   // chaat dishes changed: confirmed order flagged
     assert.equal((await ev('e1')).orders.find(o => o.id === 'oc').menuChanged, true);
     // Resend opens WhatsApp: still flagged, status unchanged
     await p.locator('#menu-orders [data-action="order-status"]').first().click(); await p.waitForSelector('#ask-modal.active');

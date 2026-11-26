@@ -126,7 +126,7 @@ const pickTime = async (p, id, hhmm = '19:30') => { if (await p.inputValue('#' +
     assert.match(await toast(), /^Breakfast menu saved for this event/);
     const e = await ev('e3'), notBf = x => x.dishes.filter(d => d.meal !== 'breakfast');
     assert.deepEqual(e.dishes.filter(d => d.meal === 'breakfast'), [{ name: 'Poha', head: counter, manual: true, meal: 'breakfast' }, { name: 'Masala Tea', head: '', diet: ['jain'], meal: 'breakfast' },
-      { name: 'Idli', head: 'Dosa – डोसा', meal: 'breakfast' }, { name: 'Medu Vada', head: 'Dosa – डोसा', meal: 'breakfast' }, { name: 'Fruit Bowl', head: '', meal: 'breakfast' }]);
+      { name: 'Idli', head: '', meal: 'breakfast' }, { name: 'Medu Vada', head: '', meal: 'breakfast' }, { name: 'Fruit Bowl', head: '', meal: 'breakfast' }]);
     assert.deepEqual(notBf(e), notBf(before), 'lunch and both dinners unchanged'); assert.deepEqual(e.mealPlan, before.mealPlan, 'no price invented for breakfast');
     assert.deepEqual(e.services.find(s => s.meal === 'breakfast'), { id: 'svc-breakfast', meal: 'breakfast', time: '08:00', template: { id: 'MNbf', name: 'Sample Breakfast Menu' } });
     assert.equal(await library(), lib0, 'Sample Breakfast Menu not changed by the customised copy');
