@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '5.1.3';
+const APP_BUILD = '5.2.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -5079,6 +5079,29 @@ function setExpCat(cat, head = '') {
     `<button type="button" class="cat-chip" data-cat="${esc(c)}" aria-pressed="${c === cat}">${catIcon(c, 20)}${esc(c)}</button>`).join('');
   populateSelect('exp-head', headsByUse(cat), head);
   populateVendorSelect(qv('exp-vendor'));
+  renderItemQuick();
+}
+
+/* 5.2.0: the items you record most, across all categories, for one-tap entry (category and item together).
+   Counted from expenses you entered: labour-sheet lines (the sheet writes those) and order prices (estimates)
+   are left out. Ties go to the item used most recently. Nothing is chosen until tapped. */
+const USUAL_ITEMS = 6;
+function usualItems() {
+  const sheet = new Set(D.events.flatMap(e => Object.values(e.labour?.expIds || {})));
+  const uses = new Map();
+  for (const x of D.expenses) {
+    if (!x.cat || !x.head || x.fromOrder || sheet.has(x.id) || !(EXPENSE_HEADS[x.cat] || []).includes(x.head)) continue;
+    const k = x.cat + '\u0000' + x.head, u = uses.get(k) || { cat: x.cat, head: x.head, n: 0, last: '' };
+    u.n++; if (String(x.date || '') > u.last) u.last = String(x.date || '');
+    uses.set(k, u);
+  }
+  return [...uses.values()].sort((a, b) => (b.n - a.n) || b.last.localeCompare(a.last)).slice(0, USUAL_ITEMS);
+}
+function renderItemQuick() {
+  const items = usualItems(), cat = qv('exp-cat'), head = qv('exp-head');
+  q('exp-item-quick-field').hidden = !items.length;
+  q('exp-item-quick').innerHTML = items.map(u =>
+    `<button type="button" class="f-chip" data-qcat="${esc(u.cat)}" data-qhead="${esc(u.head)}" aria-pressed="${u.cat === cat && u.head === head}">${esc(u.head)}</button>`).join('');
 }
 
 // Compare category / item names ignoring the Marathi half, spacing and case
@@ -6485,7 +6508,12 @@ function bindAllEvents() {
   });
   q('exp-due').addEventListener('change', e => setExpDue(e.target.value));
   q('exp-ev').addEventListener('change', updateExpEvHint);
-  q('exp-head').addEventListener('change', () => { expTouched.item = true; populateVendorSelect(qv('exp-vendor')); });
+  q('exp-head').addEventListener('change', () => { expTouched.item = true; populateVendorSelect(qv('exp-vendor')); renderItemQuick(); });
+  // One tap: category and item together, exactly as choosing them below would (5.2.0)
+  q('exp-item-quick').addEventListener('click', e => {
+    const b = e.target.closest('[data-qcat]'); if (!b) return;
+    expTouched.item = true; setExpCat(b.dataset.qcat, b.dataset.qhead);
+  });
   // Tapping a usual-vendor button picks that vendor (tap again to clear)
   q('exp-ven-quick').addEventListener('click', e => {
     const b = e.target.closest('[data-ven]'); if (!b) return;
