@@ -92,7 +92,7 @@ input, select, textarea { font-size: 16px; }
 
 /* ── LANGUAGE ── see i18n.js */
 .t-mr { display: block; font-size: .92em; color: var(--text-3); margin-top: 1px; }
-html[data-lang="en"] .t-mr { display: none; }
+html[data-lang="en"] .t-mr, html[data-lang="hi"] .t-mr { display: none; }
 html[data-lang="mr"] .t-en { display: none; }
 html[data-lang="mr"] .t-mr { font-size: 1em; color: inherit; margin-top: 0; }
 
@@ -151,7 +151,7 @@ html[data-lang="mr"] .t-mr { font-size: 1em; color: inherit; margin-top: 0; }
 .nav-it.active .nav-pill { background: var(--brand-soft); }
 .nav-it:active .nav-pill { transform: scale(.92); }
 .nav-mr { font-size: 10px; font-weight: 500; opacity: .85; }
-html[data-lang="en"] .nav-mr, html[data-lang="mr"] .nav-en { display: none; }
+html[data-lang="en"] .nav-mr, html[data-lang="hi"] .nav-mr, html[data-lang="mr"] .nav-en { display: none; }
 html[data-lang="mr"] .nav-mr { font-size: 11px; opacity: 1; }
 
 .main {
