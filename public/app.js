@@ -1991,7 +1991,7 @@ function menuOrdersCard(ev) {
    estimated cost (never added to costs). WhatsApp messages are versioned like orders; nothing is resent by itself;
    no expense is made by itself: the delivered purchase's bill is recorded or linked once (x.purchase). */
 const BUY_UNITS = [['pcs', 'pieces – नग'], ['kg', 'kg – किलो'], ['litre', 'litres – लिटर'], ['packet', 'packets – पाकीट'],
-  ['bottle', 'bottles – बाटल्या'], ['carton', 'cartons – खोके'], ['tub', 'tubs – टब'], ['box', 'boxes – बॉक्स']];
+  ['bottle', 'bottles – बाटल्या'], ['carton', 'cartons – खोके'], ['tub', 'tubs – टब'], ['box', 'boxes – बॉक्स'], ['dozen', 'dozen – डझन'], ['ladi', 'ladi – लडी']];
 const UNIT_NAME = Object.fromEntries(BUY_UNITS.map(([k, l]) => [k, l.split(' – ')[0]]));
 const buyKey = (svc, name) => `${svc || '*'}|${String(name).trim().toLowerCase()}`;
 // The bought dishes, one row per meal (a dish served at every meal: one row for all of them)
@@ -2008,7 +2008,20 @@ function buyRows(ev) {
   return rows;
 }
 const buyOf = (ev, key) => [...(ev.purchases || [])].reverse().find(p => p.status !== 'cancelled' && buyKey(p.svc, p.item) === key) || null;
-const purchaseBillOf = p => D.expenses.find(x => x.purchase === p.id) || null;
+const purchaseBillOf = p => D.expenses.find(x => x.purchase === p.id || (p.grp && x.purchase === p.grp)) || null;
+/* 5.5.0 (owner's requirements): several items in one order to one supplier (e.g. five frozen starters). Each item stays
+   its own purchase, so its meal, quantity and delivery are kept; items ordered together share `grp` (the first item's
+   id) and one WhatsApp message listing them all. Sending, confirming and delivery move together; the bill is linked once,
+   to the first item. An item not on the menu (e.g. a grocery item) is `extra`. */
+const buyGroup = (ev, p) => p?.grp ? (ev.purchases || []).filter(x => x.grp === p.grp && x.status !== 'cancelled') : p ? [p] : [];
+let buyMore = [];
+function renderBuyMore() {
+  q('buy-more').innerHTML = buyMore.map((m, i) => `<div class="buy-more-row" data-bm="${i}" style="display:grid;grid-template-columns:28px minmax(0,1fr) 76px 96px;gap:var(--s2);align-items:center;margin-bottom:var(--s2)">
+    <input type="checkbox" data-bk="on" aria-label="${esc(`Add ${m.name || 'item'}`)}"${m.on ? ' checked' : ''}${m.id ? ' disabled' : ''}>
+    ${m.free ? `<input type="text" data-bk="name" maxlength="80" placeholder="Item – वस्तू" aria-label="Item" value="${esc(m.name)}">` : `<span class="meta" data-nl style="overflow-wrap:anywhere">${esc(m.name)}${m.label ? ` · ${esc(m.label)}` : ''}</span>`}
+    <input type="number" data-bk="qty" min="0" step="any" inputmode="decimal" placeholder="Qty" aria-label="Quantity" value="${m.qty || ''}">
+    <select data-bk="unit" aria-label="Unit">${BUY_UNITS.map(([v, l]) => `<option value="${v}"${v === m.unit ? ' selected' : ''}>${esc(l.split(' – ')[0])}</option>`).join('')}</select></div>`).join('');
+}
 function buyStatus(p) {
   const st = ORDER_STATUS[p.status] || ORDER_STATUS.sent;
   if (p.status !== 'delivered') return st;
@@ -2030,7 +2043,7 @@ function buyCard(ev) {
       return line(esc(r.name), [r.label, SRC_NAME[r.src], p ? `${ven?.name || ''} · ${qtyText(p)}` : ''].filter(Boolean).map(esc).join(' · '),
         p ? chip(p) : `<button type="button" class="btn-sm" data-action="buy-new" data-id="${esc(r.key)}">${icon('message', 16)}${tr('Order', 'ऑर्डर')}</button>`, r.key,
         offDate(ev, p) ? `<div class="meta due" data-off-date>${offDateText(p.date)}</div>` : ''); }).join('')}
-    ${[...off.values()].map(p => line(esc(p.item), `${tr('Not on the current menu', 'सध्याच्या मेनूत नाही')} · ${esc(qtyText(p))}`, chip(p))).join('')}</div>`;
+    ${[...off.values()].map(p => line(esc(p.item), `${p.extra ? tr('Other item', 'इतर वस्तू') : tr('Not on the current menu', 'सध्याच्या मेनूत नाही')} · ${esc(qtyText(p))}${p.grp ? ` · ${esc(D.vendors.find(v => v.id === p.venId)?.name || '')}` : ''}`, chip(p))).join('')}</div>`;
 }
 // Purchases already given to a supplier whose item later left the menu, moved to another meal or changed sourcing
 function purchasesHit(before, after) {
@@ -2056,13 +2069,18 @@ function openBuyModal({ key = '', id = '' }) {
   q('buy-date').value = p?.date || s?.date || ev.date; q('buy-time').value = p?.time || s?.time || '';
   q('buy-notes').value = p?.notes || ''; q('buy-est').value = p?.estCost ?? '';
   q('btn-cancel-buy').hidden = !p;
+  const mates = p ? buyGroup(ev, p).filter(x => x.id !== p.id) : [], ordered = new Set((ev.purchases || []).filter(x => x.status !== 'cancelled').map(x => buyKey(x.svc, x.item)));
+  buyMore = [...mates.map(x => ({ id: x.id, name: x.item, src: x.src, svc: x.svc || '', qty: x.qty, unit: x.unit, on: true, extra: !!x.extra })),
+    ...(p && p.status === 'delivered' ? [] : buyRows(ev).filter(r => !ordered.has(r.key) && r.key !== key).map(r => ({ key: r.key, name: r.name, src: r.src, svc: r.svc, label: r.label, qty: '', unit: 'pcs', on: false })))];
+  renderBuyMore();
   clearFieldErrors(); openSheet('buy-modal');
 }
-function buyMessage(ev, p, ven) {
+function buyMessage(ev, p, ven, group = [p]) {
   const all = eventServices(ev).services, s = p.svc ? all.find(x => x.id === p.svc) : null, meal = s?.meal ? svcLabel(ev, s, all) : '';
+  const what = group.length > 1 ? `Items:\n${group.map((x, i) => `${i + 1}. ${x.item} – ${qtyText(x)}`).join('\n')}\n` : `Item: ${p.item}\nQuantity: ${qtyText(p)}\n`;
   // One fact per line, in the order a supplier needs them; venue notes and your contact only when you have entered them
   const venue = venueNotes(ev), me = getProfile(), contact = [me.contact || me.name, me.phone].filter(Boolean).join(', ');
-  return `Namaste ${ven.name}! Purchase order:\nItem: ${p.item}\nQuantity: ${qtyText(p)}\n`
+  return `Namaste ${ven.name}! Purchase order:\n${what}`
     + `Date: ${fmtDate(p.date)}${meal ? ' (' + meal + ')' : ''}\nDeliver by: ${fmtTime(p.time) || '-'}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n`
     + (venue ? `At the venue: ${venue}\n` : '') + (p.notes ? `Note: ${p.notes}\n` : '') + (contact ? `Contact: ${contact}\n` : '') + `\nPlease confirm. Thank you!`;
 }
@@ -2076,6 +2094,8 @@ async function sendBuy() {
   if (!date) errs['buy-date'] = 'Delivery date – दिनांक';
   if (!/^\d{2}:\d{2}$/.test(qv('buy-time'))) errs['buy-time-t'] = 'Deliver by: type a time like 7:30 or 7:05 and tap AM or PM – वेळ लिहा';
   if (est !== '' && !(Number(est) >= 0 && Math.round(Number(est) * 100) === Number(est) * 100)) errs['buy-est'] = 'An amount in ₹ (up to 2 decimals) – रक्कम';
+  const more = buyMore.filter(m => m.on);
+  if (more.some(m => !String(m.name || '').trim() || !(Number(m.qty) > 0) || Math.round(Number(m.qty) * 1000) !== Number(m.qty) * 1000)) errs['buy-more'] = 'Each added item needs its name and quantity – नाव व संख्या लिहा';
   if (Object.keys(errs).length) { showFieldErrors(errs); return; }
   const ven = D.vendors.find(v => v.id === venId), phoneOk = !!phoneDigits(ven?.phone);
   const id = qv('buy-id') || uid('PO'), old = (ev.purchases || []).find(x => x.id === id);
@@ -2087,18 +2107,34 @@ async function sendBuy() {
   if (qv('buy-svc')) p.svc = qv('buy-svc'); else delete p.svc;
   for (const [k, v] of [['time', qv('buy-time')], ['notes', qv('buy-notes').trim()]]) if (v) p[k] = v; else delete p[k];
   if (est !== '') p.estCost = Number(est); else delete p.estCost;
-  const versioned = addOrderMessage(old?.messages, buyMessage(ev, p, ven), false, now);
-  p.messages = versioned.messages;
-  // A changed instruction is not sent or confirmed yet; a menu-change warning stays until it is marked sent
-  if (versioned.changed && old && ['sent', 'confirmed', 'opened'].includes(old.status)) p.status = 'prepared';
-  try { await patchEvent(ev.id, { purchases: old ? ev.purchases.map(x => x.id === id ? p : x) : [...(ev.purchases || []), p] }); }
+  // The other items in this order: same supplier, delivery and instructions; each its own quantity
+  const grp = more.length ? old?.grp || id : old?.grp;
+  if (grp) p.grp = grp; else delete p.grp;
+  const mates = more.map(m => { const was = m.id ? ev.purchases.find(x => x.id === m.id) : null;
+    const x = { ...(was || {}), id: was?.id || uid('PO'), item: String(m.name).trim().slice(0, 80), src: m.src || 'buy', venId, qty: Number(m.qty), unit: UNIT_NAME[m.unit] ? m.unit : 'pcs', date,
+      status: !was || was.status === 'cancelled' ? 'prepared' : was.status, at: now, grp, basis: { item: String(m.name).trim(), src: m.src || 'buy', meal: (all.find(z => z.id === m.svc) || {}).meal || '' } };
+    if (m.svc) x.svc = m.svc; else delete x.svc;
+    if (m.free || m.extra) x.extra = true;
+    for (const [k, v] of [['time', p.time], ['notes', p.notes]]) if (v) x[k] = v; else delete x[k];
+    return { x, was }; });
+  const dropped = old?.grp ? ev.purchases.filter(x => x.grp === old.grp && x.id !== id && x.status !== 'cancelled' && !mates.some(m => m.x.id === x.id)).map(x => x.id) : [];
+  const pos = x => { const i = (ev.purchases || []).findIndex(y => y.id === x.id); return i < 0 ? 1e6 : i; };   // the order's items in the order they were added
+  const msg = buyMessage(ev, p, ven, [p, ...mates.map(m => m.x)].map((x, i) => [x, i]).sort((a, b) => pos(a[0]) - pos(b[0]) || a[1] - b[1]).map(([x]) => x));
+  const stamp = (x, was) => { const v = addOrderMessage(was?.messages, msg, false, now); x.messages = v.messages;
+    // A changed instruction is not sent or confirmed yet; a menu-change warning stays until it is marked sent
+    if (v.changed && was && ['sent', 'confirmed', 'opened'].includes(was.status)) x.status = 'prepared'; };
+  stamp(p, old); for (const m of mates) stamp(m.x, m.was);
+  const saved = new Map([[p.id, p], ...mates.map(m => [m.x.id, m.x])]);
+  const next = [...(ev.purchases || []).map(x => saved.get(x.id) || (dropped.includes(x.id) ? (({ grp: _g, ...y }) => y)(x) : x)), ...[...saved.values()].filter(x => !(ev.purchases || []).some(y => y.id === x.id))];
+  try { await patchEvent(ev.id, { purchases: next }); }
   catch (e) { showToast(e.message || 'Could not save the purchase. Nothing was changed and nothing was sent.', 'error'); return; }
   await closeModals(); refreshCurrent();
   if (!phoneOk) showToast(`Purchase saved, not sent. ${ven?.name || 'This supplier'} has no phone number – add it to send on WhatsApp.`, 'error');
   else await offerWhatsApp(ev.id, 'purchases', id, 'The purchase order');
 }
 async function setBuyStatus(ev, id, next) {
-  await patchEvent(ev.id, { purchases: ev.purchases.map(x => { if (x.id !== id) return x; const y = { ...x, status: next };
+  const p = ev.purchases.find(x => x.id === id), ids = new Set(next === 'cancelled' ? [id] : buyGroup(ev, p).filter(x => x.id === id || x.status !== 'delivered').map(x => x.id));
+  await patchEvent(ev.id, { purchases: ev.purchases.map(x => { if (!ids.has(x.id)) return x; const y = { ...x, status: next };
     if (['sent', 'confirmed'].includes(next)) { delete y.changed; if (y.messages?.length) y.messages = markOrderMessage(y.messages, next, new Date().toISOString()); }
     return y; }) });
 }
@@ -2141,6 +2177,7 @@ async function buyAction(id) {
 /* Delivered: its bill. If this supplier already has an unlinked bill on the event (entered from the bill itself),
    link it instead of recording it again; otherwise record it, linked. A bill is linked to one order or one purchase. */
 async function purchaseBill(ev, p) {
+  if (p.grp) p = (ev.purchases || []).find(x => x.id === p.grp) || p;
   if (purchaseBillOf(p)) { showToast('Its bill is already recorded – बिल आधीच नोंदवले'); return; }
   const ven = D.vendors.find(v => v.id === p.venId);
   const open = D.expenses.filter(x => x.evId === ev.id && x.venId === p.venId && !x.order && !x.purchase && !x.draft).slice(0, 3);
@@ -2500,7 +2537,7 @@ async function waOpened(evId, list, recId, res) {
   const ev = D.events.find(e => e.id === evId), r = ev?.[list]?.find(x => x.id === recId);
   if (r?.status !== 'prepared') return;
   const at = new Date().toISOString();
-  try { await patchEvent(evId, { [list]: ev[list].map(x => x.id === recId ? { ...x, status: 'opened', openedAt: at, messages: markOrderMessage(x.messages, 'opened', at) } : x) }); }
+  try { await patchEvent(evId, { [list]: ev[list].map(x => x.id === recId || (r.grp && x.grp === r.grp && x.status === 'prepared') ? { ...x, status: 'opened', openedAt: at, messages: markOrderMessage(x.messages, 'opened', at) } : x) }); }
   catch (e) { showToast(e.message || 'WhatsApp opened, but its status could not be saved. Mark it sent once it has gone.', 'error'); }
   refreshCurrent();
 }
@@ -6916,6 +6953,10 @@ function bindAllEvents() {
   q('btn-send-ord').addEventListener('click', () => runSave('order', () => sendOrder('send')));
   q('btn-save-ord').addEventListener('click', () => runSave('order', () => sendOrder('save')));
   q('btn-send-buy').addEventListener('click', () => runSave('purchase', sendBuy));
+  q('buy-more').addEventListener('input', e => { const row = e.target.closest('[data-bm]'), k = e.target.dataset.bk; if (!row || !k) return;
+    const m = buyMore[Number(row.dataset.bm)];
+    if (k === 'on') m.on = e.target.checked; else { m[k] = e.target.value; if (k === 'qty' && e.target.value) { m.on = true; row.querySelector('[data-bk="on"]').checked = true; } } });
+  q('btn-buy-other').addEventListener('click', () => { buyMore.push({ free: true, name: '', src: 'buy', svc: qv('buy-svc'), qty: '', unit: 'pcs', on: true }); renderBuyMore(); q('buy-more').querySelector('[data-bm]:last-child [data-bk="name"]')?.focus(); });
   q('btn-cancel-buy').addEventListener('click', cancelBuyFromSheet);
   q('btn-cancel-ord').addEventListener('click', () => runSave('order', cancelOrderFromSheet));
   q('btn-save-exp').addEventListener('click', () => runSave('expense', () => saveExpense()));

@@ -606,11 +606,12 @@ export async function prepareImport(payload) {
       if (row.purchases !== undefined && (!Array.isArray(row.purchases) || row.purchases.length > 500 || new Set(row.purchases.map(p => p?.id)).size !== row.purchases.length
         || row.purchases.some(p => !p || typeof p.id !== 'string' || !p.id || p.id.length > 40 || typeof p.item !== 'string' || !p.item.trim() || !['buy', 'finish'].includes(p.src)
           || (p.svc !== undefined && (typeof p.svc !== 'string' || !p.svc || p.svc.length > 40)) || (p.venId !== undefined && typeof p.venId !== 'string')
-          || typeof p.qty !== 'number' || !Number.isFinite(p.qty) || p.qty <= 0 || !['pcs', 'kg', 'litre', 'packet', 'bottle', 'carton', 'tub', 'box'].includes(p.unit)
+          || typeof p.qty !== 'number' || !Number.isFinite(p.qty) || p.qty <= 0 || !['pcs', 'kg', 'litre', 'packet', 'bottle', 'carton', 'tub', 'box', 'dozen', 'ladi'].includes(p.unit)
           || !validDate(p.date) || (p.time !== undefined && (typeof p.time !== 'string' || p.time.length > 10)) || (p.notes !== undefined && (typeof p.notes !== 'string' || p.notes.length > 500))
           || (p.estCost !== undefined && (amount(p.estCost, 'estimated cost'), false)) || !['prepared', 'opened', 'sent', 'confirmed', 'delivered', 'cancelled'].includes(p.status)
           || (p.changed !== undefined && p.changed !== true) || (p.messages !== undefined && (!Array.isArray(p.messages) || p.messages.some(m => !m || typeof m.text !== 'string' || !['prepared', 'opened', 'sent', 'confirmed'].includes(m.status))))
-          || (p.reminded !== undefined && (!Array.isArray(p.reminded) || p.reminded.length > 20 || p.reminded.some(t => typeof t !== 'string' || t.length > 40)))))) throw new Error('Invalid purchase');
+          || (p.reminded !== undefined && (!Array.isArray(p.reminded) || p.reminded.length > 20 || p.reminded.some(t => typeof t !== 'string' || t.length > 40)))
+          || (p.grp !== undefined && (typeof p.grp !== 'string' || !p.grp || p.grp.length > 40)) || (p.extra !== undefined && p.extra !== true)))) throw new Error('Invalid purchase');   // grp, extra: 5.5.0
       if (row.additional !== undefined && typeof row.additional !== 'boolean') throw new Error('Invalid extra flag');
       if (row.linkRepair !== undefined && (name !== 'expenses' || !row.linkRepair || typeof row.linkRepair !== 'object' || typeof row.linkRepair.at !== 'string' || row.linkRepair.at.length > 40
         || typeof row.linkRepair.purchase !== 'string' || row.linkRepair.purchase.length > 40 || !Object.hasOwn(REPAIR_REASONS, row.linkRepair.reason)
