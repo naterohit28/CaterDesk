@@ -174,6 +174,10 @@
       <button type="button" class="qa" data-action="quick" data-id="vendor">
         <span class="qa-ic"><i data-ic="store"></i></span><span><span class="t-en">Add vendor</span><span class="t-mr">विक्रेता जोडा</span></span>
       </button>
+      <!-- 5.6.0: a small or one-time job in a few fields, so it is recorded rather than skipped -->
+      <button type="button" class="qa wide" data-action="quick" data-id="qevent">
+        <span class="qa-ic"><i data-ic="calendar"></i></span><span><span class="t-en">Quick event (small job)</span><span class="t-mr">छोटा कार्यक्रम</span></span>
+      </button>
     </div>
     <div id="nudges"></div>
     <div class="sec"><span class="sec-title">Pending collections – बाकी वसुली</span><span class="sec-amt due" id="od-total" hidden></span></div>
@@ -812,6 +816,31 @@
 </div>
 
 <!-- FUNCTION SHEET: internal summary for the team (spec §9.3) -->
+<div class="modal-ov" id="qev-modal">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="qev-mtitle">
+    <div class="s-handle"></div>
+    <div class="s-head"><div class="s-title" id="qev-mtitle">Quick event – छोटा कार्यक्रम</div><button type="button" class="icon-btn" data-action="close-modal" aria-label="Close"><i data-ic="x"></i></button></div>
+    <div class="meta" style="margin-bottom:var(--s3)">Only what you know now. Menu, quote, labour and the rest can be added later from the event. – बाकी नंतर भरता येईल.</div>
+    <div class="field"><label for="qev-name">What – काय <span class="req">*</span></label><input type="text" id="qev-name" maxlength="80" autocomplete="off" placeholder="e.g. Office lunch, 30 plates"></div>
+    <div class="f2">
+      <div class="field"><label for="qev-date">Date – दिनांक <span class="req">*</span></label><input type="date" id="qev-date"></div>
+      <div class="field"><label for="qev-guests">Plates – ताटे</label><input type="number" id="qev-guests" min="0" step="1" inputmode="numeric" placeholder="optional"></div>
+    </div>
+    <div class="field"><label for="qev-venue">Place – ठिकाण</label><input type="text" id="qev-venue" maxlength="120" autocomplete="off" placeholder="optional"></div>
+    <div class="f2">
+      <div class="field"><label for="qev-bill">Bill ₹ – बिल</label><input type="number" id="qev-bill" min="1" step="0.01" inputmode="decimal" placeholder="if known"></div>
+      <div class="field"><label for="qev-rec">Received now ₹ – मिळाले</label><input type="number" id="qev-rec" min="1" step="0.01" inputmode="decimal" placeholder="optional"></div>
+    </div>
+    <div class="field" id="qev-mode-field" hidden><label for="qev-mode">Received by – कसे मिळाले</label><select id="qev-mode"></select></div>
+    <label class="check-row"><input type="checkbox" id="qev-out"><span>Done by another caterer (outsourced) – दुसऱ्या केटररकडून</span></label>
+    <div id="qev-out-box" hidden>
+      <div class="field"><label for="qev-out-ven">Who does it – कोण करणार</label><select id="qev-out-ven"></select></div>
+      <div class="field"><label for="qev-out-charge">Their charge ₹ (owed to them) – त्यांचे बिल</label><input type="number" id="qev-out-charge" min="1" step="0.01" inputmode="decimal" placeholder="optional"></div>
+    </div>
+    <div class="s-foot"><div class="btn-row"><button type="button" class="btn btn-primary" id="btn-save-qev">Save – जतन</button></div></div>
+  </div>
+</div>
+
 <div class="modal-ov" id="closing-modal">
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="close-mtitle">
     <div class="s-handle"></div>

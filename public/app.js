@@ -3863,6 +3863,43 @@ function extraPlatesMessage(ev, k, s, qty) {
     + `Please reply "Approved: ${qty} extra ${k === 'all' ? '' : meal + ' '}covers at ${fmtCurrency(s.rate)} each" (or call us to discuss) so we can record your approval.`;
 }
 
+/* ── QUICK EVENT (5.6.0, owner's requirements) ──
+   A small, one-time or outsourced job in a few fields, saved as an ordinary event (same store, same money rules):
+   type Other, `quick: true`. A bill, money received now (a client payment) and an outsourced caterer's charge (a
+   credit expense to them, as on the full form) are optional and saved with the event in one go. Everything else can
+   be added later from the event; nothing here is a second kind of record. */
+function openQuickEvent() {
+  for (const id of ['qev-name', 'qev-guests', 'qev-venue', 'qev-bill', 'qev-rec', 'qev-out-charge']) q(id).value = '';
+  q('qev-date').value = today(); q('qev-out').checked = false; q('qev-out-box').hidden = true; q('qev-mode-field').hidden = true;
+  populateSelect('qev-mode', PAY_MODES);
+  populateSelect('qev-out-ven', [{ v: '', l: 'Choose – निवडा' }, ...D.vendors.filter(v => !isPerson(v)).sort((a, b) => a.name.localeCompare(b.name)).map(v => ({ v: v.id, l: v.name }))]);
+  clearFieldErrors(); openSheet('qev-modal');
+}
+async function saveQuickEvent() {
+  const name = qv('qev-name').trim(), date = qv('qev-date'), guests = qv('qev-guests'), bill = qv('qev-bill'), rec = qv('qev-rec');
+  const out = q('qev-out').checked, venId = out ? qv('qev-out-ven') : '', charge = out ? qv('qev-out-charge') : '';
+  const money2 = v => Number(v) > 0 && Math.round(Number(v) * 100) === Number(v) * 100, errs = {};
+  if (!name) errs['qev-name'] = 'What is it? – नाव लिहा';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) errs['qev-date'] = 'Date – दिनांक';
+  if (guests !== '' && !(Number.isInteger(Number(guests)) && Number(guests) >= 0)) errs['qev-guests'] = 'Plates – संख्या';
+  if (bill !== '' && !money2(bill)) errs['qev-bill'] = 'An amount in ₹ – रक्कम';
+  if (rec !== '' && !money2(rec)) errs['qev-rec'] = 'An amount in ₹ – रक्कम';
+  if (out && !venId) errs['qev-out-ven'] = 'Choose who does it – निवडा';
+  if (charge !== '' && !money2(charge)) errs['qev-out-charge'] = 'An amount in ₹ – रक्कम';
+  if (Object.keys(errs).length) { showFieldErrors(errs); return; }
+  const record = { id: uid('EV'), name: name.slice(0, 80), date, type: 'Other – इतर', venue: qv('qev-venue').trim().slice(0, 120), billing: Number(bill) || 0,
+    guests: Number(guests) || 0, photoIds: [], quick: true, _v: 2, ...(out ? { outsourced: true, outVenId: venId } : {}) };
+  const pay = rec !== '' ? { id: uid('CP'), evId: record.id, amt: Number(rec), date: today(), mode: qv('qev-mode'), notes: '' } : null;
+  const owed = charge !== '' ? { id: uid('EX'), evId: record.id, cat: 'Operations', head: 'Outsourced Event – आउटसोर्स कार्यक्रम', amt: Number(charge),
+    date, pay: 'credit', mode: '', venId, dueDate: '', notes: '', billIds: [] } : null;
+  try {
+    await commitChanges([{ store: 'events', record, expected: null }, ...(pay ? [{ store: 'cPays', record: pay, expected: null }] : []),
+      ...(owed ? [{ store: 'expenses', record: owed, expected: null }] : [])], { check: true, extraStores: ['vendors'] });
+  } catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
+  await closeModals(); await loadAll(); refreshCurrent();
+  showToast('Quick event saved – details can be added later – जतन', 'success', CT !== 'evdetail' ? { label: 'Open – उघडा', run: () => showEvDetail(record.id) } : null);
+}
+
 /* ── EVENT CLOSING REPORT (5.6.0): closureReport() in utils.js, shown, shared as text or printed ── */
 const RECON_NAME = { reconciled: 'Reconciled', reopened: 'Reopened after changes – check again', pending: 'Not reconciled yet' };
 const ADJ_NAME = { discount: 'Discount', waiver: 'Waived', writeoff: 'Written off' };
@@ -6848,6 +6885,7 @@ function bindAllEvents() {
         if (id === 'event')   openEvModal();
         if (id === 'expense') openExpModal();
         if (id === 'vendor')  openVenModal();
+        if (id === 'qevent')  openQuickEvent();
         break;
       case 'close-modal':
       case 'close-lightbox': dismissOverlay(); break;
@@ -7105,6 +7143,9 @@ function bindAllEvents() {
   q('btn-send-ord').addEventListener('click', () => runSave('order', () => sendOrder('send')));
   q('btn-save-ord').addEventListener('click', () => runSave('order', () => sendOrder('save')));
   q('btn-send-buy').addEventListener('click', () => runSave('purchase', sendBuy));
+  q('btn-save-qev').addEventListener('click', () => runSave('qevent', saveQuickEvent));
+  q('qev-out').addEventListener('change', e => { q('qev-out-box').hidden = !e.target.checked; });
+  q('qev-rec').addEventListener('input', e => { q('qev-mode-field').hidden = !e.target.value; });
   q('btn-exp-match').addEventListener('click', () => runSave('expense', manualMatch));
   // The running total of the ticked entries, against this bill's amount when it is typed
   q('ask-msg').addEventListener('change', () => { const out = q('match-sum'); if (!out) return;

@@ -508,6 +508,8 @@ html.modal-open, html.modal-open body { overflow: hidden; }
 .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--brand-text); background-color: var(--surface); }
 .field textarea { resize: vertical; min-height: 88px; line-height: 1.5; }
 .field input.error, .field select.error { border-color: var(--neg); }
+/* 5.6.0: the quick-event button spans the row under the four quick actions */
+.qa.wide { grid-column: 1 / -1; }
 /* 5.5.1 (phone check): a tick box inside a field is a tick box, not a text box */
 .field input[type="checkbox"] { width: 22px; height: 22px; min-height: 0; padding: 0; border: 0; background: none; appearance: auto; -webkit-appearance: checkbox; accent-color: var(--brand); }
 /* The chosen name in full, under a dropdown too narrow to show it (added only then) */

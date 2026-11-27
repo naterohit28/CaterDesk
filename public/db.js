@@ -614,6 +614,7 @@ export async function prepareImport(payload) {
           || (p.reminded !== undefined && (!Array.isArray(p.reminded) || p.reminded.length > 20 || p.reminded.some(t => typeof t !== 'string' || t.length > 40)))
           || (p.grp !== undefined && (typeof p.grp !== 'string' || !p.grp || p.grp.length > 40)) || (p.extra !== undefined && p.extra !== true)))) throw new Error('Invalid purchase');   // grp, extra: 5.5.0
       if (row.additional !== undefined && typeof row.additional !== 'boolean') throw new Error('Invalid extra flag');
+      if (name === 'events' && row.quick !== undefined && row.quick !== true) throw new Error('Invalid quick event flag');   // 5.6.0
       if (row.linkRepair !== undefined && (name !== 'expenses' || !row.linkRepair || typeof row.linkRepair !== 'object' || typeof row.linkRepair.at !== 'string' || row.linkRepair.at.length > 40
         || typeof row.linkRepair.purchase !== 'string' || row.linkRepair.purchase.length > 40 || !Object.hasOwn(REPAIR_REASONS, row.linkRepair.reason)
         || !['start', 'restore', 'edit'].includes(row.linkRepair.from))) throw new Error('Invalid link repair note');
