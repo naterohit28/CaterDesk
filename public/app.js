@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, billSet, billingSplit, calcVendorBalance, normGstin, gstinValid, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, billOrderIds, deliveredWithoutBill, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, paymentSchedule, keepPaidMilestones, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, dishSource, learnedDishes, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, billOrderIds, deliveredWithoutBill, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, repeatBill, paymentSchedule, keepPaidMilestones, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, dishSource, learnedDishes, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '5.3.3';
+const APP_BUILD = '5.3.4';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -5449,6 +5449,23 @@ async function snapBills(files) {
     { label: 'Fill now – आता भरा', run: () => openExpModal(made[0]) });
 }
 
+/* The bill photo(s) of the open form go to an entry already recorded (a photo belongs to one entry: the first of the
+   matching ones); a bill-photo draft being filled in is then removed. No amount is created or changed. */
+async function attachBillTo(target, base) {
+  const photos = (await getBillsForExpense(expWork.id)).filter(ph => expWork.bills.some(b => b.id === ph.id));
+  const moved = photos.map(ph => ({ store: 'photos', record: { ...ph, expenseId: target.id }, expected: ph }));
+  const record = { ...target, billIds: [...new Set([...(target.billIds || []), ...photos.map(ph => ph.id)])] };
+  try {
+    await commitChanges([{ store: 'expenses', record, expected: target }, ...moved, ...(base?.draft ? [{ store: 'expenses', id: base.id, expected: base }] : [])], { check: true, extraStores: ['events', 'vendors'] });
+  } catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
+  const i = D.expenses.findIndex(x => x.id === target.id); if (i >= 0) D.expenses[i] = { ...record, _rev: (target._rev || 0) + 1 };
+  D.drafts = D.drafts.filter(d => d.id !== expWork.id);
+  expWork.saved = true;
+  try { localStorage.removeItem('ffv2_expdraft'); } catch {}
+  closeModals(); await loadAll(); refreshCurrent();
+  showToast(`Bill photo attached to ${short(target.head || target.cat)} ${fmtCurrency(target.amt)}; nothing counted twice – फोटो जोडला`, 'success');
+}
+
 async function saveExpense({ next = false, split = false } = {}) {
   const session = expWork;
   await session.ready;
@@ -5480,6 +5497,21 @@ async function saveExpense({ next = false, split = false } = {}) {
       message: `${vn}: bill no. ${billNo} is already recorded on ${fmtDate(dup.date)} for ${fmtCurrency(dup.split?.total ?? dup.amt)}. If it is the same bill, saving it again counts it twice; to put it on more events, open that entry and use Split bill.`,
       actions: [{ label: 'Different bill, save – वेगळे बिल', value: true, style: 'btn-secondary' }] });
     if (!again) return;
+  }
+  /* 5.3.3 (owner's phone): a new entry, or a bill photo being filled in, whose amount equals what is already recorded
+     from this vendor for this event (one entry, or 2–4 added together) is probably the same bill again. Ask; the bill
+     photo can go to those entries instead, so nothing is counted twice. */
+  const rep = (!base || base.draft) && !base?.split ? repeatBill(D.expenses, { id: expWork.id, venId, evId: data.evId, amt: data.amt, date: data.date }) : null;
+  if (rep) {
+    const vn = D.vendors.find(v => v.id === venId)?.name || 'this vendor', evn = D.events.find(e => e.id === data.evId)?.name || 'this event';
+    const parts = rep.map(x => `${short(x.head || x.cat)} ${fmtCurrency(x.amt)} (${fmtDate(x.date)})`).join(' + ');
+    const photos = expWork.bills.length;
+    const choice = await askSheet({ title: 'Already recorded? – आधीच नोंदवले?',
+      message: `${vn} for ${evn}: ${parts}${rep.length > 1 ? ` = ${fmtCurrency(data.amt)}` : ''} is already recorded. If this is the same bill, saving it counts it twice.`,
+      actions: [...(photos ? [{ label: `Attach the bill photo to ${rep.length > 1 ? 'those entries' : 'that entry'} – फोटो जोडा`, value: 'attach', style: 'btn-primary' }] : []),
+        { label: 'Different bill, save – वेगळे बिल', value: 'save', style: 'btn-secondary' }], cancel: 'Go back – मागे' });
+    if (!choice) return;
+    if (choice === 'attach') { await attachBillTo(rep[0], base); return; }
   }
   // The event's labour sheet already includes this item (G-14): only save it if it is on top of the sheet
   let additional = !!base?.additional;

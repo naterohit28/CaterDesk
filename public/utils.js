@@ -221,6 +221,24 @@ export function duplicateBill(expenses, { id, venId, billNo, date, splitId }) {
   return expenses.find(x => x.id !== id && (!splitId || x.split?.id !== splitId) && x.venId === venId && billKey(x.billNo) === k
     && !(Math.abs(Date.parse(x.date) - t) > 365 * 864e5)) || null;
 }
+/* 5.3.3 (owner's phone, 27 Nov 2026): a new bill whose amount equals what is already recorded from the same vendor
+   for the same event (one entry, or two to four entries added together, within 7 days) is probably the same bill
+   entered again, e.g. a bill photo filled in after its items were entered one by one. Returns those entries, oldest
+   first, or null. A warning only: the person decides. Drafts and the parts of this entry's own shared bill are skipped. */
+export function repeatBill(expenses, { id, venId, evId, amt, date, splitId }) {
+  const target = toPaise(amt); if (!venId || !evId || !(target > 0)) return null;
+  const t = Date.parse(date), near = x => !(Math.abs(Date.parse(x.date) - t) > 7 * 864e5);
+  const pool = expenses.filter(x => x.id !== id && !x.draft && (!splitId || x.split?.id !== splitId) && x.venId === venId && x.evId === evId && near(x) && toPaise(x.amt) > 0)
+    .sort((a, b) => (a.date || '').localeCompare(b.date || '') || a.id.localeCompare(b.id)).slice(0, 12);
+  const one = pool.find(x => toPaise(x.amt) === target); if (one) return [one];
+  const pick = (start, left, chosen) => {
+    if (left === 0 && chosen.length >= 2) return chosen;
+    if (chosen.length === 4 || left <= 0) return null;
+    for (let i = start; i < pool.length; i++) { const r = pick(i + 1, left - toPaise(pool[i].amt), [...chosen, pool[i]]); if (r) return r; }
+    return null;
+  };
+  return pick(0, target, null || []);
+}
 // Equal parts in paise; the last part takes any leftover paise so the parts add up exactly
 export function equalSplit(totalRupees, n) {
   const totalP = toPaise(totalRupees), each = Math.floor(totalP / n);
