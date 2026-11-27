@@ -244,6 +244,17 @@ export function repeatBills(expenses, { id, venId, evId, amt, date, splitId }, l
   pick(0, target, []);
   return out.slice(0, limit);
 }
+/* 5.5.0 (owner's requirements): when the automatic check finds nothing (amounts differ, more than 4 entries, more than
+   7 days apart), the owner ticks the entries a bill photo covers. These are the confirmed entries from the same vendor
+   (with no vendor chosen: for the same event) within 60 days, nearest first; never drafts, order estimates, split
+   parts or entries already on another bill photo. */
+export function billCandidates(expenses, { id, venId, evId, date }, limit = 30) {
+  if (!venId && !evId) return [];
+  const t = Date.parse(date) || Date.now(), gap = x => Math.abs((Date.parse(x.date) || t) - t);
+  return expenses.filter(x => x.id !== id && !x.draft && !x.fromOrder && !x.billOn && !x.split && toPaise(x.amt) > 0
+      && (venId ? x.venId === venId : x.evId === evId) && gap(x) <= 60 * 864e5)
+    .sort((a, b) => gap(a) - gap(b) || (b.date || '').localeCompare(a.date || '') || a.id.localeCompare(b.id)).slice(0, limit);
+}
 // The first match only (kept for callers that need one answer)
 export function repeatBill(expenses, bill) { return repeatBills(expenses, bill, 1)[0] || null; }
 // Equal parts in paise; the last part takes any leftover paise so the parts add up exactly

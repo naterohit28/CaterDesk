@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, billSet, billingSplit, calcVendorBalance, normGstin, gstinValid, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, billOrderIds, deliveredWithoutBill, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, repeatBill, repeatBills, paymentSchedule, keepPaidMilestones, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, dishSource, learnedDishes, kitchenDishes, dishesTaken, JOB_STAGES, jobStage, jobGuests, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, billOrderIds, deliveredWithoutBill, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, repeatBill, repeatBills, billCandidates, paymentSchedule, keepPaidMilestones, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, dishSource, learnedDishes, kitchenDishes, dishesTaken, JOB_STAGES, jobStage, jobGuests, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -4718,11 +4718,12 @@ function closeModals() {
 // An action with `run` calls it inside the tap itself (Android allows some things, like the share menu,
 // only directly from a tap) and resolves to what it returns.
 // `cancel: null` leaves out the Cancel button (the actions then include the safe choice; Back / Escape still give null).
-function askSheet({ title, message = '', actions, cancel = 'Cancel – रद्द करा' }) {
+function askSheet({ title, message = '', html = '', actions, cancel = 'Cancel – रद्द करा' }) {
   return new Promise(resolve => {
     let result = null;
     q('ask-title').textContent = title;
     q('ask-msg').textContent   = message;
+    if (html) q('ask-msg').insertAdjacentHTML('beforeend', html);   // built by the caller with esc()
     const box = q('ask-actions');
     box.innerHTML = '';
     [...actions, ...(cancel ? [{ label: cancel, value: null, style: 'btn-ghost' }] : [])].forEach(a => {
@@ -5609,6 +5610,29 @@ function renderExpBills() {
     expWork.bills.map(b => `<img class="bill-thumb" src="${esc(b.data)}" alt="Bill photo" role="button" tabindex="0" data-action="bill-view" data-id="${esc(b.id)}">`).join('') +
     `<button type="button" class="bill-add" data-action="bill-cam">${icon('camera', 20)}<span class="t-en">Camera</span><span class="t-mr">कॅमेरा</span></button>` +
     `<button type="button" class="bill-add" data-action="bill-gal">${icon('image', 20)}<span class="t-en">Gallery</span><span class="t-mr">गॅलरी</span></button>`;
+  const base = formBase.exp && formBase.exp.id === expWork.id ? formBase.exp : null;
+  q('btn-exp-match').hidden = !(expWork.bills.length && (!base || base.draft) && !base?.split);
+}
+/* 5.5.0: a bill photo whose items were already entered one by one, when the automatic check did not find them: tick
+   the entries it covers. Same safeguards as the automatic attach (attachBillTo): one save, amounts untouched. */
+async function manualMatch() {
+  const session = expWork; await session.ready; if (expWork !== session) return;
+  const base = formBase.exp && formBase.exp.id === expWork.id ? formBase.exp : null;
+  const venId = qv('exp-vendor').startsWith('__new') ? '' : qv('exp-vendor'), evId = qv('exp-ev'), amt = Number(qv('exp-amt')) || 0;
+  if (!venId && !evId) { showToast('Choose the vendor or the event first – आधी विक्रेता / कार्यक्रम निवडा', 'error'); return; }
+  const list = billCandidates(D.expenses, { id: expWork.id, venId, evId, date: qv('exp-date') });
+  if (!list.length) { showToast('No entries from them in the last 60 days – नोंदी सापडल्या नाहीत', 'error'); return; }
+  const item = x => `${short(x.head || x.cat)} ${fmtCurrency(x.amt)} · ${fmtDate(x.date)}${x.evId && x.evId !== evId ? ` · ${D.events.find(e => e.id === x.evId)?.name || ''}` : ''}${(x.billIds || []).length ? ' · has a photo' : ''}`;
+  const html = `<div id="match-list" style="margin-top:var(--s3)">${list.map(x => `<label class="check-row" style="margin:0 0 var(--s2)"><input type="checkbox" data-match="${esc(x.id)}" data-p="${toPaise(x.amt)}"><span>${esc(item(x))}</span></label>`).join('')}</div>
+    <div class="meta" id="match-sum" data-bill="${toPaise(amt)}" aria-live="polite"></div>`;
+  const pick = await askSheet({ title: 'Which entries does this bill cover? – कोणत्या नोंदी?',
+    message: 'Tick the entries already recorded from this bill. The photo goes on them; their amounts, dates and payment stay exactly as they are, and nothing is counted twice.',
+    html, actions: [{ label: 'Attach the bill photo – फोटो जोडा', style: 'btn-primary', run: () => [...document.querySelectorAll('#match-list [data-match]:checked')].map(c => c.dataset.match) }],
+    cancel: 'Go back – मागे' });
+  if (!Array.isArray(pick)) return;
+  if (!pick.length) { showToast('Tick at least one entry – किमान एक नोंद निवडा', 'error'); return; }
+  const chosen = pick.map(id => D.expenses.find(x => x.id === id)).filter(Boolean);
+  await attachBillTo(chosen, base, { billNo: qv('exp-billno').trim().slice(0, 60), note: qv('exp-notes').trim() });
 }
 
 async function addBillsToSheet(files) {
@@ -5750,8 +5774,10 @@ async function saveExpense({ next = false, split = false } = {}) {
         : [`${vn} for ${evn}: ${fmtCurrency(data.amt)} matches ${combos.length} combinations already recorded. If this is the same bill, choose which entries it covers:`,
           ...combos.map((c, k) => `${k + 1}) ${list(c)}`), ...told(combos[0]).filter(l => l.startsWith('Payment')).length ? ['Payment differs on some entries: nothing is changed.'] : []].join('\n'),
       actions: [...(photos ? combos.map((c, k) => ({ label: one ? `Attach the bill photo to ${c.length > 1 ? 'those entries' : 'that entry'} – फोटो जोडा` : `Attach to ${k + 1}) ${c.length} entr${c.length > 1 ? 'ies' : 'y'} – फोटो जोडा`, value: 'attach:' + k, style: 'btn-primary' })) : []),
+        ...(photos ? [{ label: 'Choose the entries myself – मी निवडतो', value: 'pick', style: 'btn-secondary' }] : []),
         { label: 'Different bill, save – वेगळे बिल', value: 'save', style: 'btn-secondary' }], cancel: 'Go back – मागे' });
     if (!choice) return;
+    if (choice === 'pick') { await manualMatch(); return; }
     if (choice.startsWith('attach:')) { await attachBillTo(combos[Number(choice.slice(7))], base, { billNo, note: noteText }); return; }
   }
   // The event's labour sheet already includes this item (G-14): only save it if it is on top of the sheet
@@ -6953,6 +6979,11 @@ function bindAllEvents() {
   q('btn-send-ord').addEventListener('click', () => runSave('order', () => sendOrder('send')));
   q('btn-save-ord').addEventListener('click', () => runSave('order', () => sendOrder('save')));
   q('btn-send-buy').addEventListener('click', () => runSave('purchase', sendBuy));
+  q('btn-exp-match').addEventListener('click', () => runSave('expense', manualMatch));
+  // The running total of the ticked entries, against this bill's amount when it is typed
+  q('ask-msg').addEventListener('change', () => { const out = q('match-sum'); if (!out) return;
+    const p = [...document.querySelectorAll('#match-list [data-match]:checked')].reduce((s, c) => s + Number(c.dataset.p), 0), bill = Number(out.dataset.bill);
+    out.textContent = !p ? '' : `Ticked ${fmtCurrency(p / 100)}${bill ? (p === bill ? ' = this bill' : ` · this bill ${fmtCurrency(bill / 100)} (differs by ${fmtCurrency(Math.abs(bill - p) / 100)})`) : ''}`; });
   q('buy-more').addEventListener('input', e => { const row = e.target.closest('[data-bm]'), k = e.target.dataset.bk; if (!row || !k) return;
     const m = buyMore[Number(row.dataset.bm)];
     if (k === 'on') m.on = e.target.checked; else { m[k] = e.target.value; if (k === 'qty' && e.target.value) { m.on = true; row.querySelector('[data-bk="on"]').checked = true; } } });
