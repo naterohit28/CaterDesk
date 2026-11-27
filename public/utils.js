@@ -10,7 +10,9 @@ export const EXPENSE_HEADS = {
     'Juice – ज्यूस','Water – पाणी','Milk & Dairy – दूध व दुग्धजन्य पदार्थ','Ice – बर्फ','Bread – ब्रेड',
     'Pickle – लोणचे','Sweet – मिठाई','Dry Fruits','Spices / Masala',
     'Oil / Ghee',
-    'Banana Leaves – केळीची पाने','Coconut – नारळ','Papad / Fryums – पापड','Farsan / Namkeen – फरसाण'
+    'Banana Leaves – केळीची पाने','Coconut – नारळ','Papad / Fryums – पापड','Farsan / Namkeen – फरसाण',
+    // 5.6.0 (owner's requirements: wider coverage, still six categories): food bought ready or frozen is purchased food
+    'Non-veg (Chicken / Mutton / Fish) – मांसाहार','Eggs – अंडी','Bakery – बेकरी','Frozen / Ready Food – फ्रोझन / तयार अन्न'
   ],
   'Live Counter': [
     'Chaat – चाट','Starter – स्टार्टर','Dosa – डोसा','Chinese – चायनीज',
@@ -32,12 +34,14 @@ export const EXPENSE_HEADS = {
     'Rented Material – भाड्याचे साहित्य','Disposable – डिस्पोजेबल',
     'Packaging Material','New Utensils – नवीन भांडी','Equipment Repair',
     'Generator / Power','Water Tanker','Outsourced Event – आउटसोर्स कार्यक्रम',
-    'Nadaswaram / Music – सनई','Thamboolam / Return Gift Bags – तांबूलम'
+    'Nadaswaram / Music – सनई','Thamboolam / Return Gift Bags – तांबूलम',
+    'Charcoal / Firewood – कोळसा / लाकूड','Flowers / Decoration – फुले / सजावट','Cleaning Material – स्वच्छता साहित्य','Laundry / Linen – कपडे धुलाई'
   ],
   'Admin': [
     'Royalty – रॉयल्टी','Office Expense','Phone / Internet',
     'Printing / Stationery','Permission / License','Commission',
-    'Marketing Expense','Tips – टीप / बक्षीस','Misc – इतर खर्च','Unaccounted'
+    'Marketing Expense','Tips – टीप / बक्षीस','Misc – इतर खर्च','Unaccounted',
+    'Rent – भाडे','Electricity Bill – वीज बिल','Bank Charges – बँक शुल्क','Accountant / CA Fees – सीए फी'
   ],
   'Adjustment': [
     'Damage / Breakage','Refund / Compensation','Staff Advance','Cash Difference'
@@ -104,6 +108,18 @@ export const HEAD_WORDS = {
   'Printing / Stationery': 'printing xerox stationery print',
   'Commission': 'commission dalali',
   'Tips': 'tip bakshish बक्षीस',
+  'Non-veg (Chicken / Mutton / Fish)': 'chicken mutton fish machhi मासे मटण चिकन nonveg non-veg meat prawns',
+  'Eggs': 'egg anda anda अंडी',
+  'Bakery': 'cake pastry khari toast rusk',
+  'Frozen / Ready Food': 'frozen ready readymade tayar तयार spring rolls nuggets samosa',
+  'Charcoal / Firewood': 'charcoal koyla kolsa कोळसा firewood lakdi लाकूड',
+  'Flowers / Decoration': 'flowers phool फुले decoration sajavat गजरा',
+  'Cleaning Material': 'phenyl soap detergent broom jhadu cleaning',
+  'Laundry / Linen': 'laundry dhobi linen napkin table cloth',
+  'Rent': 'rent kiraya godown kitchen rent',
+  'Electricity Bill': 'electricity bijli light bill वीज',
+  'Bank Charges': 'bank charges fee',
+  'Accountant / CA Fees': 'ca accountant audit',
 };
 export function findHeads(query, limit = 6) {
   const norm = v => String(v || '').normalize('NFKC').toLocaleLowerCase().replace(/\s+/g, ' ').trim();

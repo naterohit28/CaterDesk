@@ -5505,7 +5505,7 @@ function setExpCat(cat, head = '') {
   q('exp-cat').value = cat;
   q('exp-cats').innerHTML = Object.keys(EXPENSE_HEADS).map(c =>
     `<button type="button" class="cat-chip" data-cat="${esc(c)}" aria-pressed="${c === cat}">${catIcon(c, 20)}${esc(c)}</button>`).join('');
-  populateSelect('exp-head', headsByUse(cat, head), head);
+  setHeadOptions(cat, head);
   populateVendorSelect(qv('exp-vendor'));
   renderItemQuick();
 }
@@ -5546,6 +5546,16 @@ const normal = value => String(value || '').normalize('NFKC').split(' – ')[0].
 /* A category's items with the ones you record most at the top (the rest keep their usual order). `keep` is the item of
    the entry being opened: if it is not in today's list (a retired item such as "Ice + Milk"), it is added at the end, so
    opening and saving an old record never changes its item (the list would otherwise fall back to its first item). */
+/* 5.6.0 (progressive disclosure): the item list puts the items used before first, then every other item under
+   "All items", so a long list stays short in daily use without hiding anything. */
+function setHeadOptions(cat, head = '') {
+  const used = new Set(D.expenses.filter(x => catNow(x.cat, x.head) === cat && x.head).map(x => headNow(x.head)));
+  const list = headsByUse(cat, head), top = list.filter(h => used.has(h) || h === head), rest = list.filter(h => !top.includes(h));
+  const opt = h => `<option value="${esc(h)}"${h === head ? ' selected' : ''}>${esc(h)}</option>`;
+  q('exp-head').innerHTML = top.length && rest.length
+    ? `<optgroup label="Used before – नेहमीचे">${top.map(opt).join('')}</optgroup><optgroup label="All items – सर्व">${rest.map(opt).join('')}</optgroup>`
+    : list.map(opt).join('');
+}
 function headsByUse(cat, keep = '') {
   const heads = EXPENSE_HEADS[cat] || [];
   const uses = new Map();
