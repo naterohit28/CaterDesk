@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '5.4.1';
+const APP_BUILD = '5.4.2';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -357,6 +357,37 @@ function saveExpSnapshot() {
     date: qv('exp-date'), dueDate: qv('exp-due'), notes: qv('exp-notes'), at: Date.now() });
 }
 
+/* 5.4.2 (owner): "What's new", in plain words, newest first. Each release adds one entry here. After an update the app
+   says so once ("Updated to …"), with a button to this list; nothing is shown on a first install. */
+const WHATS_NEW = [
+  { v: '5.4.2', en: 'What\'s new: this list, in the menu (☰). After an update the app tells you once.', mr: 'नवीन काय: ही यादी मेनूमध्ये (☰). अपडेटनंतर एकदा सांगितले जाते.' },
+  { v: '5.4.1', en: 'Cooking labour (cooks, roti, starters, sweets, Chinese) is entered by order: people, labour for the job and transport. Rojiya, Ghati and Boys stay by shift.', mr: 'स्वयंपाकी, रोटी, स्टार्टर, मिठाई, चायनीज मजूर ऑर्डरप्रमाणे: किती जण, मजुरी आणि भाडे. रोजीया, घाटी, बॉईज शिफ्टप्रमाणे.' },
+  { v: '5.4.0', en: 'Vendors are split into Suppliers and Contractors, each with its own totals. More labour types: Chinese Cook, Roti Cook, Starter / Farsan, Sweet, House Keeping, Security, Valet, Manager.', mr: 'विक्रेते: पुरवठादार आणि ठेकेदार वेगळे, स्वतंत्र एकूण. नवे मजूर प्रकार जोडले.' },
+  { v: '5.3.4', en: 'A bill photo whose amount matches items you already entered asks first, so the bill is not counted twice. You can attach the photo to those entries.', mr: 'आधी नोंदवलेल्या खर्चाइतकेच बिल असेल तर आधी विचारले जाते, खर्च दोनदा धरला जात नाही.' },
+  { v: '5.3.3', en: 'An event with missing usual costs or labour says "Costs incomplete", and asks before you close it.', mr: 'नेहमीचे खर्च किंवा मजुरी बाकी असेल तर "खर्च अपूर्ण" दाखवते आणि जुळवण्याआधी विचारते.' },
+  { v: '5.3.2', en: 'Breakfast and high tea: 8 ready menus from your rate card.', mr: 'नाश्ता आणि हाय टी: रेट कार्डमधील ८ तयार मेनू.' },
+  { v: '5.3.1', en: 'Who makes a dish is no longer guessed from its name; your earlier choices are remembered. New labour type: Specialist Cook.', mr: 'पदार्थ कोण बनवतो हे नावावरून ठरवत नाही; तुमची आधीची निवड लक्षात ठेवते.' },
+  { v: '5.3.0', en: 'Home opens on today\'s work: today\'s and tomorrow\'s events and what is still open.', mr: 'होम: आज आणि उद्याचे कार्यक्रम आणि बाकी काम.' },
+  { v: '5.2.2', en: 'Ice and Milk & Dairy are separate expense items.', mr: 'बर्फ आणि दूध व दुग्धजन्य पदार्थ वेगळे खर्च.' },
+  { v: '5.2.1', en: 'Menu headings like "High Tea 100 pax" or "नाश्ता" are recognised.', mr: 'मेनूमधील जेवणाची शीर्षके ओळखली जातात.' },
+  { v: '5.2.0', en: 'Usual items: one tap for the expense items you record most.', mr: 'नेहमीचे खर्च: एका टॅपमध्ये.' }
+];
+function openWhatsNew() {
+  q('whatsnew-body').innerHTML = `<div class="card list" id="whatsnew-list">${WHATS_NEW.map(w => `
+    <div class="row whatsnew-row" style="align-items:flex-start">
+      <div class="row-body"><div class="title-sm">${tr(`Version ${w.v}`, `आवृत्ती ${w.v}`)}${w.v === APP_BUILD ? ` <span class="chip pos">${tr('This version', 'ही आवृत्ती')}</span>` : ''}</div>
+        <div class="meta" style="white-space:normal">${tr(esc(w.en), esc(w.mr))}</div></div>
+    </div>`).join('')}</div>`;
+  openSheet('whatsnew-modal');
+}
+// Once after an update: "Updated to 5.4.2 · See what's new". A first install (no records yet) is not told.
+function noteNewVersion() {
+  const seen = readPref('ffv2_seen_build', '');
+  writePref('ffv2_seen_build', APP_BUILD);
+  if (seen === APP_BUILD || (!seen && !D.events.length && !D.expenses.length)) return;
+  setTimeout(() => showToast(`Updated to ${APP_BUILD} – ${APP_BUILD} अपडेट झाले`, 'success', { label: "See what's new – नवीन काय", run: openWhatsNew }), 1200);
+}
+
 function launchApp() {
   if (launched) return;   // setting a PIN later must not re-bind every listener
   launched = true;
@@ -366,6 +397,7 @@ function launchApp() {
   go('home', { fromHistory: true });
   resumeWhereLeft(last);
   syncOverlayAccessibility();
+  noteNewVersion();
 }
 
 /* ── LOADING ─────────────────────────────────────── */
@@ -6772,6 +6804,7 @@ function bindAllEvents() {
   q('open-profile').addEventListener('click', () => closeOverlay().then(openProfile));
   q('btn-save-profile').addEventListener('click', saveProfile);
   q('open-menus').addEventListener('click', () => closeOverlay().then(openMenus));
+  q('open-whatsnew').addEventListener('click', () => closeOverlay().then(openWhatsNew));
   q('btn-menu-new').addEventListener('click', () => openMenuEdit(null));
   q('menus-body').addEventListener('click', e => { const r = e.target.closest('[data-menu-edit]'); if (r) openMenuEdit(r.dataset.menuEdit); });
   q('me-meals').addEventListener('click', e => { const b = e.target.closest('[data-me-meal]'); if (!b) return; const k = b.dataset.meMeal;

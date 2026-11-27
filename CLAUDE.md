@@ -16,6 +16,7 @@ Update every pinned version:
 - `desktop/FlavorFusionDesktop.cs` (4), `desktop/README.txt` (3);
 - `tests/diagnostics-redaction.cjs`, `tests/release-update.cjs` (3, including the `'vX.Y.Z'` app-build check on line 14);
 - README version lines, plus a changelog row.
+- One plain-language line (English and Marathi, no technical terms) at the top of `WHATS_NEW` in `public/app.js`: the owner sees it under What's new.
 After a release, add the previous version's tag to `tests/update-from-4313.cjs`.
 
 ## The owner's phone

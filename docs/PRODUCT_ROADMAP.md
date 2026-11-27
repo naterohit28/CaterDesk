@@ -1,6 +1,6 @@
 # CaterDesk product roadmap
 
-**Status:** live version 5.3.3 (5.3.4, 5.4.0 and 5.4.1 in review). Next (owner, 27 Nov 2026): an in-app "What's new". Development resumed on 26 Nov 2026 under the owner's final development directive. Engineering rules: [AGENTS.md](../AGENTS.md).
+**Status:** live version 5.3.3 (5.3.4, 5.4.0, 5.4.1 and 5.4.2 in review). Each release also adds one plain-language line to the in-app "What's new" (`WHATS_NEW` in app.js). Development resumed on 26 Nov 2026 under the owner's final development directive. Engineering rules: [AGENTS.md](../AGENTS.md).
 
 ## Objective
 Make CaterDesk a compact, reliable catering operations and money app that cuts paperwork, admin time, repeated entry and forgotten transactions for independent Indian caterers (operators aged 40–70, coming from paper, Excel and WhatsApp).
