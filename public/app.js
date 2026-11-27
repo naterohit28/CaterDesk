@@ -3879,14 +3879,14 @@ function openQuickEvent() {
 async function saveQuickEvent() {
   const name = qv('qev-name').trim(), date = qv('qev-date'), guests = qv('qev-guests'), bill = qv('qev-bill'), rec = qv('qev-rec');
   const out = q('qev-out').checked, venId = out ? qv('qev-out-ven') : '', charge = out ? qv('qev-out-charge') : '';
-  const money2 = v => Number(v) > 0 && Math.round(Number(v) * 100) === Number(v) * 100, errs = {};
-  if (!name) errs['qev-name'] = 'What is it? – नाव लिहा';
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) errs['qev-date'] = 'Date – दिनांक';
-  if (guests !== '' && !(Number.isInteger(Number(guests)) && Number(guests) >= 0)) errs['qev-guests'] = 'Plates – संख्या';
-  if (bill !== '' && !money2(bill)) errs['qev-bill'] = 'An amount in ₹ – रक्कम';
-  if (rec !== '' && !money2(rec)) errs['qev-rec'] = 'An amount in ₹ – रक्कम';
+  /* The same rules as the full forms (review of #121): the event's name, date, bill and guests (EVENT_RULES), a client
+     payment (PAYMENT_RULES) and an expense (EXPENSE_RULES): two decimals, at least ₹1, at most the shared upper limit.
+     Only what a quick event leaves optional is relaxed: the place, and an amount left blank. */
+  const opt = r => ({ ...r, required: false });
+  const { errors } = validate({ name: EVENT_RULES.name, date: EVENT_RULES.date, billing: EVENT_RULES.billing, guests: EVENT_RULES.guests,
+    rec: opt(PAYMENT_RULES.amt), charge: opt(EXPENSE_RULES.amt) }, { name, date, billing: bill, guests, rec, charge });
+  const errs = Object.fromEntries(Object.entries(errors).map(([k, v]) => [{ name: 'qev-name', date: 'qev-date', billing: 'qev-bill', guests: 'qev-guests', rec: 'qev-rec', charge: 'qev-out-charge' }[k], v]));
   if (out && !venId) errs['qev-out-ven'] = 'Choose who does it – निवडा';
-  if (charge !== '' && !money2(charge)) errs['qev-out-charge'] = 'An amount in ₹ – रक्कम';
   if (Object.keys(errs).length) { showFieldErrors(errs); return; }
   const record = { id: uid('EV'), name: name.slice(0, 80), date, type: 'Other – इतर', venue: qv('qev-venue').trim().slice(0, 120), billing: Number(bill) || 0,
     guests: Number(guests) || 0, photoIds: [], quick: true, _v: 2, ...(out ? { outsourced: true, outVenId: venId } : {}) };
@@ -3906,7 +3906,7 @@ const RECON_NAME = { reconciled: 'Reconciled', reopened: 'Reopened after changes
 const ADJ_NAME = { discount: 'Discount', waiver: 'Waived', writeoff: 'Written off' };
 function closureText(r) {
   const L = [], c = fmtCurrency, line = (label, v) => L.push(`${label}: ${v}`);
-  L.push(`EVENT CLOSING REPORT – ${r.ev.name}`, [fmtDate(r.ev.date), r.ev.venue, r.ev.guests ? `${r.ev.guests} guests` : ''].filter(Boolean).join(' · '));
+  L.push(`EVENT CLOSING REPORT – ${r.ev.name}`, 'For internal use: shows costs, margins and supplier balances. Not for the client.', [fmtDate(r.ev.date), r.ev.venue, r.ev.guests ? `${r.ev.guests} guests` : ''].filter(Boolean).join(' · '));
   L.push(`Status: ${RECON_NAME[r.recon]}${r.recon === 'reconciled' && r.reconAt ? ` (${fmtDate(localDay(r.reconAt))})` : ''}${r.provisional ? ' · figures are PROVISIONAL' : ''}`);
   L.push('', 'BILLING');
   if (r.quote) line(`Quotation v${r.quote.v}${r.quote.option !== 'A' ? ` (option ${r.quote.option})` : ''}, ${r.quote.status}`, `${c(r.quote.total)}${r.quote.gst ? ` + GST ${c(r.quote.gst)}` : ''}`);
@@ -3920,8 +3920,10 @@ function closureText(r) {
   if (!r.byCat.length) L.push('- None recorded');
   for (const x of r.byCat) L.push(`- ${short(x.key)}: ${c(x.amt)}`);
   line('Total costs', c(r.costs));
-  if (r.suppliers.length) { L.push('', 'By supplier (this event only)'); for (const v of r.suppliers) L.push(`- ${v.name}: ${c(v.amt)}${v.credit ? ` (${c(v.credit)} on credit)` : ''}`); }
-  if (r.contractors.length) { L.push('', 'Labour contractors (this event only)'); for (const v of r.contractors) L.push(`- ${v.name}: ${c(v.amt)}${v.credit ? ` (${c(v.credit)} on credit)` : ''}`); }
+  const party = v => `- ${v.name}: ${c(v.amt)}${v.credit ? ` · on credit ${c(v.credit)} · settled ${c(v.settled)} · still to pay ${c(v.outstanding)}` : ' · paid'}`;
+  if (r.suppliers.length) { L.push('', 'By supplier (this event only)'); for (const v of r.suppliers) L.push(party(v)); }
+  if (r.contractors.length) { L.push('', 'Labour contractors (this event only)'); for (const v of r.contractors) L.push(party(v)); }
+  if (r.payable) line('Still to pay for this event', c(r.payable));
   if (r.noVendor) line('Paid with no vendor named', c(r.noVendor));
   if (r.shared.length) { L.push('', 'Shared bills (this event\'s part)'); for (const x of r.shared) L.push(`- ${short(x.head)}: ${c(x.part)} of ${c(x.total)}`); }
   if (r.budget || r.purchaseEst) { L.push('', 'ESTIMATED AGAINST ACTUAL');
@@ -4013,7 +4015,8 @@ function functionSheetText(ev, extra = ev.functionSheet || {}) {
     const all = eventServices(ev).services, multi = all.length > 1;
     for (const sv of all) {
       const own = sv.dishes.filter(d => !d.preview && !(d.shared && multi));
-      const kit = own.filter(d => !d.head && !d.src && d.at !== 'venue').map(d => d.name), atVenue = own.filter(d => !d.head && !d.src && d.at === 'venue').map(d => d.name);
+      const ours = d => (!d.head || d.part) && d.src !== 'buy';   // a part-bought dish is also partly ours
+      const kit = own.filter(d => ours(d) && d.src !== 'finish' && d.at !== 'venue').map(d => d.name + (d.part ? ' (part)' : '')), atVenue = own.filter(d => ours(d) && !d.src && d.at === 'venue').map(d => d.name);
       const cr = crows.filter(r => (r.svc?.id || '') === sv.id ), br = bought.filter(r => r.svc === sv.id || (!r.svc && !multi));
       const ck = sv.meal ? cooks.filter(r => r.meal === sv.meal && (r.svc ? r.svc === sv.id : sv.main)) : [];
       if (!kit.length && !atVenue.length && !cr.length && !br.length && !ck.length) continue;

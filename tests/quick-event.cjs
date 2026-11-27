@@ -57,6 +57,31 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [], expense
     assert.ok(await p.locator('[data-action="close-open"]').count(), 'closing report available');
   });
 
+  await test('amounts follow the shared rules: ₹1.13 and ₹10.12 accepted; below ₹1, over the limit and 3 decimals refused', async () => {
+    const tryAmt = async (field, v) => { await p.locator('#n-home:visible').click(); await p.waitForTimeout(200); await open(); await p.fill('#qev-name', 'Sample Check ' + v); await p.fill(field, v);
+      await p.locator('#btn-save-qev').click(); await p.waitForTimeout(500);
+      const ok = (await dump()).events.some(e => e.name === 'Sample Check ' + v);
+      if (await p.locator('#qev-modal.active').count()) await p.locator('#qev-modal [data-action="close-modal"]').first().click();
+      await p.waitForTimeout(200); return ok; };
+    assert.deepEqual([await tryAmt('#qev-bill', '1.13'), await tryAmt('#qev-bill', '10.12'), await tryAmt('#qev-rec', '2490.29'),
+      await tryAmt('#qev-bill', '0.5'), await tryAmt('#qev-rec', '10000000000000'), await tryAmt('#qev-bill', '1.005')], [true, true, true, false, false, false]);
+  });
+
+  await test('a quick event survives a backup round trip and opens in the ordinary event form', async () => {
+    const before = await dump(); delete before.manifest;
+    await p.evaluate(async x => { await (await import('./db.js')).importAllData(x, 'replace'); }, before);
+    const after = await dump();
+    assert.deepEqual(after.events.map(e => [e.id, e.quick, e.billing]).sort(), before.events.map(e => [e.id, e.quick, e.billing]).sort());
+    await p.reload(); await p.waitForSelector('#kpi', { state: 'attached' });
+    await p.locator('#n-events:visible').click(); await p.waitForTimeout(300);
+    await p.locator('#ev-list [data-action="evdetail"]', { hasText: 'Sample Tiffin Order' }).first().click(); await p.waitForSelector('#tab-evdetail.active');
+    await p.locator('[data-action="open-ev-edit"]').first().click(); await p.waitForSelector('#ev-modal.active');
+    assert.equal(await p.inputValue('#ev-name'), 'Sample Tiffin Order'); assert.equal(await p.inputValue('#ev-billing'), '6000');
+    await p.fill('#ev-venue', 'Sample Office'); await p.locator('#btn-save-event').click(); await p.waitForTimeout(700);
+    const ev = (await dump()).events.find(e => e.name === 'Sample Tiffin Order');
+    assert.deepEqual([ev.venue, ev.quick, ev.billing], ['Sample Office', true, 6000], 'details added later through the full form');
+  });
+
   await test('a bad quick flag in a backup is refused', async () => {
     const d = DATA(); d.events.push({ id: 'Q', name: 'x', date: '2026-12-01', type: 'Other – इतर', venue: '', billing: 0, guests: 0, photoIds: [], quick: 'yes' });
     const err = await p.evaluate(async x => { try { await (await import('./db.js')).importAllData(x, 'replace'); return ''; } catch (e) { return e.message; } }, d);

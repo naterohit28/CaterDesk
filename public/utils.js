@@ -1452,6 +1452,9 @@ export function costChecklist(ev, events, expenses) {
    - usual costs from the last similar reconciled event not recorded here (costChecklist);
    - no labour cost at all on an event we cater ourselves;
    - labour lines with no rate yet and no labour bill total. */
+/* A labour line with no charge yet (review of #121): a shift or extra line needs its rate; a cooking assignment by
+   order counts once it has an agreed or a final charge. One rule for the cost warnings, Pending work and the report. */
+export const labourUnpriced = r => r?.job === true ? !(Number(r.rate) > 0 || Number(r.final) > 0) : !(Number(r?.rate) > 0);
 export function costGaps(ev, events, expenses) {
   if (!ev || ev.outsourced) return [];
   const out = [], mine = expenses.filter(x => x.evId === ev.id);
@@ -1465,7 +1468,7 @@ export function costGaps(ev, events, expenses) {
   }
   const labourMissing = !mine.some(x => x.cat === 'Labour') && !usual.some(i => i.cat === 'Labour');
   if (labourMissing) out.push({ kind: 'labour', n: 1, en: 'No labour cost recorded', mr: 'मजुरीचा खर्च नोंदवलेला नाही' });
-  const rows = ev.labour?.rows || [], noRate = rows.filter(r => !(Number(r.rate) > 0)).length;
+  const rows = ev.labour?.rows || [], noRate = rows.filter(labourUnpriced).length;
   if (noRate && !(Number(ev.labour?.billTotal) > 0)) out.push({ kind: 'rates', n: noRate,
     en: `${noRate} labour line${noRate > 1 ? 's have' : ' has'} no rate yet`, mr: `${noRate} मजूर ओळींचा दर बाकी` });
   return out;
@@ -1488,7 +1491,7 @@ export function pendingWork(events, expenses, now = today()) {
   const ords = up.filter(e => !e.outsourced && open(e).length), no = ords.reduce((s, e) => s + open(e).length, 0);
   add('orders', ords, no, `${no} supplier order${no > 1 ? 's' : ''} to confirm`, `${no} ऑर्डर पक्क्या करायच्या`);
   // Labour lines of past events with no rate (and no contractor's bill total) — their cost is not counted yet
-  const noRate = e => (e.labour?.rows || []).filter(r => r.job === true ? !(Number(r.rate) > 0 || Number(r.final) > 0) : !(Number(r.rate) > 0)).length;
+  const noRate = e => (e.labour?.rows || []).filter(labourUnpriced).length;
   const lab = past.filter(e => !(Number(e.labour?.billTotal) > 0) && noRate(e)), nl = lab.reduce((s, e) => s + noRate(e), 0);
   add('labour', lab, nl, `${nl} labour cost${nl > 1 ? 's' : ''} without a rate`, `${nl} मजुरीचा दर बाकी`);
   // Past events with a bill, not reconciled (or reopened by a change)
@@ -1512,9 +1515,16 @@ export function closureReport(ev, { events = [], expenses = [], cPays = [], vPay
   const byCat = group(mine, x => x.cat || 'Other');
   const withVen = mine.filter(x => x.venId && ven(x.venId));
   const isCon = v => v?.cat === 'Labour';
+  /* Per supplier or contractor, this event's part only (review of #121): what was recorded, what of it was bought on
+     credit (isOnCredit, so older entries with a vendor and no payment field count as credit), what of that is still
+     unpaid after payments and credit notes (unpaidCredit: the existing bill-by-bill allocation, shared bills
+     included), and so what was settled. */
+  const leftOf = new Map();
+  for (const u of unpaidCredit(expenses.filter(x => !x.draft), vPays)) if (u.x.evId === ev.id) leftOf.set(u.x.id, (leftOf.get(u.x.id) || 0) + P(u.left));
   const parties = kind => group(withVen.filter(x => kind === 'con' ? isCon(ven(x.venId)) : !isCon(ven(x.venId))), x => x.venId)
-    .map(r => ({ venId: r.key, name: ven(r.key).name, amt: r.amt,
-      credit: R(withVen.filter(x => x.venId === r.key && x.pay === 'credit').reduce((s, x) => s + P(x.amt), 0)) }));
+    .map(r => { const xs = withVen.filter(x => x.venId === r.key), creditP = xs.filter(isOnCredit).reduce((s, x) => s + P(x.amt), 0);
+      const leftP = xs.reduce((s, x) => s + (leftOf.get(x.id) || 0), 0);
+      return { venId: r.key, name: ven(r.key).name, amt: r.amt, credit: R(creditP), settled: R(Math.max(0, creditP - leftP)), outstanding: R(leftP) }; });
   const accepted = (ev.quotes || []).find(q => q.status === 'accepted') || [...(ev.quotes || [])].reverse().find(q => q.status === 'sent') || null;
   const qt = accepted ? quoteTotal(accepted) : null;
   const estimates = mine.filter(x => x.fromOrder);
@@ -1536,6 +1546,7 @@ export function closureReport(ev, { events = [], expenses = [], cPays = [], vPay
     received: st.received, payments: cPays.filter(p => p.evId === ev.id).length, outstanding: st.outstanding, over: st.over, disputed: st.disputed,
     adjustments: st.adjustments.map(c => ({ kind: c.kind, amt: R(P(c.from) - P(c.to)) })),
     costs: R(mine.reduce((s, x) => s + P(x.amt), 0)), byCat, suppliers: parties('sup'), contractors: parties('con'),
+    payable: R([...leftOf.values()].reduce((s, p) => s + p, 0)),
     noVendor: R(mine.filter(x => !x.venId || !ven(x.venId)).reduce((s, x) => s + P(x.amt), 0)),
     shared: mine.filter(x => x.split).map(x => ({ head: x.head || x.cat, part: Number(x.amt) || 0, total: Number(x.split.total) || 0 })),
     budget: Number(ev.budget) || 0, purchaseEst: R(purchaseEst), estimates: R(estimates.reduce((s, x) => s + P(x.amt), 0)),
@@ -1936,7 +1947,7 @@ export function kitchenDishes(ev, meal, svc = '') {
     if (svc ? s.id !== svc : meal && s.meal && s.meal !== meal) continue;
     for (const d of s.dishes) {
       const k = dishKey(d.name);
-      if (d.head || d.preview || d.src === 'buy' || !k || seen.has(k)) continue;
+      if ((d.head && !d.part) || d.preview || d.src === 'buy' || !k || seen.has(k)) continue;   // part bought (a counter's or a supplier's), part ours: our part is assignable
       seen.add(k); out.push(String(d.name).trim());
     }
   }

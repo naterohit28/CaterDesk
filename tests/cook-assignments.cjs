@@ -104,7 +104,7 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [], expense
       const ev = { id: 'X', date: '2026-12-10', guests: 100, meals: ['dinner'], mealPlan: { dinner: { guests: 200, rate: 0 } },
         services: [{ id: 'd1', meal: 'dinner' }, { id: 'd2', meal: 'dinner', date: '2026-12-11', guests: 80 }],
         dishes: [{ name: 'Hakka Noodles', meal: 'dinner', svc: 'd1', head: '' }, { name: 'Spring Rolls', meal: 'dinner', svc: 'd1', head: '', src: 'finish' },
-          { name: 'Paneer Tikka', meal: 'dinner', svc: 'd1', head: '', part: true }, { name: 'Gulab Jamun', meal: 'dinner', svc: 'd1', head: '', src: 'buy' },
+          { name: 'Paneer Tikka', meal: 'dinner', svc: 'd1', head: 'Starter – स्टार्टर', part: true }, { name: 'Gulab Jamun', meal: 'dinner', svc: 'd1', head: '', src: 'buy' },
           { name: 'Hakka Noodles', meal: 'dinner', svc: 'd2', head: '' }, { name: 'Pani Puri', meal: 'dinner', svc: 'd2', head: 'Chaat – चाट' }] };
       const rows = [{ id: 'a', job: true, role: 'Chinese Cook', meal: 'dinner', svc: 'd1', dishes: ['Hakka Noodles'] }];
       const t = u.dishesTaken(rows, 'b');
