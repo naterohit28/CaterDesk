@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '5.4.0';
+const APP_BUILD = '5.4.1';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -1399,10 +1399,19 @@ function labRow(r) {
   const { count, shift, shifts, ...rest } = r;
   return { ...rest, counts: { [shift || 'f']: money((Number(count) || 0) * (Number(shifts) || 1)) } };
 }
-const heads = r => Object.values(r.counts || {}).reduce((s, n) => s + (Number(n) || 0), 0);
-const lineAmt = r => money(isExtra(r) ? Math.round(Number(r.count) || 0) * (Number(r.rate) || 0) : heads(r) * (Number(r.rate) || 0));
+/* 5.4.1 (owner): cooking labour (cooks, roti, starters / farsan, sweets, Chinese and other specialists) comes per order,
+   not per shift: e.g. 2 people for 2 Chinese items, paid a labour amount for the job plus transport. Such a line has
+   `job: true`, `people`, `rate` (labour for the job) and `fare` (transport). Lines saved before keep their shifts; only a
+   new line for these worker types starts "by order", and either can be switched. */
+const JOB_LABOUR = ['Cook – स्वयंपाकी', 'Chinese Cook – चायनीज आचारी', 'Specialist Cook – स्पेशल आचारी', 'Roti Cook (Puri / Phulka) – पोळी आचारी',
+  'Roti Labour – रोटी मजूर', 'Starter / Farsan Labour – स्टार्टर / फरसाण मजूर', 'Sweet Labour – मिठाई मजूर'];
+const isJob = r => !isExtra(r) && r.job === true;
+const heads = r => isJob(r) ? Number(r.people) || 0 : Object.values(r.counts || {}).reduce((s, n) => s + (Number(n) || 0), 0);
+const lineAmt = r => money(isExtra(r) ? Math.round(Number(r.count) || 0) * (Number(r.rate) || 0)
+  : isJob(r) ? (Number(r.rate) || 0) + (Number(r.fare) || 0) : heads(r) * (Number(r.rate) || 0));
 const shiftList = r => Object.keys(SHIFTS).filter(k => Number(r.counts?.[k]) > 0).map(k => `${SHIFTS[k].split(' – ')[0]} ${r.counts[k]}`).join(' · ');
-const lineText = r => isExtra(r)
+const jobText = r => `${heads(r) ? `${heads(r)} ${heads(r) === 1 ? 'person' : 'people'} · ` : ''}labour ${fmtCurrency(Number(r.rate) || 0)}${Number(r.fare) > 0 ? ` + transport ${fmtCurrency(r.fare)}` : ''}`;
+const lineText = r => isJob(r) ? `${jobText(r)} = ${fmtCurrency(lineAmt(r))}` : isExtra(r)
   ? `${r.count} × ${fmtCurrency(r.rate)} = ${fmtCurrency(lineAmt(r))}`
   : `${heads(r)} shift${heads(r) === 1 ? '' : 's'} × ${fmtCurrency(r.rate)} = ${fmtCurrency(lineAmt(r))}`;
 
@@ -1441,7 +1450,7 @@ function labourCard(ev) {
   const rows = (ev.labour?.rows || []).map(labRow);
   const lines = money(rows.reduce((s, r) => s + lineAmt(r) + labKept(ev, rows, r), 0));
   const bill = ev.labour?.billTotal || 0, adj = bill ? money(bill - lines) : 0;
-  const shifts = rows.filter(r => !isExtra(r)).reduce((s, r) => s + heads(r), 0);
+  const shifts = rows.filter(r => !isExtra(r) && !isJob(r)).reduce((s, r) => s + heads(r), 0);
   const labVens = [...new Set(rows.map(r => r.venId).filter(id => id && D.vendors.some(v => v.id === id)))];
   return `
     <div class="sec"><span class="sec-title">Labour – मजूर</span>
@@ -1450,7 +1459,7 @@ function labourCard(ev) {
       <div class="row" style="min-height:52px">
         <div class="row-ic">${icon(isExtra(r) ? (r.extra === 'travel' ? 'truck' : 'clipboard') : 'users', 18)}</div>
         <div class="row-body"><div class="title-sm trunc" data-nl>${esc(labName(r))}${r.venId ? `<span class="meta" data-lab-ven> · ${esc(venName(r.venId))}</span>` : ''}</div>
-          <div class="meta">${isExtra(r)
+          <div class="meta">${isJob(r) ? `${tr('By order', 'ऑर्डरप्रमाणे')} · ${esc(jobText(r))}` : isExtra(r)
             ? `${r.count > 1 ? `${r.count} × ` : ''}${r.rate > 0 ? fmtCurrency(r.rate) : ''}`
             : `${esc(shiftList(r))} · ${r.rate > 0 ? `${fmtCurrency(r.rate)} ${tr('each', 'प्रत्येकी')}` : ''}`}${r.rate > 0 ? '' : `<span class="due" data-no-rate>${tr('Rate not set', 'दर नाही')}</span>${labKept(ev, rows, r) ? `<span class="meta" data-kept> · ${tr('earlier amount still counted', 'आधीची रक्कम धरली')}</span>` : ''}`}</div></div>
         <div class="amt-sm">${r.rate > 0 ? fmtCurrency(lineAmt(r)) : labKept(ev, rows, r) ? fmtCurrency(labKept(ev, rows, r)) : '–'}</div>
@@ -1482,7 +1491,8 @@ function labVenBox(r, i) {
    the date and venue. No client or event name, and a rate only if you have entered one. WhatsApp opens; you send it. */
 function labourListText(ev, venId) {
   const rows = (ev.labour?.rows || []).map(labRow).filter(r => r.venId === venId);
-  const lines = rows.map(r => isExtra(r) ? `${labName(r)}: ${r.count}${r.rate > 0 ? ' × ' + fmtCurrency(r.rate) : ''}` : `${labName(r)}: ${shiftList(r)}${r.rate > 0 ? ' @ ' + fmtCurrency(r.rate) : ''}`);
+  const lines = rows.map(r => isJob(r) ? `${labName(r)}: ${heads(r) || '-'} ${heads(r) === 1 ? 'person' : 'people'} (for the menu)`
+    : isExtra(r) ? `${labName(r)}: ${r.count}${r.rate > 0 ? ' × ' + fmtCurrency(r.rate) : ''}` : `${labName(r)}: ${shiftList(r)}${r.rate > 0 ? ' @ ' + fmtCurrency(r.rate) : ''}`);
   return `Namaste ${venName(venId)}! Labour needed:\nDate: ${fmtDate(ev.date)}\n${lines.join('\n')}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n\nPlease confirm. Thank you!`;
 }
 function sendLabourList(venId) {
@@ -1508,12 +1518,26 @@ function renderLabRows() {
       <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--s2);margin-top:var(--s2)">
         <div class="meta" data-lab-line="${i}">${r.count && r.rate ? lineText(r) : ''}</div>${del(i)}
       </div>
+    </div>` : isJob(r) ? `
+    <div class="card pad lab-job" style="margin-bottom:var(--s3)" data-lab="${i}">
+      <div class="field" style="margin:0 0 var(--s2)"><label>Worker – मजूर</label><select data-k="role" aria-label="Worker type">${roles.map(h => `<option value="${esc(h)}"${h === r.role ? ' selected' : ''}>${esc(h)}</option>`).join('')}</select></div>
+      ${jobSwitch(r, i)}
+      ${labVenBox(r, i)}
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s2)">
+        <div class="field" style="margin:0"><label>People – किती जण</label><input type="number" data-k="people" min="0" step="1" inputmode="numeric" placeholder="0" value="${r.people || ''}"></div>
+        <div class="field" style="margin:0"><label>Labour ₹ (job) – मजुरी</label><input type="number" data-k="rate" min="0" inputmode="decimal" placeholder="${esc(rateHint(r))}" value="${r.rate || ''}"></div>
+        <div class="field" style="margin:0"><label>Transport ₹ – भाडे</label><input type="number" data-k="fare" min="0" inputmode="decimal" placeholder="0" value="${r.fare || ''}"></div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--s2);margin-top:var(--s2)">
+        <div class="meta" data-lab-line="${i}">${r.rate || r.fare ? lineText(r) : ''}</div>${del(i)}
+      </div>
     </div>` : `
     <div class="card pad" style="margin-bottom:var(--s3)" data-lab="${i}">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);margin-bottom:var(--s2)">
         <div class="field" style="margin:0"><label>Worker – मजूर</label><select data-k="role" aria-label="Worker type">${roles.map(h => `<option value="${esc(h)}"${h === r.role ? ' selected' : ''}>${esc(h)}</option>`).join('')}</select></div>
         <div class="field" style="margin:0"><label>Rate ₹ per shift (later) – दर</label><input type="number" data-k="rate" min="1" inputmode="decimal" placeholder="${esc(rateHint(r))}" value="${r.rate || ''}"></div>
       </div>
+      ${jobSwitch(r, i)}
       ${labVenBox(r, i)}
       <div class="label" style="margin-bottom:6px">${tr('How many in each shift', 'प्रत्येक शिफ्टमध्ये किती')}</div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s2)">${Object.entries(SHIFTS).map(([k, l]) => `
@@ -1524,6 +1548,13 @@ function renderLabRows() {
       </div>
     </div>`).join('') || `<div class="meta" style="margin-bottom:var(--s3)">${tr('No workers yet.', 'अजून मजूर नाहीत.')}</div>`;
   updateLabTotal();
+}
+
+// Cooking worker types can be paid by order (people, labour for the job, transport) or by shift; others only by shift
+function jobSwitch(r, i) {
+  if (!JOB_LABOUR.includes(r.role)) return '';
+  return `<div class="seg lab-pay" role="group" aria-label="Paid" style="margin-bottom:var(--s2)">${[[true, 'By order', 'ऑर्डरप्रमाणे'], [false, 'By shift', 'शिफ्टप्रमाणे']]
+    .map(([v, en, mr]) => `<button type="button" data-lab-job="${i}" data-v="${v}" aria-pressed="${isJob(r) === v}">${tr(en, mr)}</button>`).join('')}</div>`;
 }
 
 function updateLabTotal() {
@@ -1541,7 +1572,7 @@ function setLabModeField() {
   q('lab-ven-field').hidden = true;   // 5.1.0: each line has its own contractor
 }
 
-function newWorkerRow(role) { return { id: uid('LB'), role, rate: '', counts: {}, venId: autoContractor(role), venAuto: true }; }
+function newWorkerRow(role) { return { id: uid('LB'), role, rate: '', counts: {}, ...(JOB_LABOUR.includes(role) ? { job: true, people: '', fare: '' } : {}), venId: autoContractor(role), venAuto: true }; }
 /* Contractors for a worker type: those whose specialty is that type first, then the other labour contractors, then the
    rest. One is picked for you only when exactly one has that specialty, or else the one you used last for it (5.1.0). */
 const labContractors = (role, keep = '') => rankVendors('Labour', role, keep);
@@ -1582,8 +1613,9 @@ async function saveLabour() {
   const withVen = r => r.venId ? { venId: r.venId } : {};
   const rows = labRows.map(r => isExtra(r)
       ? { id: r.id, kind: 'x', extra: r.extra, label: String(r.label || '').trim(), count: Math.round(Number(r.count) || 0), rate: Number(r.rate) || 0, ...withVen(r) }
+      : isJob(r) ? { id: r.id, role: r.role, job: true, people: Math.round(Number(r.people) || 0), rate: money(Number(r.rate) || 0), fare: money(Number(r.fare) || 0), ...withVen(r) }
       : { id: r.id, role: r.role, rate: Number(r.rate) || 0, counts: clean(r.counts), ...withVen(r) })
-    .filter(r => isExtra(r) ? r.count > 0 : heads(r) > 0);   // a line with people but no rate yet is kept (owner, 4.31.24)
+    .filter(r => isExtra(r) ? r.count > 0 : isJob(r) ? r.people > 0 || r.rate > 0 || r.fare > 0 : heads(r) > 0);   // a line with people but no rate yet is kept (owner, 4.31.24)
   const unpriced = rows.filter(r => !(r.rate > 0));   // with no rate yet; a cleared rate keeps its earlier expense (shown on the card)
   const billTotal = money(Number(qv('lab-bill')) || 0);
   /* 5.1.3 (owner): how each line is paid follows its contractor, not one switch for the sheet. A line with a contractor
@@ -1595,7 +1627,11 @@ async function saveLabour() {
   if (billTotal && new Set(rows.map(r => r.venId || '')).size > 1) { showFieldErrors({ 'lab-bill': 'Several contractors: put each line\'s rate instead of one bill total – प्रत्येक ओळीचा दर लिहा' }); return; }
   const oldIds = ev.labour?.expIds || {};
   const byKey = new Map();   // "cat|head" → lines saved as that expense
-  for (const r of rows.filter(r => r.rate > 0)) {
+  // A by-order line is saved as its labour (under the worker type) and its transport (Transport), both owed to its contractor
+  const parts = rows.flatMap(r => !isJob(r) ? [r] : [
+    ...(r.rate > 0 ? [{ ...r, part: r.rate }] : []),
+    ...(r.fare > 0 ? [{ id: r.id + '~fare', kind: 'x', extra: 'travel', label: `${short(r.role)} transport`, count: 1, rate: r.fare, ...withVen(r) }] : [])]);
+  for (const r of parts.filter(r => r.rate > 0)) {
     const key = labExpKey(r);
     if (!byKey.has(key)) byKey.set(key, []);
     byKey.get(key).push(r);
@@ -1623,9 +1659,9 @@ async function saveLabour() {
     const oldId = [oldIds[key], venId ? oldIds[labBaseKey(rs[0])] : ''].find(id => id && !claimed.has(id)); if (oldId) claimed.add(oldId);
     const old = D.expenses.find(x => x.id === oldId);
     const record = { ...(old || {}), id: old?.id || uid('EX'), evId: ev.id, cat, head,
-      amt: money(rs.reduce((s, r) => s + lineAmt(r), 0)), date: old?.date || ev.date, ...payOf(venId, old),
+      amt: money(rs.reduce((s, r) => s + (r.part ?? lineAmt(r)), 0)), date: old?.date || ev.date, ...payOf(venId, old),
       venId, dueDate: venId && old?.pay !== 'paid' ? old?.dueDate || '' : '', billIds: old?.billIds || [],
-      notes: 'Labour sheet: ' + rs.map(r => isExtra(r)
+      notes: 'Labour sheet: ' + rs.map(r => isJob(r) ? `${short(r.role)} by order${r.people ? ` (${r.people})` : ''} ${fmtCurrency(r.part)}` : isExtra(r)
         ? `${labName(r)} ${r.count > 1 ? r.count + ' × ' : ''}${fmtCurrency(r.rate)}`
         : `${shiftList(r)}${r.rate > 0 ? ` @ ${fmtCurrency(r.rate)}` : ''}`).join(', ') + (rs.every(r => !(r.rate > 0)) ? ` · contractor's bill ${fmtCurrency(billTotal)}` : '') };
     delete record._rev;
@@ -6704,13 +6740,16 @@ function bindAllEvents() {
       r.venId = e.target.value; r.venAuto = false; e.target.dataset.prev = r.venId; setLabModeField(); return;
     }
     else r[k] = ['role', 'extra', 'label'].includes(k) ? e.target.value : num;
-    if (k === 'role' && (r.venAuto || !r.venId)) { r.venId = autoContractor(r.role); r.venAuto = true; renderLabRows(); return; }
+    if (k === 'role') { if (JOB_LABOUR.includes(r.role)) { if (r.job === undefined) Object.assign(r, { job: true, people: r.people || '', fare: r.fare || '' }); } else delete r.job;
+      if (r.venAuto || !r.venId) { r.venId = autoContractor(r.role); r.venAuto = true; } renderLabRows(); return; }
     if (['role', 'extra'].includes(k)) box.querySelector('[data-k="rate"]').placeholder = rateHint(r);
-    const filled = isExtra(r) ? r.count && r.rate : heads(r) && r.rate;
+    const filled = isJob(r) ? r.rate || r.fare : isExtra(r) ? r.count && r.rate : heads(r) && r.rate;
     q('lab-rows').querySelector(`[data-lab-line="${box.dataset.lab}"]`).textContent = filled ? lineText(r) : '';
     updateLabTotal();
   });
   q('lab-rows').addEventListener('click', e => {
+    const j = e.target.closest('[data-lab-job]');
+    if (j) { const r = labRows[Number(j.dataset.labJob)]; r.job = j.dataset.v === 'true'; if (r.job) { r.people = r.people || ''; r.fare = r.fare || ''; } renderLabRows(); return; }
     const b = e.target.closest('[data-lab-del]'); if (!b) return;
     labRows.splice(Number(b.dataset.labDel), 1); renderLabRows();
   });

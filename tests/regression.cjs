@@ -281,7 +281,7 @@ await test('v3.4: quote helper, receipt, price creep, labour sheet, quiet refres
  assert(recs.some(r=>/Received: ₹50,000[\s\S]*Paid so far: ₹50,000\n/.test(r)),'older receipt ignores the later payment');assert(recs.some(r=>/Received: ₹30,000[\s\S]*Paid so far: ₹80,000\n/.test(r)));
  // Labour sheet: rates remembered, saved as Labour expenses, edits update them in place
  await p.locator('[data-action="lab-edit"]').click();await p.waitForSelector('#lab-modal.active');
- const r0=p.locator('#lab-rows [data-lab="0"]');await r0.locator('[data-k="role"]').selectOption(cook);await r0.locator('[data-k="c-f"]').fill('3');await r0.locator('[data-k="rate"]').fill('1200');
+ const r0=p.locator('#lab-rows [data-lab="0"]');await r0.locator('[data-k="role"]').selectOption(cook);/* 5.4.1: a new Cook line starts by order; this sheet pays by shift */await r0.locator('[data-lab-job][data-v="false"]').click();await r0.locator('[data-k="c-f"]').fill('3');await r0.locator('[data-k="rate"]').fill('1200');
  await p.locator('#btn-lab-add').click();const r1=p.locator('#lab-rows [data-lab="1"]');await r1.locator('[data-k="role"]').selectOption(boys);await r1.locator('[data-k="c-e"]').fill('10');await r1.locator('[data-k="rate"]').fill('500');
  assert.equal(await p.locator('#lab-total').innerText(),'₹8,600');await p.locator('#btn-save-lab').click();await p.waitForTimeout(400);
  let lab=(await db(async d=>d.getAll('expenses'))).filter(x=>x.evId==='g2'&&x.cat==='Labour');assert.equal(lab.length,2);assert.equal(lab.find(x=>x.head===cook).amt,3600);
