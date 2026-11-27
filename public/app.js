@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '5.3.4';
+const APP_BUILD = '5.4.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -61,7 +61,7 @@ let lbOnDelete = null;            // what the lightbox Delete button does for th
 let expWork = { id: '', bills: [], added: [], removed: [], saved: false };
 
 // List filters (kept while the app is open)
-const F = { evQ: '', ev: 'all', expQ: '', exp: 'all', expEv: '', venQ: '', ven: 'all', venSort: 'pay' };
+const F = { evQ: '', ev: 'all', expQ: '', exp: 'all', expEv: '', venQ: '', ven: 'all', venSort: 'pay', venKind: 'sup' };
 let period = 'all';
 
 /* ── SMALL HELPERS ───────────────────────────────── */
@@ -697,7 +697,7 @@ const FAB = {
   events:    { en: 'New event',   mr: 'नवीन कार्यक्रम', run: () => openEvModal() },
   evdetail:  { en: 'Add expense', mr: 'खर्च जोडा',      run: () => openExpModal(curRef) },
   expenses:  { en: 'Add expense', mr: 'खर्च जोडा',      run: () => openExpModal(F.expEv && F.expEv !== STOCK ? F.expEv : undefined) },
-  vendors:   { en: 'Add vendor',  mr: 'विक्रेता जोडा',  run: () => openVenModal() },
+  vendors:   { en: 'Add vendor',  mr: 'विक्रेता जोडा',  run: () => F.venKind === 'con' ? openVenModal(null, 'vendor', { cat: 'Labour' }) : openVenModal() },
   vendetail: { en: 'Pay vendor',  mr: 'देयक द्या',      run: () => openVPayModal(curRef) }
 };
 
@@ -4091,6 +4091,7 @@ function balanceView({ balance: bal, entries }) {
    for you are kept apart, in their own section and total), then the list. Balances come from calcVendorBalance(),
    the same figure as the vendor's own page; nothing here changes a bill or a payment. */
 const VEN_STEP = 30;
+const isContractor = v => !!v && !isPerson(v) && v.cat === 'Labour';
 const VEN_FILTERS = [['all', 'All', 'सर्व'], ['pay', 'To pay', 'देणे'], ['adv', 'Advances', 'आगाऊ'], ['settled', 'Settled', 'पूर्ण'], ['none', 'No activity', 'नोंद नाही']];
 const VEN_SORTS = { pay: 'Highest payable – जास्त देणे', name: 'Name A–Z – नाव अ–ज्ञ', recent: 'Recently used – अलीकडे वापरलेले' };
 let venShown = VEN_STEP;
@@ -4114,13 +4115,22 @@ function rVen() {
   const last = new Map(), seen = (id, d) => { if (id && d && d > (last.get(id) || '')) last.set(id, d); };
   for (const x of D.expenses) seen(x.venId, x.date);
   for (const p of D.vPays) seen(p.venId, p.date);
-  const all = D.vendors.map(v => ({ v, b: calcVendorBalance(v.id, D.expenses, D.vPays), last: last.get(v.id) || '' }));
+  const everyone = D.vendors.map(v => ({ v, b: calcVendorBalance(v.id, D.expenses, D.vPays), last: last.get(v.id) || '' }));
+  /* 5.4.0 (owner, 27 Nov 2026): suppliers and labour contractors are two lists, each with its own totals, so labour
+     dues never mix with supplier dues. A contractor is a vendor saved under Labour; nothing about any record changes. */
+  const nCon = everyone.filter(r => isContractor(r.v)).length;
+  if (F.venKind === 'con' && !nCon && !D.vendors.length) F.venKind = 'sup';
+  const con = F.venKind === 'con';
+  q('ven-split').innerHTML = [['sup', 'Suppliers', 'पुरवठादार', everyone.filter(r => !isPerson(r.v) && !isContractor(r.v)).length], ['con', 'Contractors', 'ठेकेदार', nCon]]
+    .map(([k, en, mr, n]) => `<button type="button" data-action="ven-kind" data-id="${k}" aria-pressed="${F.venKind === k}">${tr(en, mr)} <span class="n">${n}</span></button>`).join('');
+  if (CT === 'vendors') q('fab-label').innerHTML = con ? tr('Add contractor', 'ठेकेदार जोडा') : tr('Add vendor', 'विक्रेता जोडा');
+  const all = everyone.filter(r => con ? isContractor(r.v) : !isContractor(r.v));
   const suppliers = all.filter(r => !isPerson(r.v)), people = all.filter(r => isPerson(r.v));
   const t = vendorTotals(suppliers);
   q('ven-sum').innerHTML = `<div class="card pad ven-sum"><div class="metrics" style="margin:0;padding:0;border:0">
-    <div class="metric"><div class="label">Total payable – एकूण देणे</div><div class="amt-md ${t.pay > 0 ? 'due' : 'muted'}">${fmtCurrency(t.pay)}</div></div>
-    <div class="metric"><div class="label">Vendor advances – आगाऊ दिले</div><div class="amt-md ${t.adv > 0 ? 'info' : 'muted'}">${fmtCurrency(t.adv)}</div></div>
-    <div class="metric"><div class="label">Total vendors – एकूण विक्रेते</div><div class="amt-md">${suppliers.length}</div></div></div></div>`;
+    <div class="metric"><div class="label">${con ? 'Labour payable – मजुरी देणे' : 'Total payable – एकूण देणे'}</div><div class="amt-md ${t.pay > 0 ? 'due' : 'muted'}">${fmtCurrency(t.pay)}</div></div>
+    <div class="metric"><div class="label">${con ? 'Advances – आगाऊ दिले' : 'Vendor advances – आगाऊ दिले'}</div><div class="amt-md ${t.adv > 0 ? 'info' : 'muted'}">${fmtCurrency(t.adv)}</div></div>
+    <div class="metric"><div class="label">${con ? 'Contractors – ठेकेदार' : 'Total vendors – एकूण विक्रेते'}</div><div class="amt-md">${suppliers.length}</div></div></div></div>`;
 
   const digits = s => String(s || '').replace(/\D/g, '');
   const qDigits = digits(F.venQ);
@@ -4145,6 +4155,21 @@ function rVen() {
       </div>
       <div class="row-end">${balanceView(b)}</div>
     </div>`;
+  const addCon = `<button type="button" class="btn btn-secondary" data-action="ven-add-con">${icon('plus', 18)}${tr('Add contractor', 'ठेकेदार जोडा')}</button>`;
+  if (con && !all.length) {
+    q('ven-list').innerHTML = emptyState({ ic: 'users', text: 'No labour contractors yet. A vendor saved under Labour is a contractor. – अजून ठेकेदार नाहीत', action: addCon });
+    return;
+  }
+  if (con && list.length) {
+    // Contractors grouped by the worker type they supply (Ghati, Rojiya, Boys…), in the labour list's order
+    const order = EXPENSE_HEADS.Labour, typeOf = r => r.v.specialty || '';
+    const types = [...new Set(sup.map(typeOf))].sort((a, b) => (a ? (order.indexOf(a) + 1 || 99) : 100) - (b ? (order.indexOf(b) + 1 || 99) : 100) || a.localeCompare(b));
+    q('ven-list').innerHTML = types.map(k => { const rows = sup.filter(r => typeOf(r) === k);
+      return `<div class="sec"><span class="sec-title">${k ? esc(k) : tr('Worker type not set', 'प्रकार नाही')}</span><span class="meta">${rows.length}</span></div>
+      <div class="card list ven-con" data-type="${esc(k)}">${rows.map(row).join('')}</div>`; }).join('')
+      + `<div style="margin-top:var(--s3)">${addCon}</div>`;
+    return;
+  }
   if (!list.length) {
     q('ven-list').innerHTML = emptyState({ ic: 'search', text: 'No matching vendors – काहीही सापडले नाही',
       action: F.ven !== 'all' ? `<button type="button" class="btn btn-secondary" data-action="ven-filter" data-id="all">${tr('Show all', 'सर्व दाखवा')}</button>` : '' });
@@ -5674,7 +5699,7 @@ function setVenKind(kind) {
   q('btn-save-ven').textContent = person ? 'Save – जतन करा' : 'Save vendor – जतन करा';
 }
 
-function openVenModal(id, kind = 'vendor') {
+function openVenModal(id, kind = 'vendor', { cat = '' } = {}) {
   const vn = id ? D.vendors.find(v => v.id === id) : null;
   formBase.ven = snapshot(vn);
   q('ven-id').value    = vn?.id    || '';
@@ -5685,7 +5710,7 @@ function openVenModal(id, kind = 'vendor') {
   q('ven-legal').value = vn?.legalName || '';
   const fromOrder = !vn && pickVendorForOrder === 'ord', fromBuy = !vn && pickVendorForOrder === 'buy', fromLab = !vn && pickVendorForOrder.startsWith('lab:');
   const labLine = fromLab ? labRows[Number(pickVendorForOrder.slice(4))] : null;
-  populateSelect('ven-cat', Object.keys(EXPENSE_HEADS), vn?.cat || (pickVendorForExpense ? qv('exp-cat') : pickVendorForEvent ? 'Operations' : fromOrder ? 'Live Counter' : fromBuy ? 'Raw Material' : fromLab ? 'Labour' : ''));
+  populateSelect('ven-cat', Object.keys(EXPENSE_HEADS), vn?.cat || cat || (pickVendorForExpense ? qv('exp-cat') : pickVendorForEvent ? 'Operations' : fromOrder ? 'Live Counter' : fromBuy ? 'Raw Material' : fromLab ? 'Labour' : ''));
   loadVenSpecialty(vn?.specialty || (pickVendorForExpense ? qv('exp-head') : pickVendorForEvent ? 'Outsourced Event – आउटसोर्स कार्यक्रम' : fromOrder ? qv('ord-head') : labLine && !isExtra(labLine) ? labLine.role : ''));
   setVenKind(vn ? (isPerson(vn) ? 'person' : 'vendor') : kind);
   q('ven-mtitle').textContent = vn ? 'Edit – संपादित करा' : kind === 'person' ? 'New person – नवीन व्यक्ती' : newVendorOneTime ? 'One-time vendor – एकदाच' : 'New vendor – नवीन विक्रेता';
@@ -6572,6 +6597,8 @@ function bindAllEvents() {
       case 'ev-filter':    F.ev = id; rEvents(); break;
       case 'exp-filter': expensePage = 1; F.exp = id; rExp(); break;
       case 'ven-filter': venShown = VEN_STEP; F.ven = id; rVen(); break;
+      case 'ven-kind': venShown = VEN_STEP; F.venKind = id === 'con' ? 'con' : 'sup'; rVen(); break;
+      case 'ven-add-con': openVenModal(null, 'vendor', { cat: 'Labour' }); break;
       case 'ven-more': venShown += VEN_STEP; rVen(); break;
       case 'copy-gstin': copyText(id); break;
       case 'expense-prev': expensePage--; rExp(); window.scrollTo(0, 0); break;
