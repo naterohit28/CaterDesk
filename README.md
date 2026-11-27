@@ -4,7 +4,7 @@
 
 An offline-first app for catering events, expenses, vendor credit, client collections, menus and vendor orders. Business records stay in the device's browser storage; the hosted app also sends limited error diagnostics to its server.
 
-**Current source and hosted web build: v5.4.2.** Documentation checked on **26 November 2026**.
+**Current source and hosted web build: v5.4.3.** Documentation checked on **27 November 2026**.
 
 **Development status: Active — focused improvements (from v5.2.0).** v5.0.0 was the stable internal release (the owner's full 25-check event test passed on their Android phone, the owner confirmed the installed app, and the money is checked against hand-worked figures); 5.1.x then fixed defects found in use. Since the owner's development directive of 26 Nov 2026, small recording-first improvements ship one at a time, each in its own reviewed PR with tests, following [AGENTS.md](AGENTS.md) and the [product roadmap](docs/PRODUCT_ROADMAP.md). Financial rules, stored data and backups stay compatible; nothing is merged or released without the owner's approval.
 
@@ -34,16 +34,16 @@ Four things carry version numbers, and they are **independent**: the **hosted we
 
 | Component | State (checked 20 November 2026 unless noted) | Meaning |
 | --- | --- | --- |
-| Source and hosted web app | **5.4.2** | Current UI, data/export version, service worker and error reporter |
-| Service-worker release cache | `flavor-fusion-v2-cache-v119` | Installed web assets; this number is not the database schema version |
+| Source and hosted web app | **5.4.3** | Current UI, data/export version, service worker and error reporter |
+| Service-worker release cache | `flavor-fusion-v2-cache-v120` | Installed web assets; this number is not the database schema version |
 | Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** (inspected 3 November 2026) | APK package inspected locally; launches the hosted app, which can run 4.31.16 |
 | Android requirements for that local wrapper | min API **24**, target API **36** | Android 7.0+ and a compatible browser provider |
 | Latest GitHub Release with downloadable binaries | **2.4.7** | APK and desktop ZIP; later source tags do not imply newer binaries were uploaded |
 | Desktop package currently in the owner's `Apps/Desktop` folder | **2.4.7** | A static older bundle, not the current source build |
-| Desktop launcher source/instructions | **5.4.2** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
+| Desktop launcher source/instructions | **5.4.3** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
 | IndexedDB schema | **4** | Kept separate from application version changes |
 
-Do not relabel an older package as 5.4.2. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
+Do not relabel an older package as 5.4.3. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
 
 ## Current features
 
@@ -161,13 +161,13 @@ The APK is a **Trusted Web Activity** wrapper around the hosted site. It does no
 1. Keep a business-data backup.
 2. Obtain the intended APK from its actual release assets or the owner's prepared local package. Install over the existing app with the same package/signing identity.
 3. Open online to download updates. Check the **web build in Settings**, not just Android App info.
-4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **5.4.2**.
+4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **5.4.3**.
 
 A newer web release may reload automatically during the first 20 seconds of startup when no active form/save/overlay prevents it, at most once per release per session. Otherwise it waits for a later start or explicit reload. Refresh can also switch versions when no form/save is open. Service-worker cache mappings preserve matching assets for older open pages until navigation.
 
 Do not uninstall or clear browser/site storage to force an update. If Android rejects an APK, check package, versionCode and signing certificate before proceeding. The public certificate association is [`public/.well-known/assetlinks.json`](public/.well-known/assetlinks.json).
 
-The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **5.4.2**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
+The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **5.4.3**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
 
 ## Windows desktop testing
 
@@ -369,6 +369,7 @@ This is a short source-feature history, not a list of available binary downloads
 
 | Version | Main changes |
 | --- | --- |
+| 5.4.3 | **Cooking assignments from the menu** (owner's requirements). A cooking line paid by order (Chinese cook, sweets, starters, roti) can be given several of the meal's own kitchen dishes at once by ticking them; a dish already given to another cook says whose it is. Each assignment shows its stage: requested, confirmed (the contractor said yes, no charge yet), charge agreed (saved as owed to the contractor), final. Ticking dishes or confirming makes no order and no expense. The WhatsApp list adds the guests for that meal; WhatsApp opens and you send it. |
 | 5.4.2 | **What's new** (owner). A **What's new** item in the menu (☰) lists recent updates in plain English and Marathi, newest first, the running version marked. After an update the app says **Updated to …** once, with **See what's new**; a first install with no records is not told. Each release adds one entry (`WHATS_NEW` in app.js). |
 | 5.4.1 | **Cooking labour by order, not by shift** (owner). Cook, Chinese Cook, Specialist Cook, Roti Cook (Puri / Phulka), Roti Labour, Starter / Farsan and Sweet Labour come for the menu, e.g. 2 people for 2 Chinese items, paid labour for the job plus transport: on the labour sheet a new line for them asks **People**, **Labour ₹ (job)** and **Transport ₹**, no shifts (a **By order / By shift** switch on these lines). Saved as the labour under the worker type and the transport under Transport, both owed to its contractor; the WhatsApp list asks for people. Rojiya, Ghati, Boys and the other worker types stay by shift. Lines saved before keep their shifts and amounts. |
 | 5.4.0 | **Suppliers and labour contractors as two lists** (owner's priority). The Vendors tab opens with **Suppliers \| Contractors**: a contractor is a vendor saved under Labour. Each list has its own totals (supplier payable vs **labour payable**), filters, search and sort; contractors are grouped by the worker type they supply, so two contractors for the same type are listed together; the add button becomes **Add contractor** (Labour chosen). Other people stay with suppliers. New labour types from the owner's list: **Chinese Cook, Roti Cook (Puri / Phulka), Starter / Farsan Labour, Sweet Labour, House Keeping, Security, Valet, Manager**; every earlier type kept. No record changes. |

@@ -546,7 +546,8 @@ export async function prepareImport(payload) {
       if (row.outsourced !== undefined && typeof row.outsourced !== 'boolean') throw new Error('Invalid outsourced flag');
       if (row.meals !== undefined && (!Array.isArray(row.meals) || row.meals.some(m => !['breakfast', 'lunch', 'hightea', 'dinner', 'latenight'].includes(m)))) throw new Error('Invalid meals');
       if (row.labour !== undefined && (typeof row.labour !== 'object' || !Array.isArray(row.labour?.rows)
-        || row.labour.rows.some(r => r?.venId !== undefined && (typeof r.venId !== 'string' || !r.venId || r.venId.length > 40)))) throw new Error('Invalid labour sheet');   // venId: 5.1.0
+        || row.labour.rows.some(r => r?.venId !== undefined && (typeof r.venId !== 'string' || !r.venId || r.venId.length > 40))
+        || row.labour.rows.some(r => r?.dishes !== undefined && (!Array.isArray(r.dishes) || r.dishes.length > 40 || r.dishes.some(n => typeof n !== 'string' || n.length > 80))))) throw new Error('Invalid labour sheet');   // venId: 5.1.0; dishes: 5.4.3
       if (row.kind && !(name === 'vPays' ? ['credit'] : ['vendor', 'person']).includes(row.kind)) throw new Error(name === 'vPays' ? 'Invalid payment kind' : 'Invalid vendor kind');
       if (row.guestCounts !== undefined && (typeof row.guestCounts !== 'object' || row.guestCounts === null || Array.isArray(row.guestCounts) || Object.entries(row.guestCounts).some(([k, c]) =>
         !['all', 'breakfast', 'lunch', 'hightea', 'dinner', 'latenight'].includes(k) || !c || !Number.isSafeInteger(c.contracted) || c.contracted < 0 || (amount(c.rate, 'plate rate'), false)
@@ -733,7 +734,7 @@ export async function importAllData(payload, mode = 'replace', { migration = fal
     });
   }));
 }
-export const APP_VERSION = '5.4.2';
+export const APP_VERSION = '5.4.3';
 const COUNT_METHOD_IDS = ['tokens', 'tally', 'gate', 'coupons', 'joint', 'other'];
 // v4.18.0 kept menus in their own store (database version 5): copy them into meta once and empty that store
 export async function migrateLegacyMenus() {

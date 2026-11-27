@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, billSet, billingSplit, calcVendorBalance, normGstin, gstinValid, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, billOrderIds, deliveredWithoutBill, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, repeatBill, repeatBills, paymentSchedule, keepPaidMilestones, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, dishSource, learnedDishes, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, billOrderIds, deliveredWithoutBill, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, repeatBill, repeatBills, paymentSchedule, keepPaidMilestones, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, dishSource, learnedDishes, kitchenDishes, dishesTaken, JOB_STAGES, jobStage, jobGuests, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '5.4.2';
+const APP_BUILD = '5.4.3';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -361,6 +361,7 @@ function saveExpSnapshot() {
    the app so it works offline. Each release adds one entry (version, release date, English and Marathi). No popup after
    updates: only an entry marked `intro` (a notable change) shows a small card on Home once, which can be dismissed. */
 const WHATS_NEW = [
+  { v: '5.4.3', date: '2026-11-27', intro: true, en: 'A cook given work by order can now be given dishes straight from the meal\'s menu, several at once, with the guests for that meal on the WhatsApp list. Each job shows if it is requested, confirmed, charge agreed or final. Ticking dishes adds no expense.', mr: 'ऑर्डरप्रमाणे आचाऱ्याला मेनूमधील पदार्थ थेट निवडून देता येतात; WhatsApp यादीत त्या जेवणाचे पाहुणे. प्रत्येक कामाची स्थिती दिसते. पदार्थ निवडल्याने खर्च नोंदवला जात नाही.' },
   { v: '5.4.2', date: '2026-11-27', intro: true, en: 'Vendors now open as Suppliers and Contractors. Cooking labour is entered by order, with dishes, meal and charge. A bill photo that repeats items you entered asks first. This "What\'s new" list is in the menu (☰).', mr: 'विक्रेते: पुरवठादार आणि ठेकेदार. स्वयंपाकी मजूर ऑर्डरप्रमाणे. आधी नोंदवलेले बिल पुन्हा आले तर आधी विचारते. "नवीन काय" मेनूमध्ये (☰).' },
   { v: '5.4.1', date: '2026-11-27', en: 'Cooking labour (cooks, roti, starters, sweets, Chinese) is entered by order: people, labour for the job and transport. Rojiya, Ghati and Boys stay by shift.', mr: 'स्वयंपाकी, रोटी, स्टार्टर, मिठाई, चायनीज मजूर ऑर्डरप्रमाणे: किती जण, मजुरी आणि भाडे. रोजीया, घाटी, बॉईज शिफ्टप्रमाणे.' },
   { v: '5.4.0', date: '2026-11-27', en: 'Vendors are split into Suppliers and Contractors, each with its own totals. More labour types: Chinese Cook, Roti Cook, Starter / Farsan, Sweet, House Keeping, Security, Valet, Manager.', mr: 'विक्रेते: पुरवठादार आणि ठेकेदार वेगळे, स्वतंत्र एकूण. नवे मजूर प्रकार जोडले.' },
@@ -1459,10 +1460,12 @@ const jobFare = r => r.fareIn ? 0 : Number(r.fare) || 0;
 const lineAmt = r => money(isExtra(r) ? Math.round(Number(r.count) || 0) * (Number(r.rate) || 0)
   : isJob(r) ? jobCharge(r) + jobFare(r) : heads(r) * (Number(r.rate) || 0));
 const shiftList = r => Object.keys(SHIFTS).filter(k => Number(r.counts?.[k]) > 0).map(k => `${SHIFTS[k].split(' – ')[0]} ${r.counts[k]}`).join(' · ');
-const jobWhat = r => [r.meal ? MEALS[r.meal] : '', r.items || '', r.date || r.time ? [r.date ? fmtDate(r.date) : '', r.time ? fmtTime(r.time) : ''].filter(Boolean).join(' ') : ''].filter(Boolean).join(' · ');
+const jobWork = r => [...(r.dishes || []), r.items || ''].filter(Boolean).join(', ');
+const jobWhat = r => [r.meal ? MEALS[r.meal] : '', jobWork(r), r.date || r.time ? [r.date ? fmtDate(r.date) : '', r.time ? fmtTime(r.time) : ''].filter(Boolean).join(' ') : ''].filter(Boolean).join(' · ');
 const jobText = r => [heads(r) ? `${heads(r)} ${heads(r) === 1 ? 'person' : 'people'}` : '',
   jobCharge(r) ? `${Number(r.final) > 0 ? 'final' : 'agreed'} ${fmtCurrency(jobCharge(r))}${Number(r.final) > 0 && Number(r.rate) > 0 && Number(r.rate) !== Number(r.final) ? ` (agreed ${fmtCurrency(r.rate)})` : ''}` : 'charge not set',
   r.fareIn ? 'transport included' : Number(r.fare) > 0 ? `transport ${fmtCurrency(r.fare)}` : ''].filter(Boolean).join(' · ');
+const stageChip = r => { const st = jobStage(r); return `<span class="chip${st === 'requested' ? '' : ' pos'}" data-stage="${st}">${tr(...JOB_STAGES[st])}</span>`; };
 const lineText = r => isJob(r) ? `${jobText(r)}${lineAmt(r) ? ` = ${fmtCurrency(lineAmt(r))}` : ''}` : isExtra(r)
   ? `${r.count} × ${fmtCurrency(r.rate)} = ${fmtCurrency(lineAmt(r))}`
   : `${heads(r)} shift${heads(r) === 1 ? '' : 's'} × ${fmtCurrency(r.rate)} = ${fmtCurrency(lineAmt(r))}`;
@@ -1511,7 +1514,7 @@ function labourCard(ev) {
       <div class="row" style="min-height:52px">
         <div class="row-ic">${icon(isExtra(r) ? (r.extra === 'travel' ? 'truck' : 'clipboard') : 'users', 18)}</div>
         <div class="row-body"><div class="title-sm trunc" data-nl>${esc(labName(r))}${r.venId ? `<span class="meta" data-lab-ven> · ${esc(venName(r.venId))}</span>` : ''}</div>
-          <div class="meta">${isJob(r) ? `${tr('By order', 'ऑर्डरप्रमाणे')} · ${esc([jobWhat(r), jobText(r)].filter(Boolean).join(' · '))}` : isExtra(r)
+          <div class="meta">${isJob(r) ? `${stageChip(r)} ${tr('By order', 'ऑर्डरप्रमाणे')} · ${esc([jobWhat(r), jobText(r)].filter(Boolean).join(' · '))}` : isExtra(r)
             ? `${r.count > 1 ? `${r.count} × ` : ''}${r.rate > 0 ? fmtCurrency(r.rate) : ''}`
             : `${esc(shiftList(r))} · ${r.rate > 0 ? `${fmtCurrency(r.rate)} ${tr('each', 'प्रत्येकी')}` : ''}`}${r.rate > 0 ? '' : `<span class="due" data-no-rate>${tr('Rate not set', 'दर नाही')}</span>${labKept(ev, rows, r) ? `<span class="meta" data-kept> · ${tr('earlier amount still counted', 'आधीची रक्कम धरली')}</span>` : ''}`}</div></div>
         <div class="amt-sm">${r.rate > 0 ? fmtCurrency(lineAmt(r)) : labKept(ev, rows, r) ? fmtCurrency(labKept(ev, rows, r)) : '–'}</div>
@@ -1543,7 +1546,7 @@ function labVenBox(r, i) {
    the date and venue. No client or event name, and a rate only if you have entered one. WhatsApp opens; you send it. */
 function labourListText(ev, venId) {
   const rows = (ev.labour?.rows || []).map(labRow).filter(r => r.venId === venId);
-  const lines = rows.map(r => isJob(r) ? `${labName(r)}: ${[jobWhat(r), heads(r) ? `${heads(r)} ${heads(r) === 1 ? 'person' : 'people'}` : ''].filter(Boolean).join(' · ') || 'for the menu'}`
+  const lines = rows.map(r => isJob(r) ? `${labName(r)}: ${[jobWhat(r), jobGuests(ev, r) ? `${jobGuests(ev, r)} guests` : '', heads(r) ? `${heads(r)} ${heads(r) === 1 ? 'person' : 'people'}` : ''].filter(Boolean).join(' · ') || 'for the menu'}`
     : isExtra(r) ? `${labName(r)}: ${r.count}${r.rate > 0 ? ' × ' + fmtCurrency(r.rate) : ''}` : `${labName(r)}: ${shiftList(r)}${r.rate > 0 ? ' @ ' + fmtCurrency(r.rate) : ''}`);
   return `Namaste ${venName(venId)}! Labour needed:\nDate: ${fmtDate(ev.date)}\n${lines.join('\n')}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n\nPlease confirm. Thank you!`;
 }
@@ -1579,11 +1582,13 @@ function renderLabRows() {
         <div class="field" style="margin:0"><label>Meal – जेवण</label><select data-k="meal"><option value="">Whole event – पूर्ण कार्यक्रम</option>${labMeals().map(m => `<option value="${m}"${m === r.meal ? ' selected' : ''}>${esc(MEALS[m])}</option>`).join('')}</select></div>
         <div class="field" style="margin:0"><label>People – किती जण</label><input type="number" data-k="people" min="0" step="1" inputmode="numeric" placeholder="optional" value="${r.people || ''}"></div>
       </div>
-      <div class="field" style="margin:0 0 var(--s2)"><label>Dishes or work – पदार्थ / काम</label><input type="text" data-k="items" maxlength="200" placeholder="e.g. Hakka Noodles, Manchurian" value="${esc(r.items || '')}"></div>
+      ${jobDishPicker(r, i)}
+      <div class="field" style="margin:0 0 var(--s2)"><label>${(r.dishes || []).length || kitchenDishes(labEvent(), r.meal).length ? 'Other work – इतर काम' : 'Dishes or work – पदार्थ / काम'}</label><input type="text" data-k="items" maxlength="200" placeholder="${(r.dishes || []).length ? 'optional' : 'e.g. Hakka Noodles, Manchurian'}" value="${esc(r.items || '')}"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);margin-bottom:var(--s2)">
         <div class="field" style="margin:0"><label>Needed on – दिनांक</label><input type="date" data-k="date" value="${esc(r.date || '')}"></div>
         <div class="field" style="margin:0"><label>Time – वेळ</label><input type="time" data-k="time" value="${esc(r.time || '')}"></div>
       </div>
+      <label class="check-row" style="margin:0 0 var(--s2)"><input type="checkbox" data-k="confirmed"${r.confirmed ? ' checked' : ''}><span>${tr('Contractor confirmed (no charge yet is fine)', 'ठेकेदाराने होकार दिला')}</span></label>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);margin-bottom:var(--s2)">
         <div class="field" style="margin:0"><label>Agreed ₹ – ठरलेली मजुरी</label><input type="number" data-k="rate" min="0" inputmode="decimal" placeholder="${esc(rateHint(r))}" value="${r.rate || ''}"></div>
         <div class="field" style="margin:0"><label>Final ₹ (later) – अंतिम</label><input type="number" data-k="final" min="0" inputmode="decimal" placeholder="if different" value="${r.final || ''}"></div>
@@ -1594,7 +1599,7 @@ function renderLabRows() {
       </div>
       <div class="field" style="margin:0"><label>Note – नोंद</label><input type="text" data-k="note" maxlength="200" placeholder="optional" value="${esc(r.note || '')}"></div>
       <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--s2);margin-top:var(--s2)">
-        <div class="meta" data-lab-line="${i}">${lineText(r)}</div>${del(i)}
+        <div class="meta" data-lab-line="${i}">${stageChip(r)} ${lineText(r)}</div>${del(i)}
       </div>
     </div>` : `
     <div class="card pad" style="margin-bottom:var(--s3)" data-lab="${i}">
@@ -1616,7 +1621,20 @@ function renderLabRows() {
 }
 
 // The meals of the event whose labour sheet is open
-const labMeals = () => { const ev = D.events.find(e => e.id === curRef); return MEAL_ORDER.filter(m => (ev?.meals || []).includes(m)); };
+const labEvent = () => D.events.find(e => e.id === curRef);
+/* The meal's dishes from our kitchen, to tick for this assignment (5.4.3). Ticking makes no order and no expense.
+   A dish ticked earlier stays listed even if the menu changed since; one given to another line says whose it is. */
+function jobDishPicker(r, i) {
+  const menu = kitchenDishes(labEvent(), r.meal), picked = r.dishes || [], key = n => n.toLowerCase().replace(/\s+/g, ' ').trim();
+  const names = [...menu, ...picked.filter(n => !menu.some(m => key(m) === key(n)))];
+  if (!names.length) return '';
+  const taken = dishesTaken(labRows, r.id);
+  return `<div class="field" style="margin:0 0 var(--s2)"><label>${tr('Dishes from the menu', 'मेनूमधील पदार्थ')}</label>
+    <div class="chips-row lab-dishes" role="group" aria-label="Dishes for this cook" style="margin:0;padding:0;flex-wrap:wrap">${names.map(n => {
+      const on = picked.some(x => key(x) === key(n)), t = on ? '' : taken.get(key(n));
+      return `<button type="button" class="f-chip" data-lab-dish="${i}" data-name="${esc(n)}" aria-pressed="${on}">${esc(n)}${t ? `<span class="n">${esc(short(t))}</span>` : ''}</button>`; }).join('')}</div></div>`;
+}
+const labMeals = () => { const ev = labEvent(); return MEAL_ORDER.filter(m => (ev?.meals || []).includes(m)); };
 // Cooking worker types can be paid by order (people, labour for the job, transport) or by shift; others only by shift
 function jobSwitch(r, i) {
   if (!JOB_LABOUR.includes(r.role)) return '';
@@ -1681,10 +1699,11 @@ async function saveLabour() {
   const rows = labRows.map(r => isExtra(r)
       ? { id: r.id, kind: 'x', extra: r.extra, label: String(r.label || '').trim(), count: Math.round(Number(r.count) || 0), rate: Number(r.rate) || 0, ...withVen(r) }
       : isJob(r) ? { id: r.id, role: r.role, job: true, people: Math.round(Number(r.people) || 0), rate: money(Number(r.rate) || 0), fare: money(Number(r.fare) || 0),
-          ...(Number(r.final) > 0 ? { final: money(Number(r.final)) } : {}), ...(r.fareIn ? { fareIn: true } : {}),
+          ...(Number(r.final) > 0 ? { final: money(Number(r.final)) } : {}), ...(r.fareIn ? { fareIn: true } : {}), ...(r.confirmed ? { confirmed: true } : {}),
+          ...((r.dishes || []).length ? { dishes: [...new Set(r.dishes.map(n => String(n).trim().slice(0, 80)).filter(Boolean))].slice(0, 40) } : {}),
           ...Object.fromEntries(['meal', 'items', 'date', 'time', 'note'].map(k => [k, String(r[k] || '').trim().slice(0, 200)]).filter(([, v]) => v)), ...withVen(r) }
       : { id: r.id, role: r.role, rate: Number(r.rate) || 0, counts: clean(r.counts), ...withVen(r) })
-    .filter(r => isExtra(r) ? r.count > 0 : isJob(r) ? r.people > 0 || r.rate > 0 || r.final > 0 || r.fare > 0 || !!(r.items || r.note || r.meal) : heads(r) > 0);   // a line with people but no rate yet is kept (owner, 4.31.24)
+    .filter(r => isExtra(r) ? r.count > 0 : isJob(r) ? r.people > 0 || r.rate > 0 || r.final > 0 || r.fare > 0 || !!(r.items || r.note || r.meal || r.dishes || r.confirmed) : heads(r) > 0);   // a line with people but no rate yet is kept (owner, 4.31.24)
   const unpriced = rows.filter(r => !(r.rate > 0));   // with no rate yet; a cleared rate keeps its earlier expense (shown on the card)
   const billTotal = money(Number(qv('lab-bill')) || 0);
   /* 5.1.3 (owner): how each line is paid follows its contractor, not one switch for the sheet. A line with a contractor
@@ -6851,15 +6870,21 @@ function bindAllEvents() {
       r.venId = e.target.value; r.venAuto = false; e.target.dataset.prev = r.venId; setLabModeField(); return;
     }
     else if (k === 'fareIn') { r.fareIn = e.target.checked; renderLabRows(); return; }
+    else if (k === 'confirmed') { r.confirmed = e.target.checked; renderLabRows(); return; }
     else r[k] = ['role', 'extra', 'label', 'meal', 'items', 'date', 'time', 'note'].includes(k) ? e.target.value : num;
+    if (k === 'meal') { renderLabRows(); return; }
     if (k === 'role') { if (JOB_LABOUR.includes(r.role)) { if (r.job === undefined) Object.assign(r, { job: true, people: r.people || '', fare: r.fare || '' }); } else delete r.job;
       if (r.venAuto || !r.venId) { r.venId = autoContractor(r.role); r.venAuto = true; } renderLabRows(); return; }
     if (['role', 'extra'].includes(k)) box.querySelector('[data-k="rate"]').placeholder = rateHint(r);
     const filled = isJob(r) ? true : isExtra(r) ? r.count && r.rate : heads(r) && r.rate;
-    q('lab-rows').querySelector(`[data-lab-line="${box.dataset.lab}"]`).textContent = filled ? lineText(r) : '';
+    const out = q('lab-rows').querySelector(`[data-lab-line="${box.dataset.lab}"]`);
+    if (isJob(r)) out.innerHTML = `${stageChip(r)} ${esc(lineText(r))}`; else out.textContent = filled ? lineText(r) : '';
     updateLabTotal();
   });
   q('lab-rows').addEventListener('click', e => {
+    const dsh = e.target.closest('[data-lab-dish]');
+    if (dsh) { const r = labRows[Number(dsh.dataset.labDish)], n = dsh.dataset.name, k = x => x.toLowerCase().replace(/\s+/g, ' ').trim();
+      r.dishes = (r.dishes || []).some(x => k(x) === k(n)) ? r.dishes.filter(x => k(x) !== k(n)) : [...(r.dishes || []), n]; renderLabRows(); return; }
     const j = e.target.closest('[data-lab-job]');
     if (j) { const r = labRows[Number(j.dataset.labJob)]; r.job = j.dataset.v === 'true'; if (r.job) { r.people = r.people || ''; r.fare = r.fare || ''; } renderLabRows(); return; }
     const b = e.target.closest('[data-lab-del]'); if (!b) return;

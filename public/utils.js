@@ -1744,3 +1744,38 @@ export function isLegacyPinHash(stored) {
   return !!stored && !stored.startsWith('sha256$');
 }
 
+
+/* 5.4.3 (owner's requirements, 27 Nov): menu-linked cooking assignments. A cooking contractor (e.g. a Chinese cook) is
+   given several of the meal's dishes in one assignment; the ingredients stay ours, so it is not an outsourced counter
+   and no order is made per dish. These read the event's menu as it is; nothing here saves or counts money.
+   An assignment moves: requested (dishes and people asked for) → confirmed (the contractor said yes, still no charge)
+   → agreed (a charge, which the labour sheet saves as an amount owed) → final (the final charge). Paying it is the
+   contractor's payment, kept apart. */
+// The dishes our own kitchen cooks for a meal ('' = every meal), as named on the menu, each once
+export function kitchenDishes(ev, meal) {
+  const out = [], seen = new Set();
+  for (const s of eventServices(ev).services) {
+    if (meal && s.meal && s.meal !== meal) continue;
+    for (const d of s.dishes) {
+      const k = dishKey(d.name);
+      if (d.head || !k || seen.has(k)) continue;
+      seen.add(k); out.push(String(d.name).trim());
+    }
+  }
+  return out;
+}
+// Dishes already in another assignment on this sheet → that line's worker type (one dish is normally one cook's)
+export function dishesTaken(rows, exceptId) {
+  const m = new Map();
+  for (const r of rows || []) if (r?.job === true && r.id !== exceptId) for (const n of r.dishes || []) if (!m.has(dishKey(n))) m.set(dishKey(n), r.role || '');
+  return m;
+}
+export const JOB_STAGES = { requested: ['Requested', 'मागितले'], confirmed: ['Confirmed', 'ठरले'], agreed: ['Charge agreed', 'मजुरी ठरली'], final: ['Final charge', 'अंतिम मजुरी'] };
+export function jobStage(r) {
+  return Number(r?.final) > 0 ? 'final' : Number(r?.rate) > 0 ? 'agreed' : r?.confirmed ? 'confirmed' : 'requested';
+}
+// Guests for the assignment's meal (its main service), else the event's guests
+export function jobGuests(ev, r) {
+  const s = r?.meal ? eventServices(ev).services.find(x => x.meal === r.meal && x.main) : null;
+  return Number(s?.guests) || Number(ev?.guests) || 0;
+}
