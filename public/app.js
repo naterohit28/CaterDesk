@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, billSet, billingSplit, calcVendorBalance, normGstin, gstinValid, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, billOrderIds, deliveredWithoutBill, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, repeatBill, repeatBills, billCandidates, findHeads, paymentSchedule, keepPaidMilestones, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, dishSource, learnedDishes, kitchenDishes, dishesTaken, JOB_STAGES, jobStage, jobGuests, jobScope, usualLabourRate, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, billOrderIds, deliveredWithoutBill, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, repeatBill, repeatBills, billCandidates, findHeads, closureReport, paymentSchedule, keepPaidMilestones, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, dishSource, learnedDishes, kitchenDishes, dishesTaken, JOB_STAGES, jobStage, jobGuests, jobScope, usualLabourRate, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -2775,6 +2775,7 @@ function eventTools(ev) {
     ${b('count-open', 'users', 'Guest count', 'पाहुणे मोजणी')}
     ${settleDue(ev) ? b('settle-open', 'check', 'Final settlement', 'अंतिम हिशोब') : ''}
     ${b('fs-open', 'clipboard', 'Function sheet', 'फंक्शन शीट')}
+    ${b('close-open', 'chart', 'Closing report', 'हिशोब अहवाल')}
   </div>`;
 }
 
@@ -3845,6 +3846,74 @@ function extraPlatesMessage(ev, k, s, qty) {
   return `Hello${cp.rep ? ' ' + cp.rep : ''}, for ${ev.name}${k === 'all' ? '' : ' ' + meal} on ${fmtDate(ev.date)}, the confirmed quantity is ${s.contracted} covers at ${fmtCurrency(s.rate)} per additional cover, before any applicable tax. `
     + `Our ${method ? method.en.toLowerCase() : 'count'} currently shows ${s.counted}, i.e. ${qty} more (estimated ${fmtCurrency(toPaise(s.rate) * qty / 100)}). `
     + `Please reply "Approved: ${qty} extra ${k === 'all' ? '' : meal + ' '}covers at ${fmtCurrency(s.rate)} each" (or call us to discuss) so we can record your approval.`;
+}
+
+/* ── EVENT CLOSING REPORT (5.6.0): closureReport() in utils.js, shown, shared as text or printed ── */
+const RECON_NAME = { reconciled: 'Reconciled', reopened: 'Reopened after changes – check again', pending: 'Not reconciled yet' };
+const ADJ_NAME = { discount: 'Discount', waiver: 'Waived', writeoff: 'Written off' };
+function closureText(r) {
+  const L = [], c = fmtCurrency, line = (label, v) => L.push(`${label}: ${v}`);
+  L.push(`EVENT CLOSING REPORT – ${r.ev.name}`, [fmtDate(r.ev.date), r.ev.venue, r.ev.guests ? `${r.ev.guests} guests` : ''].filter(Boolean).join(' · '));
+  L.push(`Status: ${RECON_NAME[r.recon]}${r.recon === 'reconciled' && r.reconAt ? ` (${fmtDate(localDay(r.reconAt))})` : ''}${r.provisional ? ' · figures are PROVISIONAL' : ''}`);
+  L.push('', 'BILLING');
+  if (r.quote) line(`Quotation v${r.quote.v}${r.quote.option !== 'A' ? ` (option ${r.quote.option})` : ''}, ${r.quote.status}`, `${c(r.quote.total)}${r.quote.gst ? ` + GST ${c(r.quote.gst)}` : ''}`);
+  if (!r.billSet) L.push('Final bill: not set yet'); else {
+    line('Final bill (income)', c(r.bill)); if (r.gst) line('GST (collected for the government, not income)', c(r.gst)); line('Client pays', c(r.due)); }
+  line('Received', `${c(r.received)}${r.payments ? ` (${r.payments} payment${r.payments > 1 ? 's' : ''})` : ''}`);
+  for (const a of r.adjustments) line(ADJ_NAME[a.kind] || a.kind, c(a.amt));
+  if (r.over) line('Overpaid by client', c(r.over)); else if (r.billSet) line('Outstanding', c(r.outstanding));
+  if (r.disputed) line('Disputed', c(r.disputed));
+  L.push('', 'COSTS OF THIS EVENT');
+  if (!r.byCat.length) L.push('- None recorded');
+  for (const x of r.byCat) L.push(`- ${short(x.key)}: ${c(x.amt)}`);
+  line('Total costs', c(r.costs));
+  if (r.suppliers.length) { L.push('', 'By supplier (this event only)'); for (const v of r.suppliers) L.push(`- ${v.name}: ${c(v.amt)}${v.credit ? ` (${c(v.credit)} on credit)` : ''}`); }
+  if (r.contractors.length) { L.push('', 'Labour contractors (this event only)'); for (const v of r.contractors) L.push(`- ${v.name}: ${c(v.amt)}${v.credit ? ` (${c(v.credit)} on credit)` : ''}`); }
+  if (r.noVendor) line('Paid with no vendor named', c(r.noVendor));
+  if (r.shared.length) { L.push('', 'Shared bills (this event\'s part)'); for (const x of r.shared) L.push(`- ${short(x.head)}: ${c(x.part)} of ${c(x.total)}`); }
+  if (r.budget || r.purchaseEst) { L.push('', 'ESTIMATED AGAINST ACTUAL');
+    if (r.budget) line('Expected cost (budget)', `${c(r.budget)} · actual ${c(r.costs)} · ${r.costs > r.budget ? `${c(r.costs - r.budget)} over` : `${c(r.budget - r.costs)} under`}`);
+    if (r.purchaseEst) line('Purchase estimates', c(r.purchaseEst)); }
+  L.push('', 'RESULT');
+  if (r.perPlate.cost != null) line('Cost per plate', c(r.perPlate.cost));
+  if (r.billSet && r.perPlate.bill != null) line('Bill per plate', c(r.perPlate.bill));
+  if (r.billSet) { line(`${r.ev.outsourced ? 'Commission' : 'Contribution'}${r.provisional ? ' (provisional)' : ''}`, `${c(r.contribution)}${r.bill > 0 ? ` · margin ${r.margin}%` : ''}`);
+    if (r.perPlate.contribution != null) line('Contribution per plate', c(r.perPlate.contribution)); }
+  else L.push('Contribution: not known until the bill is set');
+  if (r.open.length) { L.push('', 'STILL OPEN (costs may be incomplete)'); for (const o of r.open) L.push(`- ${o.en}`); }
+  const ctx = r.context;
+  if (ctx.balances.length || ctx.stock || ctx.unallocated) {
+    L.push('', 'FOR REFERENCE – NOT COUNTED IN THIS EVENT');
+    for (const b of ctx.balances) L.push(`- ${b.name}: ${c(b.balance)} owed in total (all events)`);
+    if (ctx.stock) L.push(`- Common stock, not given to any event: ${c(ctx.stock)}`);
+    if (ctx.unallocated) L.push(`- Expenses on no event: ${c(ctx.unallocated)}`);
+  }
+  return L.join('\n');
+}
+const closureOf = ev => closureReport(ev, { events: D.events, expenses: [...D.expenses, ...(D.drafts || []).filter(x => !D.expenses.some(y => y.id === x.id))], cPays: D.cPays, vPays: D.vPays, vendors: D.vendors });
+function openClosure() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const r = closureOf(ev);
+  q('close-note').innerHTML = r.provisional ? `<div class="card pad due-note" role="status">${tr('Provisional: the event is not reconciled or something is still open (listed at the end).', 'अंदाजे: हिशोब पूर्ण नाही.')}</div>` : '';
+  q('close-text').textContent = closureText(r);
+  openSheet('closing-modal');
+}
+function printClosure() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const profile = getProfile();
+  printDoc(`<div class="pd"><header class="pd-head"><div class="pd-biz">${esc(profile.name || 'CaterDesk')}</div></header>
+    ${closureOf(ev).provisional ? '<div class="pd-draft">PROVISIONAL – NOT FINAL</div>' : ''}<pre style="white-space:pre-wrap;font:inherit;margin:12px 0 0">${esc(closureText(closureOf(ev)))}</pre></div>`);
+}
+function shareClosure() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  const text = closureText(closureOf(ev));
+  if (navigator.share) navigator.share({ title: `Closing report – ${ev.name}`, text }).catch(() => {});   // inside the tap
+  else window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+}
+async function copyClosure() {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  try { await navigator.clipboard.writeText(closureText(closureOf(ev))); showToast('Copied – कॉपी केले'); }
+  catch { showToast('Could not copy. Use Share instead. – कॉपी झाले नाही', 'error'); }
 }
 
 /* ── FUNCTION SHEET (spec §9.3): one light internal summary for the team; no money on it ── */
@@ -6794,6 +6863,10 @@ function bindAllEvents() {
       case 'count-policy-save': saveCountPolicy(); break;
       case 'count-booked-save': saveBookedGuests(); break;
       case 'fs-open':  openFunctionSheet(); break;
+      case 'close-open': openClosure(); break;
+      case 'close-print': printClosure(); break;
+      case 'close-share': shareClosure(); break;
+      case 'close-copy': copyClosure(); break;
       case 'settle-open': openSettle(); break;
       case 'quote-open': openQuote(); break;
       case 'quote-print': printQuote(); break;

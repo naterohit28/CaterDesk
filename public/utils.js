@@ -1455,6 +1455,56 @@ export function costGaps(ev, events, expenses) {
   return out;
 }
 
+/* ── EVENT CLOSING REPORT (5.6.0, owner's requirements) ──
+   One event's money in one place, built only from the existing calculations (calcEventPL, settlementStatus,
+   reconStatus, costGaps, deliveredWithoutBill, calcVendorBalance): no second accounting engine and no stored figures.
+   Event costs are this event's own entries (its part of a shared bill only). Whole supplier balances (all events),
+   common stock and expenses on no event are listed apart, for reference, never added to the event. While the event is
+   not reconciled, or something below "Still open" remains, the contribution is provisional. All sums in paise. */
+export function closureReport(ev, { events = [], expenses = [], cPays = [], vPays = [], vendors = [] } = {}) {
+  const P = toPaise, R = fromPaise, ven = id => vendors.find(v => v.id === id);
+  const pl = calcEventPL(ev, cPays, expenses), st = settlementStatus(ev, cPays), recon = reconStatus(ev, expenses);
+  const mine = expenses.filter(x => x.evId === ev.id && !x.draft);
+  const group = (list, keyOf) => { const m = new Map(); for (const x of list) { const k = keyOf(x); m.set(k, (m.get(k) || 0) + P(x.amt)); }
+    return [...m].map(([k, p]) => ({ key: k, amt: R(p) })).sort((a, b) => b.amt - a.amt); };
+  const byCat = group(mine, x => x.cat || 'Other');
+  const withVen = mine.filter(x => x.venId && ven(x.venId));
+  const isCon = v => v?.cat === 'Labour';
+  const parties = kind => group(withVen.filter(x => kind === 'con' ? isCon(ven(x.venId)) : !isCon(ven(x.venId))), x => x.venId)
+    .map(r => ({ venId: r.key, name: ven(r.key).name, amt: r.amt,
+      credit: R(withVen.filter(x => x.venId === r.key && x.pay === 'credit').reduce((s, x) => s + P(x.amt), 0)) }));
+  const accepted = (ev.quotes || []).find(q => q.status === 'accepted') || [...(ev.quotes || [])].reverse().find(q => q.status === 'sent') || null;
+  const qt = accepted ? quoteTotal(accepted) : null;
+  const estimates = mine.filter(x => x.fromOrder);
+  const purchaseEst = (ev.purchases || []).filter(x => x.status !== 'cancelled' && Number(x.estCost) > 0).reduce((s, x) => s + P(x.estCost), 0);
+  const drafts = expenses.filter(x => x.draft && x.evId === ev.id).length;
+  const open = [
+    ...costGaps(ev, events, expenses).map(g => ({ kind: g.kind, en: g.en, mr: g.mr })),
+    ...deliveredWithoutBill(ev, expenses).map(o => ({ kind: 'nobill', en: `Delivered, bill not recorded: ${o.kind === 'purchase' ? o.item : String(o.head || '').split(' – ')[0]}${ven(o.venId) ? ` (${ven(o.venId).name})` : ''}`, mr: 'माल आला, बिल नोंदवले नाही' })),
+    ...(estimates.length ? [{ kind: 'estimate', en: `${estimates.length} order price${estimates.length > 1 ? 's are' : ' is'} still an estimate, not a final bill`, mr: 'ऑर्डरची किंमत अंदाजे' }] : []),
+    ...(drafts ? [{ kind: 'drafts', en: `${drafts} bill photo${drafts > 1 ? 's' : ''} not filled in`, mr: 'बिल फोटो भरायचे बाकी' }] : []),
+  ];
+  const usedVendors = [...new Set(withVen.map(x => x.venId))];
+  const balances = usedVendors.map(id => ({ venId: id, name: ven(id).name, balance: calcVendorBalance(id, expenses, vPays).balance })).filter(b => b.balance > 0);
+  const live = expenses.filter(x => !x.draft);
+  return {
+    ev: { id: ev.id, name: ev.name, date: ev.date, venue: [ev.venue, ev.locality].filter(Boolean).join(', '), guests: pl.guests, outsourced: !!ev.outsourced },
+    quote: qt ? { v: accepted.v, option: accepted.option || 'A', status: accepted.status, total: qt.total, gst: qt.gst, grand: qt.grand } : null,
+    billSet: billSet(ev), bill: Number(ev.billing) || 0, gst: R(gstPaise(ev)), due: R(clientDueP(ev)),
+    received: st.received, payments: cPays.filter(p => p.evId === ev.id).length, outstanding: st.outstanding, over: st.over, disputed: st.disputed,
+    adjustments: st.adjustments.map(c => ({ kind: c.kind, amt: R(P(c.from) - P(c.to)) })),
+    costs: R(mine.reduce((s, x) => s + P(x.amt), 0)), byCat, suppliers: parties('sup'), contractors: parties('con'),
+    noVendor: R(mine.filter(x => !x.venId || !ven(x.venId)).reduce((s, x) => s + P(x.amt), 0)),
+    shared: mine.filter(x => x.split).map(x => ({ head: x.head || x.cat, part: Number(x.amt) || 0, total: Number(x.split.total) || 0 })),
+    budget: Number(ev.budget) || 0, purchaseEst: R(purchaseEst), estimates: R(estimates.reduce((s, x) => s + P(x.amt), 0)),
+    perPlate: { bill: pl.billPerPlate, cost: pl.costPerPlate, contribution: pl.profitPerPlate },
+    contribution: pl.profit, margin: pl.margin, recon: recon.state, reconAt: recon.at || '',
+    open, provisional: recon.state !== 'reconciled' || open.length > 0 || !billSet(ev),
+    context: { balances, stock: R(live.filter(x => x.stock).reduce((s, x) => s + P(x.amt), 0)),
+      unallocated: R(live.filter(x => !x.evId && !x.stock).reduce((s, x) => s + P(x.amt), 0)) },
+  };
+}
+
 /* ── WHAT IS STILL OWED, BILL BY BILL (spec §10.3, G-08) ── */
 /* A bill is one credit purchase, or every part of one shared bill (same `split.id`), owed once. A vendor payment
    marked for a bill (`billKey`) settles that bill first; anything over it, and every unmarked payment or credit
