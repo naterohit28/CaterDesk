@@ -531,6 +531,8 @@ export async function prepareImport(payload) {
         || (row.kind === 'person' && (row.gstin !== undefined || row.legalName !== undefined)))) throw new Error('Invalid vendor GSTIN');
       if (name === 'vendors' && row.oneTime !== undefined && row.oneTime !== true) throw new Error('Invalid one-time vendor flag');   // 4.31.22
       if (name === 'expenses' && row.fromOrder !== undefined && (row.fromOrder !== true || !row.order)) throw new Error('Invalid order price');   // 4.31.24
+      if (name === 'expenses' && ((row.billCovers !== undefined && (!Array.isArray(row.billCovers) || row.billCovers.length > 20 || row.billCovers.some(v => typeof v !== 'string' || !v || v.length > 80)))
+        || (row.billOn !== undefined && (typeof row.billOn !== 'string' || !row.billOn || row.billOn.length > 80)))) throw new Error('Invalid bill photo link');   // 5.3.4
       // One bill for several orders of its vendor (5.1.1): the other orders, besides its own `order`, each once
       if (name === 'expenses' && row.alsoOrders !== undefined && (!row.order || row.fromOrder || row.purchase !== undefined || !Array.isArray(row.alsoOrders) || !row.alsoOrders.length || row.alsoOrders.length > 50
         || row.alsoOrders.some(id => typeof id !== 'string' || !id || id.length > 40 || id === row.order) || new Set(row.alsoOrders).size !== row.alsoOrders.length)) throw new Error('Invalid order links');
