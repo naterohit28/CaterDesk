@@ -34,6 +34,8 @@ const base = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
   const text = sel => p.locator(sel).first().innerText();
   const contrib = () => p.locator('#tab-evdetail .metric', { has: p.locator('.label', { hasText: /Contribution|Commission/ }) }).first();
   const cLabel = () => contrib().locator('.label').innerText(), cAmt = () => contrib().locator('.amt-md').innerText();
+  // 5.3.3: an event whose usual or labour costs look incomplete asks "Reconcile anyway?" first; these samples have no labour cost
+  const anyway = async () => { await p.waitForTimeout(250); if (await p.locator('#ask-modal.active').count()) { await p.locator('#ask-actions button', { hasText: 'Reconcile anyway' }).click(); await p.waitForTimeout(300); } };
   const reconcile = async () => {
     await p.locator('[data-action="recon-open"]').click(); await p.waitForSelector('#recon-modal.active');
     assert.equal(await p.locator('#btn-save-recon').isDisabled(), true, 'not until every check is ticked');
@@ -41,6 +43,7 @@ const base = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
     await boxes.nth(0).check(); await boxes.nth(1).check();
     assert.equal(await p.locator('#btn-save-recon').isDisabled(), true);
     await boxes.nth(2).check(); await p.locator('#btn-save-recon').click();
+    await anyway();
     await p.waitForSelector('#recon-card .chip.pos');
   };
   await p.goto(BASE_URL); await p.waitForSelector('#kpi .card');
@@ -55,7 +58,7 @@ const base = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
   await test('legacy events load as costs pending without any record being changed', async () => {
     const before = await stored('old');
     await openEvent('old');
-    assert.match(await text('#recon-card'), /Costs pending/);
+    assert.match(await text('#recon-card'), /Costs (pending|incomplete)/);
     assert.match(await cLabel(), /Contribution · provisional/);
     assert.deepEqual(await stored('old'), before, 'opening the event wrote nothing');
     assert.equal('recon' in before, false);
@@ -126,11 +129,11 @@ const base = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
     for (let i = 0; i < 3; i++) await p.locator('#recon-checks input').nth(i).check();
     // Another tab or device saves a new cost for this event before Save is tapped here
     await p.evaluate(async d => { const db = await import('./db.js'); await db.putOne('expenses', { id: 'mid', evId: 'g12', cat: 'Labour', head: 'Boys – बॉईज', amt: 5000, date: d, pay: 'paid' }); }, day(0));
-    await p.locator('#btn-save-recon').click(); await p.waitForTimeout(400);
+    await p.locator('#btn-save-recon').click(); await anyway(); await p.waitForTimeout(400);
     await p.reload(); await p.waitForSelector('#kpi .card'); await openEvent('g12');
     const ev = await stored('g12');
     if (ev.recon) { assert.equal(ev.recon.costPaise, 14100000, 'snapshot of the costs this screen showed'); assert.match(await text('#recon-card'), /Changed after reconciling/); assert.match(await text('#recon-card'), /1,41,000 → ₹1,46,000/); }
-    else assert.match(await text('#recon-card'), /Costs pending/);
+    else assert.match(await text('#recon-card'), /Costs (pending|incomplete)/);
     assert.match(await cLabel(), /provisional/, 'the unseen cost keeps the contribution provisional');
   });
 

@@ -1,6 +1,6 @@
 # CaterDesk product roadmap
 
-**Status:** live version 5.3.1 (5.3.2 in review). Development resumed on 26 Nov 2026 under the owner's final development directive. Engineering rules: [AGENTS.md](../AGENTS.md).
+**Status:** live version 5.3.2 (5.3.3 in review). Development resumed on 26 Nov 2026 under the owner's final development directive. Engineering rules: [AGENTS.md](../AGENTS.md).
 
 ## Objective
 Make CaterDesk a compact, reliable catering operations and money app that cuts paperwork, admin time, repeated entry and forgotten transactions for independent Indian caterers (operators aged 40–70, coming from paper, Excel and WhatsApp).
@@ -140,7 +140,7 @@ reusable business rules, personal sourcing and supplier preferences learned from
 English / Hindi / Marathi terms, and checks that catch a wrong or incomplete entry before it is saved. A later
 "CaterDesk Intelligence" stage (v7+) is proposed, not planned.
 
-**Owner request (26 Nov 2026), future update:** an event must not look finished or profitable while its costs are
+**Owner request (26 Nov 2026), done in 5.3.3:** an event must not look finished or profitable while its costs are
 incomplete. Reconciling should warn when the usual costs (from `costChecklist`) or the labour cost are missing, and the
 event and its contribution should say "costs incomplete", not only "provisional".
 
