@@ -11,7 +11,8 @@ const day = n => { const d = new Date(); d.setDate(d.getDate() + n); return `${d
 const LONG = 'Sample Shree Ganesh Mega Catering Supplies and General Provision Stores Private Limited';
 function dataset(n = 45) {
   const vendors = [], expenses = [], vPays = [];
-  const cats = [['Live Counter', 'Chaat – चाट'], ['Groceries', ''], ['Labour', ''], ['Decoration', '']];
+  // 5.4.0: Labour vendors are contractors, listed apart; these samples test the supplier list, so none is under Labour
+  const cats = [['Live Counter', 'Chaat – चाट'], ['Groceries', ''], ['Operations', ''], ['Decoration', '']];
   for (let i = 1; i <= n; i++) { const [cat, specialty] = cats[i % 4];
     vendors.push({ id: 'v' + i, name: i === 3 ? LONG : `Sample Vendor ${String(i).padStart(3, '0')}`, cat, specialty, phone: '90000000' + String(i % 100).padStart(2, '0') }); }
   vendors.push({ id: 'p1', name: 'Sample Lender', kind: 'person', cat: '', specialty: '' });

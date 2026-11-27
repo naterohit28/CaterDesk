@@ -326,7 +326,7 @@ await test('labour sheet matches real contractor bills (shifts, fare, mukadam fe
  await p.locator('#btn-lab-extra').click();assert.equal(await row(1).locator('[data-k="rate"]').getAttribute('placeholder'),'Last time ₹24','last fare shown as a hint');await row(1).locator('[data-k="count"]').fill('1');await row(1).locator('[data-k="rate"]').fill('1000');
  assert.equal(await p.locator('#lab-total').innerText(),'₹10,100');await p.locator('#btn-save-lab').click();await p.waitForTimeout(400);
  // The mukadam's page shows what you owe across both events (to check against his running bill)
- await p.locator('#n-vendors').click();await p.locator('#ven-list [data-action="vendetail"]',{hasText:'Mukadam'}).click();await p.waitForSelector('#tab-vendetail .detail-name');
+ await p.locator('#n-vendors').click();await p.locator('#ven-split [data-id="con"]').click();/* 5.4.0: a Labour contractor is in Contractors */await p.locator('#ven-list [data-action="vendetail"]',{hasText:'Mukadam'}).click();await p.waitForSelector('#tab-vendetail .detail-name');
  const owed=(await db(async d=>d.getAll('expenses'))).filter(x=>x.venId==='muk'&&x.pay==='credit').reduce((s,x)=>s+x.amt,0);assert.equal(owed,20464,'5.1.3: the second sheet boys line has the mukadam, so it is owed too (11,364 + 9,100); the vehicle line has no contractor: paid directly');
 });
 await test('meals (any mix of breakfast, lunch, high tea, dinner), headcount per shift and bill total',async()=>{

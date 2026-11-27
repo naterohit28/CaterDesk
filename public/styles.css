@@ -763,3 +763,7 @@ button.d-brand:focus-visible { outline: 2px solid var(--brand-text); outline-off
 .today-open { margin-top: 2px; font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); }
 .today-open .due { color: var(--due); }
 .today-open .pos { color: var(--pos); }
+
+/* 5.4.0 Suppliers | Contractors switch on the Vendors tab */
+.seg.ven-split { margin: 0 0 var(--s3); }
+.seg.ven-split .n { font-weight: 500; opacity: .75; }

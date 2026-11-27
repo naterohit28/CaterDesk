@@ -20,9 +20,10 @@ export const EXPENSE_HEADS = {
     'Salad Counter – सॅलड','Fusion Counter – फ्यूजन'
   ],
   'Labour': [
-    'Rojiya Labour – रोजीया मजूर','Boys – बॉईज','Ghati – घाटी','Cook – स्वयंपाकी','Specialist Cook – स्पेशल आचारी',
+    'Rojiya Labour – रोजीया मजूर','Boys – बॉईज','Ghati – घाटी','Cook – स्वयंपाकी','Chinese Cook – चायनीज आचारी','Specialist Cook – स्पेशल आचारी',
+    'Roti Cook (Puri / Phulka) – पोळी आचारी','Starter / Farsan Labour – स्टार्टर / फरसाण मजूर','Sweet Labour – मिठाई मजूर',
     'Helper Staff','Roti Labour – रोटी मजूर','Cleaner / Washing',
-    'PRO – पी.आर.О.','Supervisor','Loading / Unloading Labour',
+    'PRO – पी.आर.О.','Supervisor','Manager – मॅनेजर','House Keeping – हाउसकीपिंग','Security – सुरक्षा','Valet – व्हॅले पार्किंग','Loading / Unloading Labour',
     'Staff Tips – स्टाफ टीप','Vendor Staff Tips – विक्रेता स्टाफ टीप',
     'Contractor Fee – मुकादमगिरी','Other Labour Work – इतर काम'
   ],
