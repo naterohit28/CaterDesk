@@ -99,6 +99,22 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [], expense
     await p.locator('#fs-modal [data-action="close-modal"]').first().click(); await p.waitForTimeout(200);
   });
 
+  await test('5.6.0: two dinners on different dates are separate services; finished and part-bought dishes count, ready-made ones do not', async () => {
+    const r = await p.evaluate(async () => { const u = await import('./utils.js');
+      const ev = { id: 'X', date: '2026-12-10', guests: 100, meals: ['dinner'], mealPlan: { dinner: { guests: 200, rate: 0 } },
+        services: [{ id: 'd1', meal: 'dinner' }, { id: 'd2', meal: 'dinner', date: '2026-12-11', guests: 80 }],
+        dishes: [{ name: 'Hakka Noodles', meal: 'dinner', svc: 'd1', head: '' }, { name: 'Spring Rolls', meal: 'dinner', svc: 'd1', head: '', src: 'finish' },
+          { name: 'Paneer Tikka', meal: 'dinner', svc: 'd1', head: '', part: true }, { name: 'Gulab Jamun', meal: 'dinner', svc: 'd1', head: '', src: 'buy' },
+          { name: 'Hakka Noodles', meal: 'dinner', svc: 'd2', head: '' }, { name: 'Pani Puri', meal: 'dinner', svc: 'd2', head: 'Chaat – चाट' }] };
+      const rows = [{ id: 'a', job: true, role: 'Chinese Cook', meal: 'dinner', svc: 'd1', dishes: ['Hakka Noodles'] }];
+      const t = u.dishesTaken(rows, 'b');
+      return [u.kitchenDishes(ev, 'dinner', 'd1'), u.kitchenDishes(ev, 'dinner', 'd2'), u.kitchenDishes(ev, 'dinner'),
+        t.get({ meal: 'dinner', svc: 'd1' }, 'Hakka Noodles'), t.get({ meal: 'dinner', svc: 'd2' }, 'Hakka Noodles'), t.get({}, 'hakka noodles'),
+        u.jobGuests(ev, { meal: 'dinner', svc: 'd2' }), u.jobGuests(ev, { meal: 'dinner' })]; });
+    assert.deepEqual(r, [['Hakka Noodles', 'Spring Rolls', 'Paneer Tikka'], ['Hakka Noodles'], ['Hakka Noodles', 'Spring Rolls', 'Paneer Tikka'],
+      'Chinese Cook', '', 'Chinese Cook', 80, 200]);
+  });
+
   await test('a backup with a bad dish list is refused', async () => {
     const bad = DATA(); bad.events[0].labour = { rows: [{ id: 'x', role: CHINESE, job: true, dishes: 'Hakka Noodles' }] };
     const err = await p.evaluate(async d => { try { await (await import('./db.js')).importAllData(d, 'replace'); return ''; } catch (e) { return e.message; } }, bad);

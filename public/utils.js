@@ -1834,23 +1834,32 @@ export function isLegacyPinHash(stored) {
    → agreed (a charge, which the labour sheet saves as an amount owed) → final (the final charge). Paying it is the
    contractor's payment, kept apart. */
 // The dishes our own kitchen cooks for a meal ('' = every meal), as named on the menu, each once
-export function kitchenDishes(ev, meal) {
+/* Which dishes a cook can be given (5.6.0, owner's review): our own cooking only. Left out: an outsourced counter's
+   dishes (`head`), dishes bought ready-made (`src: 'buy'`) and a library menu only previewed. Kept: frozen or
+   semi-prepared food we finish (`src: 'finish'`) and part-bought dishes (`part`: our part is cooked). With a service
+   (`svc`, e.g. the second dinner on another date) only that service's dishes; with a meal, every service of it. */
+export function kitchenDishes(ev, meal, svc = '') {
   const out = [], seen = new Set();
   for (const s of eventServices(ev).services) {
-    if (meal && s.meal && s.meal !== meal) continue;
+    if (svc ? s.id !== svc : meal && s.meal && s.meal !== meal) continue;
     for (const d of s.dishes) {
       const k = dishKey(d.name);
-      if (d.head || d.preview || d.src === 'buy' || !k || seen.has(k)) continue;   // bought ready-made: no cook needed (bought and finished by us still is)   // a library menu only previewed is not the event's menu yet
+      if (d.head || d.preview || d.src === 'buy' || !k || seen.has(k)) continue;
       seen.add(k); out.push(String(d.name).trim());
     }
   }
   return out;
 }
-// Dishes already in another assignment on this sheet → that line's worker type (one dish is normally one cook's)
+// Where an assignment applies: its service, else its meal, else the whole event ('*')
+export const jobScope = r => r?.svc || r?.meal || '*';
+/* Dishes already in another assignment → that line's worker type, per service or meal: the same dish name at lunch and
+   at dinner (or at two dinners) can go to different cooks. A whole-event assignment counts for every meal. */
 export function dishesTaken(rows, exceptId) {
   const m = new Map();
-  for (const r of rows || []) if (r?.job === true && r.id !== exceptId) for (const n of r.dishes || []) if (!m.has(dishKey(n))) m.set(dishKey(n), r.role || '');
-  return m;
+  for (const r of rows || []) if (r?.job === true && r.id !== exceptId)
+    for (const n of r.dishes || []) { const k = `${jobScope(r)}|${dishKey(n)}`; if (!m.has(k)) m.set(k, r.role || ''); }
+  return { get: (r, name) => { const k = dishKey(name); return m.get(`${jobScope(r)}|${k}`) || m.get(`*|${k}`)
+      || (jobScope(r) === '*' ? [...m].find(([key]) => key.endsWith(`|${k}`))?.[1] : '') || ''; }, size: m.size };
 }
 export const JOB_STAGES = { requested: ['Requested', 'मागितले'], confirmed: ['Confirmed', 'ठरले'], agreed: ['Charge agreed', 'मजुरी ठरली'], final: ['Final charge', 'अंतिम मजुरी'] };
 export function jobStage(r) {
@@ -1873,6 +1882,7 @@ export function usualLabourRate(events, { role = '', extra = '', venId = '', exc
 }
 // Guests for the assignment's meal (its main service), else the event's guests
 export function jobGuests(ev, r) {
-  const s = r?.meal ? eventServices(ev).services.find(x => x.meal === r.meal && x.main) : null;
+  const all = eventServices(ev).services;
+  const s = r?.svc ? all.find(x => x.id === r.svc) : r?.meal ? all.find(x => x.meal === r.meal && x.main) : null;
   return Number(s?.guests) || Number(ev?.guests) || 0;
 }

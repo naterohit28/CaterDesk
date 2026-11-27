@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, billSet, billingSplit, calcVendorBalance, normGstin, gstinValid, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, billOrderIds, deliveredWithoutBill, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, repeatBill, repeatBills, billCandidates, findHeads, paymentSchedule, keepPaidMilestones, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, dishSource, learnedDishes, kitchenDishes, dishesTaken, JOB_STAGES, jobStage, jobGuests, usualLabourRate, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, billOrderIds, deliveredWithoutBill, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, repeatBill, repeatBills, billCandidates, findHeads, paymentSchedule, keepPaidMilestones, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, dishSource, learnedDishes, kitchenDishes, dishesTaken, JOB_STAGES, jobStage, jobGuests, jobScope, usualLabourRate, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -1461,8 +1461,11 @@ const jobFare = r => r.fareIn ? 0 : Number(r.fare) || 0;
 const lineAmt = r => money(isExtra(r) ? Math.round(Number(r.count) || 0) * (Number(r.rate) || 0)
   : isJob(r) ? jobCharge(r) + jobFare(r) : heads(r) * (Number(r.rate) || 0));
 const shiftList = r => Object.keys(SHIFTS).filter(k => Number(r.counts?.[k]) > 0).map(k => `${SHIFTS[k].split(' – ')[0]} ${r.counts[k]}`).join(' · ');
+// A service's own label (e.g. "Dinner · 12 Dec") for an assignment tied to one of a meal's services
+const jobSvcLabel = r => { const ev = D.events.find(e => (e.labour?.rows || []).some(x => x.id === r.id)) || labEvent(); const all = ev ? eventServices(ev).services : [];
+  const s = all.find(x => x.id === r.svc); return s ? svcLabel(ev, s, all) : MEALS[r.meal] || ''; };
 const jobWork = r => [...(r.dishes || []), r.items || ''].filter(Boolean).join(', ');
-const jobWhat = r => [r.meal ? MEALS[r.meal] : '', jobWork(r), r.date || r.time ? [r.date ? fmtDate(r.date) : '', r.time ? fmtTime(r.time) : ''].filter(Boolean).join(' ') : ''].filter(Boolean).join(' · ');
+const jobWhat = r => [r.meal ? (r.svc ? jobSvcLabel(r) : MEALS[r.meal]) : '', jobWork(r), r.date || r.time ? [r.date ? fmtDate(r.date) : '', r.time ? fmtTime(r.time) : ''].filter(Boolean).join(' ') : ''].filter(Boolean).join(' · ');
 const jobText = r => [heads(r) ? `${heads(r)} ${heads(r) === 1 ? 'person' : 'people'}` : '',
   jobCharge(r) ? `${Number(r.final) > 0 ? 'final' : 'agreed'} ${fmtCurrency(jobCharge(r))}${Number(r.final) > 0 && Number(r.rate) > 0 && Number(r.rate) !== Number(r.final) ? ` (agreed ${fmtCurrency(r.rate)})` : ''}` : 'charge not set',
   r.fareIn ? 'transport included' : Number(r.fare) > 0 ? `transport ${fmtCurrency(r.fare)}` : ''].filter(Boolean).join(' · ');
@@ -1581,11 +1584,11 @@ function renderLabRows() {
       ${jobSwitch(r, i)}
       ${labVenBox(r, i)}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);margin-bottom:var(--s2)">
-        <div class="field" style="margin:0"><label>Meal – जेवण</label><select data-k="meal"><option value="">Whole event – पूर्ण कार्यक्रम</option>${labMeals().map(m => `<option value="${m}"${m === r.meal ? ' selected' : ''}>${esc(MEALS[m])}</option>`).join('')}</select></div>
+        <div class="field" style="margin:0"><label>Meal – जेवण</label><select data-k="meal"><option value="">Whole event – पूर्ण कार्यक्रम</option>${labMeals().map(o => `<option value="${esc(o.v)}"${o.v === (r.svc ? `${r.meal}|${r.svc}` : r.meal || '') ? ' selected' : ''}>${esc(o.l)}</option>`).join('')}</select></div>
         <div class="field" style="margin:0"><label>People – किती जण</label><input type="number" data-k="people" min="0" step="1" inputmode="numeric" placeholder="optional" value="${r.people || ''}"></div>
       </div>
       ${jobDishPicker(r, i)}
-      <div class="field" style="margin:0 0 var(--s2)"><label>${(r.dishes || []).length || kitchenDishes(labEvent(), r.meal).length ? 'Other work – इतर काम' : 'Dishes or work – पदार्थ / काम'}</label><input type="text" data-k="items" maxlength="200" placeholder="${(r.dishes || []).length ? 'optional' : 'e.g. Hakka Noodles, Manchurian'}" value="${esc(r.items || '')}"></div>
+      <div class="field" style="margin:0 0 var(--s2)"><label>${(r.dishes || []).length || kitchenDishes(labEvent(), r.meal, r.svc).length ? 'Other work – इतर काम' : 'Dishes or work – पदार्थ / काम'}</label><input type="text" data-k="items" maxlength="200" placeholder="${(r.dishes || []).length ? 'optional' : 'e.g. Hakka Noodles, Manchurian'}" value="${esc(r.items || '')}"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);margin-bottom:var(--s2)">
         <div class="field" style="margin:0"><label>Needed on – दिनांक</label><input type="date" data-k="date" value="${esc(r.date || '')}"></div>
         <div class="field" style="margin:0"><label>Time – वेळ</label><input type="time" data-k="time" value="${esc(r.time || '')}"></div>
@@ -1629,16 +1632,21 @@ const labEvent = () => D.events.find(e => e.id === curRef);
 /* The meal's dishes from our kitchen, to tick for this assignment (5.4.3). Ticking makes no order and no expense.
    A dish ticked earlier stays listed even if the menu changed since; one given to another line says whose it is. */
 function jobDishPicker(r, i) {
-  const menu = kitchenDishes(labEvent(), r.meal), picked = r.dishes || [], key = n => n.toLowerCase().replace(/\s+/g, ' ').trim();
+  const menu = kitchenDishes(labEvent(), r.meal, r.svc), picked = r.dishes || [], key = n => n.toLowerCase().replace(/\s+/g, ' ').trim();
   const names = [...menu, ...picked.filter(n => !menu.some(m => key(m) === key(n)))];
   if (!names.length) return '';
   const taken = dishesTaken(labRows, r.id);
   return `<div class="field" style="margin:0 0 var(--s2)"><label>${tr('Dishes from the menu', 'मेनूमधील पदार्थ')}</label>
     <div class="chips-row lab-dishes" role="group" aria-label="Dishes for this cook" style="margin:0;padding:0;flex-wrap:wrap">${names.map(n => {
-      const on = picked.some(x => key(x) === key(n)), t = on ? '' : taken.get(key(n));
+      const on = picked.some(x => key(x) === key(n)), t = on ? '' : taken.get(r, n);
       return `<button type="button" class="f-chip" data-lab-dish="${i}" data-name="${esc(n)}" aria-pressed="${on}">${esc(n)}${t ? `<span class="n">${esc(short(t))}</span>` : ''}</button>`; }).join('')}</div></div>`;
 }
-const labMeals = () => { const ev = labEvent(); return MEAL_ORDER.filter(m => (ev?.meals || []).includes(m)); };
+/* The meals of the event, as choices for a cooking assignment (5.6.0): one per meal, or one per service when a meal is
+   served more than once (e.g. two dinners on different dates), value "meal|service" */
+const labMeals = () => { const ev = labEvent(); if (!ev) return [];
+  const all = eventServices(ev).services;
+  return MEAL_ORDER.filter(m => (ev.meals || []).includes(m)).flatMap(m => { const ss = all.filter(s => s.meal === m);
+    return ss.length > 1 ? ss.map(s => ({ v: `${m}|${s.id}`, l: svcLabel(ev, s, all) })) : [{ v: m, l: MEALS[m] }]; }); };
 // Cooking worker types can be paid by order (people, labour for the job, transport) or by shift; others only by shift
 function jobSwitch(r, i) {
   if (!JOB_LABOUR.includes(r.role)) return '';
@@ -1711,7 +1719,7 @@ async function saveLabour() {
       : isJob(r) ? { id: r.id, role: r.role, job: true, people: Math.round(Number(r.people) || 0), rate: money(Number(r.rate) || 0), fare: money(Number(r.fare) || 0),
           ...(Number(r.final) > 0 ? { final: money(Number(r.final)) } : {}), ...(r.fareIn ? { fareIn: true } : {}), ...(r.confirmed ? { confirmed: true } : {}),
           ...((r.dishes || []).length ? { dishes: [...new Set(r.dishes.map(n => String(n).trim().slice(0, 80)).filter(Boolean))].slice(0, 40) } : {}),
-          ...Object.fromEntries(['meal', 'items', 'date', 'time', 'note'].map(k => [k, String(r[k] || '').trim().slice(0, 200)]).filter(([, v]) => v)), ...withVen(r) }
+          ...Object.fromEntries(['meal', 'svc', 'items', 'date', 'time', 'note'].map(k => [k, String(r[k] || '').trim().slice(0, 200)]).filter(([, v]) => v)), ...withVen(r) }
       : { id: r.id, role: r.role, rate: Number(r.rate) || 0, counts: clean(r.counts), ...(Number(r.asked) > 0 ? { asked: Math.min(10000, Math.round(Number(r.asked))) } : {}), ...withVen(r) })
     .filter(r => isExtra(r) ? r.count > 0 : isJob(r) ? r.people > 0 || r.rate > 0 || r.final > 0 || r.fare > 0 || !!(r.items || r.note || r.meal || r.dishes || r.confirmed) : heads(r) > 0);   // a line with people but no rate yet is kept (owner, 4.31.24)
   const unpriced = rows.filter(r => !(r.rate > 0));   // with no rate yet; a cleared rate keeps its earlier expense (shown on the card)
@@ -3885,7 +3893,7 @@ function functionSheetText(ev, extra = ev.functionSheet || {}) {
       const own = sv.dishes.filter(d => !d.preview && !(d.shared && multi));
       const kit = own.filter(d => !d.head && !d.src && d.at !== 'venue').map(d => d.name), atVenue = own.filter(d => !d.head && !d.src && d.at === 'venue').map(d => d.name);
       const cr = crows.filter(r => (r.svc?.id || '') === sv.id ), br = bought.filter(r => r.svc === sv.id || (!r.svc && !multi));
-      const ck = sv.main && sv.meal ? cooks.filter(r => r.meal === sv.meal) : [];
+      const ck = sv.meal ? cooks.filter(r => r.meal === sv.meal && (r.svc ? r.svc === sv.id : sv.main)) : [];
       if (!kit.length && !atVenue.length && !cr.length && !br.length && !ck.length) continue;
       if (sv.meal && (multi || sv.time)) L.push('', [`${svcLabel(ev, sv, all).toUpperCase()}`, sv.time ? fmtTime(sv.time) : '', `${sv.guests || ev.guests || '—'} guests`].filter(Boolean).join(' · '));
       if (kit.length) L.push(`- Our kitchen: ${kit.join(', ')}`);
@@ -6986,7 +6994,7 @@ function bindAllEvents() {
     else if (k === 'fareIn') { r.fareIn = e.target.checked; renderLabRows(); return; }
     else if (k === 'confirmed') { r.confirmed = e.target.checked; renderLabRows(); return; }
     else r[k] = ['role', 'extra', 'label', 'meal', 'items', 'date', 'time', 'note'].includes(k) ? e.target.value : num;
-    if (k === 'meal') { renderLabRows(); return; }
+    if (k === 'meal') { const [m, svc] = e.target.value.split('|'); r.meal = m || ''; if (svc) r.svc = svc; else delete r.svc; renderLabRows(); return; }
     if (k === 'role') { if (JOB_LABOUR.includes(r.role)) { if (r.job === undefined) Object.assign(r, { job: true, people: r.people || '', fare: r.fare || '' }); } else delete r.job;
       if (r.venAuto || !r.venId) { r.venId = autoContractor(r.role); r.venAuto = true; } renderLabRows(); return; }
     if (['role', 'extra'].includes(k)) box.querySelector('[data-k="rate"]').placeholder = rateHint(r);
