@@ -24,23 +24,27 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
   let failed = 0;
   const test = async (name, fn) => { try { await fn(); console.log(name + ' PASS'); } catch (e) { failed++; console.error(e); console.log(name + ' FAIL'); } };
   const dump = () => p.evaluate(async () => (await import('./db.js')).exportAllData());
-  const load = async () => { await p.evaluate(async d => { await (await import('./db.js')).importAllData(d, 'replace'); }, DATA()); await p.reload(); await p.waitForSelector('#kpi', { state: 'attached' }); };
+  const load = async (d = DATA()) => { await p.evaluate(async d => { await (await import('./db.js')).importAllData(d, 'replace'); }, d); await p.reload(); await p.waitForSelector('#kpi', { state: 'attached' }); };
   const snap = async () => { const [fc] = await Promise.all([p.waitForEvent('filechooser'), p.locator('[data-action="snap"]').first().click()]);
     await fc.setFiles({ name: 'bill.png', mimeType: 'image/png', buffer: png }); await p.waitForSelector('[data-action="fill-draft"]'); };
-  const fill = async (amt, evId = 'E') => {
+  const fill = async (amt, evId = 'E', { billNo = '', credit = false } = {}) => {
     await p.locator('[data-action="fill-draft"]').first().click(); await p.waitForSelector('#exp-modal.active');
     await p.fill('#exp-amt', String(amt)); await p.selectOption('#exp-ev', evId);
     await p.locator('#exp-cats [data-cat="Live Counter"]').click(); await p.selectOption('#exp-head', STARTER); await p.selectOption('#exp-vendor', 'vs');
+    if (credit) await p.locator('#exp-pay [data-pay="credit"]').click();
+    if (billNo) await p.evaluate(v => { const b = document.getElementById('exp-billno'); b.value = v; b.dispatchEvent(new Event('input', { bubbles: true })); }, billNo);
     await p.locator('#btn-save-exp').click(); await p.waitForTimeout(300); };
   await p.goto(BASE_URL); await p.waitForSelector('#kpi', { state: 'attached' });
 
   await test('the check finds one entry or several adding up to the bill, same vendor and event, nothing else', async () => {
     const r = await p.evaluate(async () => { const u = await import('./utils.js');
       const X = (id, amt, o = {}) => ({ id, amt, venId: 'v', evId: 'e', date: '2026-11-22', ...o });
-      const ex = [X('a', 1140), X('b', 1350), X('c', 2490, { evId: 'z' }), X('d', 2490, { venId: 'w' }), X('f', 1000, { draft: true })];
+      const ex = [X('a', 1140), X('b', 1350), X('c', 2490, { evId: 'z' }), X('d', 2490, { venId: 'w' }), X('f', 1000, { draft: true }), X('g', 700, { fromOrder: true, order: 'o1' })];
       const f = (amt, date = '2026-11-22') => (u.repeatBill(ex, { id: 'n', venId: 'v', evId: 'e', amt, date }) || []).map(x => x.id);
-      return [f(2490), f(1350), f(2000), f(2490, '2026-12-10'), f(1000)]; });
-    assert.deepEqual(r, [['a', 'b'], ['b'], [], [], []]);
+      const two = [...ex, X('h', 1000), X('k', 1490)];
+      return [f(2490), f(1350), f(2000), f(2490, '2026-12-10'), f(1000), f(700),
+        u.repeatBills(two, { id: 'n', venId: 'v', evId: 'e', amt: 2490, date: '2026-11-22' }).map(c => c.map(x => x.id))]; });
+    assert.deepEqual(r, [['a', 'b'], ['b'], [], [], [], [], [['a', 'b'], ['h', 'k']]], 'drafts and order-price estimates never match; every combination is offered');
   });
 
   await test('filling in the bill photo: the question names both entries and their total', async () => {
@@ -57,14 +61,51 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
     assert.equal(d.expenses.filter(x => x.draft).length, 0, 'the bill-photo draft is gone');
     assert.equal(mine.find(x => x.id === 'a').billIds.length, 1);
     assert.equal(d.photos.length, 1); assert.equal(d.photos[0].expenseId, 'a');
+    const a = mine.find(x => x.id === 'a'), b = mine.find(x => x.id === 'b'), keep = x => [x.amt, x.cat, x.head, x.pay, x.mode, x.venId, x.date];
+    assert.deepEqual([keep(a), keep(b)], DATA().expenses.map(keep), 'amounts, items, payment, vendor and dates unchanged');
+    assert.deepEqual(a.billCovers, ['b']); assert.equal(b.billOn, 'a');
+    assert.match(a.notes, /Bill photo \(₹2,490\) also covers Starter ₹1,350/); assert.match(b.notes, /Bill photo \(₹2,490\) is on Starter ₹1,140/);
+    await p.locator('#n-expenses:visible').click(); await p.waitForTimeout(300);
+    const list = (await p.locator('#exp-list').innerText()).replace(/\s+/g, ' ');
+    assert.match(list, /bill photo covers 2 entries/); assert.match(list, /bill photo on another entry/);
     const r = await p.evaluate(async () => (await import('./utils.js')).calcEventExpenses('E', (await (await import('./db.js')).exportAllData()).expenses));
     assert.equal(r, 2490);
   });
 
   await test('the attached photo still opens with its entry and survives a backup round trip', async () => {
     const r = await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); await db.importAllData(JSON.parse(JSON.stringify(d)), 'replace');
-      return (await db.getBillsForExpense('a')).length; });
-    assert.equal(r, 1);
+      const back = (await db.exportAllData()).expenses; return [(await db.getBillsForExpense('a')).length, back.find(x => x.id === 'a').billCovers, back.find(x => x.id === 'b').billOn]; });
+    assert.deepEqual(r, [1, ['b'], 'a']);
+  });
+
+  await test('deleting the entry that holds the photo says the photo covers the other entry; they stay', async () => {
+    await p.locator('#n-expenses:visible').click(); await p.waitForTimeout(300);
+    await p.evaluate(() => { const b = document.querySelector('[data-action="edit-exp"][data-id="a"]'); b.scrollIntoView(); b.click(); });
+    await p.waitForSelector('#exp-modal.active'); await p.locator('#btn-del-exp').click(); await p.waitForSelector('#ask-modal.active');
+    assert.match(await p.locator('#ask-title').innerText(), /This bill photo covers other entries/);
+    assert.match(await p.locator('#ask-msg').innerText(), /also covers Starter ₹1,350.*The other entries and their amounts stay/s);
+    await p.locator('#ask-actions button').last().click(); await p.waitForTimeout(300);
+    assert.ok((await dump()).expenses.some(x => x.id === 'a'), 'nothing deleted when cancelled');
+  });
+
+  await test('a typed bill number is kept on the entry, and a different payment status is pointed out, never changed', async () => {
+    await load(); await snap(); await fill(2490, 'E', { billNo: 'SAMPLE-77', credit: true });
+    await p.waitForSelector('#ask-modal.active');
+    const m = await p.locator('#ask-msg').innerText();
+    assert.match(m, /Payment differs: .*is paid.*this bill is marked on credit\. Nothing is changed/s); assert.match(m, /Bill no\. SAMPLE-77 is saved on that entry/);
+    await p.locator('#ask-actions button', { hasText: 'Attach the bill photo' }).click(); await p.waitForTimeout(800);
+    const d = await dump(); assert.equal(d.expenses.find(x => x.id === 'a').billNo, 'SAMPLE-77');
+    assert.deepEqual(d.expenses.filter(x => x.evId === 'E').map(x => x.pay), ['paid', 'paid']);
+  });
+
+  await test('several combinations match: the person chooses which entries the bill covers', async () => {
+    const d0 = DATA(); d0.expenses.push(X('c', 1000), X('d', 1490)); await load(d0); await snap(); await fill(2490);
+    await p.waitForSelector('#ask-modal.active');
+    assert.match(await p.locator('#ask-msg').innerText(), /matches 2 combinations[\s\S]*1\) Starter ₹1,140 .* \+ Starter ₹1,350[\s\S]*2\) Starter ₹1,000 .* \+ Starter ₹1,490/);
+    await p.locator('#ask-actions button', { hasText: 'Attach to 2)' }).click(); await p.waitForTimeout(800);
+    const d = await dump(), by = id => d.expenses.find(x => x.id === id);
+    assert.deepEqual([by('c').billCovers, by('d').billOn, by('a').billCovers, by('b').billOn], [['d'], 'c', undefined, undefined]);
+    assert.equal(d.expenses.filter(x => x.evId === 'E').length, 4, 'no new expense');
   });
 
   await test('Different bill, save: it is saved as its own entry', async () => {

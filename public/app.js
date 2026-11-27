@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, billSet, billingSplit, calcVendorBalance, normGstin, gstinValid, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, billOrderIds, deliveredWithoutBill, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, repeatBill, paymentSchedule, keepPaidMilestones, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, dishSource, learnedDishes, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, billOrderIds, deliveredWithoutBill, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, repeatBill, repeatBills, paymentSchedule, keepPaidMilestones, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, dishSource, learnedDishes, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -3983,7 +3983,9 @@ function expenseRow(x, { showEvent = true } = {}) {
     fmtDate(x.date),
     ven ? `<span data-nl>${esc(ven.name)}</span>` : '',
     x.split ? tr(`shared · ${fmtCurrency(x.split.total)} bill`, `वाटलेले · ${fmtCurrency(x.split.total)}`) : '',
-    x.additional ? tr('extra to labour sheet', 'मजूर यादीशिवाय') : ''
+    x.additional ? tr('extra to labour sheet', 'मजूर यादीशिवाय') : '',
+    (x.billCovers || []).some(id => D.expenses.some(y => y.id === id)) ? tr(`bill photo covers ${1 + x.billCovers.filter(id => D.expenses.some(y => y.id === id)).length} entries`, 'एका बिलात अनेक नोंदी') : '',
+    x.billOn && D.expenses.some(y => y.id === x.billOn) ? tr('bill photo on another entry', 'बिल फोटो दुसऱ्या नोंदीवर') : ''
   ].filter(Boolean).join(' · ');
   return `<div class="row" role="button" tabindex="0" data-action="edit-exp" data-id="${esc(x.id)}">
     <div class="row-ic">${catIcon(x.cat)}</div>
@@ -5449,21 +5451,35 @@ async function snapBills(files) {
     { label: 'Fill now – आता भरा', run: () => openExpModal(made[0]) });
 }
 
-/* The bill photo(s) of the open form go to an entry already recorded (a photo belongs to one entry: the first of the
-   matching ones); a bill-photo draft being filled in is then removed. No amount is created or changed. */
-async function attachBillTo(target, base) {
+/* The bill photo(s) of the open form go to entries already recorded (5.3.4). A photo belongs to one entry: the first of
+   the chosen ones holds it (`billCovers` lists the others it also covers); each other entry points to it (`billOn`).
+   A bill number typed in the form is kept on that entry when it has none; a typed note is added to it. Amounts, items,
+   dates, payment and vendor of every entry stay exactly as recorded. One save: entries, photos and the removed draft
+   together, each checked against its revision, so nothing is half-done. No expense is created. */
+async function attachBillTo(chosen, base, { billNo = '', note = '' } = {}) {
+  const [owner, ...others] = chosen;
   const photos = (await getBillsForExpense(expWork.id)).filter(ph => expWork.bills.some(b => b.id === ph.id));
-  const moved = photos.map(ph => ({ store: 'photos', record: { ...ph, expenseId: target.id }, expected: ph }));
-  const record = { ...target, billIds: [...new Set([...(target.billIds || []), ...photos.map(ph => ph.id)])] };
+  const moved = photos.map(ph => ({ store: 'photos', record: { ...ph, expenseId: owner.id }, expected: ph }));
+  const label = x => `${short(x.head || x.cat)} ${fmtCurrency(x.amt)} (${fmtDate(x.date)})`;
+  const total = fmtCurrency(chosen.reduce((s, x) => s + toPaise(x.amt), 0) / 100);
+  const add = (text, line) => [String(text || '').trim(), line].filter(Boolean).join(' · ');
+  const strip = ({ _rev, ...x }) => x;
+  const ownerRec = { ...strip(owner), billIds: [...new Set([...(owner.billIds || []), ...photos.map(ph => ph.id)])],
+    ...(others.length ? { billCovers: [...new Set([...(owner.billCovers || []), ...others.map(x => x.id)])],
+      notes: add(owner.notes, `Bill photo (${total}) also covers ${others.map(label).join(', ')}`) } : {}),
+    ...(billNo && !owner.billNo ? { billNo } : {}) };
+  if (note) ownerRec.notes = add(ownerRec.notes ?? owner.notes, note);
+  const otherRecs = others.map(x => ({ store: 'expenses', record: { ...strip(x), billOn: owner.id, notes: add(x.notes, `Bill photo (${total}) is on ${label(owner)}`) }, expected: x }));
   try {
-    await commitChanges([{ store: 'expenses', record, expected: target }, ...moved, ...(base?.draft ? [{ store: 'expenses', id: base.id, expected: base }] : [])], { check: true, extraStores: ['events', 'vendors'] });
+    await commitChanges([{ store: 'expenses', record: ownerRec, expected: owner }, ...otherRecs, ...moved,
+      ...(base?.draft ? [{ store: 'expenses', id: base.id, expected: base }] : [])], { check: true, extraStores: ['events', 'vendors'] });
   } catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
-  const i = D.expenses.findIndex(x => x.id === target.id); if (i >= 0) D.expenses[i] = { ...record, _rev: (target._rev || 0) + 1 };
   D.drafts = D.drafts.filter(d => d.id !== expWork.id);
   expWork.saved = true;
   try { localStorage.removeItem('ffv2_expdraft'); } catch {}
   closeModals(); await loadAll(); refreshCurrent();
-  showToast(`Bill photo attached to ${short(target.head || target.cat)} ${fmtCurrency(target.amt)}; nothing counted twice – फोटो जोडला`, 'success');
+  showToast(others.length ? `Bill photo attached; it covers ${chosen.length} entries (${total}). Nothing counted twice – फोटो जोडला`
+    : `Bill photo attached to ${short(owner.head || owner.cat)} ${fmtCurrency(owner.amt)}; nothing counted twice – फोटो जोडला`, 'success');
 }
 
 async function saveExpense({ next = false, split = false } = {}) {
@@ -5501,17 +5517,33 @@ async function saveExpense({ next = false, split = false } = {}) {
   /* 5.3.3 (owner's phone): a new entry, or a bill photo being filled in, whose amount equals what is already recorded
      from this vendor for this event (one entry, or 2–4 added together) is probably the same bill again. Ask; the bill
      photo can go to those entries instead, so nothing is counted twice. */
-  const rep = (!base || base.draft) && !base?.split ? repeatBill(D.expenses, { id: expWork.id, venId, evId: data.evId, amt: data.amt, date: data.date }) : null;
-  if (rep) {
+  const combos = (!base || base.draft) && !base?.split ? repeatBills(D.expenses, { id: expWork.id, venId, evId: data.evId, amt: data.amt, date: data.date }) : [];
+  if (combos.length) {
     const vn = D.vendors.find(v => v.id === venId)?.name || 'this vendor', evn = D.events.find(e => e.id === data.evId)?.name || 'this event';
-    const parts = rep.map(x => `${short(x.head || x.cat)} ${fmtCurrency(x.amt)} (${fmtDate(x.date)})`).join(' + ');
-    const photos = expWork.bills.length;
+    const item = x => `${short(x.head || x.cat)} ${fmtCurrency(x.amt)} (${fmtDate(x.date)})`;
+    const list = c => c.map(item).join(' + ');
+    const PAY = { paid: 'paid', credit: 'on credit' };
+    const photos = expWork.bills.length, noteText = qv('exp-notes').trim();
+    // What attaching keeps, what it adds, and any payment status that differs (shown, never changed)
+    const told = c => {
+      const owner = c[0], lines = [];
+      const pays = [...new Set(c.map(x => x.pay || 'paid'))];
+      if (pays.length > 1 || pays[0] !== pay) lines.push(`Payment differs: ${c.map(x => `${short(x.head || x.cat)} ${fmtCurrency(x.amt)} is ${PAY[x.pay] || 'paid'}`).join(', ')}; this bill is marked ${PAY[pay]}. Nothing is changed: check it if needed.`);
+      if (photos) lines.push(`Attaching keeps their amounts, items, dates, payment and vendor exactly. The photo goes on ${item(owner)}${c.length > 1 ? '; each entry notes that this one bill covers them' : ''}.`);
+      if (billNo) lines.push(owner.billNo && owner.billNo !== billNo ? `Bill no. ${billNo} is not saved: that entry already has bill no. ${owner.billNo}.` : owner.billNo ? '' : `Bill no. ${billNo} is saved on that entry.`);
+      if (noteText) lines.push('Your note is added to that entry.');
+      return lines.filter(Boolean);
+    };
+    const one = combos.length === 1;
     const choice = await askSheet({ title: 'Already recorded? – आधीच नोंदवले?',
-      message: `${vn} for ${evn}: ${parts}${rep.length > 1 ? ` = ${fmtCurrency(data.amt)}` : ''} is already recorded. If this is the same bill, saving it counts it twice.`,
-      actions: [...(photos ? [{ label: `Attach the bill photo to ${rep.length > 1 ? 'those entries' : 'that entry'} – फोटो जोडा`, value: 'attach', style: 'btn-primary' }] : []),
+      message: one
+        ? [`${vn} for ${evn}: ${list(combos[0])}${combos[0].length > 1 ? ` = ${fmtCurrency(data.amt)}` : ''} is already recorded. If this is the same bill, saving it counts it twice.`, ...told(combos[0])].join('\n\n')
+        : [`${vn} for ${evn}: ${fmtCurrency(data.amt)} matches ${combos.length} combinations already recorded. If this is the same bill, choose which entries it covers:`,
+          ...combos.map((c, k) => `${k + 1}) ${list(c)}`), ...told(combos[0]).filter(l => l.startsWith('Payment')).length ? ['Payment differs on some entries: nothing is changed.'] : []].join('\n'),
+      actions: [...(photos ? combos.map((c, k) => ({ label: one ? `Attach the bill photo to ${c.length > 1 ? 'those entries' : 'that entry'} – फोटो जोडा` : `Attach to ${k + 1}) ${c.length} entr${c.length > 1 ? 'ies' : 'y'} – फोटो जोडा`, value: 'attach:' + k, style: 'btn-primary' })) : []),
         { label: 'Different bill, save – वेगळे बिल', value: 'save', style: 'btn-secondary' }], cancel: 'Go back – मागे' });
     if (!choice) return;
-    if (choice === 'attach') { await attachBillTo(rep[0], base); return; }
+    if (choice.startsWith('attach:')) { await attachBillTo(combos[Number(choice.slice(7))], base, { billNo, note: noteText }); return; }
   }
   // The event's labour sheet already includes this item (G-14): only save it if it is on top of the sheet
   let additional = !!base?.additional;
@@ -5780,6 +5812,14 @@ async function deleteRow(type, id) {
   }
   const removed = { [type]: [rec] };
   let photos = [];
+  // 5.3.4: this entry holds a bill photo that also covers other entries: say so before the photo goes with it
+  const covered = type === 'expenses' ? (rec.billCovers || []).map(cid => D.expenses.find(x => x.id === cid)).filter(Boolean) : [];
+  if (covered.length && (rec.billIds || []).length) {
+    const ok = await askSheet({ title: 'This bill photo covers other entries – फोटो इतर नोंदींचाही',
+      message: `The bill photo on this entry also covers ${covered.map(x => `${short(x.head || x.cat)} ${fmtCurrency(x.amt)}`).join(', ')}. Deleting this entry deletes the photo too (Undo brings both back). The other entries and their amounts stay.`,
+      actions: [{ label: 'Delete with the photo – फोटोसह हटवा', value: true, style: 'btn-danger' }] });
+    if (!ok) return;
+  }
   if (type === 'expenses' && rec.split) {
     const parts = splitParts(D.expenses, rec.split.id);
     if (parts.length > 1) {
