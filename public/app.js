@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, billSet, billingSplit, calcVendorBalance, normGstin, gstinValid, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, billOrderIds, deliveredWithoutBill, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, repeatBill, repeatBills, billCandidates, findHeads, closureReport, paymentSchedule, keepPaidMilestones, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, dishSource, learnedDishes, kitchenDishes, dishesTaken, JOB_STAGES, jobStage, jobGuests, jobScope, usualLabourRate, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, billOrderIds, deliveredWithoutBill, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, repeatBill, repeatBills, billCandidates, findHeads, closureReport, pendingWork, paymentSchedule, keepPaidMilestones, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, dishSource, learnedDishes, kitchenDishes, dishesTaken, JOB_STAGES, jobStage, jobGuests, jobScope, usualLabourRate, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -891,9 +891,24 @@ function todayCard() {
   }).join('')}</div>`;
 }
 
+/* Pending work (5.6.0): one compact list under Today, one row per kind, each opening the first event concerned */
+const PENDING_IC = { cooks: 'users', orders: 'message', labour: 'users', recon: 'check' };
+function pendingCard() {
+  const items = pendingWork(D.events, D.expenses);
+  if (!items.length) return '';
+  return `<div class="sec"><span class="sec-title">${tr('Pending work', 'बाकी कामे')}</span></div>
+    <div class="card list" id="pending-list">${items.map(it => `
+      <div class="row" role="button" tabindex="0" data-action="evdetail" data-id="${esc(it.evIds[0])}" data-pending="${it.kind}">
+        <div class="row-ic">${icon(PENDING_IC[it.kind] || 'clipboard', 18)}</div>
+        <div class="row-body"><div class="title-sm">${tr(esc(it.en), esc(it.mr))}</div>
+          <div class="meta trunc"><span data-nl>${esc(it.names.slice(0, 2).join(', '))}</span>${it.names.length > 2 ? ` +${it.names.length - 2}` : ''}</div></div>
+        ${icon('chevron', 18)}
+      </div>`).join('')}</div>`;
+}
+
 /* ── HOME ────────────────────────────────────────── */
 function rHome() {
-  q('today').innerHTML = whatsNewCard() + todayCard();
+  q('today').innerHTML = whatsNewCard() + todayCard() + pendingCard();
   renderPeriodSegs();
   const P = sliceByPeriod(D, period);
   // Contribution, margin and what is still owed: events with a bill only (billingSplit). Costs of events without a

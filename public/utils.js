@@ -1455,6 +1455,32 @@ export function costGaps(ev, events, expenses) {
   return out;
 }
 
+/* ── PENDING WORK (5.6.0, owner's requirements: Today's work) ──
+   The actions still open that Home did not list yet, from the records as they are; nothing is stored. Each item:
+   kind, count, the events concerned (soonest or oldest first) and plain words. Deliveries, bill photos, payments,
+   collections, missing costs and backups keep their own Home cards; these complete them. Reusable for v6 voice. */
+export function pendingWork(events, expenses, now = today()) {
+  const out = [], name = e => e.name, up = events.filter(e => e.date >= now).sort((a, b) => a.date.localeCompare(b.date));
+  const past = events.filter(e => e.date < now).sort((a, b) => a.date.localeCompare(b.date));
+  const add = (kind, list, n, en, mr) => { if (n) out.push({ kind, n, evIds: list.map(e => e.id), names: list.map(name), en, mr }); };
+  // Cooking assignments not yet confirmed by the contractor, for coming events
+  const cooks = up.filter(e => (e.labour?.rows || []).some(r => r.job === true && jobStage(r) === 'requested'));
+  const nc = cooks.reduce((s, e) => s + e.labour.rows.filter(r => r.job === true && jobStage(r) === 'requested').length, 0);
+  add('cooks', cooks, nc, `${nc} cooking job${nc > 1 ? 's' : ''} to confirm`, `${nc} आचारी काम पक्के करायचे`);
+  // Supplier orders and purchases sent or prepared but not confirmed, for coming events
+  const open = e => [...(e.orders || []), ...(e.purchases || [])].filter(o => ['prepared', 'opened', 'sent'].includes(o.status));
+  const ords = up.filter(e => !e.outsourced && open(e).length), no = ords.reduce((s, e) => s + open(e).length, 0);
+  add('orders', ords, no, `${no} supplier order${no > 1 ? 's' : ''} to confirm`, `${no} ऑर्डर पक्क्या करायच्या`);
+  // Labour lines of past events with no rate (and no contractor's bill total) — their cost is not counted yet
+  const noRate = e => (e.labour?.rows || []).filter(r => r.job === true ? !(Number(r.rate) > 0 || Number(r.final) > 0) : !(Number(r.rate) > 0)).length;
+  const lab = past.filter(e => !(Number(e.labour?.billTotal) > 0) && noRate(e)), nl = lab.reduce((s, e) => s + noRate(e), 0);
+  add('labour', lab, nl, `${nl} labour cost${nl > 1 ? 's' : ''} without a rate`, `${nl} मजुरीचा दर बाकी`);
+  // Past events with a bill, not reconciled (or reopened by a change)
+  const rec = past.filter(e => billSet(e) && reconStatus(e, expenses).state !== 'reconciled');
+  add('recon', rec, rec.length, `${rec.length} event${rec.length > 1 ? 's' : ''} to reconcile`, `${rec.length} कार्यक्रमांचा हिशोब बाकी`);
+  return out;
+}
+
 /* ── EVENT CLOSING REPORT (5.6.0, owner's requirements) ──
    One event's money in one place, built only from the existing calculations (calcEventPL, settlementStatus,
    reconStatus, costGaps, deliveredWithoutBill, calcVendorBalance): no second accounting engine and no stored figures.
