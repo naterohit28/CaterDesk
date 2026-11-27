@@ -1856,6 +1856,21 @@ export const JOB_STAGES = { requested: ['Requested', 'मागितले'], c
 export function jobStage(r) {
   return Number(r?.final) > 0 ? 'final' : Number(r?.rate) > 0 ? 'agreed' : r?.confirmed ? 'confirmed' : 'requested';
 }
+/* 5.5.0 (owner's requirements): the usual rate for a worker type paid by shift (or for an extra): the most used of the
+   last 6 rates on earlier sheets, this contractor's own first. Only offered as a tap; never filled in by itself. */
+export function usualLabourRate(events, { role = '', extra = '', venId = '', exceptEv = '' } = {}) {
+  const mine = [], all = [];
+  for (const e of [...(events || [])].filter(e => e.id !== exceptEv).sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))))
+    for (const r of e.labour?.rows || []) {
+      if (!(Number(r.rate) > 0) || r.job === true) continue;
+      if (extra ? !(r.kind === 'x' && r.extra === extra) : (r.kind === 'x' || r.role !== role)) continue;
+      if (venId && r.venId === venId) mine.push(Number(r.rate));
+      all.push(Number(r.rate));
+    }
+  const pick = list => { const last = list.slice(0, 6), n = new Map(); for (const x of last) n.set(x, (n.get(x) || 0) + 1);
+    return [...n].sort((a, b) => b[1] - a[1] || last.indexOf(a[0]) - last.indexOf(b[0]))[0]?.[0] || 0; };
+  return pick(mine) || pick(all);
+}
 // Guests for the assignment's meal (its main service), else the event's guests
 export function jobGuests(ev, r) {
   const s = r?.meal ? eventServices(ev).services.find(x => x.meal === r.meal && x.main) : null;

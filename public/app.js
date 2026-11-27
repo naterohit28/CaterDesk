@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, billSet, billingSplit, calcVendorBalance, normGstin, gstinValid, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, billOrderIds, deliveredWithoutBill, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, repeatBill, repeatBills, billCandidates, findHeads, paymentSchedule, keepPaidMilestones, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, dishSource, learnedDishes, kitchenDishes, dishesTaken, JOB_STAGES, jobStage, jobGuests, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, billOrderIds, deliveredWithoutBill, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, repeatBill, repeatBills, billCandidates, findHeads, paymentSchedule, keepPaidMilestones, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, dishSource, learnedDishes, kitchenDishes, dishesTaken, JOB_STAGES, jobStage, jobGuests, usualLabourRate, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -1516,7 +1516,7 @@ function labourCard(ev) {
         <div class="row-body"><div class="title-sm trunc" data-nl>${esc(labName(r))}${r.venId ? `<span class="meta" data-lab-ven> · ${esc(venName(r.venId))}</span>` : ''}</div>
           <div class="meta">${isJob(r) ? `${stageChip(r)} ${tr('By order', 'ऑर्डरप्रमाणे')} · ${esc([jobWhat(r), jobText(r)].filter(Boolean).join(' · '))}` : isExtra(r)
             ? `${r.count > 1 ? `${r.count} × ` : ''}${r.rate > 0 ? fmtCurrency(r.rate) : ''}`
-            : `${esc(shiftList(r))} · ${r.rate > 0 ? `${fmtCurrency(r.rate)} ${tr('each', 'प्रत्येकी')}` : ''}`}${r.rate > 0 ? '' : `<span class="due" data-no-rate>${tr('Rate not set', 'दर नाही')}</span>${labKept(ev, rows, r) ? `<span class="meta" data-kept> · ${tr('earlier amount still counted', 'आधीची रक्कम धरली')}</span>` : ''}`}</div></div>
+            : `${esc(shiftList(r))}${Number(r.asked) > 0 ? ` · ${tr(`asked ${r.asked}`, `मागितले ${r.asked}`)}${shortBy(r) ? ` <span class="due" data-short>${tr(`${shortBy(r)} short`, `${shortBy(r)} कमी`)}</span>` : ''}` : ''} · ${r.rate > 0 ? `${fmtCurrency(r.rate)} ${tr('each', 'प्रत्येकी')}` : ''}`}${r.rate > 0 ? '' : `<span class="due" data-no-rate>${tr('Rate not set', 'दर नाही')}</span>${labKept(ev, rows, r) ? `<span class="meta" data-kept> · ${tr('earlier amount still counted', 'आधीची रक्कम धरली')}</span>` : ''}`}</div></div>
         <div class="amt-sm">${r.rate > 0 ? fmtCurrency(lineAmt(r)) : labKept(ev, rows, r) ? fmtCurrency(labKept(ev, rows, r)) : '–'}</div>
       </div>`).join('')}
       ${adj ? `<div class="row" style="min-height:44px">
@@ -1566,6 +1566,7 @@ function renderLabRows() {
         <div class="field" style="margin:0"><label>Note – नोंद</label><input type="text" data-k="label" placeholder="${r.extra === 'other' ? 'e.g. Ice cream cutting' : 'optional'}" value="${esc(r.label || '')}"></div>
       </div>
       ${labVenBox(r, i)}
+      ${usualBtn(r, i)}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s2)">
         <div class="field" style="margin:0"><label>Count – संख्या</label><input type="number" data-k="count" min="1" step="1" inputmode="numeric" value="${r.count || ''}"></div>
         <div class="field" style="margin:0"><label>Rate ₹ (later) – दर</label><input type="number" data-k="rate" min="1" inputmode="decimal" placeholder="${esc(rateHint(r))}" value="${r.rate || ''}"></div>
@@ -1607,9 +1608,11 @@ function renderLabRows() {
         <div class="field" style="margin:0"><label>Worker – मजूर</label><select data-k="role" aria-label="Worker type">${roles.map(h => `<option value="${esc(h)}"${h === r.role ? ' selected' : ''}>${esc(h)}</option>`).join('')}</select></div>
         <div class="field" style="margin:0"><label>Rate ₹ per shift (later) – दर</label><input type="number" data-k="rate" min="1" inputmode="decimal" placeholder="${esc(rateHint(r))}" value="${r.rate || ''}"></div>
       </div>
+      ${usualBtn(r, i)}
       ${jobSwitch(r, i)}
       ${labVenBox(r, i)}
-      <div class="label" style="margin-bottom:6px">${tr('How many in each shift', 'प्रत्येक शिफ्टमध्ये किती')}</div>
+      <div class="field" style="margin:0 0 var(--s2)"><label>Asked for (people) – मागितले</label><input type="number" data-k="asked" min="0" step="1" inputmode="numeric" placeholder="optional" value="${r.asked || ''}"></div>
+      <div class="label" style="margin-bottom:6px">${tr('How many came in each shift', 'प्रत्येक शिफ्टमध्ये किती आले')}</div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s2)">${Object.entries(SHIFTS).map(([k, l]) => `
         <div class="field" style="margin:0"><label>${esc(l.split(' – ')[0])}</label><input type="number" data-k="c-${k}" min="0" step="0.5" inputmode="decimal" placeholder="0" value="${r.counts?.[k] || ''}"></div>`).join('')}
       </div>
@@ -1670,6 +1673,12 @@ function autoContractor(role) {
   return '';
 }
 const venName = id => D.vendors.find(v => v.id === id)?.name || '';   // the rate comes with the bill (owner, 4.31.24)
+// 5.5.0: the usual rate, one tap to use it (a rate is still never filled in by itself)
+const usualBtn = (r, i) => { if (Number(r.rate) > 0 || isJob(r)) return '';
+  const u = usualLabourRate(D.events, { role: r.role, extra: isExtra(r) ? r.extra : '', venId: r.venId, exceptEv: curRef });
+  return u ? `<button type="button" class="btn-sm" data-lab-usual="${i}" data-v="${u}" style="margin:0 0 var(--s2)">${tr(`Use usual rate ${fmtCurrency(u)}`, `नेहमीचा दर ${fmtCurrency(u)}`)}</button>` : ''; };
+// Attendance (5.5.0): how many people were asked for, against the most who came in any shift
+const shortBy = r => { const came = Math.max(0, ...Object.values(r.counts || {}).map(Number).filter(n => n > 0)); return Number(r.asked) > 0 && came ? Math.max(0, Number(r.asked) - came) : 0; };
 const rateHint = r => { const last = isExtra(r) ? lastLabourRate('', r.extra) : lastLabourRate(r.role); return last ? `Last time ₹${last}` : 'From the bill'; };
 
 function openLabModal() {
@@ -1702,7 +1711,7 @@ async function saveLabour() {
           ...(Number(r.final) > 0 ? { final: money(Number(r.final)) } : {}), ...(r.fareIn ? { fareIn: true } : {}), ...(r.confirmed ? { confirmed: true } : {}),
           ...((r.dishes || []).length ? { dishes: [...new Set(r.dishes.map(n => String(n).trim().slice(0, 80)).filter(Boolean))].slice(0, 40) } : {}),
           ...Object.fromEntries(['meal', 'items', 'date', 'time', 'note'].map(k => [k, String(r[k] || '').trim().slice(0, 200)]).filter(([, v]) => v)), ...withVen(r) }
-      : { id: r.id, role: r.role, rate: Number(r.rate) || 0, counts: clean(r.counts), ...withVen(r) })
+      : { id: r.id, role: r.role, rate: Number(r.rate) || 0, counts: clean(r.counts), ...(Number(r.asked) > 0 ? { asked: Math.min(10000, Math.round(Number(r.asked))) } : {}), ...withVen(r) })
     .filter(r => isExtra(r) ? r.count > 0 : isJob(r) ? r.people > 0 || r.rate > 0 || r.final > 0 || r.fare > 0 || !!(r.items || r.note || r.meal || r.dishes || r.confirmed) : heads(r) > 0);   // a line with people but no rate yet is kept (owner, 4.31.24)
   const unpriced = rows.filter(r => !(r.rate > 0));   // with no rate yet; a cleared rate keeps its earlier expense (shown on the card)
   const billTotal = money(Number(qv('lab-bill')) || 0);
@@ -6982,6 +6991,8 @@ function bindAllEvents() {
     updateLabTotal();
   });
   q('lab-rows').addEventListener('click', e => {
+    const us = e.target.closest('[data-lab-usual]');
+    if (us) { labRows[Number(us.dataset.labUsual)].rate = Number(us.dataset.v); renderLabRows(); return; }
     const dsh = e.target.closest('[data-lab-dish]');
     if (dsh) { const r = labRows[Number(dsh.dataset.labDish)], n = dsh.dataset.name, k = x => x.toLowerCase().replace(/\s+/g, ' ').trim();
       r.dishes = (r.dishes || []).some(x => k(x) === k(n)) ? r.dishes.filter(x => k(x) !== k(n)) : [...(r.dishes || []), n]; renderLabRows(); return; }
