@@ -1,6 +1,6 @@
 # CaterDesk product roadmap
 
-**Status:** live version 5.3.0 (5.3.1 in review). Development resumed on 26 Nov 2026 under the owner's final development directive. Engineering rules: [AGENTS.md](../AGENTS.md).
+**Status:** live version 5.3.1 (5.3.2 in review). Development resumed on 26 Nov 2026 under the owner's final development directive. Engineering rules: [AGENTS.md](../AGENTS.md).
 
 ## Objective
 Make CaterDesk a compact, reliable catering operations and money app that cuts paperwork, admin time, repeated entry and forgotten transactions for independent Indian caterers (operators aged 40–70, coming from paper, Excel and WhatsApp).
@@ -104,7 +104,7 @@ Principle: CaterDesk must follow how a caterer works, not make the caterer follo
    - outsourced counters, supplier orders and delivery status.
    No automatic labour costs, no production or recipe database.
 7. **Expense items:** keep 6 primary categories, with aliases, search and progressive disclosure for wider coverage. Keep expense heads, supplier specialities, labour roles, menu courses and procurement items distinct. No ingredient-level money categories.
-8. **Optional, editable menu templates** (breakfast, high tea, late night, Maharashtrian, South Indian, Punjabi, fasting), with no fixed prices or compulsory rules.
+8. **Optional, editable menu templates** (**breakfast and high tea done in 5.3.2** from the owner's rate card; still to come: late night, Maharashtrian, South Indian, Punjabi, fasting), with no fixed prices or compulsory rules.
 9. **Connect to the multi-item supplier orders** (one frozen-food supplier, several starter items, one order) and to v6 voice.
 
 **An order is not an expense, and an assigned cook is not a confirmed labour cost.** Raw ingredients, purchased prepared food, specialist labour, outsourced services, orders, bills and settlements stay distinct.
