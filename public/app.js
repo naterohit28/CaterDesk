@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '5.4.3';
+const APP_BUILD = '5.5.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -361,7 +361,8 @@ function saveExpSnapshot() {
    the app so it works offline. Each release adds one entry (version, release date, English and Marathi). No popup after
    updates: only an entry marked `intro` (a notable change) shows a small card on Home once, which can be dismissed. */
 const WHATS_NEW = [
-  { v: '5.4.3', date: '2026-11-27', intro: true, en: 'A cook given work by order can now be given dishes straight from the meal\'s menu, several at once, with the guests for that meal on the WhatsApp list. Each job shows if it is requested, confirmed, charge agreed or final. Ticking dishes adds no expense.', mr: 'ऑर्डरप्रमाणे आचाऱ्याला मेनूमधील पदार्थ थेट निवडून देता येतात; WhatsApp यादीत त्या जेवणाचे पाहुणे. प्रत्येक कामाची स्थिती दिसते. पदार्थ निवडल्याने खर्च नोंदवला जात नाही.' },
+  { v: '5.5.0', date: '2026-11-27', intro: true, en: 'The function sheet now goes meal by meal. One supplier order can carry several items, in dozen or ladi too, with one WhatsApp message. Tick the entries a bill photo covers when the app does not find them. Search expense items by everyday words like paneer or tempo. Usual labour rate in one tap, and who was asked for against who came. Late Night, Punjabi and Fasting menus.', mr: 'फंक्शन शीट जेवणानुसार. एका ऑर्डरमध्ये अनेक वस्तू, एकच WhatsApp संदेश. बिल फोटो कोणत्या नोंदींचा ते स्वतः निवडा. पनीर, टेम्पो असे शब्द लिहून खर्च शोधा. नेहमीचा मजुरी दर एका टॅपवर; मागितले विरुद्ध आले. लेट नाईट, पंजाबी, उपवास मेनू.' },
+  { v: '5.4.3', date: '2026-11-27', en: 'A cook given work by order can now be given dishes straight from the meal\'s menu, several at once, with the guests for that meal on the WhatsApp list. Each job shows if it is requested, confirmed, charge agreed or final. Ticking dishes adds no expense.', mr: 'ऑर्डरप्रमाणे आचाऱ्याला मेनूमधील पदार्थ थेट निवडून देता येतात; WhatsApp यादीत त्या जेवणाचे पाहुणे. प्रत्येक कामाची स्थिती दिसते. पदार्थ निवडल्याने खर्च नोंदवला जात नाही.' },
   { v: '5.4.2', date: '2026-11-27', intro: true, en: 'Vendors now open as Suppliers and Contractors. Cooking labour is entered by order, with dishes, meal and charge. A bill photo that repeats items you entered asks first. This "What\'s new" list is in the menu (☰).', mr: 'विक्रेते: पुरवठादार आणि ठेकेदार. स्वयंपाकी मजूर ऑर्डरप्रमाणे. आधी नोंदवलेले बिल पुन्हा आले तर आधी विचारते. "नवीन काय" मेनूमध्ये (☰).' },
   { v: '5.4.1', date: '2026-11-27', en: 'Cooking labour (cooks, roti, starters, sweets, Chinese) is entered by order: people, labour for the job and transport. Rojiya, Ghati and Boys stay by shift.', mr: 'स्वयंपाकी, रोटी, स्टार्टर, मिठाई, चायनीज मजूर ऑर्डरप्रमाणे: किती जण, मजुरी आणि भाडे. रोजीया, घाटी, बॉईज शिफ्टप्रमाणे.' },
   { v: '5.4.0', date: '2026-11-27', en: 'Vendors are split into Suppliers and Contractors, each with its own totals. More labour types: Chinese Cook, Roti Cook, Starter / Farsan, Sweet, House Keeping, Security, Valet, Manager.', mr: 'विक्रेते: पुरवठादार आणि ठेकेदार वेगळे, स्वतंत्र एकूण. नवे मजूर प्रकार जोडले.' },

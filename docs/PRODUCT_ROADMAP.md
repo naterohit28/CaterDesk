@@ -1,6 +1,6 @@
 # CaterDesk product roadmap
 
-**Status:** live version 5.4.2 (5.4.3, cooking assignments from the menu, in review). Next: meal-wise kitchen and function sheets, then multi-item supplier orders. Each release also adds one plain-language line to the in-app "What's new" (`WHATS_NEW` in app.js). Development resumed on 26 Nov 2026 under the owner's final development directive. Engineering rules: [AGENTS.md](../AGENTS.md).
+**Status:** live version 5.4.2. In review: 5.4.3 (cooking assignments from the menu) and 5.5.0 (meal-wise function sheet, several items in one supplier order, manual bill matching, menu preview, expense item search, Late Night / Punjabi / Fasting menus, usual labour rates and attendance). Updates now ship in batches of 3–4 (owner, 27 Nov). Next: the Event Financial Closure Report and the further Home steps. Each release also adds one plain-language line to the in-app "What's new" (`WHATS_NEW` in app.js). Development resumed on 26 Nov 2026 under the owner's final development directive. Engineering rules: [AGENTS.md](../AGENTS.md).
 
 ## Objective
 Make CaterDesk a compact, reliable catering operations and money app that cuts paperwork, admin time, repeated entry and forgotten transactions for independent Indian caterers (operators aged 40–70, coming from paper, Excel and WhatsApp).
@@ -96,16 +96,16 @@ Principle: CaterDesk must follow how a caterer works, not make the caterer follo
    - every sourcing method and specialist labour;
    - vendor orders, delivery status and amendment history.
    Reuse the existing meal-service model; one workflow for every meal.
-5. **Menu selection:** make the difference between previewing a library menu and the event's saved dishes obvious, and let the user confirm and go straight to kitchen and orders in few taps. Never create supplier commitments from an unconfirmed menu.
-6. **Meal-wise kitchen and function sheet:** for each meal, show:
+5. **(Done in 5.5.0: preview marked, then straight on to kitchen and orders.) Menu selection:** make the difference between previewing a library menu and the event's saved dishes obvious, and let the user confirm and go straight to kitchen and orders in few taps. Never create supplier commitments from an unconfirmed menu.
+6. **(Done in 5.5.0.) Meal-wise kitchen and function sheet:** for each meal, show:
    - time and guests;
    - our kitchen, cooking at the venue, specialist cooks;
    - ready-made purchases, frozen or semi-prepared to finish;
    - outsourced counters, supplier orders and delivery status.
    No automatic labour costs, no production or recipe database.
-7. **Expense items:** keep 6 primary categories, with aliases, search and progressive disclosure for wider coverage. Keep expense heads, supplier specialities, labour roles, menu courses and procurement items distinct. No ingredient-level money categories.
-8. **Optional, editable menu templates** (**breakfast and high tea done in 5.3.2** from the owner's rate card; still to come: late night, Maharashtrian, South Indian, Punjabi, fasting), with no fixed prices or compulsory rules.
-9. **Connect to the multi-item supplier orders** (one frozen-food supplier, several starter items, one order) and to v6 voice.
+7. **(Search by everyday names done in 5.5.0.) Expense items:** keep 6 primary categories, with aliases, search and progressive disclosure for wider coverage. Keep expense heads, supplier specialities, labour roles, menu courses and procurement items distinct. No ingredient-level money categories.
+8. **Optional, editable menu templates** (**breakfast and high tea done in 5.3.2** from the owner's rate card; late night, Punjabi and fasting added in 5.5.0 without a price; Maharashtrian and South Indian were already there), with no fixed prices or compulsory rules.
+9. **(Several items in one supplier order done in 5.5.0.) Connect to the multi-item supplier orders** (one frozen-food supplier, several starter items, one order) and to v6 voice.
 
 **An order is not an expense, and an assigned cook is not a confirmed labour cost.** Raw ingredients, purchased prepared food, specialist labour, outsourced services, orders, bills and settlements stay distinct.
 
