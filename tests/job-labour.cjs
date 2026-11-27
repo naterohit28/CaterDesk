@@ -12,7 +12,7 @@ const CHINESE = 'Chinese Cook – चायनीज आचारी', ROJIYA = 
 const EV = (id, name, extra = {}) => ({ id, name, date: day(2), venue: 'Sample Hall', type: 'Wedding – लग्न', billing: 100000, guests: 200, photoIds: [], ...extra });
 const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
   vendors: [{ id: 'cc', name: 'Sample Chinese Team', cat: 'Labour', specialty: CHINESE, phone: '9000000011' }, { id: 'rj', name: 'Sample Rojiya Mukadam', cat: 'Labour', specialty: ROJIYA }],
-  events: [EV('E', 'Sample Function'),
+  events: [EV('E', 'Sample Function', { meals: ['lunch', 'dinner'] }),
     // saved before 5.4.1: a Cook line by shifts (2 shifts × ₹800)
     EV('O', 'Sample Older Function', { labour: { rows: [{ id: 'old1', role: COOK, rate: 800, counts: { f: 2 } }] } })] });
 
@@ -39,8 +39,10 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [], expense
     await line(1).locator('[data-k="role"]').selectOption(CHINESE); await p.waitForTimeout(150);
     assert.equal(await line(1).locator('[data-lab-job][data-v="true"]').getAttribute('aria-pressed'), 'true', 'starts by order');
     assert.equal(await line(1).locator('[data-k^="c-"]').count(), 0, 'no shifts asked');
+    await line(1).locator('[data-k="meal"]').selectOption('dinner'); await line(1).locator('[data-k="items"]').fill('Hakka Noodles, Manchurian');
+    await line(1).locator('[data-k="time"]').fill('18:30');
     await line(1).locator('[data-k="people"]').fill('2'); await line(1).locator('[data-k="rate"]').fill('3000'); await line(1).locator('[data-k="fare"]').fill('400');
-    assert.match(await line(1).locator('[data-lab-line]').innerText(), /2 people · labour ₹3,000 \+ transport ₹400 = ₹3,400/);
+    assert.match(await line(1).locator('[data-lab-line]').innerText(), /2 people · agreed ₹3,000 · transport ₹400 = ₹3,400/);
     assert.match(await p.locator('#lab-total').innerText(), /₹6,900/, '5 × ₹700 + ₹3,400');
   });
 
@@ -50,19 +52,20 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [], expense
     const d = await dump(), mine = d.expenses.filter(x => x.evId === 'E').map(x => [x.head, x.amt, x.venId, x.pay]).sort();
     assert.deepEqual(mine, [[CHINESE, 3000, 'cc', 'credit'], [ROJIYA, 3500, 'rj', 'credit'], [TRANSPORT, 400, 'cc', 'credit']].sort());
     const row = d.events.find(e => e.id === 'E').labour.rows.find(r => r.role === CHINESE);
-    assert.deepEqual([row.job, row.people, row.rate, row.fare], [true, 2, 3000, 400]);
+    assert.deepEqual([row.job, row.people, row.rate, row.fare, row.meal, row.items, row.time], [true, 2, 3000, 400, 'dinner', 'Hakka Noodles, Manchurian', '18:30']);
+    assert.match(d.expenses.find(x => x.head === CHINESE).notes, /Chinese Cook by order \(Dinner · Hakka Noodles, Manchurian · .*\), 2 people: agreed ₹3,000/);
   });
 
   await test('the labour card shows it by order, and the Chinese contractor is owed ₹3,400', async () => {
     const t = (await p.locator('#labour-card').innerText()).replace(/\s+/g, ' ');
-    assert.match(t, /Chinese Cook .*By order · 2 people · labour ₹3,000 \+ transport ₹400 ₹3,400/);
+    assert.match(t, /Chinese Cook .*By order · Dinner · Hakka Noodles, Manchurian · .* · 2 people · agreed ₹3,000 · transport ₹400 ₹3,400/);
     assert.match(t, /Total · 5 shifts ₹6,900/);
     assert.match(await p.locator('[data-lab-contractor="cc"] [data-lab-due]').innerText(), /₹3,400 to pay/);
   });
 
   await test('the WhatsApp list to the contractor asks for people, not shifts', async () => {
     const msg = await p.evaluate(() => new Promise(res => { setTimeout(() => res('no WhatsApp opened'), 3000); window.open = u => { res(decodeURIComponent(u)); return {}; }; document.querySelector('[data-action="lab-send"][data-id="cc"]').click(); }));
-    assert.match(msg, /Chinese Cook: 2 people \(for the menu\)/);
+    assert.match(msg, /Chinese Cook: Dinner · Hakka Noodles, Manchurian · .* · 2 people/);
   });
 
   await test('reopening keeps it by order; switching to By shift and back works', async () => {
@@ -75,6 +78,36 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [], expense
     assert.equal(await line(i).locator('[data-k="fare"]').inputValue(), '400', 'values kept while switching');
     await p.locator('#lab-modal [data-action="close-modal"]').first().click(); await p.waitForTimeout(200);
     if (await p.locator('#ask-modal.active').count()) await p.locator('#ask-actions button').last().click();
+  });
+
+  await test('one contractor, two assignments: each is its own expense; the final charge replaces the agreed one; included transport adds nothing', async () => {
+    await openEvent('Sample Function'); await p.locator('[data-action="lab-edit"]').click(); await p.waitForSelector('#lab-modal.active');
+    const i = await p.locator('#lab-rows [data-lab]').evaluateAll((els, c) => els.findIndex(e => e.querySelector('[data-k="role"]').value === c), CHINESE);
+    await line(i).locator('[data-k="final"]').fill('3200');
+    await p.locator('#btn-lab-add').click(); await p.waitForTimeout(150);
+    const n = await p.locator('#lab-rows [data-lab]').count() - 1;
+    await line(n).locator('[data-k="role"]').selectOption(CHINESE); await p.waitForTimeout(150); await line(n).locator('[data-k="venId"]').selectOption('cc').catch(() => {});
+    await line(n).locator('[data-k="meal"]').selectOption('lunch'); await line(n).locator('[data-k="items"]').fill('Veg Fried Rice');
+    await line(n).locator('[data-k="rate"]').fill('1500'); await line(n).locator('[data-k="fare"]').fill('300'); await line(n).locator('[data-k="fareIn"]').check(); await p.waitForTimeout(150);
+    assert.match(await line(n).locator('[data-lab-line]').innerText(), /agreed ₹1,500 · transport included = ₹1,500/);
+    await p.locator('#btn-save-lab').click(); await p.waitForTimeout(700);
+    if (await p.locator('#ask-modal.active').count()) await p.locator('#ask-actions button').first().click();
+    const d = await dump(), cc = d.expenses.filter(x => x.evId === 'E' && x.venId === 'cc').map(x => [x.head, x.amt]).sort();
+    assert.deepEqual(cc, [[CHINESE, 1500], [CHINESE, 3200], [TRANSPORT, 400]].sort(), 'two assignments, final ₹3,200 counted, no transport for the included one');
+    assert.match(await p.locator('[data-lab-contractor="cc"] [data-lab-due]').innerText(), /₹5,100 to pay/, 'one contractor ledger: 3,200 + 400 + 1,500');
+  });
+
+  await test('an assignment with no charge yet is a requirement only: no expense', async () => {
+    await p.locator('[data-action="lab-edit"]').click(); await p.waitForSelector('#lab-modal.active');
+    await p.locator('#btn-lab-add').click(); await p.waitForTimeout(150);
+    const n = await p.locator('#lab-rows [data-lab]').count() - 1;
+    await line(n).locator('[data-k="role"]').selectOption('Sweet Labour – मिठाई मजूर'); await p.waitForTimeout(150);
+    await line(n).locator('[data-k="items"]').fill('Jalebi');
+    const before = (await dump()).expenses.length;
+    await p.locator('#btn-save-lab').click(); await p.waitForTimeout(700);
+    if (await p.locator('#ask-modal.active').count()) await p.locator('#ask-actions button').first().click();
+    const d = await dump(); assert.equal(d.expenses.length, before, 'no expense');
+    assert.ok(d.events.find(e => e.id === 'E').labour.rows.some(r => r.items === 'Jalebi' && r.job), 'the requirement is kept');
   });
 
   await test('a Cook line saved by shifts before stays by shifts with its amount', async () => {
