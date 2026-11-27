@@ -356,6 +356,8 @@
     </div>
     <!-- 5.2.0: one tap for the items you record most (category and item together). The category chips and
          item list below stay for everything else. Labour-sheet entries and order prices are not counted. -->
+    <div class="field"><label for="exp-find">Find item – शोधा</label><input type="search" id="exp-find" maxlength="40" autocomplete="off" enterkeyhint="search" placeholder="e.g. paneer, tempo, waiter">
+      <div class="chips-row" id="exp-find-res" role="group" aria-label="Matching items" aria-live="polite" style="margin:var(--s2) 0 0;padding:0;flex-wrap:wrap"></div></div>
     <div class="field" id="exp-item-quick-field" hidden>
       <label>Usual items – नेहमीचे</label>
       <div class="chips-row" id="exp-item-quick" role="group" aria-label="Usual items" style="margin:0;padding:0;flex-wrap:wrap"></div>

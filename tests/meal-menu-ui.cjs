@@ -95,10 +95,10 @@ const pickTime = async (p, id, hhmm = '19:30') => { if (await p.inputValue('#' +
     assert.equal(groups[0][0], 'For Breakfast'); assert.ok(groups[0][1].includes('Sample Breakfast Menu · 3 dishes'));
     assert.equal(groups[0][1].filter(t => t.startsWith('Breakfast / High Tea – ')).length, 8);
     assert.equal(groups[1][0], 'Any meal'); assert.ok(groups[1][1].includes(`Golden · ${golden.length} dishes`));
-    assert.deepEqual(groups.at(-1), ['Other meals', ['Sample Dinner Menu · 4 dishes']], 'other saved menus still choosable');
+    assert.equal(groups.at(-1)[0], 'Other meals'); assert.ok(groups.at(-1)[1].includes('Sample Dinner Menu · 4 dishes'), 'other saved menus still choosable');   // 5.5.0: with Late Night and Punjabi
     assert.deepEqual(await p.locator('#svc-tpl > option').allInnerTexts(), ['No library menu', '+ Create new menu']);
     await p.selectOption('#svc-meal', 'svc-dinner');
-    assert.deepEqual((await p.locator('#svc-tpl optgroup').first().evaluate(g => [g.label, [...g.children].map(o => o.textContent)])), ['For Dinner', ['Sample Dinner Menu · 4 dishes']]);
+    assert.deepEqual((await p.locator('#svc-tpl optgroup').first().evaluate(g => [g.label, [...g.children].map(o => o.textContent)])), ['For Dinner', ['Punjabi · 12 dishes', 'Sample Dinner Menu · 4 dishes']]);   // 5.5.0: Punjabi starter menu
     await p.locator('#svc-modal [data-action="close-modal"]').click();
   });
 

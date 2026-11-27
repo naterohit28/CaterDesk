@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, billSet, billingSplit, calcVendorBalance, normGstin, gstinValid, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, billOrderIds, deliveredWithoutBill, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, repeatBill, repeatBills, billCandidates, paymentSchedule, keepPaidMilestones, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, dishSource, learnedDishes, kitchenDishes, dishesTaken, JOB_STAGES, jobStage, jobGuests, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, billOrderIds, deliveredWithoutBill, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, repeatBill, repeatBills, billCandidates, findHeads, paymentSchedule, keepPaidMilestones, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, dishSource, learnedDishes, kitchenDishes, dishesTaken, JOB_STAGES, jobStage, jobGuests, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -2968,7 +2968,7 @@ function renderMenus() {
       <div class="row-body"><div class="title-sm trunc" data-nl>${esc(m.name)}</div>
         <div class="meta trunc">${(m.items || []).length} ${tr('dishes', 'पदार्थ')}${(m.meals || []).length ? ' · ' + (m.meals || []).map(x => MEALS[x]).join(', ') : ''}${m.leaf ? ' · ' + tr('banana leaf', 'केळीचे पान') : ''}</div>
         ${(m.slabs || []).length > 1 ? `<div class="meta trunc">${esc(slabText(m))}</div>` : ''}</div>
-      <div class="row-end"><div class="amt-sm">${(m.slabs || []).length > 1 ? tr('from ', 'पासून ') : ''}${fmtCurrency(Math.min(...(m.slabs || [{ rate: 0 }]).map(x => x.rate)))}</div><div class="meta">${tr('per plate', 'प्रति ताट')}</div></div></div>`;
+      <div class="row-end">${Math.max(0, ...(m.slabs || []).map(x => x.rate)) > 0 ? `<div class="amt-sm">${(m.slabs || []).length > 1 ? tr('from ', 'पासून ') : ''}${fmtCurrency(Math.min(...(m.slabs || [{ rate: 0 }]).map(x => x.rate)))}</div><div class="meta">${tr('per plate', 'प्रति ताट')}</div>` : `<div class="meta">${tr('No price', 'दर नाही')}</div>`}</div></div>`;
   q('menus-body').innerHTML = `<div class="card list">${shown.map(row).join('') || `<div class="list-empty">${tr('No menus', 'मेनू नाहीत')}</div>`}</div>
     ${hidden.length ? `<div class="sec"><span class="sec-title">${tr('Hidden', 'लपवलेले')}</span></div><div class="card list">${hidden.map(row).join('')}</div>` : ''}`;
 }
@@ -3061,7 +3061,7 @@ function mealMenuCard(ev) {
           <button type="button" class="btn-sm" data-action="svc-use" data-id="${esc(s.id)}">${icon('check', 16)}${tr('Use these dishes', 'हे पदार्थ घ्या')}</button></div>`
       : s.template ? `<div class="meta svc-tpl">${tr(`Started from ${esc(s.template.name)} menu`, `${esc(s.template.name)} मेनूवरून`)}</div>` : '';
     return `<div class="card pad svc-card" data-svc="${esc(s.id)}" data-meal-menu="${esc(s.meal)}">
-      <div class="svc-h"><div class="svc-t"><div class="title-sm">${esc(svcTitle(s, services))}</div>${facts ? `<div class="meta" data-nl>${esc(facts)}</div>` : ''}</div>
+      <div class="svc-h"><div class="svc-t"><div class="title-sm">${esc(svcTitle(s, services))}${s.fromTemplate ? ` <span class="chip due" data-preview>${tr('Preview · not saved', 'फक्त पाहणी')}</span>` : ''}</div>${facts ? `<div class="meta" data-nl>${esc(facts)}</div>` : ''}</div>
         <button type="button" class="btn-sm" data-action="svc-edit" data-id="${esc(s.id)}" aria-label="Edit ${esc(svcTitle(s, services))} menu">${icon('pencil', 16)}${tr('Edit', 'बदला')}</button></div>
       ${own.length ? dishCourses(own) : `<div class="meta">${tr('No dishes yet', 'अजून पदार्थ नाहीत')}</div>`}
       ${tplLine}
@@ -3479,8 +3479,10 @@ async function useServiceTemplate(id) {
     : { ...x, dishes: x.dishes.map(d => d.preview ? { name: d.name, ...dishSource(d.name, learned) } : d) });
   const patch = applyServices(ev, next);
   try { await patchEvent(ev.id, patch); } catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
-  showToast(`${svcTitle(s, all)}: ${s.dishes.filter(d => d.preview).length} dishes added from ${s.template.name} – पदार्थ जोडले`, 'success');
+  showToast(`${svcTitle(s, all)}: ${s.dishes.filter(d => d.preview).length} dishes added from ${s.template.name}. Next: kitchen, counters and orders below – पदार्थ जोडले`, 'success');
   refreshCurrent();
+  // 5.5.0: straight on to who makes each dish and what to order
+  requestAnimationFrame(() => q('menu-orders')?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }));
 }
 
 
@@ -5173,7 +5175,7 @@ function updateQuote() {
     lines.push(`For a ${TARGET_MARGIN}% margin, quote at least <b>${fmtCurrency(pm)}/plate</b>`);
     lines.push(`<span class="meta">(${TARGET_MARGIN}% markup on cost would be only ${fmtCurrency(pu)}/plate, a ${marginPct(pu, cost.perPlate)}% margin)</span>`);
   }
-  if (billed) lines.push(`Card ${fmtCurrency(menuRate(menu, guests))} · you actually billed <b>${fmtCurrency(billed.perPlate)}/plate</b> on average (${billed.n} event${billed.n > 1 ? 's' : ''})`);
+  if (billed) lines.push(`${menuRate(menu, guests) > 0 ? `Card ${fmtCurrency(menuRate(menu, guests))} · ` : ''}you actually billed <b>${fmtCurrency(billed.perPlate)}/plate</b> on average (${billed.n} event${billed.n > 1 ? 's' : ''})`);
   box.innerHTML = lines.map(l => `<div>${l}</div>`).join('');
   box.hidden = !lines.length;
 }
@@ -5382,6 +5384,12 @@ function usualItems() {
   }
   return [...uses.values()].sort((a, b) => (b.n - a.n) || b.last.localeCompare(a.last)).slice(0, USUAL_ITEMS);
 }
+// 5.5.0: find an item by any name for it; tapping one sets category and item together
+function renderExpFind() {
+  const hits = findHeads(qv('exp-find'));
+  q('exp-find-res').innerHTML = hits.map(h => `<button type="button" class="f-chip" data-qcat="${esc(h.cat)}" data-qhead="${esc(h.head)}">${esc(short(h.head))} <span class="n">${esc(h.cat)}</span></button>`).join('')
+    || (qv('exp-find').trim().length > 1 ? `<span class="meta">${tr('No match: choose the category below', 'सापडले नाही: खालून प्रकार निवडा')}</span>` : '');
+}
 function renderItemQuick() {
   const items = usualItems(), cat = qv('exp-cat'), head = qv('exp-head');
   q('exp-item-quick-field').hidden = !items.length;
@@ -5507,6 +5515,7 @@ function openExpModal(arg) {
   const pre  = arg && typeof arg === 'object' && (arg.prefill || arg.resume) || null;
   const ex   = arg && typeof arg === 'object' && !pre ? arg : null;
   formBase.exp = snapshot(ex);   // an expense or bill draft being edited; null for a new entry
+  q('exp-find').value = ''; q('exp-find-res').innerHTML = '';
   expLogi = pre?.logi || '';
   expOrder = pre?.order || ''; expPurchase = pre?.purchase || '';   // the delivered order this new bill is for (G-23)     // which venue reminder a new expense answers (one expense per reminder)
   expTouched = { item: !!(ex || pre?.head), pay: !!(ex || arg?.resume) };
@@ -6901,6 +6910,11 @@ function bindAllEvents() {
   q('exp-ev').addEventListener('change', updateExpEvHint);
   q('exp-head').addEventListener('change', () => { expTouched.item = true; populateVendorSelect(qv('exp-vendor')); renderItemQuick(); });
   // One tap: category and item together, exactly as choosing them below would (5.2.0)
+  q('exp-find').addEventListener('input', renderExpFind);
+  q('exp-find-res').addEventListener('click', e => {
+    const b = e.target.closest('[data-qcat]'); if (!b) return;
+    expTouched.item = true; setExpCat(b.dataset.qcat, b.dataset.qhead); q('exp-find').value = ''; q('exp-find-res').innerHTML = '';
+  });
   q('exp-item-quick').addEventListener('click', e => {
     const b = e.target.closest('[data-qcat]'); if (!b) return;
     expTouched.item = true; setExpCat(b.dataset.qcat, b.dataset.qhead);
@@ -7111,7 +7125,7 @@ function bindAllEvents() {
     if (e.target.dataset.k !== 'menu') return;
     const row = e.target.closest('[data-mp]'), menu = menuById(e.target.value), rate = row.querySelector('[data-k="rate"]');
     const guests = qv(`ev-mp-${row.dataset.mp}-g`) || qv('ev-guests');
-    if (menu && (!rate.value || rate.dataset.auto === rate.value)) { rate.value = String(menuRate(menu, guests)); rate.dataset.auto = rate.value; }
+    if (menu && menuRate(menu, guests) > 0 && (!rate.value || rate.dataset.auto === rate.value)) { rate.value = String(menuRate(menu, guests)); rate.dataset.auto = rate.value; }   // a menu with no price fills nothing
     updateMealPlan();
   }));
   q('plan-rows').addEventListener('input', e => { const row = e.target.closest('[data-pm]'), k = e.target.dataset.k; if (!row || !k) return;
