@@ -11,7 +11,7 @@ import {
 } from './db.js';
 
 import {
-  EXPENSE_HEADS, RETIRED_HEADS, headNow, catNow, EVENT_TYPES, VENUE_TYPES, LOGISTICS, venueTypeLabel, logisticsPrompts, venueSuggestion, PAY_MODES, PERIODS, PERIOD_SHORT, MENUS, allMenus, setSavedMenus, menusForMeal, cleanSlabs, isEditedStarter, menuById, menuRate, menuCostPerPlate, costChecklist,
+  EXPENSE_HEADS, RETIRED_HEADS, headNow, catNow, EVENT_TYPES, VENUE_TYPES, LOGISTICS, venueTypeLabel, logisticsPrompts, venueSuggestion, PAY_MODES, PERIODS, PERIOD_SHORT, MENUS, allMenus, setSavedMenus, menusForMeal, cleanSlabs, isEditedStarter, menuById, menuRate, menuCostPerPlate, costChecklist, costGaps,
   uid, today, localDay, localTime, localStamp, daysSince, fmtDate, fmtCurrency, esc,
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, billSet, billingSplit, calcVendorBalance, normGstin, gstinValid, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '5.3.2';
+const APP_BUILD = '5.3.3';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -3845,13 +3845,14 @@ function reconCard(ev, recon) {
     ${head(`<span class="chip pos">${tr('Reconciled', 'जुळवले')}</span>`, `<button type="button" class="btn-sm" data-action="recon-reopen">${tr('Reopen', 'पुन्हा उघडा')}</button>`)}
     <div class="meta" style="margin-top:var(--s2)">${tr(`All costs confirmed on ${fmtDate(localDay(recon.at))}. This contribution is final for the event (before overheads).`, `${fmtDate(localDay(recon.at))} रोजी सर्व खर्च निश्चित. हे योगदान अंतिम आहे.`)}</div>
     ${reconHistoryList(ev)}</div>`;
-  const reopened = recon.state === 'reopened';
+  const reopened = recon.state === 'reopened', gaps = costGaps(ev, D.events, D.expenses);
   return `<div class="card pad" id="recon-card">
-    ${head(`<span class="chip ${reopened ? 'neg' : 'due'}">${reopened ? tr('Changed after reconciling', 'जुळवल्यानंतर बदल') : tr('Costs pending', 'खर्च बाकी')}</span>`,
+    ${head(`<span class="chip ${reopened || gaps.length ? 'neg' : 'due'}">${reopened ? tr('Changed after reconciling', 'जुळवल्यानंतर बदल') : gaps.length ? tr('Costs incomplete', 'खर्च अपूर्ण') : tr('Costs pending', 'खर्च बाकी')}</span>`,
       `<button type="button" class="btn-sm" data-action="recon-open">${reopened ? tr('Review', 'तपासा') : tr('Reconcile', 'जुळवा')}</button>`)}
     <div class="meta" style="margin-top:var(--s2)">${reopened
       ? `${recon.changes.map(changeText).join(' · ')} · ${tr(`since you reconciled on ${fmtDate(localDay(recon.at))}. The contribution is provisional again until you review it.`, 'पुन्हा तपासेपर्यंत योगदान अंदाजे.')}`
       : tr('The contribution is provisional until you confirm every bill is in. Unpaid bills count as costs.', 'सर्व बिले आल्याचे निश्चित करेपर्यंत योगदान अंदाजे आहे. न भरलेली बिलेही खर्चच.')}</div>
+    ${gaps.length ? `<div class="recon-gaps" id="recon-gaps">${gaps.map(g => `<div class="note warning" style="margin-top:var(--s2)"><span class="note-ic">${icon('warn', 16)}</span><div>${tr(esc(g.en), esc(g.mr))}</div></div>`).join('')}</div>` : ''}
     ${reconHistoryList(ev)}</div>`;
 }
 
@@ -3867,7 +3868,11 @@ function openReconModal() {
   q('recon-sum').innerHTML = `
     <div>${tr(`Costs recorded: <b>${fmtCurrency(pl.expTotal)}</b> in ${exps.length} entr${exps.length === 1 ? 'y' : 'ies'}`, `नोंदलेला खर्च: <b>${fmtCurrency(pl.expTotal)}</b> (${exps.length})`)}${credit ? tr(` · ${fmtCurrency(credit)} still to pay to vendors (counted)`, ` · ${fmtCurrency(credit)} देणे बाकी (मोजले)`) : ''}</div>
     <div>${tr(`Bill <b>${fmtCurrency(ev.billing)}</b>${eventGuests(ev) ? ` · ${eventGuests(ev)} guests` : ''} · contribution <b>${fmtCurrency(pl.profit)}</b>${ev.billing > 0 ? ` (${pl.margin}%)` : ''}`, `बिल <b>${fmtCurrency(ev.billing)}</b> · योगदान <b>${fmtCurrency(pl.profit)}</b>`)}</div>`;
-  q('recon-block').innerHTML = blockers.map(b => `<div class="note alert" style="margin-top:var(--s2)"><span class="note-ic">${icon('alert', 16)}</span><div>${tr(b.en, b.mr)}</div></div>`).join('');
+  // 5.3.3: what looks missing is shown as a warning (not a block); saving then asks to confirm
+  const gaps = blockers.length ? [] : costGaps(ev, D.events, D.expenses);
+  q('recon-block').innerHTML = blockers.map(b => `<div class="note alert" style="margin-top:var(--s2)"><span class="note-ic">${icon('alert', 16)}</span><div>${tr(b.en, b.mr)}</div></div>`).join('')
+    + (gaps.length ? `<div id="recon-gap-list">${gaps.map(g => `<div class="note warning" style="margin-top:var(--s2)"><span class="note-ic">${icon('warn', 16)}</span><div>${tr(esc(g.en), esc(g.mr))}</div></div>`).join('')}
+      <div class="meta" style="margin-top:var(--s2)">${tr('Add them first, or reconcile anyway if they really were not spent.', 'आधी जोडा, किंवा खरोखर खर्च झाला नसेल तरच जुळवा.')}</div></div>` : '');
   q('recon-checks').innerHTML = RECON_CHECKS.map(c => `<label class="check-row"><input type="checkbox" data-check="${c.id}"${blockers.length ? ' disabled' : ''}><span>${tr(c.en, c.mr)}</span></label>`).join('');
   updateReconSave();
   openSheet('recon-modal');
@@ -3884,6 +3889,13 @@ async function saveRecon() {
   const changed = JSON.stringify(reconStatus(reconBase, D.expenses)) !== JSON.stringify(reconStatus(ev, D.expenses))
     || ev.billing !== reconBase.billing || ev.guests !== reconBase.guests || ev._rev !== reconBase._rev;
   if (changed) { showToast('This event changed while the checklist was open. Check the figures again.', 'error'); openReconModal(); return; }
+  const gaps = costGaps(ev, D.events, D.expenses);
+  if (gaps.length) {
+    const ok = await askSheet({ title: 'Costs look incomplete – खर्च अपूर्ण दिसतो',
+      message: `${gaps.map(g => '• ' + g.en).join('\n')}\n\nReconcile only if these really were not spent. The contribution becomes final.`,
+      actions: [{ label: 'Reconcile anyway – तरीही जुळवा', value: true, style: 'btn-danger' }], cancel: 'Go back – मागे' });
+    if (!ok) return;
+  }
   try {
     await patchEvent(ev.id, reconcileFields(ev, D.expenses, checks));
   } catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
@@ -3939,21 +3951,27 @@ function checklistCard(ev) {
     </div>`;
 }
 
-// Home: events in the last two weeks that have costs, but fewer than usual
+/* Home: past events not yet reconciled that have some costs but look incomplete (5.3.3: every such event, not
+   only the last two weeks; usual costs missing, no labour cost, labour lines without a rate). Most recent first. */
 function checkCostsCard() {
-  const recent = D.events.filter(e => isOverdue(e) && daysSince(e.date) <= 14 && D.expenses.some(x => x.evId === e.id))
-    .map(e => ({ e, cl: costChecklist(e, D.events, D.expenses) })).filter(r => r.cl?.missing);
-  if (!recent.length) return '';
+  const done = reconciledIds(D.events, D.expenses);
+  const all = D.events.filter(e => isOverdue(e) && !done.has(e.id) && D.expenses.some(x => x.evId === e.id))
+    .map(e => ({ e, gaps: costGaps(e, D.events, D.expenses) })).filter(r => r.gaps.length)
+    .sort((a, b) => b.e.date.localeCompare(a.e.date));
+  if (!all.length) return '';
+  const shown = all.slice(0, 5), more = all.length - shown.length;
+  const line = g => g.kind === 'usual' ? tr(`${g.n} usual cost${g.n > 1 ? 's' : ''} not recorded`, `${g.n} नेहमीचे खर्च बाकी`) : tr(esc(g.en), esc(g.mr));
   return `
-    <div class="sec"><span class="sec-title">Check costs – खर्च तपासा</span><span class="meta">${recent.length}</span></div>
-    <div class="card list">${recent.map(({ e, cl }) => `
+    <div class="sec"><span class="sec-title">Check costs – खर्च तपासा</span><span class="meta">${all.length}</span></div>
+    <div class="card list" id="check-costs">${shown.map(({ e, gaps }) => `
       <div class="row" role="button" tabindex="0" data-action="evdetail" data-id="${esc(e.id)}">
         <div class="row-ic" style="background:var(--due-soft);color:var(--due)">${icon('receipt', 18)}</div>
         <div class="row-body"><div class="title-sm trunc" data-nl>${esc(e.name)}</div>
-          <div class="meta">${tr(`${cl.missing} usual cost${cl.missing > 1 ? 's' : ''} not recorded`, `${cl.missing} नेहमीचे खर्च नोंदवले नाहीत`)}</div></div>
+          <div class="meta">${esc(fmtDate(e.date))} · ${gaps.map(line).join(' · ')}</div></div>
         ${icon('chevron', 18)}
-      </div>`).join('')}</div>`;
+      </div>`).join('')}${more ? `<div class="row" role="button" tabindex="0" data-action="go" data-id="events" style="min-height:48px"><div class="row-body title-sm">${tr(`${more} more event${more > 1 ? 's' : ''} to check`, `आणखी ${more} कार्यक्रम`)}</div>${icon('chevron', 18)}</div>` : ''}</div>`;
 }
+
 
 /* ── EXPENSES ────────────────────────────────────── */
 // One expense row; tap to edit, bin to delete (with Undo)

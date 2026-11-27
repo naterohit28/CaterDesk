@@ -1324,6 +1324,30 @@ export function costChecklist(ev, events, expenses) {
   return { ref, list, missing: list.filter(i => !i.done).length };
 }
 
+/* 5.3.3 (owner, 26 Nov 2026): what makes an event's costs look incomplete, so it is not called finished or
+   profitable too early. Warnings only (a cost may genuinely not have been spent); nothing here changes an amount.
+   - usual costs from the last similar reconciled event not recorded here (costChecklist);
+   - no labour cost at all on an event we cater ourselves;
+   - labour lines with no rate yet and no labour bill total. */
+export function costGaps(ev, events, expenses) {
+  if (!ev || ev.outsourced) return [];
+  const out = [], mine = expenses.filter(x => x.evId === ev.id);
+  const cl = costChecklist(ev, events, expenses);
+  const usual = cl ? cl.list.filter(i => !i.done) : [];
+  if (usual.length) {
+    const names = usual.map(i => String(i.head || i.cat).split(' – ')[0]);
+    out.push({ kind: 'usual', n: usual.length,
+      en: `${usual.length} usual cost${usual.length > 1 ? 's' : ''} not recorded (from ${cl.ref.name}): ${names.join(', ')}`,
+      mr: `${usual.length} नेहमीचे खर्च नोंदवले नाहीत: ${names.join(', ')}` });
+  }
+  const labourMissing = !mine.some(x => x.cat === 'Labour') && !usual.some(i => i.cat === 'Labour');
+  if (labourMissing) out.push({ kind: 'labour', n: 1, en: 'No labour cost recorded', mr: 'मजुरीचा खर्च नोंदवलेला नाही' });
+  const rows = ev.labour?.rows || [], noRate = rows.filter(r => !(Number(r.rate) > 0)).length;
+  if (noRate && !(Number(ev.labour?.billTotal) > 0)) out.push({ kind: 'rates', n: noRate,
+    en: `${noRate} labour line${noRate > 1 ? 's have' : ' has'} no rate yet`, mr: `${noRate} मजूर ओळींचा दर बाकी` });
+  return out;
+}
+
 /* ── WHAT IS STILL OWED, BILL BY BILL (spec §10.3, G-08) ── */
 /* A bill is one credit purchase, or every part of one shared bill (same `split.id`), owed once. A vendor payment
    marked for a bill (`billKey`) settles that bill first; anything over it, and every unmarked payment or credit
