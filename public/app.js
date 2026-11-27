@@ -357,36 +357,48 @@ function saveExpSnapshot() {
     date: qv('exp-date'), dueDate: qv('exp-due'), notes: qv('exp-notes'), at: Date.now() });
 }
 
-/* 5.4.2 (owner): "What's new", in plain words, newest first. Each release adds one entry here. After an update the app
-   says so once ("Updated to …"), with a button to this list; nothing is shown on a first install. */
+/* 5.4.2 (owner's requirements): "What's new" in plain words, newest first: the one source of release notes, bundled in
+   the app so it works offline. Each release adds one entry (version, release date, English and Marathi). No popup after
+   updates: only an entry marked `intro` (a notable change) shows a small card on Home once, which can be dismissed. */
 const WHATS_NEW = [
-  { v: '5.4.2', en: 'What\'s new: this list, in the menu (☰). After an update the app tells you once.', mr: 'नवीन काय: ही यादी मेनूमध्ये (☰). अपडेटनंतर एकदा सांगितले जाते.' },
-  { v: '5.4.1', en: 'Cooking labour (cooks, roti, starters, sweets, Chinese) is entered by order: people, labour for the job and transport. Rojiya, Ghati and Boys stay by shift.', mr: 'स्वयंपाकी, रोटी, स्टार्टर, मिठाई, चायनीज मजूर ऑर्डरप्रमाणे: किती जण, मजुरी आणि भाडे. रोजीया, घाटी, बॉईज शिफ्टप्रमाणे.' },
-  { v: '5.4.0', en: 'Vendors are split into Suppliers and Contractors, each with its own totals. More labour types: Chinese Cook, Roti Cook, Starter / Farsan, Sweet, House Keeping, Security, Valet, Manager.', mr: 'विक्रेते: पुरवठादार आणि ठेकेदार वेगळे, स्वतंत्र एकूण. नवे मजूर प्रकार जोडले.' },
-  { v: '5.3.4', en: 'A bill photo whose amount matches items you already entered asks first, so the bill is not counted twice. You can attach the photo to those entries.', mr: 'आधी नोंदवलेल्या खर्चाइतकेच बिल असेल तर आधी विचारले जाते, खर्च दोनदा धरला जात नाही.' },
-  { v: '5.3.3', en: 'An event with missing usual costs or labour says "Costs incomplete", and asks before you close it.', mr: 'नेहमीचे खर्च किंवा मजुरी बाकी असेल तर "खर्च अपूर्ण" दाखवते आणि जुळवण्याआधी विचारते.' },
-  { v: '5.3.2', en: 'Breakfast and high tea: 8 ready menus from your rate card.', mr: 'नाश्ता आणि हाय टी: रेट कार्डमधील ८ तयार मेनू.' },
-  { v: '5.3.1', en: 'Who makes a dish is no longer guessed from its name; your earlier choices are remembered. New labour type: Specialist Cook.', mr: 'पदार्थ कोण बनवतो हे नावावरून ठरवत नाही; तुमची आधीची निवड लक्षात ठेवते.' },
-  { v: '5.3.0', en: 'Home opens on today\'s work: today\'s and tomorrow\'s events and what is still open.', mr: 'होम: आज आणि उद्याचे कार्यक्रम आणि बाकी काम.' },
-  { v: '5.2.2', en: 'Ice and Milk & Dairy are separate expense items.', mr: 'बर्फ आणि दूध व दुग्धजन्य पदार्थ वेगळे खर्च.' },
-  { v: '5.2.1', en: 'Menu headings like "High Tea 100 pax" or "नाश्ता" are recognised.', mr: 'मेनूमधील जेवणाची शीर्षके ओळखली जातात.' },
-  { v: '5.2.0', en: 'Usual items: one tap for the expense items you record most.', mr: 'नेहमीचे खर्च: एका टॅपमध्ये.' }
+  { v: '5.4.2', date: '2026-11-27', intro: true, en: 'Vendors now open as Suppliers and Contractors. Cooking labour is entered by order, with dishes, meal and charge. A bill photo that repeats items you entered asks first. This "What\'s new" list is in the menu (☰).', mr: 'विक्रेते: पुरवठादार आणि ठेकेदार. स्वयंपाकी मजूर ऑर्डरप्रमाणे. आधी नोंदवलेले बिल पुन्हा आले तर आधी विचारते. "नवीन काय" मेनूमध्ये (☰).' },
+  { v: '5.4.1', date: '2026-11-27', en: 'Cooking labour (cooks, roti, starters, sweets, Chinese) is entered by order: people, labour for the job and transport. Rojiya, Ghati and Boys stay by shift.', mr: 'स्वयंपाकी, रोटी, स्टार्टर, मिठाई, चायनीज मजूर ऑर्डरप्रमाणे: किती जण, मजुरी आणि भाडे. रोजीया, घाटी, बॉईज शिफ्टप्रमाणे.' },
+  { v: '5.4.0', date: '2026-11-27', en: 'Vendors are split into Suppliers and Contractors, each with its own totals. More labour types: Chinese Cook, Roti Cook, Starter / Farsan, Sweet, House Keeping, Security, Valet, Manager.', mr: 'विक्रेते: पुरवठादार आणि ठेकेदार वेगळे, स्वतंत्र एकूण. नवे मजूर प्रकार जोडले.' },
+  { v: '5.3.4', date: '2026-11-27', en: 'A bill photo whose amount matches items you already entered asks first, so the bill is not counted twice. You can attach the photo to those entries.', mr: 'आधी नोंदवलेल्या खर्चाइतकेच बिल असेल तर आधी विचारले जाते, खर्च दोनदा धरला जात नाही.' },
+  { v: '5.3.3', date: '2026-11-27', en: 'An event with missing usual costs or labour says "Costs incomplete", and asks before you close it.', mr: 'नेहमीचे खर्च किंवा मजुरी बाकी असेल तर "खर्च अपूर्ण" दाखवते आणि जुळवण्याआधी विचारते.' },
+  { v: '5.3.2', date: '2026-11-27', en: 'Breakfast and high tea: 8 ready menus from your rate card.', mr: 'नाश्ता आणि हाय टी: रेट कार्डमधील ८ तयार मेनू.' },
+  { v: '5.3.1', date: '2026-11-26', en: 'Who makes a dish is no longer guessed from its name; your earlier choices are remembered. New labour type: Specialist Cook.', mr: 'पदार्थ कोण बनवतो हे नावावरून ठरवत नाही; तुमची आधीची निवड लक्षात ठेवते.' },
+  { v: '5.3.0', date: '2026-11-26', en: 'Home opens on today\'s work: today\'s and tomorrow\'s events and what is still open.', mr: 'होम: आज आणि उद्याचे कार्यक्रम आणि बाकी काम.' },
+  { v: '5.2.2', date: '2026-11-26', en: 'Ice and Milk & Dairy are separate expense items.', mr: 'बर्फ आणि दूध व दुग्धजन्य पदार्थ वेगळे खर्च.' },
+  { v: '5.2.1', date: '2026-11-26', en: 'Menu headings like "High Tea 100 pax" or "नाश्ता" are recognised.', mr: 'मेनूमधील जेवणाची शीर्षके ओळखली जातात.' },
+  { v: '5.2.0', date: '2026-11-26', en: 'Usual items: one tap for the expense items you record most.', mr: 'नेहमीचे खर्च: एका टॅपमध्ये.' }
 ];
 function openWhatsNew() {
-  q('whatsnew-body').innerHTML = `<div class="card list" id="whatsnew-list">${WHATS_NEW.map(w => `
-    <div class="row whatsnew-row" style="align-items:flex-start">
+  const row = w => `<div class="row whatsnew-row" style="align-items:flex-start">
       <div class="row-body"><div class="title-sm">${tr(`Version ${w.v}`, `आवृत्ती ${w.v}`)}${w.v === APP_BUILD ? ` <span class="chip pos">${tr('This version', 'ही आवृत्ती')}</span>` : ''}</div>
-        <div class="meta" style="white-space:normal">${tr(esc(w.en), esc(w.mr))}</div></div>
-    </div>`).join('')}</div>`;
+        <div class="meta">${tr(`Released ${fmtDate(w.date)}`, `${fmtDate(w.date)}`)}</div>
+        <div class="meta" style="white-space:normal;margin-top:4px">${tr(esc(w.en), esc(w.mr))}</div></div>
+    </div>`;
+  const cur = WHATS_NEW.find(w => w.v === APP_BUILD) || WHATS_NEW[0], older = WHATS_NEW.filter(w => w !== cur);
+  q('whatsnew-body').innerHTML = `<div class="card pad" id="whatsnew-current"><div class="label">${tr('Current version', 'सध्याची आवृत्ती')}</div>
+      <div class="amt-md">${esc(APP_BUILD)}</div></div>
+    <div class="card list" id="whatsnew-list" style="margin-top:var(--s3)">${row(cur)}</div>
+    ${older.length ? `<details class="card pad" id="whatsnew-history" style="margin-top:var(--s3)"><summary class="title-sm" style="cursor:pointer">${tr(`Earlier versions (${older.length})`, `आधीच्या आवृत्त्या (${older.length})`)}</summary>
+      <div class="list">${older.map(row).join('')}</div></details>` : ''}`;
   openSheet('whatsnew-modal');
 }
-// Once after an update: "Updated to 5.4.2 · See what's new". A first install (no records yet) is not told.
-function noteNewVersion() {
-  const seen = readPref('ffv2_seen_build', '');
-  writePref('ffv2_seen_build', APP_BUILD);
-  if (seen === APP_BUILD || (!seen && !D.events.length && !D.expenses.length)) return;
-  setTimeout(() => showToast(`Updated to ${APP_BUILD} – ${APP_BUILD} अपडेट झाले`, 'success', { label: "See what's new – नवीन काय", run: openWhatsNew }), 1200);
+/* A notable update (`intro`) gets a small card on Home once, never a popup; dismissing it or opening the list hides it.
+   A first install (no records yet) is not told. */
+function whatsNewCard() {
+  const w = WHATS_NEW.find(x => x.v === APP_BUILD);
+  if (!w?.intro || readPref('ffv2_intro_seen', '') === APP_BUILD) return '';
+  if (!readPref('ffv2_seen_build', '') && !D.events.length && !D.expenses.length) return '';
+  return `<div class="card pad" id="whatsnew-intro" style="display:flex;gap:var(--s2);align-items:flex-start;margin-bottom:var(--s3)">
+    <div style="flex:1"><div class="title-sm">${tr(`New in ${APP_BUILD}`, `${APP_BUILD} मध्ये नवीन`)}</div><div class="meta" style="white-space:normal">${tr(esc(w.en), esc(w.mr))}</div>
+      <button type="button" class="btn-sm" data-action="whatsnew-open" style="margin-top:var(--s2)">${tr("See what's new", 'नवीन काय')}</button></div>
+    <button type="button" class="icon-btn" data-action="whatsnew-dismiss" aria-label="Dismiss">${icon('x', 16)}</button></div>`;
 }
+function noteNewVersion() { writePref('ffv2_seen_build', APP_BUILD); }
 
 function launchApp() {
   if (launched) return;   // setting a PIN later must not re-bind every listener
@@ -879,7 +891,7 @@ function todayCard() {
 
 /* ── HOME ────────────────────────────────────────── */
 function rHome() {
-  q('today').innerHTML = todayCard();
+  q('today').innerHTML = whatsNewCard() + todayCard();
   renderPeriodSegs();
   const P = sliceByPeriod(D, period);
   // Contribution, margin and what is still owed: events with a bill only (billingSplit). Costs of events without a
@@ -6690,6 +6702,8 @@ function bindAllEvents() {
       case 'ev-filter':    F.ev = id; rEvents(); break;
       case 'exp-filter': expensePage = 1; F.exp = id; rExp(); break;
       case 'ven-filter': venShown = VEN_STEP; F.ven = id; rVen(); break;
+      case 'whatsnew-open': writePref('ffv2_intro_seen', APP_BUILD); openWhatsNew(); q('whatsnew-intro')?.remove(); break;
+      case 'whatsnew-dismiss': writePref('ffv2_intro_seen', APP_BUILD); q('whatsnew-intro')?.remove(); break;
       case 'ven-kind': venShown = VEN_STEP; F.venKind = id === 'con' ? 'con' : 'sup'; rVen(); break;
       case 'ven-add-con': openVenModal(null, 'vendor', { cat: 'Labour' }); break;
       case 'ven-more': venShown += VEN_STEP; rVen(); break;
