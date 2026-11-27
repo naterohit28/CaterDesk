@@ -81,9 +81,9 @@ const pickTime = async (p, id, hhmm = '19:30') => { if (await p.inputValue('#' +
     await openEvent(); await order('svc-dinner|spring rolls', { ven: 'vf', qty: 15, unit: 'kg' });
     await openEvent(); await p.locator('[data-action="fs-open"]').click(); await p.waitForSelector('#fs-modal.active');
     const fs = await p.locator('#fs-text').innerText();
-    assert.match(fs, /- Buy & finish · Dinner: Spring Rolls\n  Sample Frozen Foods \(9000000034\) · 15 kg · WhatsApp opened/);
-    assert.match(fs, /- Buy ready-made · Lunch: Gulab Jamun\n  Sample Sweet Mart/);
-    assert.match(fs, /- Our kitchen: Dal Tadka, Gulab Jamun/);
+    assert.match(fs, /DINNER · [^\n]*300 guests[^]*- Buy & finish: Spring Rolls\n  Sample Frozen Foods \(9000000034\) · 15 kg · WhatsApp opened/);   // 5.5.0: meal by meal
+    assert.match(fs, /LUNCH · [^\n]*250 guests[^]*- Buy ready-made: Gulab Jamun\n  Sample Sweet Mart[^]*DINNER/);
+    assert.match(fs, /- Our kitchen: [^\n]*Dal Tadka/);
     await p.locator('#fs-modal [data-action="close-modal"]').first().click();
   });
 

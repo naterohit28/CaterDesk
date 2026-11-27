@@ -16,7 +16,7 @@ import {
   validate, EVENT_RULES, EXPENSE_RULES, PAYMENT_RULES, VENDOR_RULES, VPAY_RULES,
   calcEventReceived, calcEventPL, toPaise, billSet, billingSplit, calcVendorBalance, normGstin, gstinValid, isOnCredit, isPerson, unpaidCredit, unpaidBills, billKeyOf, daysUntil, addDays,
   sliceByPeriod, eventsMissingCosts, costByCategory, costVsUsual, priceCreep, sumRupees,
-  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, billOrderIds, deliveredWithoutBill, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, repeatBill, repeatBills, paymentSchedule, keepPaidMilestones, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, dishSource, learnedDishes, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
+  RECON_CHECKS, ACTIVE_ORDER, COUNT_MEALS, COUNT_METHODS, countPolicyAgreed, countKey, contractedFor, guestCountStatus, addOrderMessage, markOrderMessage, labourCovers, billOrderIds, deliveredWithoutBill, labourDuplicates, splitParts, checkSplit, equalSplit, pastSuggestions, eventGuests, gstPaise, clientDue, clientDueP, quoteOption, quoteOptions, QUOTE_STATUS, quoteTotal, checkQuote, nextQuoteDraft, quoteSuperseded, settlementStatus, SETTLE_KINDS, booksCheck, STOCK, duplicateBill, repeatBill, repeatBills, billCandidates, findHeads, paymentSchedule, keepPaidMilestones, PAY_WHEN, counterGuests, counterSuggestion, lastCounterPlan, priceForMargin, priceForMarkup, marginPct, mealPlanTotal, MEAL_ORDER, menuChangeImpact, eventStage, reconStatus, reconciledIds, reconBlockers, reconcileFields, reopenFields, parseMenu, menuText, dishCounter, dishSource, learnedDishes, kitchenDishes, dishesTaken, JOB_STAGES, jobStage, jobGuests, usualLabourRate, syncServices, isUnassigned, eventServices, applyServices, dishProblem, DISH_CATS, FOOD_TYPES, DIET_TAGS, menuSinceApproved, menuDiff, approvedMenus, approvedVersion, menuSnapshot,
   generateInsights, isOverdue, hashPin, verifyPin, isLegacyPinHash
 } from './utils.js';
 
@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '5.4.2';
+const APP_BUILD = '5.5.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -361,6 +361,8 @@ function saveExpSnapshot() {
    the app so it works offline. Each release adds one entry (version, release date, English and Marathi). No popup after
    updates: only an entry marked `intro` (a notable change) shows a small card on Home once, which can be dismissed. */
 const WHATS_NEW = [
+  { v: '5.5.0', date: '2026-11-27', intro: true, en: 'The function sheet now goes meal by meal. One supplier order can carry several items, in dozen or ladi too, with one WhatsApp message. Tick the entries a bill photo covers when the app does not find them. Search expense items by everyday words like paneer or tempo. Usual labour rate in one tap, and who was asked for against who came. Late Night, Punjabi and Fasting menus.', mr: 'फंक्शन शीट जेवणानुसार. एका ऑर्डरमध्ये अनेक वस्तू, एकच WhatsApp संदेश. बिल फोटो कोणत्या नोंदींचा ते स्वतः निवडा. पनीर, टेम्पो असे शब्द लिहून खर्च शोधा. नेहमीचा मजुरी दर एका टॅपवर; मागितले विरुद्ध आले. लेट नाईट, पंजाबी, उपवास मेनू.' },
+  { v: '5.4.3', date: '2026-11-27', en: 'A cook given work by order can now be given dishes straight from the meal\'s menu, several at once, with the guests for that meal on the WhatsApp list. Each job shows if it is requested, confirmed, charge agreed or final. Ticking dishes adds no expense.', mr: 'ऑर्डरप्रमाणे आचाऱ्याला मेनूमधील पदार्थ थेट निवडून देता येतात; WhatsApp यादीत त्या जेवणाचे पाहुणे. प्रत्येक कामाची स्थिती दिसते. पदार्थ निवडल्याने खर्च नोंदवला जात नाही.' },
   { v: '5.4.2', date: '2026-11-27', intro: true, en: 'Vendors now open as Suppliers and Contractors. Cooking labour is entered by order, with dishes, meal and charge. A bill photo that repeats items you entered asks first. This "What\'s new" list is in the menu (☰).', mr: 'विक्रेते: पुरवठादार आणि ठेकेदार. स्वयंपाकी मजूर ऑर्डरप्रमाणे. आधी नोंदवलेले बिल पुन्हा आले तर आधी विचारते. "नवीन काय" मेनूमध्ये (☰).' },
   { v: '5.4.1', date: '2026-11-27', en: 'Cooking labour (cooks, roti, starters, sweets, Chinese) is entered by order: people, labour for the job and transport. Rojiya, Ghati and Boys stay by shift.', mr: 'स्वयंपाकी, रोटी, स्टार्टर, मिठाई, चायनीज मजूर ऑर्डरप्रमाणे: किती जण, मजुरी आणि भाडे. रोजीया, घाटी, बॉईज शिफ्टप्रमाणे.' },
   { v: '5.4.0', date: '2026-11-27', en: 'Vendors are split into Suppliers and Contractors, each with its own totals. More labour types: Chinese Cook, Roti Cook, Starter / Farsan, Sweet, House Keeping, Security, Valet, Manager.', mr: 'विक्रेते: पुरवठादार आणि ठेकेदार वेगळे, स्वतंत्र एकूण. नवे मजूर प्रकार जोडले.' },
@@ -1459,10 +1461,12 @@ const jobFare = r => r.fareIn ? 0 : Number(r.fare) || 0;
 const lineAmt = r => money(isExtra(r) ? Math.round(Number(r.count) || 0) * (Number(r.rate) || 0)
   : isJob(r) ? jobCharge(r) + jobFare(r) : heads(r) * (Number(r.rate) || 0));
 const shiftList = r => Object.keys(SHIFTS).filter(k => Number(r.counts?.[k]) > 0).map(k => `${SHIFTS[k].split(' – ')[0]} ${r.counts[k]}`).join(' · ');
-const jobWhat = r => [r.meal ? MEALS[r.meal] : '', r.items || '', r.date || r.time ? [r.date ? fmtDate(r.date) : '', r.time ? fmtTime(r.time) : ''].filter(Boolean).join(' ') : ''].filter(Boolean).join(' · ');
+const jobWork = r => [...(r.dishes || []), r.items || ''].filter(Boolean).join(', ');
+const jobWhat = r => [r.meal ? MEALS[r.meal] : '', jobWork(r), r.date || r.time ? [r.date ? fmtDate(r.date) : '', r.time ? fmtTime(r.time) : ''].filter(Boolean).join(' ') : ''].filter(Boolean).join(' · ');
 const jobText = r => [heads(r) ? `${heads(r)} ${heads(r) === 1 ? 'person' : 'people'}` : '',
   jobCharge(r) ? `${Number(r.final) > 0 ? 'final' : 'agreed'} ${fmtCurrency(jobCharge(r))}${Number(r.final) > 0 && Number(r.rate) > 0 && Number(r.rate) !== Number(r.final) ? ` (agreed ${fmtCurrency(r.rate)})` : ''}` : 'charge not set',
   r.fareIn ? 'transport included' : Number(r.fare) > 0 ? `transport ${fmtCurrency(r.fare)}` : ''].filter(Boolean).join(' · ');
+const stageChip = r => { const st = jobStage(r); return `<span class="chip${st === 'requested' ? '' : ' pos'}" data-stage="${st}">${tr(...JOB_STAGES[st])}</span>`; };
 const lineText = r => isJob(r) ? `${jobText(r)}${lineAmt(r) ? ` = ${fmtCurrency(lineAmt(r))}` : ''}` : isExtra(r)
   ? `${r.count} × ${fmtCurrency(r.rate)} = ${fmtCurrency(lineAmt(r))}`
   : `${heads(r)} shift${heads(r) === 1 ? '' : 's'} × ${fmtCurrency(r.rate)} = ${fmtCurrency(lineAmt(r))}`;
@@ -1511,9 +1515,9 @@ function labourCard(ev) {
       <div class="row" style="min-height:52px">
         <div class="row-ic">${icon(isExtra(r) ? (r.extra === 'travel' ? 'truck' : 'clipboard') : 'users', 18)}</div>
         <div class="row-body"><div class="title-sm trunc" data-nl>${esc(labName(r))}${r.venId ? `<span class="meta" data-lab-ven> · ${esc(venName(r.venId))}</span>` : ''}</div>
-          <div class="meta">${isJob(r) ? `${tr('By order', 'ऑर्डरप्रमाणे')} · ${esc([jobWhat(r), jobText(r)].filter(Boolean).join(' · '))}` : isExtra(r)
+          <div class="meta">${isJob(r) ? `${stageChip(r)} ${tr('By order', 'ऑर्डरप्रमाणे')} · ${esc([jobWhat(r), jobText(r)].filter(Boolean).join(' · '))}` : isExtra(r)
             ? `${r.count > 1 ? `${r.count} × ` : ''}${r.rate > 0 ? fmtCurrency(r.rate) : ''}`
-            : `${esc(shiftList(r))} · ${r.rate > 0 ? `${fmtCurrency(r.rate)} ${tr('each', 'प्रत्येकी')}` : ''}`}${r.rate > 0 ? '' : `<span class="due" data-no-rate>${tr('Rate not set', 'दर नाही')}</span>${labKept(ev, rows, r) ? `<span class="meta" data-kept> · ${tr('earlier amount still counted', 'आधीची रक्कम धरली')}</span>` : ''}`}</div></div>
+            : `${esc(shiftList(r))}${Number(r.asked) > 0 ? ` · ${tr(`asked ${r.asked}`, `मागितले ${r.asked}`)}${shortBy(r) ? ` <span class="due" data-short>${tr(`${shortBy(r)} short`, `${shortBy(r)} कमी`)}</span>` : ''}` : ''} · ${r.rate > 0 ? `${fmtCurrency(r.rate)} ${tr('each', 'प्रत्येकी')}` : ''}`}${r.rate > 0 ? '' : `<span class="due" data-no-rate>${tr('Rate not set', 'दर नाही')}</span>${labKept(ev, rows, r) ? `<span class="meta" data-kept> · ${tr('earlier amount still counted', 'आधीची रक्कम धरली')}</span>` : ''}`}</div></div>
         <div class="amt-sm">${r.rate > 0 ? fmtCurrency(lineAmt(r)) : labKept(ev, rows, r) ? fmtCurrency(labKept(ev, rows, r)) : '–'}</div>
       </div>`).join('')}
       ${adj ? `<div class="row" style="min-height:44px">
@@ -1543,7 +1547,7 @@ function labVenBox(r, i) {
    the date and venue. No client or event name, and a rate only if you have entered one. WhatsApp opens; you send it. */
 function labourListText(ev, venId) {
   const rows = (ev.labour?.rows || []).map(labRow).filter(r => r.venId === venId);
-  const lines = rows.map(r => isJob(r) ? `${labName(r)}: ${[jobWhat(r), heads(r) ? `${heads(r)} ${heads(r) === 1 ? 'person' : 'people'}` : ''].filter(Boolean).join(' · ') || 'for the menu'}`
+  const lines = rows.map(r => isJob(r) ? `${labName(r)}: ${[jobWhat(r), jobGuests(ev, r) ? `${jobGuests(ev, r)} guests` : '', heads(r) ? `${heads(r)} ${heads(r) === 1 ? 'person' : 'people'}` : ''].filter(Boolean).join(' · ') || 'for the menu'}`
     : isExtra(r) ? `${labName(r)}: ${r.count}${r.rate > 0 ? ' × ' + fmtCurrency(r.rate) : ''}` : `${labName(r)}: ${shiftList(r)}${r.rate > 0 ? ' @ ' + fmtCurrency(r.rate) : ''}`);
   return `Namaste ${venName(venId)}! Labour needed:\nDate: ${fmtDate(ev.date)}\n${lines.join('\n')}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n\nPlease confirm. Thank you!`;
 }
@@ -1563,6 +1567,7 @@ function renderLabRows() {
         <div class="field" style="margin:0"><label>Note – नोंद</label><input type="text" data-k="label" placeholder="${r.extra === 'other' ? 'e.g. Ice cream cutting' : 'optional'}" value="${esc(r.label || '')}"></div>
       </div>
       ${labVenBox(r, i)}
+      ${usualBtn(r, i)}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s2)">
         <div class="field" style="margin:0"><label>Count – संख्या</label><input type="number" data-k="count" min="1" step="1" inputmode="numeric" value="${r.count || ''}"></div>
         <div class="field" style="margin:0"><label>Rate ₹ (later) – दर</label><input type="number" data-k="rate" min="1" inputmode="decimal" placeholder="${esc(rateHint(r))}" value="${r.rate || ''}"></div>
@@ -1579,11 +1584,13 @@ function renderLabRows() {
         <div class="field" style="margin:0"><label>Meal – जेवण</label><select data-k="meal"><option value="">Whole event – पूर्ण कार्यक्रम</option>${labMeals().map(m => `<option value="${m}"${m === r.meal ? ' selected' : ''}>${esc(MEALS[m])}</option>`).join('')}</select></div>
         <div class="field" style="margin:0"><label>People – किती जण</label><input type="number" data-k="people" min="0" step="1" inputmode="numeric" placeholder="optional" value="${r.people || ''}"></div>
       </div>
-      <div class="field" style="margin:0 0 var(--s2)"><label>Dishes or work – पदार्थ / काम</label><input type="text" data-k="items" maxlength="200" placeholder="e.g. Hakka Noodles, Manchurian" value="${esc(r.items || '')}"></div>
+      ${jobDishPicker(r, i)}
+      <div class="field" style="margin:0 0 var(--s2)"><label>${(r.dishes || []).length || kitchenDishes(labEvent(), r.meal).length ? 'Other work – इतर काम' : 'Dishes or work – पदार्थ / काम'}</label><input type="text" data-k="items" maxlength="200" placeholder="${(r.dishes || []).length ? 'optional' : 'e.g. Hakka Noodles, Manchurian'}" value="${esc(r.items || '')}"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);margin-bottom:var(--s2)">
         <div class="field" style="margin:0"><label>Needed on – दिनांक</label><input type="date" data-k="date" value="${esc(r.date || '')}"></div>
         <div class="field" style="margin:0"><label>Time – वेळ</label><input type="time" data-k="time" value="${esc(r.time || '')}"></div>
       </div>
+      <label class="check-row" style="margin:0 0 var(--s2)"><input type="checkbox" data-k="confirmed"${r.confirmed ? ' checked' : ''}><span>${tr('Contractor confirmed (no charge yet is fine)', 'ठेकेदाराने होकार दिला')}</span></label>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);margin-bottom:var(--s2)">
         <div class="field" style="margin:0"><label>Agreed ₹ – ठरलेली मजुरी</label><input type="number" data-k="rate" min="0" inputmode="decimal" placeholder="${esc(rateHint(r))}" value="${r.rate || ''}"></div>
         <div class="field" style="margin:0"><label>Final ₹ (later) – अंतिम</label><input type="number" data-k="final" min="0" inputmode="decimal" placeholder="if different" value="${r.final || ''}"></div>
@@ -1594,7 +1601,7 @@ function renderLabRows() {
       </div>
       <div class="field" style="margin:0"><label>Note – नोंद</label><input type="text" data-k="note" maxlength="200" placeholder="optional" value="${esc(r.note || '')}"></div>
       <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--s2);margin-top:var(--s2)">
-        <div class="meta" data-lab-line="${i}">${lineText(r)}</div>${del(i)}
+        <div class="meta" data-lab-line="${i}">${stageChip(r)} ${lineText(r)}</div>${del(i)}
       </div>
     </div>` : `
     <div class="card pad" style="margin-bottom:var(--s3)" data-lab="${i}">
@@ -1602,9 +1609,11 @@ function renderLabRows() {
         <div class="field" style="margin:0"><label>Worker – मजूर</label><select data-k="role" aria-label="Worker type">${roles.map(h => `<option value="${esc(h)}"${h === r.role ? ' selected' : ''}>${esc(h)}</option>`).join('')}</select></div>
         <div class="field" style="margin:0"><label>Rate ₹ per shift (later) – दर</label><input type="number" data-k="rate" min="1" inputmode="decimal" placeholder="${esc(rateHint(r))}" value="${r.rate || ''}"></div>
       </div>
+      ${usualBtn(r, i)}
       ${jobSwitch(r, i)}
       ${labVenBox(r, i)}
-      <div class="label" style="margin-bottom:6px">${tr('How many in each shift', 'प्रत्येक शिफ्टमध्ये किती')}</div>
+      <div class="field" style="margin:0 0 var(--s2)"><label>Asked for (people) – मागितले</label><input type="number" data-k="asked" min="0" step="1" inputmode="numeric" placeholder="optional" value="${r.asked || ''}"></div>
+      <div class="label" style="margin-bottom:6px">${tr('How many came in each shift', 'प्रत्येक शिफ्टमध्ये किती आले')}</div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s2)">${Object.entries(SHIFTS).map(([k, l]) => `
         <div class="field" style="margin:0"><label>${esc(l.split(' – ')[0])}</label><input type="number" data-k="c-${k}" min="0" step="0.5" inputmode="decimal" placeholder="0" value="${r.counts?.[k] || ''}"></div>`).join('')}
       </div>
@@ -1616,7 +1625,20 @@ function renderLabRows() {
 }
 
 // The meals of the event whose labour sheet is open
-const labMeals = () => { const ev = D.events.find(e => e.id === curRef); return MEAL_ORDER.filter(m => (ev?.meals || []).includes(m)); };
+const labEvent = () => D.events.find(e => e.id === curRef);
+/* The meal's dishes from our kitchen, to tick for this assignment (5.4.3). Ticking makes no order and no expense.
+   A dish ticked earlier stays listed even if the menu changed since; one given to another line says whose it is. */
+function jobDishPicker(r, i) {
+  const menu = kitchenDishes(labEvent(), r.meal), picked = r.dishes || [], key = n => n.toLowerCase().replace(/\s+/g, ' ').trim();
+  const names = [...menu, ...picked.filter(n => !menu.some(m => key(m) === key(n)))];
+  if (!names.length) return '';
+  const taken = dishesTaken(labRows, r.id);
+  return `<div class="field" style="margin:0 0 var(--s2)"><label>${tr('Dishes from the menu', 'मेनूमधील पदार्थ')}</label>
+    <div class="chips-row lab-dishes" role="group" aria-label="Dishes for this cook" style="margin:0;padding:0;flex-wrap:wrap">${names.map(n => {
+      const on = picked.some(x => key(x) === key(n)), t = on ? '' : taken.get(key(n));
+      return `<button type="button" class="f-chip" data-lab-dish="${i}" data-name="${esc(n)}" aria-pressed="${on}">${esc(n)}${t ? `<span class="n">${esc(short(t))}</span>` : ''}</button>`; }).join('')}</div></div>`;
+}
+const labMeals = () => { const ev = labEvent(); return MEAL_ORDER.filter(m => (ev?.meals || []).includes(m)); };
 // Cooking worker types can be paid by order (people, labour for the job, transport) or by shift; others only by shift
 function jobSwitch(r, i) {
   if (!JOB_LABOUR.includes(r.role)) return '';
@@ -1652,6 +1674,12 @@ function autoContractor(role) {
   return '';
 }
 const venName = id => D.vendors.find(v => v.id === id)?.name || '';   // the rate comes with the bill (owner, 4.31.24)
+// 5.5.0: the usual rate, one tap to use it (a rate is still never filled in by itself)
+const usualBtn = (r, i) => { if (Number(r.rate) > 0 || isJob(r)) return '';
+  const u = usualLabourRate(D.events, { role: r.role, extra: isExtra(r) ? r.extra : '', venId: r.venId, exceptEv: curRef });
+  return u ? `<button type="button" class="btn-sm" data-lab-usual="${i}" data-v="${u}" style="margin:0 0 var(--s2)">${tr(`Use usual rate ${fmtCurrency(u)}`, `नेहमीचा दर ${fmtCurrency(u)}`)}</button>` : ''; };
+// Attendance (5.5.0): how many people were asked for, against the most who came in any shift
+const shortBy = r => { const came = Math.max(0, ...Object.values(r.counts || {}).map(Number).filter(n => n > 0)); return Number(r.asked) > 0 && came ? Math.max(0, Number(r.asked) - came) : 0; };
 const rateHint = r => { const last = isExtra(r) ? lastLabourRate('', r.extra) : lastLabourRate(r.role); return last ? `Last time ₹${last}` : 'From the bill'; };
 
 function openLabModal() {
@@ -1681,10 +1709,11 @@ async function saveLabour() {
   const rows = labRows.map(r => isExtra(r)
       ? { id: r.id, kind: 'x', extra: r.extra, label: String(r.label || '').trim(), count: Math.round(Number(r.count) || 0), rate: Number(r.rate) || 0, ...withVen(r) }
       : isJob(r) ? { id: r.id, role: r.role, job: true, people: Math.round(Number(r.people) || 0), rate: money(Number(r.rate) || 0), fare: money(Number(r.fare) || 0),
-          ...(Number(r.final) > 0 ? { final: money(Number(r.final)) } : {}), ...(r.fareIn ? { fareIn: true } : {}),
+          ...(Number(r.final) > 0 ? { final: money(Number(r.final)) } : {}), ...(r.fareIn ? { fareIn: true } : {}), ...(r.confirmed ? { confirmed: true } : {}),
+          ...((r.dishes || []).length ? { dishes: [...new Set(r.dishes.map(n => String(n).trim().slice(0, 80)).filter(Boolean))].slice(0, 40) } : {}),
           ...Object.fromEntries(['meal', 'items', 'date', 'time', 'note'].map(k => [k, String(r[k] || '').trim().slice(0, 200)]).filter(([, v]) => v)), ...withVen(r) }
-      : { id: r.id, role: r.role, rate: Number(r.rate) || 0, counts: clean(r.counts), ...withVen(r) })
-    .filter(r => isExtra(r) ? r.count > 0 : isJob(r) ? r.people > 0 || r.rate > 0 || r.final > 0 || r.fare > 0 || !!(r.items || r.note || r.meal) : heads(r) > 0);   // a line with people but no rate yet is kept (owner, 4.31.24)
+      : { id: r.id, role: r.role, rate: Number(r.rate) || 0, counts: clean(r.counts), ...(Number(r.asked) > 0 ? { asked: Math.min(10000, Math.round(Number(r.asked))) } : {}), ...withVen(r) })
+    .filter(r => isExtra(r) ? r.count > 0 : isJob(r) ? r.people > 0 || r.rate > 0 || r.final > 0 || r.fare > 0 || !!(r.items || r.note || r.meal || r.dishes || r.confirmed) : heads(r) > 0);   // a line with people but no rate yet is kept (owner, 4.31.24)
   const unpriced = rows.filter(r => !(r.rate > 0));   // with no rate yet; a cleared rate keeps its earlier expense (shown on the card)
   const billTotal = money(Number(qv('lab-bill')) || 0);
   /* 5.1.3 (owner): how each line is paid follows its contractor, not one switch for the sheet. A line with a contractor
@@ -1972,7 +2001,7 @@ function menuOrdersCard(ev) {
    estimated cost (never added to costs). WhatsApp messages are versioned like orders; nothing is resent by itself;
    no expense is made by itself: the delivered purchase's bill is recorded or linked once (x.purchase). */
 const BUY_UNITS = [['pcs', 'pieces – नग'], ['kg', 'kg – किलो'], ['litre', 'litres – लिटर'], ['packet', 'packets – पाकीट'],
-  ['bottle', 'bottles – बाटल्या'], ['carton', 'cartons – खोके'], ['tub', 'tubs – टब'], ['box', 'boxes – बॉक्स']];
+  ['bottle', 'bottles – बाटल्या'], ['carton', 'cartons – खोके'], ['tub', 'tubs – टब'], ['box', 'boxes – बॉक्स'], ['dozen', 'dozen – डझन'], ['ladi', 'ladi – लडी']];
 const UNIT_NAME = Object.fromEntries(BUY_UNITS.map(([k, l]) => [k, l.split(' – ')[0]]));
 const buyKey = (svc, name) => `${svc || '*'}|${String(name).trim().toLowerCase()}`;
 // The bought dishes, one row per meal (a dish served at every meal: one row for all of them)
@@ -1989,7 +2018,20 @@ function buyRows(ev) {
   return rows;
 }
 const buyOf = (ev, key) => [...(ev.purchases || [])].reverse().find(p => p.status !== 'cancelled' && buyKey(p.svc, p.item) === key) || null;
-const purchaseBillOf = p => D.expenses.find(x => x.purchase === p.id) || null;
+const purchaseBillOf = p => D.expenses.find(x => x.purchase === p.id || (p.grp && x.purchase === p.grp)) || null;
+/* 5.5.0 (owner's requirements): several items in one order to one supplier (e.g. five frozen starters). Each item stays
+   its own purchase, so its meal, quantity and delivery are kept; items ordered together share `grp` (the first item's
+   id) and one WhatsApp message listing them all. Sending, confirming and delivery move together; the bill is linked once,
+   to the first item. An item not on the menu (e.g. a grocery item) is `extra`. */
+const buyGroup = (ev, p) => p?.grp ? (ev.purchases || []).filter(x => x.grp === p.grp && x.status !== 'cancelled') : p ? [p] : [];
+let buyMore = [];
+function renderBuyMore() {
+  q('buy-more').innerHTML = buyMore.map((m, i) => `<div class="buy-more-row" data-bm="${i}" style="display:grid;grid-template-columns:28px minmax(0,1fr) 76px 96px;gap:var(--s2);align-items:center;margin-bottom:var(--s2)">
+    <input type="checkbox" data-bk="on" aria-label="${esc(`Add ${m.name || 'item'}`)}"${m.on ? ' checked' : ''}${m.id ? ' disabled' : ''}>
+    ${m.free ? `<input type="text" data-bk="name" maxlength="80" placeholder="Item – वस्तू" aria-label="Item" value="${esc(m.name)}">` : `<span class="meta" data-nl style="overflow-wrap:anywhere">${esc(m.name)}${m.label ? ` · ${esc(m.label)}` : ''}</span>`}
+    <input type="number" data-bk="qty" min="0" step="any" inputmode="decimal" placeholder="Qty" aria-label="Quantity" value="${m.qty || ''}">
+    <select data-bk="unit" aria-label="Unit">${BUY_UNITS.map(([v, l]) => `<option value="${v}"${v === m.unit ? ' selected' : ''}>${esc(l.split(' – ')[0])}</option>`).join('')}</select></div>`).join('');
+}
 function buyStatus(p) {
   const st = ORDER_STATUS[p.status] || ORDER_STATUS.sent;
   if (p.status !== 'delivered') return st;
@@ -2011,7 +2053,7 @@ function buyCard(ev) {
       return line(esc(r.name), [r.label, SRC_NAME[r.src], p ? `${ven?.name || ''} · ${qtyText(p)}` : ''].filter(Boolean).map(esc).join(' · '),
         p ? chip(p) : `<button type="button" class="btn-sm" data-action="buy-new" data-id="${esc(r.key)}">${icon('message', 16)}${tr('Order', 'ऑर्डर')}</button>`, r.key,
         offDate(ev, p) ? `<div class="meta due" data-off-date>${offDateText(p.date)}</div>` : ''); }).join('')}
-    ${[...off.values()].map(p => line(esc(p.item), `${tr('Not on the current menu', 'सध्याच्या मेनूत नाही')} · ${esc(qtyText(p))}`, chip(p))).join('')}</div>`;
+    ${[...off.values()].map(p => line(esc(p.item), `${p.extra ? tr('Other item', 'इतर वस्तू') : tr('Not on the current menu', 'सध्याच्या मेनूत नाही')} · ${esc(qtyText(p))}${p.grp ? ` · ${esc(D.vendors.find(v => v.id === p.venId)?.name || '')}` : ''}`, chip(p))).join('')}</div>`;
 }
 // Purchases already given to a supplier whose item later left the menu, moved to another meal or changed sourcing
 function purchasesHit(before, after) {
@@ -2037,13 +2079,18 @@ function openBuyModal({ key = '', id = '' }) {
   q('buy-date').value = p?.date || s?.date || ev.date; q('buy-time').value = p?.time || s?.time || '';
   q('buy-notes').value = p?.notes || ''; q('buy-est').value = p?.estCost ?? '';
   q('btn-cancel-buy').hidden = !p;
+  const mates = p ? buyGroup(ev, p).filter(x => x.id !== p.id) : [], ordered = new Set((ev.purchases || []).filter(x => x.status !== 'cancelled').map(x => buyKey(x.svc, x.item)));
+  buyMore = [...mates.map(x => ({ id: x.id, name: x.item, src: x.src, svc: x.svc || '', qty: x.qty, unit: x.unit, on: true, extra: !!x.extra })),
+    ...(p && p.status === 'delivered' ? [] : buyRows(ev).filter(r => !ordered.has(r.key) && r.key !== key).map(r => ({ key: r.key, name: r.name, src: r.src, svc: r.svc, label: r.label, qty: '', unit: 'pcs', on: false })))];
+  renderBuyMore();
   clearFieldErrors(); openSheet('buy-modal');
 }
-function buyMessage(ev, p, ven) {
+function buyMessage(ev, p, ven, group = [p]) {
   const all = eventServices(ev).services, s = p.svc ? all.find(x => x.id === p.svc) : null, meal = s?.meal ? svcLabel(ev, s, all) : '';
+  const what = group.length > 1 ? `Items:\n${group.map((x, i) => `${i + 1}. ${x.item} – ${qtyText(x)}`).join('\n')}\n` : `Item: ${p.item}\nQuantity: ${qtyText(p)}\n`;
   // One fact per line, in the order a supplier needs them; venue notes and your contact only when you have entered them
   const venue = venueNotes(ev), me = getProfile(), contact = [me.contact || me.name, me.phone].filter(Boolean).join(', ');
-  return `Namaste ${ven.name}! Purchase order:\nItem: ${p.item}\nQuantity: ${qtyText(p)}\n`
+  return `Namaste ${ven.name}! Purchase order:\n${what}`
     + `Date: ${fmtDate(p.date)}${meal ? ' (' + meal + ')' : ''}\nDeliver by: ${fmtTime(p.time) || '-'}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n`
     + (venue ? `At the venue: ${venue}\n` : '') + (p.notes ? `Note: ${p.notes}\n` : '') + (contact ? `Contact: ${contact}\n` : '') + `\nPlease confirm. Thank you!`;
 }
@@ -2057,6 +2104,8 @@ async function sendBuy() {
   if (!date) errs['buy-date'] = 'Delivery date – दिनांक';
   if (!/^\d{2}:\d{2}$/.test(qv('buy-time'))) errs['buy-time-t'] = 'Deliver by: type a time like 7:30 or 7:05 and tap AM or PM – वेळ लिहा';
   if (est !== '' && !(Number(est) >= 0 && Math.round(Number(est) * 100) === Number(est) * 100)) errs['buy-est'] = 'An amount in ₹ (up to 2 decimals) – रक्कम';
+  const more = buyMore.filter(m => m.on);
+  if (more.some(m => !String(m.name || '').trim() || !(Number(m.qty) > 0) || Math.round(Number(m.qty) * 1000) !== Number(m.qty) * 1000)) errs['buy-more'] = 'Each added item needs its name and quantity – नाव व संख्या लिहा';
   if (Object.keys(errs).length) { showFieldErrors(errs); return; }
   const ven = D.vendors.find(v => v.id === venId), phoneOk = !!phoneDigits(ven?.phone);
   const id = qv('buy-id') || uid('PO'), old = (ev.purchases || []).find(x => x.id === id);
@@ -2068,18 +2117,34 @@ async function sendBuy() {
   if (qv('buy-svc')) p.svc = qv('buy-svc'); else delete p.svc;
   for (const [k, v] of [['time', qv('buy-time')], ['notes', qv('buy-notes').trim()]]) if (v) p[k] = v; else delete p[k];
   if (est !== '') p.estCost = Number(est); else delete p.estCost;
-  const versioned = addOrderMessage(old?.messages, buyMessage(ev, p, ven), false, now);
-  p.messages = versioned.messages;
-  // A changed instruction is not sent or confirmed yet; a menu-change warning stays until it is marked sent
-  if (versioned.changed && old && ['sent', 'confirmed', 'opened'].includes(old.status)) p.status = 'prepared';
-  try { await patchEvent(ev.id, { purchases: old ? ev.purchases.map(x => x.id === id ? p : x) : [...(ev.purchases || []), p] }); }
+  // The other items in this order: same supplier, delivery and instructions; each its own quantity
+  const grp = more.length ? old?.grp || id : old?.grp;
+  if (grp) p.grp = grp; else delete p.grp;
+  const mates = more.map(m => { const was = m.id ? ev.purchases.find(x => x.id === m.id) : null;
+    const x = { ...(was || {}), id: was?.id || uid('PO'), item: String(m.name).trim().slice(0, 80), src: m.src || 'buy', venId, qty: Number(m.qty), unit: UNIT_NAME[m.unit] ? m.unit : 'pcs', date,
+      status: !was || was.status === 'cancelled' ? 'prepared' : was.status, at: now, grp, basis: { item: String(m.name).trim(), src: m.src || 'buy', meal: (all.find(z => z.id === m.svc) || {}).meal || '' } };
+    if (m.svc) x.svc = m.svc; else delete x.svc;
+    if (m.free || m.extra) x.extra = true;
+    for (const [k, v] of [['time', p.time], ['notes', p.notes]]) if (v) x[k] = v; else delete x[k];
+    return { x, was }; });
+  const dropped = old?.grp ? ev.purchases.filter(x => x.grp === old.grp && x.id !== id && x.status !== 'cancelled' && !mates.some(m => m.x.id === x.id)).map(x => x.id) : [];
+  const pos = x => { const i = (ev.purchases || []).findIndex(y => y.id === x.id); return i < 0 ? 1e6 : i; };   // the order's items in the order they were added
+  const msg = buyMessage(ev, p, ven, [p, ...mates.map(m => m.x)].map((x, i) => [x, i]).sort((a, b) => pos(a[0]) - pos(b[0]) || a[1] - b[1]).map(([x]) => x));
+  const stamp = (x, was) => { const v = addOrderMessage(was?.messages, msg, false, now); x.messages = v.messages;
+    // A changed instruction is not sent or confirmed yet; a menu-change warning stays until it is marked sent
+    if (v.changed && was && ['sent', 'confirmed', 'opened'].includes(was.status)) x.status = 'prepared'; };
+  stamp(p, old); for (const m of mates) stamp(m.x, m.was);
+  const saved = new Map([[p.id, p], ...mates.map(m => [m.x.id, m.x])]);
+  const next = [...(ev.purchases || []).map(x => saved.get(x.id) || (dropped.includes(x.id) ? (({ grp: _g, ...y }) => y)(x) : x)), ...[...saved.values()].filter(x => !(ev.purchases || []).some(y => y.id === x.id))];
+  try { await patchEvent(ev.id, { purchases: next }); }
   catch (e) { showToast(e.message || 'Could not save the purchase. Nothing was changed and nothing was sent.', 'error'); return; }
   await closeModals(); refreshCurrent();
   if (!phoneOk) showToast(`Purchase saved, not sent. ${ven?.name || 'This supplier'} has no phone number – add it to send on WhatsApp.`, 'error');
   else await offerWhatsApp(ev.id, 'purchases', id, 'The purchase order');
 }
 async function setBuyStatus(ev, id, next) {
-  await patchEvent(ev.id, { purchases: ev.purchases.map(x => { if (x.id !== id) return x; const y = { ...x, status: next };
+  const p = ev.purchases.find(x => x.id === id), ids = new Set(next === 'cancelled' ? [id] : buyGroup(ev, p).filter(x => x.id === id || x.status !== 'delivered').map(x => x.id));
+  await patchEvent(ev.id, { purchases: ev.purchases.map(x => { if (!ids.has(x.id)) return x; const y = { ...x, status: next };
     if (['sent', 'confirmed'].includes(next)) { delete y.changed; if (y.messages?.length) y.messages = markOrderMessage(y.messages, next, new Date().toISOString()); }
     return y; }) });
 }
@@ -2122,6 +2187,7 @@ async function buyAction(id) {
 /* Delivered: its bill. If this supplier already has an unlinked bill on the event (entered from the bill itself),
    link it instead of recording it again; otherwise record it, linked. A bill is linked to one order or one purchase. */
 async function purchaseBill(ev, p) {
+  if (p.grp) p = (ev.purchases || []).find(x => x.id === p.grp) || p;
   if (purchaseBillOf(p)) { showToast('Its bill is already recorded – बिल आधीच नोंदवले'); return; }
   const ven = D.vendors.find(v => v.id === p.venId);
   const open = D.expenses.filter(x => x.evId === ev.id && x.venId === p.venId && !x.order && !x.purchase && !x.draft).slice(0, 3);
@@ -2481,7 +2547,7 @@ async function waOpened(evId, list, recId, res) {
   const ev = D.events.find(e => e.id === evId), r = ev?.[list]?.find(x => x.id === recId);
   if (r?.status !== 'prepared') return;
   const at = new Date().toISOString();
-  try { await patchEvent(evId, { [list]: ev[list].map(x => x.id === recId ? { ...x, status: 'opened', openedAt: at, messages: markOrderMessage(x.messages, 'opened', at) } : x) }); }
+  try { await patchEvent(evId, { [list]: ev[list].map(x => x.id === recId || (r.grp && x.grp === r.grp && x.status === 'prepared') ? { ...x, status: 'opened', openedAt: at, messages: markOrderMessage(x.messages, 'opened', at) } : x) }); }
   catch (e) { showToast(e.message || 'WhatsApp opened, but its status could not be saved. Mark it sent once it has gone.', 'error'); }
   refreshCurrent();
 }
@@ -2912,7 +2978,7 @@ function renderMenus() {
       <div class="row-body"><div class="title-sm trunc" data-nl>${esc(m.name)}</div>
         <div class="meta trunc">${(m.items || []).length} ${tr('dishes', 'पदार्थ')}${(m.meals || []).length ? ' · ' + (m.meals || []).map(x => MEALS[x]).join(', ') : ''}${m.leaf ? ' · ' + tr('banana leaf', 'केळीचे पान') : ''}</div>
         ${(m.slabs || []).length > 1 ? `<div class="meta trunc">${esc(slabText(m))}</div>` : ''}</div>
-      <div class="row-end"><div class="amt-sm">${(m.slabs || []).length > 1 ? tr('from ', 'पासून ') : ''}${fmtCurrency(Math.min(...(m.slabs || [{ rate: 0 }]).map(x => x.rate)))}</div><div class="meta">${tr('per plate', 'प्रति ताट')}</div></div></div>`;
+      <div class="row-end">${Math.max(0, ...(m.slabs || []).map(x => x.rate)) > 0 ? `<div class="amt-sm">${(m.slabs || []).length > 1 ? tr('from ', 'पासून ') : ''}${fmtCurrency(Math.min(...(m.slabs || [{ rate: 0 }]).map(x => x.rate)))}</div><div class="meta">${tr('per plate', 'प्रति ताट')}</div>` : `<div class="meta">${tr('No price', 'दर नाही')}</div>`}</div></div>`;
   q('menus-body').innerHTML = `<div class="card list">${shown.map(row).join('') || `<div class="list-empty">${tr('No menus', 'मेनू नाहीत')}</div>`}</div>
     ${hidden.length ? `<div class="sec"><span class="sec-title">${tr('Hidden', 'लपवलेले')}</span></div><div class="card list">${hidden.map(row).join('')}</div>` : ''}`;
 }
@@ -3005,7 +3071,7 @@ function mealMenuCard(ev) {
           <button type="button" class="btn-sm" data-action="svc-use" data-id="${esc(s.id)}">${icon('check', 16)}${tr('Use these dishes', 'हे पदार्थ घ्या')}</button></div>`
       : s.template ? `<div class="meta svc-tpl">${tr(`Started from ${esc(s.template.name)} menu`, `${esc(s.template.name)} मेनूवरून`)}</div>` : '';
     return `<div class="card pad svc-card" data-svc="${esc(s.id)}" data-meal-menu="${esc(s.meal)}">
-      <div class="svc-h"><div class="svc-t"><div class="title-sm">${esc(svcTitle(s, services))}</div>${facts ? `<div class="meta" data-nl>${esc(facts)}</div>` : ''}</div>
+      <div class="svc-h"><div class="svc-t"><div class="title-sm">${esc(svcTitle(s, services))}${s.fromTemplate ? ` <span class="chip due" data-preview>${tr('Preview · not saved', 'फक्त पाहणी')}</span>` : ''}</div>${facts ? `<div class="meta" data-nl>${esc(facts)}</div>` : ''}</div>
         <button type="button" class="btn-sm" data-action="svc-edit" data-id="${esc(s.id)}" aria-label="Edit ${esc(svcTitle(s, services))} menu">${icon('pencil', 16)}${tr('Edit', 'बदला')}</button></div>
       ${own.length ? dishCourses(own) : `<div class="meta">${tr('No dishes yet', 'अजून पदार्थ नाहीत')}</div>`}
       ${tplLine}
@@ -3423,8 +3489,10 @@ async function useServiceTemplate(id) {
     : { ...x, dishes: x.dishes.map(d => d.preview ? { name: d.name, ...dishSource(d.name, learned) } : d) });
   const patch = applyServices(ev, next);
   try { await patchEvent(ev.id, patch); } catch (e) { showToast(e.message || 'Could not save. Nothing was changed.', 'error'); return; }
-  showToast(`${svcTitle(s, all)}: ${s.dishes.filter(d => d.preview).length} dishes added from ${s.template.name} – पदार्थ जोडले`, 'success');
+  showToast(`${svcTitle(s, all)}: ${s.dishes.filter(d => d.preview).length} dishes added from ${s.template.name}. Next: kitchen, counters and orders below – पदार्थ जोडले`, 'success');
   refreshCurrent();
+  // 5.5.0: straight on to who makes each dish and what to order
+  requestAnimationFrame(() => q('menu-orders')?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }));
 }
 
 
@@ -3790,24 +3858,47 @@ function functionSheetText(ev, extra = ev.functionSheet || {}) {
   if (cp.counter) L.push(`- Who counts: ${cp.counter}`);
   if (cp.rep) L.push(`- Client representative: ${cp.rep}${cp.repPhone ? ', ' + cp.repPhone : ''}`);
   if (cp.rules) L.push(`- Rules: ${cp.rules}`);
-  const groups = dishGroups(ev), menu = menuById(ev.menu);
+  /* 5.5.0 (owner's requirements): the menu meal by meal: time and guests, then what our kitchen cooks, what is cooked
+     at the venue, the specialist cooks given work by order, bought items and outsourced counters, each with its supplier
+     and status. Read from the event as it is; no money and no automatic labour cost. */
+  const groups = dishGroups(ev), menu = menuById(ev.menu), bought = buyRows(ev);
   L.push('', 'MENU');
-  const bought = buyRows(ev);
-  if (groups.size || bought.length) {
-    // One line per counter and meal, each with its own order (vendor, plates, status); an older order made for every
-    // meal is shown where a meal has no order of its own
-    if (groups.has('')) L.push(`- Our kitchen: ${groups.get('').join(', ')}`);
-    const rows = counterRows(ev), live = [...(ev.orders || [])].reverse().filter(x => x.status !== 'cancelled');
-    for (const r of rows) {
-      const own = live.find(x => rowOf(ev, x, rows)?.key === r.key), o = own || live.find(x => !x.svc && x.head === r.head);
-      const ven = D.vendors.find(v => v.id === o?.venId);
-      L.push(`- ${ev.outsourced ? 'Whole event' : short(r.head)}${r.label ? ` · ${r.label}` : ''}: ${r.names.join(', ')}`);
-      L.push(`  ${ven ? `${ven.name}${ven.phone ? ' (' + ven.phone + ')' : ''}` : 'No vendor order yet'}${o ? ` · ${o.plates ? o.plates + ' plates · ' : ''}${ORDER_STATUS[o.status]?.en || o.status}${own ? '' : ' (older order, all meals)'}` : ''}`);
+  const crows = counterRows(ev), live = [...(ev.orders || [])].reverse().filter(x => x.status !== 'cancelled');
+  // One line per counter, with its own order (vendor, plates, status); an older order made for every meal is shown
+  // where a meal has no order of its own
+  const counterLines = (r, title) => {
+    const own = live.find(x => rowOf(ev, x, crows)?.key === r.key), o = own || live.find(x => !x.svc && x.head === r.head);
+    const ven = D.vendors.find(v => v.id === o?.venId);
+    L.push(`- ${title}: ${r.names.join(', ')}`);
+    L.push(`  ${ven ? `${ven.name}${ven.phone ? ' (' + ven.phone + ')' : ''}` : 'No vendor order yet'}${o ? ` · ${o.plates ? o.plates + ' plates · ' : ''}${ORDER_STATUS[o.status]?.en || o.status}${own ? '' : ' (older order, all meals)'}` : ''}`);
+  };
+  // Bought items: ready-made, or bought and finished in our kitchen, with their purchase
+  const buyLines = r => { const pu = buyOf(ev, r.key), sv = pu && D.vendors.find(v => v.id === pu.venId);
+    L.push(`- ${SRC_NAME[r.src]}: ${r.name}`);
+    L.push(`  ${pu ? `${sv?.name || 'Supplier'}${sv?.phone ? ' (' + sv.phone + ')' : ''} · ${qtyText(pu)} · ${ORDER_STATUS[pu.status]?.en || pu.status}` : 'No purchase order yet'}`); };
+  const cooks = (ev.labour?.rows || []).map(labRow).filter(isJob);
+  const cookLines = rs => { for (const r of rs) L.push(`- ${short(r.role)}${r.venId ? ` (${venName(r.venId)})` : ''}: ${jobWork(r) || 'work not set'}${heads(r) ? ` · ${heads(r)} ${heads(r) === 1 ? 'person' : 'people'}` : ''}${r.time ? ` · ${fmtTime(r.time)}` : ''} · ${JOB_STAGES[jobStage(r)][0]}`); };
+  if (ev.outsourced && groups.size) for (const r of crows) counterLines(r, 'Whole event');
+  else if (groups.size || bought.length) {
+    const all = eventServices(ev).services, multi = all.length > 1;
+    for (const sv of all) {
+      const own = sv.dishes.filter(d => !d.preview && !(d.shared && multi));
+      const kit = own.filter(d => !d.head && !d.src && d.at !== 'venue').map(d => d.name), atVenue = own.filter(d => !d.head && !d.src && d.at === 'venue').map(d => d.name);
+      const cr = crows.filter(r => (r.svc?.id || '') === sv.id ), br = bought.filter(r => r.svc === sv.id || (!r.svc && !multi));
+      const ck = sv.main && sv.meal ? cooks.filter(r => r.meal === sv.meal) : [];
+      if (!kit.length && !atVenue.length && !cr.length && !br.length && !ck.length) continue;
+      if (sv.meal && (multi || sv.time)) L.push('', [`${svcLabel(ev, sv, all).toUpperCase()}`, sv.time ? fmtTime(sv.time) : '', `${sv.guests || ev.guests || '—'} guests`].filter(Boolean).join(' · '));
+      if (kit.length) L.push(`- Our kitchen: ${kit.join(', ')}`);
+      if (atVenue.length) L.push(`- Cooked at the venue: ${atVenue.join(', ')}`);
+      cookLines(ck);
+      for (const r of br) buyLines(r);
+      for (const r of cr) counterLines(r, short(r.head));
     }
-    // Bought items: ready-made, or bought and finished in our kitchen, with their purchase
-    for (const r of bought) { const pu = buyOf(ev, r.key), sv = pu && D.vendors.find(v => v.id === pu.venId);
-      L.push(`- ${SRC_NAME[r.src]}${r.label ? ` · ${r.label}` : ''}: ${r.name}`);
-      L.push(`  ${pu ? `${sv?.name || 'Supplier'}${sv?.phone ? ' (' + sv.phone + ')' : ''} · ${qtyText(pu)} · ${ORDER_STATUS[pu.status]?.en || pu.status}` : 'No purchase order yet'}`); }
+    // Dishes served at every meal, and cooks given work for the whole event
+    const shared = multi ? (all[0]?.dishes || []).filter(d => d.shared && !d.preview) : [];
+    const sk = shared.filter(d => !d.head && !d.src).map(d => d.name), sb = multi ? bought.filter(r => !r.svc) : [], wk = cooks.filter(r => !r.meal || !all.some(x => x.meal === r.meal));
+    if (sk.length || sb.length) { L.push('', 'EVERY MEAL'); if (sk.length) L.push(`- Our kitchen: ${sk.join(', ')}`); for (const r of sb) buyLines(r); }
+    if (wk.length) { L.push('', 'COOKS FOR THE WHOLE EVENT'); cookLines(wk); }
   } else if (menu) L.push(`- ${menu.name}: ${menu.items.join(', ')}`);
   else L.push('- Not entered');
   const staff = (ev.labour?.rows || []).map(labRow).filter(r => !isExtra(r) && heads(r));
@@ -4639,11 +4730,12 @@ function closeModals() {
 // An action with `run` calls it inside the tap itself (Android allows some things, like the share menu,
 // only directly from a tap) and resolves to what it returns.
 // `cancel: null` leaves out the Cancel button (the actions then include the safe choice; Back / Escape still give null).
-function askSheet({ title, message = '', actions, cancel = 'Cancel – रद्द करा' }) {
+function askSheet({ title, message = '', html = '', actions, cancel = 'Cancel – रद्द करा' }) {
   return new Promise(resolve => {
     let result = null;
     q('ask-title').textContent = title;
     q('ask-msg').textContent   = message;
+    if (html) q('ask-msg').insertAdjacentHTML('beforeend', html);   // built by the caller with esc()
     const box = q('ask-actions');
     box.innerHTML = '';
     [...actions, ...(cancel ? [{ label: cancel, value: null, style: 'btn-ghost' }] : [])].forEach(a => {
@@ -5093,7 +5185,7 @@ function updateQuote() {
     lines.push(`For a ${TARGET_MARGIN}% margin, quote at least <b>${fmtCurrency(pm)}/plate</b>`);
     lines.push(`<span class="meta">(${TARGET_MARGIN}% markup on cost would be only ${fmtCurrency(pu)}/plate, a ${marginPct(pu, cost.perPlate)}% margin)</span>`);
   }
-  if (billed) lines.push(`Card ${fmtCurrency(menuRate(menu, guests))} · you actually billed <b>${fmtCurrency(billed.perPlate)}/plate</b> on average (${billed.n} event${billed.n > 1 ? 's' : ''})`);
+  if (billed) lines.push(`${menuRate(menu, guests) > 0 ? `Card ${fmtCurrency(menuRate(menu, guests))} · ` : ''}you actually billed <b>${fmtCurrency(billed.perPlate)}/plate</b> on average (${billed.n} event${billed.n > 1 ? 's' : ''})`);
   box.innerHTML = lines.map(l => `<div>${l}</div>`).join('');
   box.hidden = !lines.length;
 }
@@ -5302,6 +5394,12 @@ function usualItems() {
   }
   return [...uses.values()].sort((a, b) => (b.n - a.n) || b.last.localeCompare(a.last)).slice(0, USUAL_ITEMS);
 }
+// 5.5.0: find an item by any name for it; tapping one sets category and item together
+function renderExpFind() {
+  const hits = findHeads(qv('exp-find'));
+  q('exp-find-res').innerHTML = hits.map(h => `<button type="button" class="f-chip" data-qcat="${esc(h.cat)}" data-qhead="${esc(h.head)}">${esc(short(h.head))} <span class="n">${esc(h.cat)}</span></button>`).join('')
+    || (qv('exp-find').trim().length > 1 ? `<span class="meta">${tr('No match: choose the category below', 'सापडले नाही: खालून प्रकार निवडा')}</span>` : '');
+}
 function renderItemQuick() {
   const items = usualItems(), cat = qv('exp-cat'), head = qv('exp-head');
   q('exp-item-quick-field').hidden = !items.length;
@@ -5427,6 +5525,7 @@ function openExpModal(arg) {
   const pre  = arg && typeof arg === 'object' && (arg.prefill || arg.resume) || null;
   const ex   = arg && typeof arg === 'object' && !pre ? arg : null;
   formBase.exp = snapshot(ex);   // an expense or bill draft being edited; null for a new entry
+  q('exp-find').value = ''; q('exp-find-res').innerHTML = '';
   expLogi = pre?.logi || '';
   expOrder = pre?.order || ''; expPurchase = pre?.purchase || '';   // the delivered order this new bill is for (G-23)     // which venue reminder a new expense answers (one expense per reminder)
   expTouched = { item: !!(ex || pre?.head), pay: !!(ex || arg?.resume) };
@@ -5530,6 +5629,29 @@ function renderExpBills() {
     expWork.bills.map(b => `<img class="bill-thumb" src="${esc(b.data)}" alt="Bill photo" role="button" tabindex="0" data-action="bill-view" data-id="${esc(b.id)}">`).join('') +
     `<button type="button" class="bill-add" data-action="bill-cam">${icon('camera', 20)}<span class="t-en">Camera</span><span class="t-mr">कॅमेरा</span></button>` +
     `<button type="button" class="bill-add" data-action="bill-gal">${icon('image', 20)}<span class="t-en">Gallery</span><span class="t-mr">गॅलरी</span></button>`;
+  const base = formBase.exp && formBase.exp.id === expWork.id ? formBase.exp : null;
+  q('btn-exp-match').hidden = !(expWork.bills.length && (!base || base.draft) && !base?.split);
+}
+/* 5.5.0: a bill photo whose items were already entered one by one, when the automatic check did not find them: tick
+   the entries it covers. Same safeguards as the automatic attach (attachBillTo): one save, amounts untouched. */
+async function manualMatch() {
+  const session = expWork; await session.ready; if (expWork !== session) return;
+  const base = formBase.exp && formBase.exp.id === expWork.id ? formBase.exp : null;
+  const venId = qv('exp-vendor').startsWith('__new') ? '' : qv('exp-vendor'), evId = qv('exp-ev'), amt = Number(qv('exp-amt')) || 0;
+  if (!venId && !evId) { showToast('Choose the vendor or the event first – आधी विक्रेता / कार्यक्रम निवडा', 'error'); return; }
+  const list = billCandidates(D.expenses, { id: expWork.id, venId, evId, date: qv('exp-date') });
+  if (!list.length) { showToast('No entries from them in the last 60 days – नोंदी सापडल्या नाहीत', 'error'); return; }
+  const item = x => `${short(x.head || x.cat)} ${fmtCurrency(x.amt)} · ${fmtDate(x.date)}${x.evId && x.evId !== evId ? ` · ${D.events.find(e => e.id === x.evId)?.name || ''}` : ''}${(x.billIds || []).length ? ' · has a photo' : ''}`;
+  const html = `<div id="match-list" style="margin-top:var(--s3)">${list.map(x => `<label class="check-row" style="margin:0 0 var(--s2)"><input type="checkbox" data-match="${esc(x.id)}" data-p="${toPaise(x.amt)}"><span>${esc(item(x))}</span></label>`).join('')}</div>
+    <div class="meta" id="match-sum" data-bill="${toPaise(amt)}" aria-live="polite"></div>`;
+  const pick = await askSheet({ title: 'Which entries does this bill cover? – कोणत्या नोंदी?',
+    message: 'Tick the entries already recorded from this bill. The photo goes on them; their amounts, dates and payment stay exactly as they are, and nothing is counted twice.',
+    html, actions: [{ label: 'Attach the bill photo – फोटो जोडा', style: 'btn-primary', run: () => [...document.querySelectorAll('#match-list [data-match]:checked')].map(c => c.dataset.match) }],
+    cancel: 'Go back – मागे' });
+  if (!Array.isArray(pick)) return;
+  if (!pick.length) { showToast('Tick at least one entry – किमान एक नोंद निवडा', 'error'); return; }
+  const chosen = pick.map(id => D.expenses.find(x => x.id === id)).filter(Boolean);
+  await attachBillTo(chosen, base, { billNo: qv('exp-billno').trim().slice(0, 60), note: qv('exp-notes').trim() });
 }
 
 async function addBillsToSheet(files) {
@@ -5671,8 +5793,10 @@ async function saveExpense({ next = false, split = false } = {}) {
         : [`${vn} for ${evn}: ${fmtCurrency(data.amt)} matches ${combos.length} combinations already recorded. If this is the same bill, choose which entries it covers:`,
           ...combos.map((c, k) => `${k + 1}) ${list(c)}`), ...told(combos[0]).filter(l => l.startsWith('Payment')).length ? ['Payment differs on some entries: nothing is changed.'] : []].join('\n'),
       actions: [...(photos ? combos.map((c, k) => ({ label: one ? `Attach the bill photo to ${c.length > 1 ? 'those entries' : 'that entry'} – फोटो जोडा` : `Attach to ${k + 1}) ${c.length} entr${c.length > 1 ? 'ies' : 'y'} – फोटो जोडा`, value: 'attach:' + k, style: 'btn-primary' })) : []),
+        ...(photos ? [{ label: 'Choose the entries myself – मी निवडतो', value: 'pick', style: 'btn-secondary' }] : []),
         { label: 'Different bill, save – वेगळे बिल', value: 'save', style: 'btn-secondary' }], cancel: 'Go back – मागे' });
     if (!choice) return;
+    if (choice === 'pick') { await manualMatch(); return; }
     if (choice.startsWith('attach:')) { await attachBillTo(combos[Number(choice.slice(7))], base, { billNo, note: noteText }); return; }
   }
   // The event's labour sheet already includes this item (G-14): only save it if it is on top of the sheet
@@ -6796,6 +6920,11 @@ function bindAllEvents() {
   q('exp-ev').addEventListener('change', updateExpEvHint);
   q('exp-head').addEventListener('change', () => { expTouched.item = true; populateVendorSelect(qv('exp-vendor')); renderItemQuick(); });
   // One tap: category and item together, exactly as choosing them below would (5.2.0)
+  q('exp-find').addEventListener('input', renderExpFind);
+  q('exp-find-res').addEventListener('click', e => {
+    const b = e.target.closest('[data-qcat]'); if (!b) return;
+    expTouched.item = true; setExpCat(b.dataset.qcat, b.dataset.qhead); q('exp-find').value = ''; q('exp-find-res').innerHTML = '';
+  });
   q('exp-item-quick').addEventListener('click', e => {
     const b = e.target.closest('[data-qcat]'); if (!b) return;
     expTouched.item = true; setExpCat(b.dataset.qcat, b.dataset.qhead);
@@ -6851,15 +6980,23 @@ function bindAllEvents() {
       r.venId = e.target.value; r.venAuto = false; e.target.dataset.prev = r.venId; setLabModeField(); return;
     }
     else if (k === 'fareIn') { r.fareIn = e.target.checked; renderLabRows(); return; }
+    else if (k === 'confirmed') { r.confirmed = e.target.checked; renderLabRows(); return; }
     else r[k] = ['role', 'extra', 'label', 'meal', 'items', 'date', 'time', 'note'].includes(k) ? e.target.value : num;
+    if (k === 'meal') { renderLabRows(); return; }
     if (k === 'role') { if (JOB_LABOUR.includes(r.role)) { if (r.job === undefined) Object.assign(r, { job: true, people: r.people || '', fare: r.fare || '' }); } else delete r.job;
       if (r.venAuto || !r.venId) { r.venId = autoContractor(r.role); r.venAuto = true; } renderLabRows(); return; }
     if (['role', 'extra'].includes(k)) box.querySelector('[data-k="rate"]').placeholder = rateHint(r);
     const filled = isJob(r) ? true : isExtra(r) ? r.count && r.rate : heads(r) && r.rate;
-    q('lab-rows').querySelector(`[data-lab-line="${box.dataset.lab}"]`).textContent = filled ? lineText(r) : '';
+    const out = q('lab-rows').querySelector(`[data-lab-line="${box.dataset.lab}"]`);
+    if (isJob(r)) out.innerHTML = `${stageChip(r)} ${esc(lineText(r))}`; else out.textContent = filled ? lineText(r) : '';
     updateLabTotal();
   });
   q('lab-rows').addEventListener('click', e => {
+    const us = e.target.closest('[data-lab-usual]');
+    if (us) { labRows[Number(us.dataset.labUsual)].rate = Number(us.dataset.v); renderLabRows(); return; }
+    const dsh = e.target.closest('[data-lab-dish]');
+    if (dsh) { const r = labRows[Number(dsh.dataset.labDish)], n = dsh.dataset.name, k = x => x.toLowerCase().replace(/\s+/g, ' ').trim();
+      r.dishes = (r.dishes || []).some(x => k(x) === k(n)) ? r.dishes.filter(x => k(x) !== k(n)) : [...(r.dishes || []), n]; renderLabRows(); return; }
     const j = e.target.closest('[data-lab-job]');
     if (j) { const r = labRows[Number(j.dataset.labJob)]; r.job = j.dataset.v === 'true'; if (r.job) { r.people = r.people || ''; r.fare = r.fare || ''; } renderLabRows(); return; }
     const b = e.target.closest('[data-lab-del]'); if (!b) return;
@@ -6868,6 +7005,15 @@ function bindAllEvents() {
   q('btn-send-ord').addEventListener('click', () => runSave('order', () => sendOrder('send')));
   q('btn-save-ord').addEventListener('click', () => runSave('order', () => sendOrder('save')));
   q('btn-send-buy').addEventListener('click', () => runSave('purchase', sendBuy));
+  q('btn-exp-match').addEventListener('click', () => runSave('expense', manualMatch));
+  // The running total of the ticked entries, against this bill's amount when it is typed
+  q('ask-msg').addEventListener('change', () => { const out = q('match-sum'); if (!out) return;
+    const p = [...document.querySelectorAll('#match-list [data-match]:checked')].reduce((s, c) => s + Number(c.dataset.p), 0), bill = Number(out.dataset.bill);
+    out.textContent = !p ? '' : `Ticked ${fmtCurrency(p / 100)}${bill ? (p === bill ? ' = this bill' : ` · this bill ${fmtCurrency(bill / 100)} (differs by ${fmtCurrency(Math.abs(bill - p) / 100)})`) : ''}`; });
+  q('buy-more').addEventListener('input', e => { const row = e.target.closest('[data-bm]'), k = e.target.dataset.bk; if (!row || !k) return;
+    const m = buyMore[Number(row.dataset.bm)];
+    if (k === 'on') m.on = e.target.checked; else { m[k] = e.target.value; if (k === 'qty' && e.target.value) { m.on = true; row.querySelector('[data-bk="on"]').checked = true; } } });
+  q('btn-buy-other').addEventListener('click', () => { buyMore.push({ free: true, name: '', src: 'buy', svc: qv('buy-svc'), qty: '', unit: 'pcs', on: true }); renderBuyMore(); q('buy-more').querySelector('[data-bm]:last-child [data-bk="name"]')?.focus(); });
   q('btn-cancel-buy').addEventListener('click', cancelBuyFromSheet);
   q('btn-cancel-ord').addEventListener('click', () => runSave('order', cancelOrderFromSheet));
   q('btn-save-exp').addEventListener('click', () => runSave('expense', () => saveExpense()));
@@ -6991,7 +7137,7 @@ function bindAllEvents() {
     if (e.target.dataset.k !== 'menu') return;
     const row = e.target.closest('[data-mp]'), menu = menuById(e.target.value), rate = row.querySelector('[data-k="rate"]');
     const guests = qv(`ev-mp-${row.dataset.mp}-g`) || qv('ev-guests');
-    if (menu && (!rate.value || rate.dataset.auto === rate.value)) { rate.value = String(menuRate(menu, guests)); rate.dataset.auto = rate.value; }
+    if (menu && menuRate(menu, guests) > 0 && (!rate.value || rate.dataset.auto === rate.value)) { rate.value = String(menuRate(menu, guests)); rate.dataset.auto = rate.value; }   // a menu with no price fills nothing
     updateMealPlan();
   }));
   q('plan-rows').addEventListener('input', e => { const row = e.target.closest('[data-pm]'), k = e.target.dataset.k; if (!row || !k) return;

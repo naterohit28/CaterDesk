@@ -55,6 +55,67 @@ export const RETIRED_HEADS = {
   'Paneer / Dairy': { cat: 'Raw Material', now: MILK_DAIRY, nowCat: 'Raw Material' },
   'Ice Blocks': { cat: 'Operations', now: ICE, nowCat: 'Raw Material' },
 };
+/* 5.5.0 (owner's requirements): find an expense item by the word you use for it, in English, Hindi or Marathi
+   ("paneer" → Milk & Dairy, "tempo" → Transport, "waiter" → Boys). The six categories and the items stay as they are;
+   these are only other names. Keys are the English part of the item. Also reusable by v6 voice entry. */
+export const HEAD_WORDS = {
+  'Grocery': 'kirana किराणा rice tandul तांदूळ chawal atta flour wheat gahu गहू maida besan dal daal डाळ sugar sakhar साखर chini salt mith मीठ rava sooji poha',
+  'Vegetable': 'sabzi sabji bhaji भाजी sabjee onion kanda कांदा pyaz potato batata बटाटा aloo tomato टोमॅटो coriander kothimbir कोथिंबीर dhaniya methi palak chilli mirchi मिरची ginger adrak aale garlic lasun लसूण cabbage cauliflower gobi',
+  'Fruits': 'fruit phal फळ banana keli केळी apple mango amba आंबा grapes pineapple papaya',
+  'Juice': 'juice ras',
+  'Water': 'pani पाणी bisleri bottle jar mineral',
+  'Milk & Dairy': 'milk doodh dudh दूध paneer पनीर curd dahi दही cream malai cheese butter makhan लोणी mawa khoya खवा basundi buttermilk chaas taak ताक shrikhand',
+  'Ice': 'barf बर्फ ice cube ladi',
+  'Bread': 'pav पाव bun bread',
+  'Pickle': 'achar lonche लोणचे',
+  'Sweet': 'mithai मिठाई gulab jamun jalebi pedha peda barfi ladoo laddu halwa',
+  'Dry Fruits': 'kaju काजू cashew badam बदाम almond pista kishmish manuka raisin akrod walnut',
+  'Spices / Masala': 'masala मसाला spice haldi turmeric jeera cumin garam elaichi velchi kesar saffron hing rai mohri',
+  'Oil / Ghee': 'oil tel तेल ghee tup तूप vanaspati dalda',
+  'Banana Leaves': 'patravali leaf leaves pan kelichi',
+  'Coconut': 'naral नारळ khobra coconut',
+  'Papad / Fryums': 'papad पापड fryums',
+  'Farsan / Namkeen': 'farsan namkeen chivda sev mixture',
+  'Chaat': 'pani puri panipuri bhel sev puri dahi puri ragda',
+  'Chinese': 'noodles manchurian fried rice',
+  'Dosa': 'dosa idli uttapa',
+  'Paan Mukhwas': 'paan pan mukhwas supari',
+  'Barbeque / Tandoor': 'tandoor tikka kebab bbq',
+  'Rojiya Labour': 'rojiya daily wage',
+  'Boys': 'waiter waiters serving boys service',
+  'Cook': 'aachari आचारी maharaj swaypaki halwai bawarchi',
+  'Cleaner / Washing': 'washing bhandi wash cleaning sweeper',
+  'Supervisor': 'supervisor captain',
+  'Security': 'guard watchman bouncer',
+  'Valet': 'parking driver',
+  'Contractor Fee': 'mukadam मुकादम',
+  'Transport': 'tempo gaadi गाडी truck rickshaw auto bhade भाडे vahatuk tempo-fare loading',
+  'Fuel / Diesel': 'diesel petrol fuel',
+  'Gas / Cylinder': 'gas cylinder सिलिंडर lpg',
+  'Rented Material': 'rent mandap tent chairs tables crockery shamiana',
+  'Disposable': 'paper plate plates glass cup spoon tissue foil thermocol dona',
+  'Packaging Material': 'packing parcel container cling wrap',
+  'New Utensils': 'bhandi भांडी utensil vessel patila kadai tope',
+  'Equipment Repair': 'repair servicing',
+  'Generator / Power': 'generator genset light electricity power',
+  'Water Tanker': 'tanker',
+  'Nadaswaram / Music': 'sanai सनई band music dhol',
+  'Phone / Internet': 'recharge mobile internet wifi',
+  'Printing / Stationery': 'printing xerox stationery print',
+  'Commission': 'commission dalali',
+  'Tips': 'tip bakshish बक्षीस',
+};
+export function findHeads(query, limit = 6) {
+  const norm = v => String(v || '').normalize('NFKC').toLocaleLowerCase().replace(/\s+/g, ' ').trim();
+  const qy = norm(query); if (qy.length < 2) return [];
+  const out = [];
+  for (const [cat, heads] of Object.entries(EXPENSE_HEADS)) for (const head of heads) {
+    const name = norm(head), en = name.split(' – ')[0], words = norm(HEAD_WORDS[head.split(' – ')[0]] || '');
+    const rank = en.startsWith(qy) ? 0 : name.split(/[\s/()–-]+/).some(w => w.startsWith(qy)) ? 1 : words.split(' ').some(w => w.startsWith(qy)) || (' ' + words).includes(' ' + qy) ? 2 : -1;   // by the start of a word, so "ice" is not Juice
+    if (rank >= 0) out.push({ cat, head, rank });
+  }
+  return out.sort((a, b) => a.rank - b.rank).slice(0, limit).map(({ cat, head }) => ({ cat, head }));
+}
 // The item a (possibly retired) item counts as today, and its category
 export const headNow = head => RETIRED_HEADS[head]?.now || head;
 export const catNow = (cat, head) => RETIRED_HEADS[head]?.nowCat || cat;
@@ -243,6 +304,17 @@ export function repeatBills(expenses, { id, venId, evId, amt, date, splitId }, l
   };
   pick(0, target, []);
   return out.slice(0, limit);
+}
+/* 5.5.0 (owner's requirements): when the automatic check finds nothing (amounts differ, more than 4 entries, more than
+   7 days apart), the owner ticks the entries a bill photo covers. These are the confirmed entries from the same vendor
+   (with no vendor chosen: for the same event) within 60 days, nearest first; never drafts, order estimates, split
+   parts or entries already on another bill photo. */
+export function billCandidates(expenses, { id, venId, evId, date }, limit = 30) {
+  if (!venId && !evId) return [];
+  const t = Date.parse(date) || Date.now(), gap = x => Math.abs((Date.parse(x.date) || t) - t);
+  return expenses.filter(x => x.id !== id && !x.draft && !x.fromOrder && !x.billOn && !x.split && toPaise(x.amt) > 0
+      && (venId ? x.venId === venId : x.evId === evId) && gap(x) <= 60 * 864e5)
+    .sort((a, b) => gap(a) - gap(b) || (b.date || '').localeCompare(a.date || '') || a.id.localeCompare(b.id)).slice(0, limit);
 }
 // The first match only (kept for callers that need one answer)
 export function repeatBill(expenses, bill) { return repeatBills(expenses, bill, 1)[0] || null; }
@@ -608,7 +680,17 @@ export const MENUS = [
   { id: 'bf-jalebi-fafda', meals: ['breakfast', 'hightea'], name: 'Breakfast / High Tea – Jalebi & Fafda', slabs: [{ min: 1, rate: 170 }], items: [
     'Jalebi', 'Fafda', 'Papaya Mirchi', 'Khaman Dhokla', 'Bread Butter', 'Tea', 'Coffee'] },
   { id: 'bf-buffet', meals: ['breakfast', 'hightea'], name: 'Breakfast / High Tea – Buffet (4 items)', slabs: [{ min: 1, rate: 250 }], items: [
-    'Any 4 breakfast / high-tea items', 'Assorted Cookies', 'Tea', 'Coffee', 'Milk'] }
+    'Any 4 breakfast / high-tea items', 'Assorted Cookies', 'Tea', 'Coffee', 'Milk'] },
+  // 5.5.0 (owner's requirements): more starting points, dishes only and editable. No price (rate 0): the rate card has
+  // none for them, so the price per plate is left for you to fill in; nothing is ever priced by guessing.
+  { id: 'latenight', meals: ['latenight'], name: 'Late Night Snacks', slabs: [{ min: 1, rate: 0 }], items: [
+    'Pav Bhaji', 'Masala Maggi', 'Hot Soup', 'Cutting Chai', 'Coffee', 'Kulfi'] },
+  { id: 'punjabi', meals: ['lunch', 'dinner'], name: 'Punjabi', slabs: [{ min: 1, rate: 0 }], items: [
+    'Welcome Drink', 'Green Salad, Onion, Pickle', 'Paneer Butter Masala', 'Dal Makhani', 'Chole', 'Mix Veg', 'Jeera Rice / Veg Pulao',
+    'Butter Naan / Tandoori Roti', 'Boondi Raita', 'Papad', 'Gulab Jamun', 'Water Bottles'] },
+  { id: 'fasting', name: 'Fasting (Upwas)', slabs: [{ min: 1, rate: 0 }], items: [
+    'Sabudana Khichdi', 'Sabudana Vada', 'Upwas Batata Bhaji', 'Bhagar (Vari Rice)', 'Shengdana Amti', 'Rajgira Puri', 'Upwas Chutney',
+    'Shrikhand / Basundi', 'Fruit Salad', 'Taak (Buttermilk)'] }
 ];
 
 /* The menu library: the starter menus above, overridden by your own saved copy of any of them (same id), plus menus
@@ -1744,3 +1826,53 @@ export function isLegacyPinHash(stored) {
   return !!stored && !stored.startsWith('sha256$');
 }
 
+
+/* 5.4.3 (owner's requirements, 27 Nov): menu-linked cooking assignments. A cooking contractor (e.g. a Chinese cook) is
+   given several of the meal's dishes in one assignment; the ingredients stay ours, so it is not an outsourced counter
+   and no order is made per dish. These read the event's menu as it is; nothing here saves or counts money.
+   An assignment moves: requested (dishes and people asked for) → confirmed (the contractor said yes, still no charge)
+   → agreed (a charge, which the labour sheet saves as an amount owed) → final (the final charge). Paying it is the
+   contractor's payment, kept apart. */
+// The dishes our own kitchen cooks for a meal ('' = every meal), as named on the menu, each once
+export function kitchenDishes(ev, meal) {
+  const out = [], seen = new Set();
+  for (const s of eventServices(ev).services) {
+    if (meal && s.meal && s.meal !== meal) continue;
+    for (const d of s.dishes) {
+      const k = dishKey(d.name);
+      if (d.head || d.preview || !k || seen.has(k)) continue;   // a library menu only previewed is not the event's menu yet
+      seen.add(k); out.push(String(d.name).trim());
+    }
+  }
+  return out;
+}
+// Dishes already in another assignment on this sheet → that line's worker type (one dish is normally one cook's)
+export function dishesTaken(rows, exceptId) {
+  const m = new Map();
+  for (const r of rows || []) if (r?.job === true && r.id !== exceptId) for (const n of r.dishes || []) if (!m.has(dishKey(n))) m.set(dishKey(n), r.role || '');
+  return m;
+}
+export const JOB_STAGES = { requested: ['Requested', 'मागितले'], confirmed: ['Confirmed', 'ठरले'], agreed: ['Charge agreed', 'मजुरी ठरली'], final: ['Final charge', 'अंतिम मजुरी'] };
+export function jobStage(r) {
+  return Number(r?.final) > 0 ? 'final' : Number(r?.rate) > 0 ? 'agreed' : r?.confirmed ? 'confirmed' : 'requested';
+}
+/* 5.5.0 (owner's requirements): the usual rate for a worker type paid by shift (or for an extra): the most used of the
+   last 6 rates on earlier sheets, this contractor's own first. Only offered as a tap; never filled in by itself. */
+export function usualLabourRate(events, { role = '', extra = '', venId = '', exceptEv = '' } = {}) {
+  const mine = [], all = [];
+  for (const e of [...(events || [])].filter(e => e.id !== exceptEv).sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))))
+    for (const r of e.labour?.rows || []) {
+      if (!(Number(r.rate) > 0) || r.job === true) continue;
+      if (extra ? !(r.kind === 'x' && r.extra === extra) : (r.kind === 'x' || r.role !== role)) continue;
+      if (venId && r.venId === venId) mine.push(Number(r.rate));
+      all.push(Number(r.rate));
+    }
+  const pick = list => { const last = list.slice(0, 6), n = new Map(); for (const x of last) n.set(x, (n.get(x) || 0) + 1);
+    return [...n].sort((a, b) => b[1] - a[1] || last.indexOf(a[0]) - last.indexOf(b[0]))[0]?.[0] || 0; };
+  return pick(mine) || pick(all);
+}
+// Guests for the assignment's meal (its main service), else the event's guests
+export function jobGuests(ev, r) {
+  const s = r?.meal ? eventServices(ev).services.find(x => x.meal === r.meal && x.main) : null;
+  return Number(s?.guests) || Number(ev?.guests) || 0;
+}

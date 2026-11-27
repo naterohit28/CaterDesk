@@ -169,14 +169,14 @@ const pickTime = async (p, id, hhmm = '19:30') => { if (await p.inputValue('#' +
     // The function sheet: the older all-meals order shows on both meals until each has its own; then each meal its own vendor and plates
     const sheet = async () => { await p.locator('[data-action="fs-open"]').click(); await p.waitForSelector('#fs-modal.active');
       const t = await p.locator('#fs-text').innerText(); await p.locator('#fs-modal [data-action="close-modal"]').click(); return t; };
-    assert.match(await sheet(), /- Chaat · Lunch: Pani Puri\n  Sample Chaat Stall \(9000000001\) · 300 plates · .* \(older order, all meals\)\n- Chaat · Dinner: Sev Puri\n  Sample Chaat Stall .* \(older order, all meals\)/);
+    assert.match(await sheet(), /LUNCH · 250 guests[^]*- Chaat: Pani Puri\n  Sample Chaat Stall \(9000000001\) · 300 plates · .* \(older order, all meals\)\n\nDINNER · 300 guests[^]*- Chaat: Sev Puri\n  Sample Chaat Stall .* \(older order, all meals\)/);   // 5.5.0: meal by meal
     await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest; const e = d.events.find(x => x.id === 'e2'); delete e._rev;
       e.orders = [...e.orders, { id: 'l2', svc: 's2-lunch', head: 'Chaat – चाट', venId: 'v1', plates: 125, date: e.date, status: 'confirmed', at: '2026-11-02T10:00:00.000Z' },
         { id: 'd2', svc: 's2-dinner', head: 'Chaat – चाट', venId: 'v2', plates: 150, date: e.date, status: 'sent', at: '2026-11-02T11:00:00.000Z' }];
       await db.importAllData(d, 'replace'); });
     await open2();
     const t = await sheet();
-    assert.match(t, /- Chaat · Lunch: Pani Puri\n  Sample Chaat Stall \(9000000001\) · 125 plates · [^\n(]*\n- Chaat · Dinner: Sev Puri\n  Sample Tandoor Co \(9000000002\) · 150 plates · [^\n(]*$/m, t);
+    assert.match(t, /- Chaat: Pani Puri\n  Sample Chaat Stall \(9000000001\) · 125 plates · [^\n(]*\n\nDINNER · 300 guests[^]*- Chaat: Sev Puri\n  Sample Tandoor Co \(9000000002\) · 150 plates · [^\n(]*$/m, t);
     await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest; const e = d.events.find(x => x.id === 'e2'); delete e._rev;
       e.orders = e.orders.filter(o => o.id === 'old2'); await db.importAllData(d, 'replace'); });
     await open2();
