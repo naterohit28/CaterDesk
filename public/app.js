@@ -1517,8 +1517,8 @@ function labourCard(ev) {
         <div class="row-body"><div class="title-sm trunc" data-nl>${esc(labName(r))}${r.venId ? `<span class="meta" data-lab-ven> · ${esc(venName(r.venId))}</span>` : ''}</div>
           <div class="meta">${isJob(r) ? `${stageChip(r)} ${tr('By order', 'ऑर्डरप्रमाणे')} · ${esc([jobWhat(r), jobText(r)].filter(Boolean).join(' · '))}` : isExtra(r)
             ? `${r.count > 1 ? `${r.count} × ` : ''}${r.rate > 0 ? fmtCurrency(r.rate) : ''}`
-            : `${esc(shiftList(r))}${Number(r.asked) > 0 ? ` · ${tr(`asked ${r.asked}`, `मागितले ${r.asked}`)}${shortBy(r) ? ` <span class="due" data-short>${tr(`${shortBy(r)} short`, `${shortBy(r)} कमी`)}</span>` : ''}` : ''} · ${r.rate > 0 ? `${fmtCurrency(r.rate)} ${tr('each', 'प्रत्येकी')}` : ''}`}${r.rate > 0 ? '' : `<span class="due" data-no-rate>${tr('Rate not set', 'दर नाही')}</span>${labKept(ev, rows, r) ? `<span class="meta" data-kept> · ${tr('earlier amount still counted', 'आधीची रक्कम धरली')}</span>` : ''}`}</div></div>
-        <div class="amt-sm">${r.rate > 0 ? fmtCurrency(lineAmt(r)) : labKept(ev, rows, r) ? fmtCurrency(labKept(ev, rows, r)) : '–'}</div>
+            : `${esc(shiftList(r))}${Number(r.asked) > 0 ? ` · ${tr(`asked ${r.asked}`, `मागितले ${r.asked}`)}${shortBy(r) ? ` <span class="due" data-short>${tr(`${shortBy(r)} short`, `${shortBy(r)} कमी`)}</span>` : ''}` : ''} · ${r.rate > 0 ? `${fmtCurrency(r.rate)} ${tr('each', 'प्रत्येकी')}` : ''}`}${r.rate > 0 || isJob(r) ? '' : ` <span class="due" data-no-rate>${tr('Rate not set', 'दर नाही')}</span>${labKept(ev, rows, r) ? `<span class="meta" data-kept> · ${tr('earlier amount still counted', 'आधीची रक्कम धरली')}</span>` : ''}`}</div></div>
+        <div class="amt-sm">${(isJob(r) ? lineAmt(r) > 0 : r.rate > 0) ? fmtCurrency(lineAmt(r)) : labKept(ev, rows, r) ? fmtCurrency(labKept(ev, rows, r)) : '–'}</div>
       </div>`).join('')}
       ${adj ? `<div class="row" style="min-height:44px">
         <div class="row-ic">${icon('pencil', 18)}</div>
@@ -2026,7 +2026,7 @@ const purchaseBillOf = p => D.expenses.find(x => x.purchase === p.id || (p.grp &
 const buyGroup = (ev, p) => p?.grp ? (ev.purchases || []).filter(x => x.grp === p.grp && x.status !== 'cancelled') : p ? [p] : [];
 let buyMore = [];
 function renderBuyMore() {
-  q('buy-more').innerHTML = buyMore.map((m, i) => `<div class="buy-more-row" data-bm="${i}" style="display:grid;grid-template-columns:28px minmax(0,1fr) 76px 96px;gap:var(--s2);align-items:center;margin-bottom:var(--s2)">
+  q('buy-more').innerHTML = buyMore.map((m, i) => `<div class="buy-more-row" data-bm="${i}" style="display:grid;grid-template-columns:28px minmax(0,1fr) 64px 112px;gap:var(--s2);align-items:center;margin-bottom:var(--s2)">
     <input type="checkbox" data-bk="on" aria-label="${esc(`Add ${m.name || 'item'}`)}"${m.on ? ' checked' : ''}${m.id ? ' disabled' : ''}>
     ${m.free ? `<input type="text" data-bk="name" maxlength="80" placeholder="Item – वस्तू" aria-label="Item" value="${esc(m.name)}">` : `<span class="meta" data-nl style="overflow-wrap:anywhere">${esc(m.name)}${m.label ? ` · ${esc(m.label)}` : ''}</span>`}
     <input type="number" data-bk="qty" min="0" step="any" inputmode="decimal" placeholder="Qty" aria-label="Quantity" value="${m.qty || ''}">
@@ -3899,6 +3899,10 @@ function functionSheetText(ev, extra = ev.functionSheet || {}) {
     const sk = shared.filter(d => !d.head && !d.src).map(d => d.name), sb = multi ? bought.filter(r => !r.svc) : [], wk = cooks.filter(r => !r.meal || !all.some(x => x.meal === r.meal));
     if (sk.length || sb.length) { L.push('', 'EVERY MEAL'); if (sk.length) L.push(`- Our kitchen: ${sk.join(', ')}`); for (const r of sb) buyLines(r); }
     if (wk.length) { L.push('', 'COOKS FOR THE WHOLE EVENT'); cookLines(wk); }
+    // 5.5.1: other items ordered with a supplier order (e.g. oil), which are not dishes on the menu
+    const extras = (ev.purchases || []).filter(x => x.extra && x.status !== 'cancelled');
+    if (extras.length) { L.push('', 'OTHER ITEMS'); for (const x of extras) { const sv = D.vendors.find(v => v.id === x.venId);
+      L.push(`- ${x.item}: ${qtyText(x)}`, `  ${sv?.name || 'Supplier'}${sv?.phone ? ' (' + sv.phone + ')' : ''} · ${ORDER_STATUS[x.status]?.en || x.status}`); } }
   } else if (menu) L.push(`- ${menu.name}: ${menu.items.join(', ')}`);
   else L.push('- Not entered');
   const staff = (ev.labour?.rows || []).map(labRow).filter(r => !isExtra(r) && heads(r));

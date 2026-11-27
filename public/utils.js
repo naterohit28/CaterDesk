@@ -1840,7 +1840,7 @@ export function kitchenDishes(ev, meal) {
     if (meal && s.meal && s.meal !== meal) continue;
     for (const d of s.dishes) {
       const k = dishKey(d.name);
-      if (d.head || d.preview || !k || seen.has(k)) continue;   // a library menu only previewed is not the event's menu yet
+      if (d.head || d.preview || d.src === 'buy' || !k || seen.has(k)) continue;   // bought ready-made: no cook needed (bought and finished by us still is)   // a library menu only previewed is not the event's menu yet
       seen.add(k); out.push(String(d.name).trim());
     }
   }

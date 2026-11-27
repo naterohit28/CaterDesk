@@ -38,6 +38,7 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [], expense
     await more('Veg Crispy').locator('[data-bk="qty"]').fill('10'); await more('Veg Crispy').locator('[data-bk="unit"]').selectOption('kg');
     await more('Paneer Tikka').locator('[data-bk="qty"]').fill('25'); await more('Paneer Tikka').locator('[data-bk="unit"]').selectOption('dozen');
     assert.equal(await more('Paneer Tikka').locator('[data-bk="on"]').isChecked(), true, 'typing a quantity ticks it');
+    assert.deepEqual(await more('Paneer Tikka').locator('[data-bk="on"]').evaluate(c => [getComputedStyle(c).appearance !== 'none', c.getBoundingClientRect().width]), [true, 22], '5.5.1: shown as a tick box');
     await p.locator('#btn-buy-other').click(); await p.locator('#buy-more [data-bm]:last-child [data-bk="name"]').fill('Cooking Oil');
     await p.locator('#buy-more [data-bm]:last-child [data-bk="qty"]').fill('5'); await p.locator('#buy-more [data-bm]:last-child [data-bk="unit"]').selectOption('litre');
     const wide = await p.evaluate(() => document.querySelector('#buy-modal .sheet').scrollWidth > document.querySelector('#buy-modal .sheet').clientWidth + 1);
@@ -62,6 +63,9 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [], expense
     await buyRow('svc-dinner|veg crispy').locator('[data-action="buy-status"]').click(); await p.waitForSelector('#ask-modal.active');
     await p.locator('#ask-actions button', { hasText: 'I have sent it' }).click(); await p.waitForTimeout(500);
     assert.deepEqual((await ev()).purchases.map(x => x.status), ['sent', 'sent', 'sent', 'sent']);
+    await p.locator('[data-action="fs-open"]').first().click(); await p.waitForSelector('#fs-modal.active');
+    assert.match(await p.locator('#fs-text').innerText(), /OTHER ITEMS\n- Cooking Oil: 5 litres\n  Sample Frozen Foods \(9000000034\) · Sent/, '5.5.1: on the function sheet');
+    await p.locator('#fs-modal [data-action="close-modal"]').first().click(); await p.waitForTimeout(200);
   });
 
   await test('changing one quantity makes a new message version for the whole order, back to not sent', async () => {
