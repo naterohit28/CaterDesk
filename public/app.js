@@ -3809,24 +3809,47 @@ function functionSheetText(ev, extra = ev.functionSheet || {}) {
   if (cp.counter) L.push(`- Who counts: ${cp.counter}`);
   if (cp.rep) L.push(`- Client representative: ${cp.rep}${cp.repPhone ? ', ' + cp.repPhone : ''}`);
   if (cp.rules) L.push(`- Rules: ${cp.rules}`);
-  const groups = dishGroups(ev), menu = menuById(ev.menu);
+  /* 5.5.0 (owner's requirements): the menu meal by meal: time and guests, then what our kitchen cooks, what is cooked
+     at the venue, the specialist cooks given work by order, bought items and outsourced counters, each with its supplier
+     and status. Read from the event as it is; no money and no automatic labour cost. */
+  const groups = dishGroups(ev), menu = menuById(ev.menu), bought = buyRows(ev);
   L.push('', 'MENU');
-  const bought = buyRows(ev);
-  if (groups.size || bought.length) {
-    // One line per counter and meal, each with its own order (vendor, plates, status); an older order made for every
-    // meal is shown where a meal has no order of its own
-    if (groups.has('')) L.push(`- Our kitchen: ${groups.get('').join(', ')}`);
-    const rows = counterRows(ev), live = [...(ev.orders || [])].reverse().filter(x => x.status !== 'cancelled');
-    for (const r of rows) {
-      const own = live.find(x => rowOf(ev, x, rows)?.key === r.key), o = own || live.find(x => !x.svc && x.head === r.head);
-      const ven = D.vendors.find(v => v.id === o?.venId);
-      L.push(`- ${ev.outsourced ? 'Whole event' : short(r.head)}${r.label ? ` · ${r.label}` : ''}: ${r.names.join(', ')}`);
-      L.push(`  ${ven ? `${ven.name}${ven.phone ? ' (' + ven.phone + ')' : ''}` : 'No vendor order yet'}${o ? ` · ${o.plates ? o.plates + ' plates · ' : ''}${ORDER_STATUS[o.status]?.en || o.status}${own ? '' : ' (older order, all meals)'}` : ''}`);
+  const crows = counterRows(ev), live = [...(ev.orders || [])].reverse().filter(x => x.status !== 'cancelled');
+  // One line per counter, with its own order (vendor, plates, status); an older order made for every meal is shown
+  // where a meal has no order of its own
+  const counterLines = (r, title) => {
+    const own = live.find(x => rowOf(ev, x, crows)?.key === r.key), o = own || live.find(x => !x.svc && x.head === r.head);
+    const ven = D.vendors.find(v => v.id === o?.venId);
+    L.push(`- ${title}: ${r.names.join(', ')}`);
+    L.push(`  ${ven ? `${ven.name}${ven.phone ? ' (' + ven.phone + ')' : ''}` : 'No vendor order yet'}${o ? ` · ${o.plates ? o.plates + ' plates · ' : ''}${ORDER_STATUS[o.status]?.en || o.status}${own ? '' : ' (older order, all meals)'}` : ''}`);
+  };
+  // Bought items: ready-made, or bought and finished in our kitchen, with their purchase
+  const buyLines = r => { const pu = buyOf(ev, r.key), sv = pu && D.vendors.find(v => v.id === pu.venId);
+    L.push(`- ${SRC_NAME[r.src]}: ${r.name}`);
+    L.push(`  ${pu ? `${sv?.name || 'Supplier'}${sv?.phone ? ' (' + sv.phone + ')' : ''} · ${qtyText(pu)} · ${ORDER_STATUS[pu.status]?.en || pu.status}` : 'No purchase order yet'}`); };
+  const cooks = (ev.labour?.rows || []).map(labRow).filter(isJob);
+  const cookLines = rs => { for (const r of rs) L.push(`- ${short(r.role)}${r.venId ? ` (${venName(r.venId)})` : ''}: ${jobWork(r) || 'work not set'}${heads(r) ? ` · ${heads(r)} ${heads(r) === 1 ? 'person' : 'people'}` : ''}${r.time ? ` · ${fmtTime(r.time)}` : ''} · ${JOB_STAGES[jobStage(r)][0]}`); };
+  if (ev.outsourced && groups.size) for (const r of crows) counterLines(r, 'Whole event');
+  else if (groups.size || bought.length) {
+    const all = eventServices(ev).services, multi = all.length > 1;
+    for (const sv of all) {
+      const own = sv.dishes.filter(d => !d.preview && !(d.shared && multi));
+      const kit = own.filter(d => !d.head && !d.src && d.at !== 'venue').map(d => d.name), atVenue = own.filter(d => !d.head && !d.src && d.at === 'venue').map(d => d.name);
+      const cr = crows.filter(r => (r.svc?.id || '') === sv.id ), br = bought.filter(r => r.svc === sv.id || (!r.svc && !multi));
+      const ck = sv.main && sv.meal ? cooks.filter(r => r.meal === sv.meal) : [];
+      if (!kit.length && !atVenue.length && !cr.length && !br.length && !ck.length) continue;
+      if (sv.meal && (multi || sv.time)) L.push('', [`${svcLabel(ev, sv, all).toUpperCase()}`, sv.time ? fmtTime(sv.time) : '', `${sv.guests || ev.guests || '—'} guests`].filter(Boolean).join(' · '));
+      if (kit.length) L.push(`- Our kitchen: ${kit.join(', ')}`);
+      if (atVenue.length) L.push(`- Cooked at the venue: ${atVenue.join(', ')}`);
+      cookLines(ck);
+      for (const r of br) buyLines(r);
+      for (const r of cr) counterLines(r, short(r.head));
     }
-    // Bought items: ready-made, or bought and finished in our kitchen, with their purchase
-    for (const r of bought) { const pu = buyOf(ev, r.key), sv = pu && D.vendors.find(v => v.id === pu.venId);
-      L.push(`- ${SRC_NAME[r.src]}${r.label ? ` · ${r.label}` : ''}: ${r.name}`);
-      L.push(`  ${pu ? `${sv?.name || 'Supplier'}${sv?.phone ? ' (' + sv.phone + ')' : ''} · ${qtyText(pu)} · ${ORDER_STATUS[pu.status]?.en || pu.status}` : 'No purchase order yet'}`); }
+    // Dishes served at every meal, and cooks given work for the whole event
+    const shared = multi ? (all[0]?.dishes || []).filter(d => d.shared && !d.preview) : [];
+    const sk = shared.filter(d => !d.head && !d.src).map(d => d.name), sb = multi ? bought.filter(r => !r.svc) : [], wk = cooks.filter(r => !r.meal || !all.some(x => x.meal === r.meal));
+    if (sk.length || sb.length) { L.push('', 'EVERY MEAL'); if (sk.length) L.push(`- Our kitchen: ${sk.join(', ')}`); for (const r of sb) buyLines(r); }
+    if (wk.length) { L.push('', 'COOKS FOR THE WHOLE EVENT'); cookLines(wk); }
   } else if (menu) L.push(`- ${menu.name}: ${menu.items.join(', ')}`);
   else L.push('- Not entered');
   const staff = (ev.labour?.rows || []).map(labRow).filter(r => !isExtra(r) && heads(r));

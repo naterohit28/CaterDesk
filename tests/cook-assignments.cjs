@@ -90,6 +90,14 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [], expense
     assert.match(await p.locator('[data-lab-contractor="cc"] [data-lab-due]').innerText(), /₹3,200 to pay/, 'settlement shown apart');
   });
 
+  await test('5.5.0: the function sheet goes meal by meal, with the cooks given work for that meal and no money', async () => {
+    await p.locator('[data-action="fs-open"]').first().click(); await p.waitForSelector('#fs-modal.active');
+    const t = await p.locator('#fs-text').innerText();
+    assert.match(t, /LUNCH · 120 guests\n- Our kitchen: Puri Bhaji\n\nDINNER · 150 guests\n- Our kitchen: Hakka Noodles, Manchurian, Dal Tadka\n- Chinese Cook \(Sample Chinese Team\): Hakka Noodles, Manchurian · 2 people · Final charge\n- Cook: Dal Tadka · Requested\n- Chaat: Pani Puri\n  No vendor order yet/, t);
+    assert.doesNotMatch(t, /₹|3,200|3200/);
+    await p.locator('#fs-modal [data-action="close-modal"]').first().click(); await p.waitForTimeout(200);
+  });
+
   await test('a backup with a bad dish list is refused', async () => {
     const bad = DATA(); bad.events[0].labour = { rows: [{ id: 'x', role: CHINESE, job: true, dishes: 'Hakka Noodles' }] };
     const err = await p.evaluate(async d => { try { await (await import('./db.js')).importAllData(d, 'replace'); return ''; } catch (e) { return e.message; } }, bad);
