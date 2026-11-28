@@ -13,7 +13,7 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [], expense
   events: [{ id: 'E', name: 'Sample Function', date: day(2), venue: 'Sample Hall', type: 'Wedding – लग्न', billing: 100000, guests: 200, photoIds: [],
     meals: ['lunch', 'dinner'], mealPlan: { lunch: { guests: 120, rate: 300 }, dinner: { guests: 150, rate: 400 } },
     dishes: [{ name: 'Hakka Noodles', meal: 'dinner', head: '' }, { name: 'Manchurian', meal: 'dinner', head: '' }, { name: 'Dal Tadka', meal: 'dinner', head: '' },
-      { name: 'Pani Puri', meal: 'dinner', head: CHAAT }, { name: 'Puri Bhaji', meal: 'lunch', head: '' }] }] });
+      { name: 'Pani Puri', meal: 'dinner', head: CHAAT }, { name: 'Gulab Jamun', meal: 'dinner', head: '', src: 'buy' }, { name: 'Puri Bhaji', meal: 'lunch', head: '' }] }] });
 
 (async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
@@ -49,7 +49,8 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [], expense
     assert.deepEqual([row.job, row.meal, row.dishes, row.people], [true, 'dinner', ['Hakka Noodles', 'Manchurian'], 2]);
     assert.equal(d.expenses.length, 0, 'ticking dishes adds no expense');
     const t = (await p.locator('#labour-card').innerText()).replace(/\s+/g, ' ');
-    assert.match(t, /Requested By order · Dinner · Hakka Noodles, Manchurian/);
+    assert.match(t, /Requested By order · Dinner · Hakka Noodles, Manchurian · [^\n]*charge not set/);
+    assert.equal(await p.locator('#labour-card [data-no-rate]').count(), 0, '5.5.1: no second "Rate not set" on a by-order line');
   });
 
   await test('the WhatsApp list names the dishes and the dinner\'s guests; WhatsApp only opens', async () => {
@@ -93,9 +94,25 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [], expense
   await test('5.5.0: the function sheet goes meal by meal, with the cooks given work for that meal and no money', async () => {
     await p.locator('[data-action="fs-open"]').first().click(); await p.waitForSelector('#fs-modal.active');
     const t = await p.locator('#fs-text').innerText();
-    assert.match(t, /LUNCH · 120 guests\n- Our kitchen: Puri Bhaji\n\nDINNER · 150 guests\n- Our kitchen: Hakka Noodles, Manchurian, Dal Tadka\n- Chinese Cook \(Sample Chinese Team\): Hakka Noodles, Manchurian · 2 people · Final charge\n- Cook: Dal Tadka · Requested\n- Chaat: Pani Puri\n  No vendor order yet/, t);
+    assert.match(t, /LUNCH · 120 guests\n- Our kitchen: Puri Bhaji\n\nDINNER · 150 guests\n- Our kitchen: Hakka Noodles, Manchurian, Dal Tadka\n- Chinese Cook \(Sample Chinese Team\): Hakka Noodles, Manchurian · 2 people · Final charge\n- Cook: Dal Tadka · Requested\n- Buy ready-made: Gulab Jamun\n  No purchase order yet\n- Chaat: Pani Puri\n  No vendor order yet/, t);
     assert.doesNotMatch(t, /₹|3,200|3200/);
     await p.locator('#fs-modal [data-action="close-modal"]').first().click(); await p.waitForTimeout(200);
+  });
+
+  await test('5.6.0: two dinners on different dates are separate services; finished and part-bought dishes count, ready-made ones do not', async () => {
+    const r = await p.evaluate(async () => { const u = await import('./utils.js');
+      const ev = { id: 'X', date: '2026-12-10', guests: 100, meals: ['dinner'], mealPlan: { dinner: { guests: 200, rate: 0 } },
+        services: [{ id: 'd1', meal: 'dinner' }, { id: 'd2', meal: 'dinner', date: '2026-12-11', guests: 80 }],
+        dishes: [{ name: 'Hakka Noodles', meal: 'dinner', svc: 'd1', head: '' }, { name: 'Spring Rolls', meal: 'dinner', svc: 'd1', head: '', src: 'finish' },
+          { name: 'Paneer Tikka', meal: 'dinner', svc: 'd1', head: 'Starter – स्टार्टर', part: true }, { name: 'Gulab Jamun', meal: 'dinner', svc: 'd1', head: '', src: 'buy' },
+          { name: 'Hakka Noodles', meal: 'dinner', svc: 'd2', head: '' }, { name: 'Pani Puri', meal: 'dinner', svc: 'd2', head: 'Chaat – चाट' }] };
+      const rows = [{ id: 'a', job: true, role: 'Chinese Cook', meal: 'dinner', svc: 'd1', dishes: ['Hakka Noodles'] }];
+      const t = u.dishesTaken(rows, 'b');
+      return [u.kitchenDishes(ev, 'dinner', 'd1'), u.kitchenDishes(ev, 'dinner', 'd2'), u.kitchenDishes(ev, 'dinner'),
+        t.get({ meal: 'dinner', svc: 'd1' }, 'Hakka Noodles'), t.get({ meal: 'dinner', svc: 'd2' }, 'Hakka Noodles'), t.get({}, 'hakka noodles'),
+        u.jobGuests(ev, { meal: 'dinner', svc: 'd2' }), u.jobGuests(ev, { meal: 'dinner' })]; });
+    assert.deepEqual(r, [['Hakka Noodles', 'Spring Rolls', 'Paneer Tikka'], ['Hakka Noodles'], ['Hakka Noodles', 'Spring Rolls', 'Paneer Tikka'],
+      'Chinese Cook', '', 'Chinese Cook', 80, 200]);
   });
 
   await test('a backup with a bad dish list is refused', async () => {

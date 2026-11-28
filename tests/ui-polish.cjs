@@ -34,14 +34,14 @@ const DATA = { version: 'ffv2', photos: [], vPays: [],
   await test("a past event's tools sit in one row: guest count, final settlement, function sheet, schedule; no stray buttons", async () => {
     await openEvent('A');
     const tools = await p.locator('#ev-tools [data-action]').evaluateAll(bs => bs.map(b => b.dataset.action));
-    assert.deepEqual(tools, ['plan-edit', 'quote-open', 'count-open', 'settle-open', 'fs-open']);
-    for (const a of ['plan-edit', 'quote-open', 'count-open', 'settle-open', 'fs-open']) assert.equal(await p.locator(`#tab-evdetail [data-action="${a}"]`).count(), 1, `${a} appears once`);
+    assert.deepEqual(tools, ['plan-edit', 'quote-open', 'count-open', 'settle-open', 'fs-open', 'close-open']);
+    for (const a of ['plan-edit', 'quote-open', 'count-open', 'settle-open', 'fs-open', 'close-open']) assert.equal(await p.locator(`#tab-evdetail [data-action="${a}"]`).count(), 1, `${a} appears once`);
     assert.equal(await noOverflow(), true);
   });
 
   await test('an upcoming, scheduled event shows its schedule block and no settlement button', async () => {
     await openEvent('B');
-    assert.deepEqual(await p.locator('#ev-tools [data-action]').evaluateAll(bs => bs.map(b => b.dataset.action)), ['quote-open', 'count-open', 'fs-open']);
+    assert.deepEqual(await p.locator('#ev-tools [data-action]').evaluateAll(bs => bs.map(b => b.dataset.action)), ['quote-open', 'count-open', 'fs-open', 'close-open']);
     assert.equal(await p.locator('#pay-schedule [data-action="plan-edit"]').count(), 1);
     assert.equal(await noOverflow(), true);
   });

@@ -83,6 +83,22 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [], expense
     assert.match(err, /labour/i);
   });
 
+  await test('5.6.0: wider item list in the same six categories; items used before first, the rest under All items', async () => {
+    const r = await p.evaluate(async () => { const u = await import('./utils.js'); const f = w => u.findHeads(w).map(h => `${h.cat}: ${h.head.split(' – ')[0]}`);
+      return [Object.keys(u.EXPENSE_HEADS).length, f('chicken'), f('koyla'), f('kiraya'), f('frozen')]; });
+    assert.deepEqual(r, [6, ['Raw Material: Non-veg (Chicken / Mutton / Fish)'], ['Operations: Charcoal / Firewood'], ['Admin: Rent'], ['Raw Material: Frozen / Ready Food']]);
+    await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest;
+      d.expenses.push({ id: 'xg', evId: 'E', cat: 'Raw Material', head: 'Vegetable – भाजी', amt: 300, date: d.events[0].date, pay: 'paid', mode: 'UPI', billIds: [] }); await db.importAllData(d, 'replace'); });
+    await p.reload(); await p.waitForSelector('#kpi', { state: 'attached' });
+    await p.locator('[data-action="quick"][data-id="expense"]').first().click(); await p.waitForSelector('#exp-modal.active');
+    await p.locator('#exp-cats [data-cat="Raw Material"]').click();
+    const groups = await p.locator('#exp-head optgroup').evaluateAll(gs => gs.map(g => [g.label, g.children.length]));
+    assert.deepEqual(groups.map(g => g[0]), ['Used before – नेहमीचे', 'All items – सर्व']);
+    assert.equal(await p.locator('#exp-head optgroup').first().locator('option').first().getAttribute('value'), 'Vegetable – भाजी');
+    await p.locator('#exp-modal [data-action="close-modal"]').first().click(); await p.waitForTimeout(200);
+    if (await p.locator('#ask-modal.active').count()) await p.locator('#ask-actions button').first().click();
+  });
+
   await test('no page errors', async () => { assert.deepEqual(errors, []); });
   await browser.close();
   console.log(failed ? 'easier-entry FAIL' : 'easier entry PASS');
