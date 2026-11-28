@@ -5000,9 +5000,29 @@ document.addEventListener('input', e => { onFieldEdited(e); queueSyncRequired();
 document.addEventListener('change', e => { onFieldEdited(e); queueSyncRequired(); }, true);
 document.addEventListener('click', queueSyncRequired, true);
 
+/* 5.6.2 (owner): event pickers for expenses, expense filters, shared bills and vendor payments say where and when
+   ("Sample Hall, Vashi · 12 Dec 2026"), the way the owner thinks of a function. Presentation only: the option value is
+   still the event's ID, and the order (newest first) is unchanged.
+   - The locality is added unless the venue already says it; a long venue drops the locality to stay readable.
+   - Two events at the same venue on the same day add their start time when it tells them apart, else their name.
+   - No venue recorded: the event name and date, as before. */
+const placeOf = e => {
+  const venue = String(e.venue || '').trim(), loc = String(e.locality || '').trim();
+  if (!venue) return '';
+  return loc && !venue.toLocaleLowerCase().includes(loc.toLocaleLowerCase()) && venue.length + loc.length <= 40 ? `${venue}, ${loc}` : venue;
+};
+const firstTime = e => (e.services || []).map(s => s.time).filter(Boolean).sort()[0] || e.time || '';
 function eventOptions() {
-  return [...D.events].sort((a, b) => b.date.localeCompare(a.date))
-    .map(e => ({ v: e.id, l: `${e.name} · ${fmtDate(e.date)}` }));
+  const evs = [...D.events].sort((a, b) => b.date.localeCompare(a.date));
+  const key = e => placeOf(e).toLocaleLowerCase() + '|' + e.date, groups = new Map();
+  for (const e of evs) if (placeOf(e)) groups.set(key(e), [...(groups.get(key(e)) || []), e]);
+  return evs.map(e => {
+    const place = placeOf(e);
+    if (!place) return { v: e.id, l: `${e.name} · ${fmtDate(e.date)}` };
+    const same = groups.get(key(e)), t = firstTime(e);
+    const extra = same.length < 2 ? '' : t && same.filter(x => firstTime(x) === t).length === 1 ? ` · ${fmtTime(t)}` : ` · ${e.name}`;
+    return { v: e.id, l: `${place} · ${fmtDate(e.date)}${extra}` };
+  });
 }
 
 /* ── EVENT SHEET ─────────────────────────────────── */
