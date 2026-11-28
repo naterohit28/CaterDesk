@@ -14,13 +14,13 @@ const VEN_MR = 'नमुना श्री गणेश किराणा आ
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   const errors = []; let failed = 0;
   const test = async (name, fn) => { try { await fn(); console.log(name + ' PASS'); } catch (e) { failed++; console.error(e); console.log(name + ' FAIL'); } };
-  const ev = (id, name) => ({ id, name, date: '2099-01-10', venue: 'Sample Hall', type: 'Party – पार्टी', billing: 1000, guests: 10, photoIds: [] });
+  const ev = (id, name, venue = 'Sample Hall') => ({ id, name, date: '2099-01-10', venue, type: 'Party – पार्टी', billing: 1000, guests: 10, photoIds: [] });
   const open = async (width = 360) => {
     const ctx = await browser.newContext({ ...devices['Pixel 5'], viewport: { width, height: 780 } });
     const p = await ctx.newPage(); p.setDefaultTimeout(10000); p.on('pageerror', e => errors.push(e.message));
     await p.goto(BASE_URL); await p.waitForSelector('#kpi .card');
     await p.evaluate(async d => { const db = await import('./db.js'); await db.importAllData(d); }, { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
-      events: [ev('e1', 'Short Party'), ev('e2', LONG_EN), ev('e3', LONG_MR)],
+      events: [ev('e1', 'Short Party', 'Sample Garden'), ev('e2', LONG_EN), ev('e3', LONG_MR)],
       vendors: [{ id: 'v1', name: 'Ram Stores', cat: 'Raw Material' }, { id: 'v2', name: VEN_EN, cat: 'Raw Material' }, { id: 'v3', name: VEN_MR, cat: 'Raw Material' }] });
     await p.reload(); await p.waitForSelector('#kpi .card');
     await p.locator('#n-expenses:visible').click(); await p.waitForSelector('#tab-expenses.active');

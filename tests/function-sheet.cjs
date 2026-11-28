@@ -64,7 +64,7 @@ const DATA = { version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
     const r = (await ev()).guestCounts.dinner.requests[0];
     assert.equal(r.status, 'requested', 'opening WhatsApp is not approval');
     assert.equal(opens[0].endsWith(r.text), true, 'the text kept is the text sent');
-    assert.match(r.text, /Hello Sample Rep, for Sample Wedding dinner on .*, the confirmed quantity is 500 covers at ₹800 per additional cover, before any applicable tax\. Our plate tokens issued currently shows 560, i\.e\. 60 more \(estimated ₹48,000\)\. Please reply "Approved: 60 extra dinner covers at ₹800 each"/);
+    assert.match(r.text, /Hello Sample Rep, for Sample Wedding dinner at Sample Lawn, Sample Nagar on .*, the confirmed quantity is 500 covers at ₹800 per additional cover, before any applicable tax\. Our plate tokens issued currently shows 560, i\.e\. 60 more \(estimated ₹48,000\)\. Please reply "Approved: 60 extra dinner covers at ₹800 each"/);
     assert.equal((await ev()).billing, 400000);
   });
 

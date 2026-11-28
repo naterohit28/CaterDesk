@@ -27,7 +27,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '5.6.0';
+const APP_BUILD = '5.6.2';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -361,6 +361,7 @@ function saveExpSnapshot() {
    the app so it works offline. Each release adds one entry (version, release date, English and Marathi). No popup after
    updates: only an entry marked `intro` (a notable change) shows a small card on Home once, which can be dismissed. */
 const WHATS_NEW = [
+  { v: '5.6.2', date: '2026-11-28', intro: true, en: 'Events, Expenses and Vendors all open with the search bar on top. When you choose an event for an expense, a shared bill or a vendor payment, it now shows the venue and date ("Sample Lawns, Vashi · 12 Dec"); two functions at the same place on the same day also show the time or name. WhatsApp messages to vendors name the venue and date, never the client.', mr: 'तिन्ही टॅबमध्ये शोध सर्वात वर. खर्च, वाटलेले बिल किंवा विक्रेता देयकासाठी कार्यक्रम निवडताना ठिकाण आणि तारीख दिसते. विक्रेत्यांना WhatsApp वर ठिकाण आणि तारीख जाते, ग्राहकाचे नाव नाही.' },
   { v: '5.6.0', date: '2026-11-27', intro: true, en: 'A closing report for each event: bill, GST, money received, costs by supplier and contractor, contribution and what is still open. Home lists pending work: cooks and orders to confirm, labour rates, events to reconcile. Quick event for a small job. Hinglish as a language in Settings. More expense items, the ones you use first.', mr: 'प्रत्येक कार्यक्रमाचा हिशोब अहवाल. होमवर बाकी कामे. छोट्या कामासाठी छोटा कार्यक्रम. सेटिंग्जमध्ये Hinglish भाषा. खर्चाचे अधिक प्रकार, नेहमीचे आधी.' },
   { v: '5.5.0', date: '2026-11-27', en: 'The function sheet now goes meal by meal. One supplier order can carry several items, in dozen or ladi too, with one WhatsApp message. Tick the entries a bill photo covers when the app does not find them. Search expense items by everyday words like paneer or tempo. Usual labour rate in one tap, and who was asked for against who came. Late Night, Punjabi and Fasting menus.', mr: 'फंक्शन शीट जेवणानुसार. एका ऑर्डरमध्ये अनेक वस्तू, एकच WhatsApp संदेश. बिल फोटो कोणत्या नोंदींचा ते स्वतः निवडा. पनीर, टेम्पो असे शब्द लिहून खर्च शोधा. नेहमीचा मजुरी दर एका टॅपवर; मागितले विरुद्ध आले. लेट नाईट, पंजाबी, उपवास मेनू.' },
   { v: '5.4.3', date: '2026-11-27', en: 'A cook given work by order can now be given dishes straight from the meal\'s menu, several at once, with the guests for that meal on the WhatsApp list. Each job shows if it is requested, confirmed, charge agreed or final. Ticking dishes adds no expense.', mr: 'ऑर्डरप्रमाणे आचाऱ्याला मेनूमधील पदार्थ थेट निवडून देता येतात; WhatsApp यादीत त्या जेवणाचे पाहुणे. प्रत्येक कामाची स्थिती दिसते. पदार्थ निवडल्याने खर्च नोंदवला जात नाही.' },
@@ -1242,7 +1243,7 @@ function priceCheckCard(vn) {
   return `<div class="sec"><span class="sec-title">Price check – दर तपासणी</span></div>
     <div class="card list" id="price-check">${rises.map(r => {
       const item = short(r.head);
-      const msg = `Namaste ${vn.name}! For ${item}, my recent bill (${r.ev.name}) came to ${fmtCurrency(r.latest)} per plate, against about ${fmtCurrency(r.avg)} per plate before. Has your rate changed? Thank you!`;
+      const msg = `Namaste ${vn.name}! For ${item}, my recent bill (${evWhere(r.ev)}) came to ${fmtCurrency(r.latest)} per plate, against about ${fmtCurrency(r.avg)} per plate before. Has your rate changed? Thank you!`;
       return `<div class="row" style="min-height:52px">
         <div class="row-body"><div class="title-sm trunc">${esc(item)}</div>
           <div class="meta">${tr(`Spend ${fmtCurrency(r.latest)}/plate now · ${fmtCurrency(r.avg)} before (${r.n} event${r.n > 1 ? 's' : ''})`, `खर्च आता ${fmtCurrency(r.latest)}/ताट · आधी ${fmtCurrency(r.avg)}`)}</div></div>
@@ -1257,7 +1258,7 @@ function priceCheckCard(vn) {
 function vendorDuesLink(vn, bal) {
   const items = pendingCredit().filter(u => u.x.venId === vn.id).map(({ x, left }) => {
     const ev = D.events.find(e => e.id === x.evId);
-    return `• ${(x.head || x.cat || '').split(' – ')[0]}${ev ? ' – ' + ev.name : ''} (${fmtDate(x.date)}): ${fmtCurrency(left)}`;
+    return `• ${(x.head || x.cat || '').split(' – ')[0]}${ev ? ' – ' + evWhere(ev) : ` (${fmtDate(x.date)})`}: ${fmtCurrency(left)}`;
   });
   const msg = `Namaste ${vn.name}! As per my records:\n`
     + `${isPerson(vn) ? 'Lent / paid for me' : 'Supplied'}: ${fmtCurrency(bal.supplied)}\nPaid: ${fmtCurrency(bal.paid)}\n` + (bal.credits ? `Credit notes: ${fmtCurrency(bal.credits)}\n` : '')
@@ -1274,7 +1275,7 @@ function receiptLink(ev, p) {
   const upTo = D.cPays.filter(x => x.evId === ev.id && (x.date < p.date || (x.date === p.date && x.id <= p.id)) || x.id === p.id);
   const received = upTo.reduce((s, x) => s + (Number(x.amt) || 0), 0), left = Math.max(0, clientDue(ev) - received);
   const mode = String(p.mode || 'Cash').split(' – ')[0];
-  const msg = `Namaste! Payment receipt for ${ev.name} (${fmtDate(ev.date)})
+  const msg = `Namaste! Payment receipt for ${ev.name} (${evWhere(ev)})
 `
     + `Received: ${fmtCurrency(p.amt)} on ${fmtDate(p.date)} by ${mode}${p.notes ? ' · ' + p.notes : ''}
 
@@ -1300,9 +1301,9 @@ function reminderLink(ev, pending) {
   // With a schedule, ask only for what is due now (never the whole outstanding as if it were overdue)
   const s = paymentSchedule(ev, D.cPays);
   const msg = s.scheduled && s.dueNow > 0
-    ? `Namaste! A gentle reminder from CaterDesk: ${fmtCurrency(s.dueNow)} is now due for ${ev.name} (${fmtDate(ev.date)}) as per the payment schedule (total balance ${fmtCurrency(s.outstanding)}). Kindly arrange the payment. Thank you!\n\n`
+    ? `Namaste! A gentle reminder from CaterDesk: ${fmtCurrency(s.dueNow)} is now due for ${ev.name} (${evWhere(ev)}) as per the payment schedule (total balance ${fmtCurrency(s.outstanding)}). Kindly arrange the payment. Thank you!\n\n`
       + `नमस्कार! ${ev.name} साठी ठरलेल्या हप्त्यानुसार ${fmtCurrency(s.dueNow)} आता देय आहे (एकूण बाकी ${fmtCurrency(s.outstanding)}). धन्यवाद!`
-    : `Namaste! A gentle reminder from CaterDesk: ${fmtCurrency(pending)} is pending for ${ev.name} (${fmtDate(ev.date)}). Kindly arrange the payment. Thank you!\n\n`
+    : `Namaste! A gentle reminder from CaterDesk: ${fmtCurrency(pending)} is pending for ${ev.name} (${evWhere(ev)}). Kindly arrange the payment. Thank you!\n\n`
       + `नमस्कार! ${ev.name} साठी ${fmtCurrency(pending)} बाकी आहे. कृपया देयक करावे. धन्यवाद!`;
   return `https://wa.me/${phoneDigits(ev.mobile)}?text=${encodeURIComponent(msg)}`;
 }
@@ -1568,7 +1569,7 @@ function labourListText(ev, venId) {
   const rows = (ev.labour?.rows || []).map(labRow).filter(r => r.venId === venId);
   const lines = rows.map(r => isJob(r) ? `${labName(r)}: ${[jobWhat(r), jobGuests(ev, r) ? `${jobGuests(ev, r)} guests` : '', heads(r) ? `${heads(r)} ${heads(r) === 1 ? 'person' : 'people'}` : ''].filter(Boolean).join(' · ') || 'for the menu'}`
     : isExtra(r) ? `${labName(r)}: ${r.count}${r.rate > 0 ? ' × ' + fmtCurrency(r.rate) : ''}` : `${labName(r)}: ${shiftList(r)}${r.rate > 0 ? ' @ ' + fmtCurrency(r.rate) : ''}`);
-  return `Namaste ${venName(venId)}! Labour needed:\nDate: ${fmtDate(ev.date)}\n${lines.join('\n')}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n\nPlease confirm. Thank you!`;
+  return `Namaste ${venName(venId)}! Labour needed:\nDate: ${fmtDate(ev.date)}\n${lines.join('\n')}\nVenue: ${placeOf(ev, true) || '-'}\n\nPlease confirm. Thank you!`;
 }
 function sendLabourList(venId) {
   const ev = D.events.find(e => e.id === curRef), ven = D.vendors.find(v => v.id === venId); if (!ev || !ven) return;
@@ -2115,7 +2116,7 @@ function buyMessage(ev, p, ven, group = [p]) {
   // One fact per line, in the order a supplier needs them; venue notes and your contact only when you have entered them
   const venue = venueNotes(ev), me = getProfile(), contact = [me.contact || me.name, me.phone].filter(Boolean).join(', ');
   return `Namaste ${ven.name}! Purchase order:\n${what}`
-    + `Date: ${fmtDate(p.date)}${meal ? ' (' + meal + ')' : ''}\nDeliver by: ${fmtTime(p.time) || '-'}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n`
+    + `Date: ${fmtDate(p.date)}${meal ? ' (' + meal + ')' : ''}\nDeliver by: ${fmtTime(p.time) || '-'}\nVenue: ${placeOf(ev, true) || '-'}\n`
     + (venue ? `At the venue: ${venue}\n` : '') + (p.notes ? `Note: ${p.notes}\n` : '') + (contact ? `Contact: ${contact}\n` : '') + `\nPlease confirm. Thank you!`;
 }
 async function sendBuy() {
@@ -2200,7 +2201,7 @@ async function buyAction(id) {
   if (next === 'remind') {
     const phone = phoneDigits(ven?.phone);
     if (!phone) { showToast(`${ven?.name || 'This supplier'} has no phone number – add it to send a reminder on WhatsApp.`, 'error'); return; }
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(`Namaste ${ven.name}! A reminder for this purchase:\nItem: ${p.item}\nQuantity: ${qtyText(p)}\nDate: ${fmtDate(p.date)}\nDeliver by: ${fmtTime(p.time) || '-'}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n\nPlease confirm everything is on track. Thank you!`)}`, '_blank', 'noopener');
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(`Namaste ${ven.name}! A reminder for this purchase:\nItem: ${p.item}\nQuantity: ${qtyText(p)}\nDate: ${fmtDate(p.date)}\nDeliver by: ${fmtTime(p.time) || '-'}\nVenue: ${placeOf(ev, true) || '-'}\n\nPlease confirm everything is on track. Thank you!`)}`, '_blank', 'noopener');
     await patchEvent(ev.id, { purchases: ev.purchases.map(x => x.id === id ? { ...x, reminded: [...(x.reminded || []), new Date().toISOString()].slice(-20) } : x) });
     refreshCurrent(); return;
   }
@@ -2481,7 +2482,7 @@ function orderMessage(ev, o, ven) {
   return `Namaste ${ven.name}! New order:\n`
     + (ev.outsourced ? `Order: Full event catering\nMenu: ${items || '-'}\nQuantity: ${o.plates || '-'} guests\n`
                      : `Counter: ${short(o.head)}\nItems: ${items || '-'}\nQuantity: ${o.plates || '-'} plates\n`)
-    + `Date: ${fmtDate(o.date)}${meal ? ' (' + meal + ')' : ''}\nReady by: ${fmtTime(o.time) || '-'}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n`
+    + `Date: ${fmtDate(o.date)}${meal ? ' (' + meal + ')' : ''}\nReady by: ${fmtTime(o.time) || '-'}\nVenue: ${placeOf(ev, true) || '-'}\n`
     + (venue ? `At the venue: ${venue}\n` : '')
     + (o.notes ? `Note: ${o.notes}\n` : '') + `\nPlease confirm. Thank you!`;
 }
@@ -2730,7 +2731,7 @@ function reminderMessage(ev, o, ven) {
   return `Namaste ${ven.name}! A reminder for this order:\n`
     + (ev.outsourced ? `Order: Full event catering\nMenu: ${items || '-'}\nQuantity: ${o.plates || '-'} guests\n`
                      : `Counter: ${short(o.head)}\nItems: ${items || '-'}\nQuantity: ${o.plates || '-'} plates\n`)
-    + `Date: ${fmtDate(o.date)}${meal ? ' (' + meal + ')' : ''}\nReady by: ${fmtTime(o.time) || '-'}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n`
+    + `Date: ${fmtDate(o.date)}${meal ? ' (' + meal + ')' : ''}\nReady by: ${fmtTime(o.time) || '-'}\nVenue: ${placeOf(ev, true) || '-'}\n`
     + `\nPlease confirm everything is on track. Thank you!`;
 }
 async function remindOrder(evId, orderId) {
@@ -3291,7 +3292,7 @@ function printMenuDoc() {
 function shareMenuDoc() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const cm = clientMenu(ev, qv('md-ver')); if (!cm) return;
-  const text = `Menu for ${ev.name} – ${fmtDate(ev.date)}\n\n${clientMenuText(cm)}`, phone = phoneDigits(ev.mobile);
+  const text = `Menu for ${ev.name} – ${evWhere(ev)}\n\n${clientMenuText(cm)}`, phone = phoneDigits(ev.mobile);
   window.open(phone ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
   showToast('WhatsApp opened. Tap "I have sent it" after you send it, to keep a copy – पाठवल्यावर नोंदवा');
 }
@@ -3859,7 +3860,7 @@ async function saveCountPolicy() {
 // Prefilled, editable request to the client's representative; amounts come from the agreed data (spec §11.5)
 function extraPlatesMessage(ev, k, s, qty) {
   const cp = ev.countPolicy || {}, meal = MEAL_NAME(k).toLowerCase(), method = COUNT_METHODS.find(m => m.id === cp.method);
-  return `Hello${cp.rep ? ' ' + cp.rep : ''}, for ${ev.name}${k === 'all' ? '' : ' ' + meal} on ${fmtDate(ev.date)}, the confirmed quantity is ${s.contracted} covers at ${fmtCurrency(s.rate)} per additional cover, before any applicable tax. `
+  return `Hello${cp.rep ? ' ' + cp.rep : ''}, for ${ev.name}${k === 'all' ? '' : ' ' + meal}${placeOf(ev, true) ? ' at ' + placeOf(ev, true) : ''} on ${fmtDate(ev.date)}, the confirmed quantity is ${s.contracted} covers at ${fmtCurrency(s.rate)} per additional cover, before any applicable tax. `
     + `Our ${method ? method.en.toLowerCase() : 'count'} currently shows ${s.counted}, i.e. ${qty} more (estimated ${fmtCurrency(toPaise(s.rate) * qty / 100)}). `
     + `Please reply "Approved: ${qty} extra ${k === 'all' ? '' : meal + ' '}covers at ${fmtCurrency(s.rate)} each" (or call us to discuss) so we can record your approval.`;
 }
@@ -4999,9 +5000,32 @@ document.addEventListener('input', e => { onFieldEdited(e); queueSyncRequired();
 document.addEventListener('change', e => { onFieldEdited(e); queueSyncRequired(); }, true);
 document.addEventListener('click', queueSyncRequired, true);
 
+/* 5.6.2 (owner): event pickers for expenses, expense filters, shared bills and vendor payments say where and when
+   ("Sample Hall, Vashi · 12 Dec 2026"), the way the owner thinks of a function. Presentation only: the option value is
+   still the event's ID, and the order (newest first) is unchanged.
+   - The locality is added unless the venue already says it; a long venue drops the locality to stay readable.
+   - Two events at the same venue on the same day add their start time when it tells them apart, else their name.
+   - No venue recorded: the event name and date, as before. */
+const placeOf = (e, full = false) => {
+  const venue = String(e?.venue || '').trim(), loc = String(e?.locality || '').trim();
+  if (!venue) return loc;
+  return loc && !venue.toLocaleLowerCase().includes(loc.toLocaleLowerCase()) && (full || venue.length + loc.length <= 40) ? `${venue}, ${loc}` : venue;
+};
+// The same words in WhatsApp messages (5.6.2, owner): "Sample Lawns, Vashi · 12 Dec 2026". Vendors never get the
+// client's or event's name; clients see their event's name followed by this.
+const evWhere = e => [placeOf(e, true), fmtDate(e.date)].filter(Boolean).join(' · ');
+const firstTime = e => (e.services || []).map(s => s.time).filter(Boolean).sort()[0] || e.time || '';
 function eventOptions() {
-  return [...D.events].sort((a, b) => b.date.localeCompare(a.date))
-    .map(e => ({ v: e.id, l: `${e.name} · ${fmtDate(e.date)}` }));
+  const evs = [...D.events].sort((a, b) => b.date.localeCompare(a.date));
+  const key = e => placeOf(e).toLocaleLowerCase() + '|' + e.date, groups = new Map();
+  for (const e of evs) if (placeOf(e)) groups.set(key(e), [...(groups.get(key(e)) || []), e]);
+  return evs.map(e => {
+    const place = placeOf(e);
+    if (!place) return { v: e.id, l: `${e.name} · ${fmtDate(e.date)}` };
+    const same = groups.get(key(e)), t = firstTime(e);
+    const extra = same.length < 2 ? '' : t && same.filter(x => firstTime(x) === t).length === 1 ? ` · ${fmtTime(t)}` : ` · ${e.name}`;
+    return { v: e.id, l: `${place} · ${fmtDate(e.date)}${extra}` };
+  });
 }
 
 /* ── EVENT SHEET ─────────────────────────────────── */
