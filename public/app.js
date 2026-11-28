@@ -3979,7 +3979,9 @@ const hasDues = venId => calcVendorBalance(venId, D.expenses, D.vPays).balance >
 function renderSay() {
   const UNCLEAR = { negative: ['This says it was not done, or should not be done ("nahi", "mat"). Nothing to record. If it did happen, write it again without that word.', 'हे झाले नाही असे दिसते. काहीही नोंदवले जाणार नाही.'],
     cancel: ['This says it was cancelled. Nothing is recorded here: open the entry itself to cancel it.', 'रद्द झाले असे दिसते. इथे काहीही नोंदवले जाणार नाही.'],
-    future: ['This sounds like money still to be paid, not paid yet. Nothing to record now. To note what you owe a supplier, write it with "udhaar".', 'हे अजून द्यायचे आहे असे दिसते. आता काहीही नोंदवले जाणार नाही.'] };
+    refund: ['Money coming back (a refund) is not recorded by typing yet. Open the bill or payment itself to correct it.', 'परतावा इथे नोंदवला जात नाही. ते बिल किंवा देयक उघडून दुरुस्त करा.'],
+    document: ['Bills and quotations are made from the event page, not here. Nothing is recorded.', 'बिल आणि कोटेशन कार्यक्रमाच्या पानावरून बनवा. काहीही नोंदवले नाही.'],
+    future: ['This sounds like money still to be paid or still to come, not paid yet. Nothing to record now. To note what you owe a supplier, write it with "udhaar".', 'हे अजून द्यायचे आहे असे दिसते. आता काहीही नोंदवले जाणार नाही.'] };
   const R0 = say.r;
   if (R0.kind === 'unclear' || R0.kind === 'multi') {
     q('say-result').innerHTML = `<div class="card pad say-card" data-say-stop><div class="say-err">${R0.kind === 'multi'
@@ -4009,7 +4011,7 @@ function renderSay() {
   if (k === 'cpay' && r.advance) lines += `<div class="meta">${tr('An advance is money received. The bill is not changed.', 'आगाऊ म्हणजे मिळालेली रक्कम; बिल बदलत नाही.')}</div>`;
   if (k === 'event') lines += line('Type', 'प्रकार', short(r.type), '') + line('Date', 'दिनांक', r.date ? fmtDate(r.date) + (r.dateCheck ? ' (check: "kal")' : '') : '', need('choose', 'निवडा'))
     + line('Plates', 'ताटे', r.guests || '', need('optional', 'ऐच्छिक')) + line('Place', 'ठिकाण', r.venue, need('optional', 'ऐच्छिक'))
-    + (r.advance ? line('Advance', 'आगाऊ', fmtCurrency(r.advance) + ' (money received, not the bill)', '') : '');
+    + (r.bill ? line('Bill', 'बिल', fmtCurrency(r.bill), '') : '') + (r.advance ? line('Advance', 'आगाऊ', fmtCurrency(r.advance) + ' (money received, not the bill)', '') : '');
   if (k === 'labour') lines += line('Workers', 'मजूर', `${r.count} ${short(r.role)}`, '') + line('Meal', 'जेवण', SAY_MEAL[r.meal], need('choose on the sheet', 'शीटवर निवडा')) + (r.rate ? line('Rate', 'दर', fmtCurrency(r.rate), '') : '');
   if (k === 'cook') lines += line('Cook', 'आचारी', `${short(r.role)} · ${r.people} ${r.people === 1 ? 'person' : 'people'}`, '') + line('Dishes', 'पदार्थ', (r.dishes || []).join(', '), need('choose on the sheet', 'शीटवर निवडा'));
   if (k === 'order') lines += line('Items', 'वस्तू', r.items.map(i => `${i.qty} ${i.unit} ${i.name}`).join(', '), '');
@@ -4102,7 +4104,7 @@ async function sayGo() {
   } else if (k === 'event') {
     openQuickEvent();
     q('qev-name').value = [short(r.type) === 'Other' ? 'Event' : short(r.type), r.venue].filter(Boolean).join(' – ');
-    if (r.date) q('qev-date').value = r.date; if (r.guests) q('qev-guests').value = r.guests; if (r.venue) q('qev-venue').value = r.venue;
+    if (r.date) q('qev-date').value = r.date; if (r.guests) q('qev-guests').value = r.guests; if (r.venue) q('qev-venue').value = r.venue; if (r.bill) q('qev-bill').value = r.bill;
     if (r.advance) { q('qev-rec').value = r.advance; q('qev-rec').dispatchEvent(new Event('input', { bubbles: true })); if (say.mode) q('qev-mode').value = say.mode; }
   } else if (k === 'vendor') {
     openVenModal(null, 'vendor', { cat: r.cat || '' });

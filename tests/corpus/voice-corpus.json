@@ -1,0 +1,4873 @@
+{
+ "about": "CaterDesk multilingual sentence corpus (synthetic). 100 sentences per language: en, hi, mr, hg (Hinglish). Built by build-voice-corpus.py.",
+ "context": {
+  "today": "2026-11-28",
+  "events": [
+   {
+    "id": "P",
+    "name": "Sample Patil Wedding",
+    "date": "2026-11-29",
+    "venue": "Sample Lawns",
+    "locality": "Vashi"
+   },
+   {
+    "id": "D",
+    "name": "Sample Desai Reception",
+    "date": "2026-11-29",
+    "venue": "Sample Banquet",
+    "locality": "Thane"
+   },
+   {
+    "id": "K",
+    "name": "Sample Kulkarni Pooja",
+    "date": "2026-11-28",
+    "venue": "MLA Hall",
+    "locality": "Nerul"
+   }
+  ],
+  "vendors": [
+   {
+    "id": "ram",
+    "name": "Ramesh Mukadam",
+    "cat": "Labour",
+    "specialty": "Boys – बॉईज"
+   },
+   {
+    "id": "veg",
+    "name": "Sample Bhaji Supplier",
+    "cat": "Raw Material",
+    "specialty": "Vegetable – भाजी"
+   },
+   {
+    "id": "gro",
+    "name": "Sample Kirana Store",
+    "cat": "Raw Material",
+    "specialty": "Grocery – किराणा"
+   },
+   {
+    "id": "bos",
+    "name": "Bay of Snacks",
+    "cat": "Live Counter",
+    "specialty": "Starter – स्टार्टर"
+   }
+  ]
+ },
+ "sentences": [
+  {
+   "id": "en-paid-1",
+   "lang": "en",
+   "about": "paid expense",
+   "text": "Paid 4500 cash for vegetables",
+   "expect": {
+    "kind": "expense",
+    "amount": 4500,
+    "pay": "paid",
+    "mode": "Cash – रोख",
+    "head": "Vegetable – भाजी"
+   }
+  },
+  {
+   "id": "en-paid-2",
+   "lang": "en",
+   "about": "paid expense",
+   "text": "Paid 1200 UPI for gas",
+   "expect": {
+    "kind": "expense",
+    "amount": 1200,
+    "pay": "paid",
+    "mode": "UPI",
+    "head": "Gas / Cylinder – सिलिंडर"
+   }
+  },
+  {
+   "id": "en-paid-3",
+   "lang": "en",
+   "about": "paid expense",
+   "text": "Paid twenty seven hundred cash for gas",
+   "expect": {
+    "kind": "expense",
+    "amount": 2700,
+    "pay": "paid",
+    "mode": "Cash – रोख",
+    "head": "Gas / Cylinder – सिलिंडर"
+   }
+  },
+  {
+   "id": "en-paid-4",
+   "lang": "en",
+   "about": "paid expense",
+   "text": "Paid one thousand five hundred UPI for tempo",
+   "expect": {
+    "kind": "expense",
+    "amount": 1500,
+    "pay": "paid",
+    "mode": "UPI",
+    "head": "Transport – वाहतूक"
+   }
+  },
+  {
+   "id": "hi-paid-1",
+   "lang": "hi",
+   "about": "paid expense",
+   "text": "सब्जी के 4500 नकद दिए",
+   "expect": {
+    "kind": "expense",
+    "amount": 4500,
+    "pay": "paid",
+    "mode": "Cash – रोख",
+    "head": "Vegetable – भाजी"
+   }
+  },
+  {
+   "id": "hi-paid-2",
+   "lang": "hi",
+   "about": "paid expense",
+   "text": "गैस के 1200 यूपीआई दिए",
+   "expect": {
+    "kind": "expense",
+    "amount": 1200,
+    "pay": "paid",
+    "mode": "UPI",
+    "head": "Gas / Cylinder – सिलिंडर"
+   }
+  },
+  {
+   "id": "hi-paid-3",
+   "lang": "hi",
+   "about": "paid expense",
+   "text": "गैस के सत्ताईस सौ नकद दिए",
+   "expect": {
+    "kind": "expense",
+    "amount": 2700,
+    "pay": "paid",
+    "mode": "Cash – रोख",
+    "head": "Gas / Cylinder – सिलिंडर"
+   }
+  },
+  {
+   "id": "hi-paid-4",
+   "lang": "hi",
+   "about": "paid expense",
+   "text": "टेम्पो के डेढ़ हजार यूपीआई दिए",
+   "expect": {
+    "kind": "expense",
+    "amount": 1500,
+    "pay": "paid",
+    "mode": "UPI",
+    "head": "Transport – वाहतूक"
+   }
+  },
+  {
+   "id": "mr-paid-1",
+   "lang": "mr",
+   "about": "paid expense",
+   "text": "भाजीचे 4500 रोख दिले",
+   "expect": {
+    "kind": "expense",
+    "amount": 4500,
+    "pay": "paid",
+    "mode": "Cash – रोख",
+    "head": "Vegetable – भाजी"
+   }
+  },
+  {
+   "id": "mr-paid-2",
+   "lang": "mr",
+   "about": "paid expense",
+   "text": "गॅसचे 1200 यूपीआय दिले",
+   "expect": {
+    "kind": "expense",
+    "amount": 1200,
+    "pay": "paid",
+    "mode": "UPI",
+    "head": "Gas / Cylinder – सिलिंडर"
+   }
+  },
+  {
+   "id": "mr-paid-3",
+   "lang": "mr",
+   "about": "paid expense",
+   "text": "गॅसचे सत्तावीसशे रोख दिले",
+   "expect": {
+    "kind": "expense",
+    "amount": 2700,
+    "pay": "paid",
+    "mode": "Cash – रोख",
+    "head": "Gas / Cylinder – सिलिंडर"
+   }
+  },
+  {
+   "id": "mr-paid-4",
+   "lang": "mr",
+   "about": "paid expense",
+   "text": "टेम्पोचे दीड हजार यूपीआय दिले",
+   "expect": {
+    "kind": "expense",
+    "amount": 1500,
+    "pay": "paid",
+    "mode": "UPI",
+    "head": "Transport – वाहतूक"
+   }
+  },
+  {
+   "id": "hg-paid-1",
+   "lang": "hg",
+   "about": "paid expense",
+   "text": "sabzi ka 4500 cash diya",
+   "expect": {
+    "kind": "expense",
+    "amount": 4500,
+    "pay": "paid",
+    "mode": "Cash – रोख",
+    "head": "Vegetable – भाजी"
+   }
+  },
+  {
+   "id": "hg-paid-2",
+   "lang": "hg",
+   "about": "paid expense",
+   "text": "gas ka 1200 GPay diya",
+   "expect": {
+    "kind": "expense",
+    "amount": 1200,
+    "pay": "paid",
+    "mode": "UPI",
+    "head": "Gas / Cylinder – सिलिंडर"
+   }
+  },
+  {
+   "id": "hg-paid-3",
+   "lang": "hg",
+   "about": "paid expense",
+   "text": "gas ka sattais sau cash diya",
+   "expect": {
+    "kind": "expense",
+    "amount": 2700,
+    "pay": "paid",
+    "mode": "Cash – रोख",
+    "head": "Gas / Cylinder – सिलिंडर"
+   }
+  },
+  {
+   "id": "hg-paid-4",
+   "lang": "hg",
+   "about": "paid expense",
+   "text": "tempo ka dedh hazaar GPay diya",
+   "expect": {
+    "kind": "expense",
+    "amount": 1500,
+    "pay": "paid",
+    "mode": "UPI",
+    "head": "Transport – वाहतूक"
+   }
+  },
+  {
+   "id": "en-credit-1",
+   "lang": "en",
+   "about": "expense on credit",
+   "text": "paneer eight thousand five hundred on credit",
+   "expect": {
+    "kind": "expense",
+    "amount": 8500,
+    "pay": "credit",
+    "head": "Milk & Dairy – दूध व दुग्धजन्य पदार्थ"
+   }
+  },
+  {
+   "id": "en-credit-2",
+   "lang": "en",
+   "about": "expense on credit",
+   "text": "vegetables 3200 on credit",
+   "expect": {
+    "kind": "expense",
+    "amount": 3200,
+    "pay": "credit",
+    "head": "Vegetable – भाजी"
+   }
+  },
+  {
+   "id": "en-credit-3",
+   "lang": "en",
+   "about": "expense on credit",
+   "text": "gas fourteen hundred on credit",
+   "expect": {
+    "kind": "expense",
+    "amount": 1400,
+    "pay": "credit",
+    "head": "Gas / Cylinder – सिलिंडर"
+   }
+  },
+  {
+   "id": "en-credit-4",
+   "lang": "en",
+   "about": "expense on credit",
+   "text": "paneer 2490 on credit",
+   "expect": {
+    "kind": "expense",
+    "amount": 2490,
+    "pay": "credit",
+    "head": "Milk & Dairy – दूध व दुग्धजन्य पदार्थ"
+   }
+  },
+  {
+   "id": "hi-credit-1",
+   "lang": "hi",
+   "about": "expense on credit",
+   "text": "पनीर के साढ़े आठ हजार उधार",
+   "expect": {
+    "kind": "expense",
+    "amount": 8500,
+    "pay": "credit",
+    "head": "Milk & Dairy – दूध व दुग्धजन्य पदार्थ"
+   }
+  },
+  {
+   "id": "hi-credit-2",
+   "lang": "hi",
+   "about": "expense on credit",
+   "text": "सब्जी के 3200 उधार",
+   "expect": {
+    "kind": "expense",
+    "amount": 3200,
+    "pay": "credit",
+    "head": "Vegetable – भाजी"
+   }
+  },
+  {
+   "id": "hi-credit-3",
+   "lang": "hi",
+   "about": "expense on credit",
+   "text": "गैस के चौदह सौ उधार",
+   "expect": {
+    "kind": "expense",
+    "amount": 1400,
+    "pay": "credit",
+    "head": "Gas / Cylinder – सिलिंडर"
+   }
+  },
+  {
+   "id": "hi-credit-4",
+   "lang": "hi",
+   "about": "expense on credit",
+   "text": "पनीर के 2490 उधार",
+   "expect": {
+    "kind": "expense",
+    "amount": 2490,
+    "pay": "credit",
+    "head": "Milk & Dairy – दूध व दुग्धजन्य पदार्थ"
+   }
+  },
+  {
+   "id": "mr-credit-1",
+   "lang": "mr",
+   "about": "expense on credit",
+   "text": "पनीरचे साडेआठ हजार उधार",
+   "expect": {
+    "kind": "expense",
+    "amount": 8500,
+    "pay": "credit",
+    "head": "Milk & Dairy – दूध व दुग्धजन्य पदार्थ"
+   }
+  },
+  {
+   "id": "mr-credit-2",
+   "lang": "mr",
+   "about": "expense on credit",
+   "text": "भाजीचे 3200 उधार",
+   "expect": {
+    "kind": "expense",
+    "amount": 3200,
+    "pay": "credit",
+    "head": "Vegetable – भाजी"
+   }
+  },
+  {
+   "id": "mr-credit-3",
+   "lang": "mr",
+   "about": "expense on credit",
+   "text": "गॅसचे चौदाशे उधार",
+   "expect": {
+    "kind": "expense",
+    "amount": 1400,
+    "pay": "credit",
+    "head": "Gas / Cylinder – सिलिंडर"
+   }
+  },
+  {
+   "id": "mr-credit-4",
+   "lang": "mr",
+   "about": "expense on credit",
+   "text": "पनीरचे 2490 उधार",
+   "expect": {
+    "kind": "expense",
+    "amount": 2490,
+    "pay": "credit",
+    "head": "Milk & Dairy – दूध व दुग्धजन्य पदार्थ"
+   }
+  },
+  {
+   "id": "hg-credit-1",
+   "lang": "hg",
+   "about": "expense on credit",
+   "text": "paneer saadhe aath hazaar udhaar",
+   "expect": {
+    "kind": "expense",
+    "amount": 8500,
+    "pay": "credit",
+    "head": "Milk & Dairy – दूध व दुग्धजन्य पदार्थ"
+   }
+  },
+  {
+   "id": "hg-credit-2",
+   "lang": "hg",
+   "about": "expense on credit",
+   "text": "sabzi 3200 udhaar",
+   "expect": {
+    "kind": "expense",
+    "amount": 3200,
+    "pay": "credit",
+    "head": "Vegetable – भाजी"
+   }
+  },
+  {
+   "id": "hg-credit-3",
+   "lang": "hg",
+   "about": "expense on credit",
+   "text": "gas chaudah sau udhaar",
+   "expect": {
+    "kind": "expense",
+    "amount": 1400,
+    "pay": "credit",
+    "head": "Gas / Cylinder – सिलिंडर"
+   }
+  },
+  {
+   "id": "hg-credit-4",
+   "lang": "hg",
+   "about": "expense on credit",
+   "text": "paneer 2490 udhaar",
+   "expect": {
+    "kind": "expense",
+    "amount": 2490,
+    "pay": "credit",
+    "head": "Milk & Dairy – दूध व दुग्धजन्य पदार्थ"
+   }
+  },
+  {
+   "id": "en-event-name-1",
+   "lang": "en",
+   "about": "expense for a named event",
+   "text": "4500 cash for vegetables for the Patil wedding",
+   "expect": {
+    "kind": "expense",
+    "amount": 4500,
+    "pay": "paid",
+    "mode": "Cash – रोख",
+    "event": "P"
+   }
+  },
+  {
+   "id": "en-event-name-2",
+   "lang": "en",
+   "about": "expense for a named event",
+   "text": "2000 UPI for gas for the Patil wedding",
+   "expect": {
+    "kind": "expense",
+    "amount": 2000,
+    "pay": "paid",
+    "mode": "UPI",
+    "event": "P"
+   }
+  },
+  {
+   "id": "en-event-name-3",
+   "lang": "en",
+   "about": "expense for a named event",
+   "text": "two thousand five hundred cash for vegetables for the Patil wedding",
+   "expect": {
+    "kind": "expense",
+    "amount": 2500,
+    "pay": "paid",
+    "mode": "Cash – रोख",
+    "event": "P"
+   }
+  },
+  {
+   "id": "en-event-name-4",
+   "lang": "en",
+   "about": "expense for a named event",
+   "text": "1800 cash for tempo for the Patil wedding",
+   "expect": {
+    "kind": "expense",
+    "amount": 1800,
+    "pay": "paid",
+    "mode": "Cash – रोख",
+    "event": "P"
+   }
+  },
+  {
+   "id": "hi-event-name-1",
+   "lang": "hi",
+   "about": "expense for a named event",
+   "text": "पाटिल की शादी के लिए सब्जी 4500 नकद",
+   "expect": {
+    "kind": "expense",
+    "amount": 4500,
+    "pay": "paid",
+    "mode": "Cash – रोख",
+    "event": "P"
+   }
+  },
+  {
+   "id": "hi-event-name-2",
+   "lang": "hi",
+   "about": "expense for a named event",
+   "text": "पाटिल की शादी के लिए गैस 2000 यूपीआई",
+   "expect": {
+    "kind": "expense",
+    "amount": 2000,
+    "pay": "paid",
+    "mode": "UPI",
+    "event": "P"
+   }
+  },
+  {
+   "id": "hi-event-name-3",
+   "lang": "hi",
+   "about": "expense for a named event",
+   "text": "पाटिल की शादी के लिए सब्जी ढाई हजार नकद",
+   "expect": {
+    "kind": "expense",
+    "amount": 2500,
+    "pay": "paid",
+    "mode": "Cash – रोख",
+    "event": "P"
+   }
+  },
+  {
+   "id": "hi-event-name-4",
+   "lang": "hi",
+   "about": "expense for a named event",
+   "text": "पाटिल की शादी के लिए टेम्पो 1800 नकद",
+   "expect": {
+    "kind": "expense",
+    "amount": 1800,
+    "pay": "paid",
+    "mode": "Cash – रोख",
+    "event": "P"
+   }
+  },
+  {
+   "id": "mr-event-name-1",
+   "lang": "mr",
+   "about": "expense for a named event",
+   "text": "पाटील लग्नासाठी भाजी 4500 रोख",
+   "expect": {
+    "kind": "expense",
+    "amount": 4500,
+    "pay": "paid",
+    "mode": "Cash – रोख",
+    "event": "P"
+   }
+  },
+  {
+   "id": "mr-event-name-2",
+   "lang": "mr",
+   "about": "expense for a named event",
+   "text": "पाटील लग्नासाठी गॅस 2000 यूपीआय",
+   "expect": {
+    "kind": "expense",
+    "amount": 2000,
+    "pay": "paid",
+    "mode": "UPI",
+    "event": "P"
+   }
+  },
+  {
+   "id": "mr-event-name-3",
+   "lang": "mr",
+   "about": "expense for a named event",
+   "text": "पाटील लग्नासाठी भाजी अडीच हजार रोख",
+   "expect": {
+    "kind": "expense",
+    "amount": 2500,
+    "pay": "paid",
+    "mode": "Cash – रोख",
+    "event": "P"
+   }
+  },
+  {
+   "id": "mr-event-name-4",
+   "lang": "mr",
+   "about": "expense for a named event",
+   "text": "पाटील लग्नासाठी टेम्पो 1800 रोख",
+   "expect": {
+    "kind": "expense",
+    "amount": 1800,
+    "pay": "paid",
+    "mode": "Cash – रोख",
+    "event": "P"
+   }
+  },
+  {
+   "id": "hg-event-name-1",
+   "lang": "hg",
+   "about": "expense for a named event",
+   "text": "Patil shaadi ke liye sabzi 4500 cash",
+   "expect": {
+    "kind": "expense",
+    "amount": 4500,
+    "pay": "paid",
+    "mode": "Cash – रोख",
+    "event": "P"
+   }
+  },
+  {
+   "id": "hg-event-name-2",
+   "lang": "hg",
+   "about": "expense for a named event",
+   "text": "Patil shaadi ke liye gas 2000 GPay",
+   "expect": {
+    "kind": "expense",
+    "amount": 2000,
+    "pay": "paid",
+    "mode": "UPI",
+    "event": "P"
+   }
+  },
+  {
+   "id": "hg-event-name-3",
+   "lang": "hg",
+   "about": "expense for a named event",
+   "text": "Patil shaadi ke liye sabzi adhai hazaar cash",
+   "expect": {
+    "kind": "expense",
+    "amount": 2500,
+    "pay": "paid",
+    "mode": "Cash – रोख",
+    "event": "P"
+   }
+  },
+  {
+   "id": "hg-event-name-4",
+   "lang": "hg",
+   "about": "expense for a named event",
+   "text": "Patil shaadi ke liye tempo 1800 cash",
+   "expect": {
+    "kind": "expense",
+    "amount": 1800,
+    "pay": "paid",
+    "mode": "Cash – रोख",
+    "event": "P"
+   }
+  },
+  {
+   "id": "en-event-venue-1",
+   "lang": "en",
+   "about": "expense found by venue or locality",
+   "text": "MLA Hall vegetables 4500 cash",
+   "expect": {
+    "kind": "expense",
+    "amount": 4500,
+    "mode": "Cash – रोख",
+    "event": "K"
+   }
+  },
+  {
+   "id": "en-event-venue-2",
+   "lang": "en",
+   "about": "expense found by venue or locality",
+   "text": "MLA Hall gas 1200 cash",
+   "expect": {
+    "kind": "expense",
+    "amount": 1200,
+    "mode": "Cash – रोख",
+    "event": "K"
+   }
+  },
+  {
+   "id": "en-event-venue-3",
+   "lang": "en",
+   "about": "expense found by venue or locality",
+   "text": "MLA Hall gas fourteen hundred UPI",
+   "expect": {
+    "kind": "expense",
+    "amount": 1400,
+    "mode": "UPI",
+    "event": "K"
+   }
+  },
+  {
+   "id": "en-event-venue-4",
+   "lang": "en",
+   "about": "expense found by venue or locality",
+   "text": "MLA Hall tempo 3000 cash",
+   "expect": {
+    "kind": "expense",
+    "amount": 3000,
+    "mode": "Cash – रोख",
+    "event": "K"
+   }
+  },
+  {
+   "id": "hi-event-venue-1",
+   "lang": "hi",
+   "about": "expense found by venue or locality",
+   "text": "नेरुल में सब्जी के 4500 नकद दिए",
+   "expect": {
+    "kind": "expense",
+    "amount": 4500,
+    "mode": "Cash – रोख",
+    "event": "K"
+   }
+  },
+  {
+   "id": "hi-event-venue-2",
+   "lang": "hi",
+   "about": "expense found by venue or locality",
+   "text": "नेरुल में गैस के 1200 नकद दिए",
+   "expect": {
+    "kind": "expense",
+    "amount": 1200,
+    "mode": "Cash – रोख",
+    "event": "K"
+   }
+  },
+  {
+   "id": "hi-event-venue-3",
+   "lang": "hi",
+   "about": "expense found by venue or locality",
+   "text": "नेरुल में गैस के चौदह सौ यूपीआई दिए",
+   "expect": {
+    "kind": "expense",
+    "amount": 1400,
+    "mode": "UPI",
+    "event": "K"
+   }
+  },
+  {
+   "id": "hi-event-venue-4",
+   "lang": "hi",
+   "about": "expense found by venue or locality",
+   "text": "नेरुल में टेम्पो के 3000 नकद दिए",
+   "expect": {
+    "kind": "expense",
+    "amount": 3000,
+    "mode": "Cash – रोख",
+    "event": "K"
+   }
+  },
+  {
+   "id": "mr-event-venue-1",
+   "lang": "mr",
+   "about": "expense found by venue or locality",
+   "text": "नेरुळला भाजी 4500 रोख",
+   "expect": {
+    "kind": "expense",
+    "amount": 4500,
+    "mode": "Cash – रोख",
+    "event": "K"
+   }
+  },
+  {
+   "id": "mr-event-venue-2",
+   "lang": "mr",
+   "about": "expense found by venue or locality",
+   "text": "नेरुळला गॅस 1200 रोख",
+   "expect": {
+    "kind": "expense",
+    "amount": 1200,
+    "mode": "Cash – रोख",
+    "event": "K"
+   }
+  },
+  {
+   "id": "mr-event-venue-3",
+   "lang": "mr",
+   "about": "expense found by venue or locality",
+   "text": "नेरुळला गॅस चौदाशे यूपीआय",
+   "expect": {
+    "kind": "expense",
+    "amount": 1400,
+    "mode": "UPI",
+    "event": "K"
+   }
+  },
+  {
+   "id": "mr-event-venue-4",
+   "lang": "mr",
+   "about": "expense found by venue or locality",
+   "text": "नेरुळला टेम्पो 3000 रोख",
+   "expect": {
+    "kind": "expense",
+    "amount": 3000,
+    "mode": "Cash – रोख",
+    "event": "K"
+   }
+  },
+  {
+   "id": "hg-event-venue-1",
+   "lang": "hg",
+   "about": "expense found by venue or locality",
+   "text": "Nerul sabzi 4500 cash",
+   "expect": {
+    "kind": "expense",
+    "amount": 4500,
+    "mode": "Cash – रोख",
+    "event": "K"
+   }
+  },
+  {
+   "id": "hg-event-venue-2",
+   "lang": "hg",
+   "about": "expense found by venue or locality",
+   "text": "Nerul gas 1200 cash",
+   "expect": {
+    "kind": "expense",
+    "amount": 1200,
+    "mode": "Cash – रोख",
+    "event": "K"
+   }
+  },
+  {
+   "id": "hg-event-venue-3",
+   "lang": "hg",
+   "about": "expense found by venue or locality",
+   "text": "Nerul gas chaudah sau GPay",
+   "expect": {
+    "kind": "expense",
+    "amount": 1400,
+    "mode": "UPI",
+    "event": "K"
+   }
+  },
+  {
+   "id": "hg-event-venue-4",
+   "lang": "hg",
+   "about": "expense found by venue or locality",
+   "text": "Nerul tempo 3000 cash",
+   "expect": {
+    "kind": "expense",
+    "amount": 3000,
+    "mode": "Cash – रोख",
+    "event": "K"
+   }
+  },
+  {
+   "id": "en-receipt-1",
+   "lang": "en",
+   "about": "client payment",
+   "text": "Received 50000 from the client by UPI",
+   "expect": {
+    "kind": "cpay",
+    "amount": 50000,
+    "mode": "UPI"
+   }
+  },
+  {
+   "id": "en-receipt-2",
+   "lang": "en",
+   "about": "client payment",
+   "text": "Received fifty thousand from the client by cash",
+   "expect": {
+    "kind": "cpay",
+    "amount": 50000,
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "en-receipt-3",
+   "lang": "en",
+   "about": "client payment",
+   "text": "Received 20000 from the client by cash",
+   "expect": {
+    "kind": "cpay",
+    "amount": 20000,
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "en-receipt-4",
+   "lang": "en",
+   "about": "client payment",
+   "text": "Received one lakh twenty five thousand from the client by UPI",
+   "expect": {
+    "kind": "cpay",
+    "amount": 125000,
+    "mode": "UPI"
+   }
+  },
+  {
+   "id": "hi-receipt-1",
+   "lang": "hi",
+   "about": "client payment",
+   "text": "ग्राहक से 50000 मिले यूपीआई",
+   "expect": {
+    "kind": "cpay",
+    "amount": 50000,
+    "mode": "UPI"
+   }
+  },
+  {
+   "id": "hi-receipt-2",
+   "lang": "hi",
+   "about": "client payment",
+   "text": "ग्राहक से पचास हजार मिले नकद",
+   "expect": {
+    "kind": "cpay",
+    "amount": 50000,
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "hi-receipt-3",
+   "lang": "hi",
+   "about": "client payment",
+   "text": "ग्राहक से 20000 मिले नकद",
+   "expect": {
+    "kind": "cpay",
+    "amount": 20000,
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "hi-receipt-4",
+   "lang": "hi",
+   "about": "client payment",
+   "text": "ग्राहक से सवा लाख मिले यूपीआई",
+   "expect": {
+    "kind": "cpay",
+    "amount": 125000,
+    "mode": "UPI"
+   }
+  },
+  {
+   "id": "mr-receipt-1",
+   "lang": "mr",
+   "about": "client payment",
+   "text": "ग्राहकाकडून 50000 मिळाले यूपीआय",
+   "expect": {
+    "kind": "cpay",
+    "amount": 50000,
+    "mode": "UPI"
+   }
+  },
+  {
+   "id": "mr-receipt-2",
+   "lang": "mr",
+   "about": "client payment",
+   "text": "ग्राहकाकडून पन्नास हजार मिळाले रोख",
+   "expect": {
+    "kind": "cpay",
+    "amount": 50000,
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "mr-receipt-3",
+   "lang": "mr",
+   "about": "client payment",
+   "text": "ग्राहकाकडून 20000 मिळाले रोख",
+   "expect": {
+    "kind": "cpay",
+    "amount": 20000,
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "mr-receipt-4",
+   "lang": "mr",
+   "about": "client payment",
+   "text": "ग्राहकाकडून सव्वा लाख मिळाले यूपीआय",
+   "expect": {
+    "kind": "cpay",
+    "amount": 125000,
+    "mode": "UPI"
+   }
+  },
+  {
+   "id": "hg-receipt-1",
+   "lang": "hg",
+   "about": "client payment",
+   "text": "Client ne 50000 diye GPay",
+   "expect": {
+    "kind": "cpay",
+    "amount": 50000,
+    "mode": "UPI"
+   }
+  },
+  {
+   "id": "hg-receipt-2",
+   "lang": "hg",
+   "about": "client payment",
+   "text": "Client ne pachas hazaar diye cash",
+   "expect": {
+    "kind": "cpay",
+    "amount": 50000,
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "hg-receipt-3",
+   "lang": "hg",
+   "about": "client payment",
+   "text": "Client ne 20000 diye cash",
+   "expect": {
+    "kind": "cpay",
+    "amount": 20000,
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "hg-receipt-4",
+   "lang": "hg",
+   "about": "client payment",
+   "text": "Client ne sava lakh diye GPay",
+   "expect": {
+    "kind": "cpay",
+    "amount": 125000,
+    "mode": "UPI"
+   }
+  },
+  {
+   "id": "en-client-advance-1",
+   "lang": "en",
+   "about": "client advance for an event",
+   "text": "Desai advance 10000 received in cash",
+   "expect": {
+    "kind": "cpay",
+    "amount": 10000,
+    "advance": true,
+    "event": "D",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "en-client-advance-2",
+   "lang": "en",
+   "about": "client advance for an event",
+   "text": "Desai advance five thousand received in UPI",
+   "expect": {
+    "kind": "cpay",
+    "amount": 5000,
+    "advance": true,
+    "event": "D",
+    "mode": "UPI"
+   }
+  },
+  {
+   "id": "en-client-advance-3",
+   "lang": "en",
+   "about": "client advance for an event",
+   "text": "Desai advance 25000 received in cash",
+   "expect": {
+    "kind": "cpay",
+    "amount": 25000,
+    "advance": true,
+    "event": "D",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "en-client-advance-4",
+   "lang": "en",
+   "about": "client advance for an event",
+   "text": "Desai advance two thousand received in cash",
+   "expect": {
+    "kind": "cpay",
+    "amount": 2000,
+    "advance": true,
+    "event": "D",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "hi-client-advance-1",
+   "lang": "hi",
+   "about": "client advance for an event",
+   "text": "देसाई से 10000 एडवांस मिला नकद",
+   "expect": {
+    "kind": "cpay",
+    "amount": 10000,
+    "advance": true,
+    "event": "D",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "hi-client-advance-2",
+   "lang": "hi",
+   "about": "client advance for an event",
+   "text": "देसाई से पांच हजार एडवांस मिला यूपीआई",
+   "expect": {
+    "kind": "cpay",
+    "amount": 5000,
+    "advance": true,
+    "event": "D",
+    "mode": "UPI"
+   }
+  },
+  {
+   "id": "hi-client-advance-3",
+   "lang": "hi",
+   "about": "client advance for an event",
+   "text": "देसाई से 25000 एडवांस मिला नकद",
+   "expect": {
+    "kind": "cpay",
+    "amount": 25000,
+    "advance": true,
+    "event": "D",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "hi-client-advance-4",
+   "lang": "hi",
+   "about": "client advance for an event",
+   "text": "देसाई से दो हजार एडवांस मिला नकद",
+   "expect": {
+    "kind": "cpay",
+    "amount": 2000,
+    "advance": true,
+    "event": "D",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "mr-client-advance-1",
+   "lang": "mr",
+   "about": "client advance for an event",
+   "text": "देसाईंकडून 10000 ॲडव्हान्स मिळाला रोख",
+   "expect": {
+    "kind": "cpay",
+    "amount": 10000,
+    "advance": true,
+    "event": "D",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "mr-client-advance-2",
+   "lang": "mr",
+   "about": "client advance for an event",
+   "text": "देसाईंकडून पाच हजार ॲडव्हान्स मिळाला यूपीआय",
+   "expect": {
+    "kind": "cpay",
+    "amount": 5000,
+    "advance": true,
+    "event": "D",
+    "mode": "UPI"
+   }
+  },
+  {
+   "id": "mr-client-advance-3",
+   "lang": "mr",
+   "about": "client advance for an event",
+   "text": "देसाईंकडून 25000 ॲडव्हान्स मिळाला रोख",
+   "expect": {
+    "kind": "cpay",
+    "amount": 25000,
+    "advance": true,
+    "event": "D",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "mr-client-advance-4",
+   "lang": "mr",
+   "about": "client advance for an event",
+   "text": "देसाईंकडून दोन हजार ॲडव्हान्स मिळाला रोख",
+   "expect": {
+    "kind": "cpay",
+    "amount": 2000,
+    "advance": true,
+    "event": "D",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "hg-client-advance-1",
+   "lang": "hg",
+   "about": "client advance for an event",
+   "text": "Desai client ne 10000 advance diya cash",
+   "expect": {
+    "kind": "cpay",
+    "amount": 10000,
+    "advance": true,
+    "event": "D",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "hg-client-advance-2",
+   "lang": "hg",
+   "about": "client advance for an event",
+   "text": "Desai client ne paanch hazaar advance diya GPay",
+   "expect": {
+    "kind": "cpay",
+    "amount": 5000,
+    "advance": true,
+    "event": "D",
+    "mode": "UPI"
+   }
+  },
+  {
+   "id": "hg-client-advance-3",
+   "lang": "hg",
+   "about": "client advance for an event",
+   "text": "Desai client ne 25000 advance diya cash",
+   "expect": {
+    "kind": "cpay",
+    "amount": 25000,
+    "advance": true,
+    "event": "D",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "hg-client-advance-4",
+   "lang": "hg",
+   "about": "client advance for an event",
+   "text": "Desai client ne do hazaar advance diya cash",
+   "expect": {
+    "kind": "cpay",
+    "amount": 2000,
+    "advance": true,
+    "event": "D",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "en-vendor-pay-1",
+   "lang": "en",
+   "about": "payment to a contractor",
+   "text": "Paid Ramesh 5000 by UPI",
+   "expect": {
+    "kind": "payven",
+    "amount": 5000,
+    "vendor": "ram",
+    "mode": "UPI"
+   }
+  },
+  {
+   "id": "en-vendor-pay-2",
+   "lang": "en",
+   "about": "payment to a contractor",
+   "text": "Paid Ramesh five thousand by cash",
+   "expect": {
+    "kind": "payven",
+    "amount": 5000,
+    "vendor": "ram",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "en-vendor-pay-3",
+   "lang": "en",
+   "about": "payment to a contractor",
+   "text": "Paid Ramesh 2500 by UPI",
+   "expect": {
+    "kind": "payven",
+    "amount": 2500,
+    "vendor": "ram",
+    "mode": "UPI"
+   }
+  },
+  {
+   "id": "en-vendor-pay-4",
+   "lang": "en",
+   "about": "payment to a contractor",
+   "text": "Paid Ramesh two thousand by UPI",
+   "expect": {
+    "kind": "payven",
+    "amount": 2000,
+    "vendor": "ram",
+    "mode": "UPI"
+   }
+  },
+  {
+   "id": "hi-vendor-pay-1",
+   "lang": "hi",
+   "about": "payment to a contractor",
+   "text": "रमेश को 5000 यूपीआई दिए",
+   "expect": {
+    "kind": "payven",
+    "amount": 5000,
+    "vendor": "ram",
+    "mode": "UPI"
+   }
+  },
+  {
+   "id": "hi-vendor-pay-2",
+   "lang": "hi",
+   "about": "payment to a contractor",
+   "text": "रमेश को पांच हजार नकद दिए",
+   "expect": {
+    "kind": "payven",
+    "amount": 5000,
+    "vendor": "ram",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "hi-vendor-pay-3",
+   "lang": "hi",
+   "about": "payment to a contractor",
+   "text": "रमेश को 2500 यूपीआई दिए",
+   "expect": {
+    "kind": "payven",
+    "amount": 2500,
+    "vendor": "ram",
+    "mode": "UPI"
+   }
+  },
+  {
+   "id": "hi-vendor-pay-4",
+   "lang": "hi",
+   "about": "payment to a contractor",
+   "text": "रमेश को दो हजार यूपीआई दिए",
+   "expect": {
+    "kind": "payven",
+    "amount": 2000,
+    "vendor": "ram",
+    "mode": "UPI"
+   }
+  },
+  {
+   "id": "mr-vendor-pay-1",
+   "lang": "mr",
+   "about": "payment to a contractor",
+   "text": "रमेशला 5000 यूपीआय दिले",
+   "expect": {
+    "kind": "payven",
+    "amount": 5000,
+    "vendor": "ram",
+    "mode": "UPI"
+   }
+  },
+  {
+   "id": "mr-vendor-pay-2",
+   "lang": "mr",
+   "about": "payment to a contractor",
+   "text": "रमेशला पाच हजार रोख दिले",
+   "expect": {
+    "kind": "payven",
+    "amount": 5000,
+    "vendor": "ram",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "mr-vendor-pay-3",
+   "lang": "mr",
+   "about": "payment to a contractor",
+   "text": "रमेशला 2500 यूपीआय दिले",
+   "expect": {
+    "kind": "payven",
+    "amount": 2500,
+    "vendor": "ram",
+    "mode": "UPI"
+   }
+  },
+  {
+   "id": "mr-vendor-pay-4",
+   "lang": "mr",
+   "about": "payment to a contractor",
+   "text": "रमेशला दोन हजार यूपीआय दिले",
+   "expect": {
+    "kind": "payven",
+    "amount": 2000,
+    "vendor": "ram",
+    "mode": "UPI"
+   }
+  },
+  {
+   "id": "hg-vendor-pay-1",
+   "lang": "hg",
+   "about": "payment to a contractor",
+   "text": "Ramesh ko 5000 GPay diye",
+   "expect": {
+    "kind": "payven",
+    "amount": 5000,
+    "vendor": "ram",
+    "mode": "UPI"
+   }
+  },
+  {
+   "id": "hg-vendor-pay-2",
+   "lang": "hg",
+   "about": "payment to a contractor",
+   "text": "Ramesh ko paanch hazaar cash diye",
+   "expect": {
+    "kind": "payven",
+    "amount": 5000,
+    "vendor": "ram",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "hg-vendor-pay-3",
+   "lang": "hg",
+   "about": "payment to a contractor",
+   "text": "Ramesh ko 2500 GPay diye",
+   "expect": {
+    "kind": "payven",
+    "amount": 2500,
+    "vendor": "ram",
+    "mode": "UPI"
+   }
+  },
+  {
+   "id": "hg-vendor-pay-4",
+   "lang": "hg",
+   "about": "payment to a contractor",
+   "text": "Ramesh ko do hazaar GPay diye",
+   "expect": {
+    "kind": "payven",
+    "amount": 2000,
+    "vendor": "ram",
+    "mode": "UPI"
+   }
+  },
+  {
+   "id": "en-vendor-advance-1",
+   "lang": "en",
+   "about": "advance to a contractor",
+   "text": "Gave Ramesh 2000 advance in cash",
+   "expect": {
+    "kind": "payven",
+    "amount": 2000,
+    "vendor": "ram",
+    "advance": true
+   }
+  },
+  {
+   "id": "en-vendor-advance-2",
+   "lang": "en",
+   "about": "advance to a contractor",
+   "text": "Gave Ramesh five thousand advance in UPI",
+   "expect": {
+    "kind": "payven",
+    "amount": 5000,
+    "vendor": "ram",
+    "advance": true
+   }
+  },
+  {
+   "id": "en-vendor-advance-3",
+   "lang": "en",
+   "about": "advance to a contractor",
+   "text": "Gave Ramesh 3000 advance in cash",
+   "expect": {
+    "kind": "payven",
+    "amount": 3000,
+    "vendor": "ram",
+    "advance": true
+   }
+  },
+  {
+   "id": "en-vendor-advance-4",
+   "lang": "en",
+   "about": "advance to a contractor",
+   "text": "Gave Ramesh two thousand advance in cash",
+   "expect": {
+    "kind": "payven",
+    "amount": 2000,
+    "vendor": "ram",
+    "advance": true
+   }
+  },
+  {
+   "id": "hi-vendor-advance-1",
+   "lang": "hi",
+   "about": "advance to a contractor",
+   "text": "रमेश को 2000 एडवांस नकद दिए",
+   "expect": {
+    "kind": "payven",
+    "amount": 2000,
+    "vendor": "ram",
+    "advance": true
+   }
+  },
+  {
+   "id": "hi-vendor-advance-2",
+   "lang": "hi",
+   "about": "advance to a contractor",
+   "text": "रमेश को पांच हजार एडवांस यूपीआई दिए",
+   "expect": {
+    "kind": "payven",
+    "amount": 5000,
+    "vendor": "ram",
+    "advance": true
+   }
+  },
+  {
+   "id": "hi-vendor-advance-3",
+   "lang": "hi",
+   "about": "advance to a contractor",
+   "text": "रमेश को 3000 एडवांस नकद दिए",
+   "expect": {
+    "kind": "payven",
+    "amount": 3000,
+    "vendor": "ram",
+    "advance": true
+   }
+  },
+  {
+   "id": "hi-vendor-advance-4",
+   "lang": "hi",
+   "about": "advance to a contractor",
+   "text": "रमेश को दो हजार एडवांस नकद दिए",
+   "expect": {
+    "kind": "payven",
+    "amount": 2000,
+    "vendor": "ram",
+    "advance": true
+   }
+  },
+  {
+   "id": "mr-vendor-advance-1",
+   "lang": "mr",
+   "about": "advance to a contractor",
+   "text": "रमेशला 2000 ॲडव्हान्स रोख दिले",
+   "expect": {
+    "kind": "payven",
+    "amount": 2000,
+    "vendor": "ram",
+    "advance": true
+   }
+  },
+  {
+   "id": "mr-vendor-advance-2",
+   "lang": "mr",
+   "about": "advance to a contractor",
+   "text": "रमेशला पाच हजार ॲडव्हान्स यूपीआय दिले",
+   "expect": {
+    "kind": "payven",
+    "amount": 5000,
+    "vendor": "ram",
+    "advance": true
+   }
+  },
+  {
+   "id": "mr-vendor-advance-3",
+   "lang": "mr",
+   "about": "advance to a contractor",
+   "text": "रमेशला 3000 ॲडव्हान्स रोख दिले",
+   "expect": {
+    "kind": "payven",
+    "amount": 3000,
+    "vendor": "ram",
+    "advance": true
+   }
+  },
+  {
+   "id": "mr-vendor-advance-4",
+   "lang": "mr",
+   "about": "advance to a contractor",
+   "text": "रमेशला दोन हजार ॲडव्हान्स रोख दिले",
+   "expect": {
+    "kind": "payven",
+    "amount": 2000,
+    "vendor": "ram",
+    "advance": true
+   }
+  },
+  {
+   "id": "hg-vendor-advance-1",
+   "lang": "hg",
+   "about": "advance to a contractor",
+   "text": "Ramesh ko 2000 advance cash diya",
+   "expect": {
+    "kind": "payven",
+    "amount": 2000,
+    "vendor": "ram",
+    "advance": true
+   }
+  },
+  {
+   "id": "hg-vendor-advance-2",
+   "lang": "hg",
+   "about": "advance to a contractor",
+   "text": "Ramesh ko paanch hazaar advance GPay diya",
+   "expect": {
+    "kind": "payven",
+    "amount": 5000,
+    "vendor": "ram",
+    "advance": true
+   }
+  },
+  {
+   "id": "hg-vendor-advance-3",
+   "lang": "hg",
+   "about": "advance to a contractor",
+   "text": "Ramesh ko 3000 advance cash diya",
+   "expect": {
+    "kind": "payven",
+    "amount": 3000,
+    "vendor": "ram",
+    "advance": true
+   }
+  },
+  {
+   "id": "hg-vendor-advance-4",
+   "lang": "hg",
+   "about": "advance to a contractor",
+   "text": "Ramesh ko do hazaar advance cash diya",
+   "expect": {
+    "kind": "payven",
+    "amount": 2000,
+    "vendor": "ram",
+    "advance": true
+   }
+  },
+  {
+   "id": "en-negative-1",
+   "lang": "en",
+   "about": "not paid: nothing proposed",
+   "text": "Did not pay 1200 for gas",
+   "expect": {
+    "kind": "unclear",
+    "reason": "negative"
+   }
+  },
+  {
+   "id": "en-negative-2",
+   "lang": "en",
+   "about": "not paid: nothing proposed",
+   "text": "Did not pay forty five hundred for vegetables",
+   "expect": {
+    "kind": "unclear",
+    "reason": "negative"
+   }
+  },
+  {
+   "id": "en-negative-3",
+   "lang": "en",
+   "about": "not paid: nothing proposed",
+   "text": "Did not pay 2000 for tempo",
+   "expect": {
+    "kind": "unclear",
+    "reason": "negative"
+   }
+  },
+  {
+   "id": "en-negative-4",
+   "lang": "en",
+   "about": "not paid: nothing proposed",
+   "text": "Did not pay one thousand five hundred for gas",
+   "expect": {
+    "kind": "unclear",
+    "reason": "negative"
+   }
+  },
+  {
+   "id": "hi-negative-1",
+   "lang": "hi",
+   "about": "not paid: nothing proposed",
+   "text": "गैस के 1200 नहीं दिए",
+   "expect": {
+    "kind": "unclear",
+    "reason": "negative"
+   }
+  },
+  {
+   "id": "hi-negative-2",
+   "lang": "hi",
+   "about": "not paid: nothing proposed",
+   "text": "सब्जी के पैंतालीस सौ नहीं दिए",
+   "expect": {
+    "kind": "unclear",
+    "reason": "negative"
+   }
+  },
+  {
+   "id": "hi-negative-3",
+   "lang": "hi",
+   "about": "not paid: nothing proposed",
+   "text": "टेम्पो के 2000 नहीं दिए",
+   "expect": {
+    "kind": "unclear",
+    "reason": "negative"
+   }
+  },
+  {
+   "id": "hi-negative-4",
+   "lang": "hi",
+   "about": "not paid: nothing proposed",
+   "text": "गैस के डेढ़ हजार नहीं दिए",
+   "expect": {
+    "kind": "unclear",
+    "reason": "negative"
+   }
+  },
+  {
+   "id": "mr-negative-1",
+   "lang": "mr",
+   "about": "not paid: nothing proposed",
+   "text": "गॅसचे 1200 दिले नाहीत",
+   "expect": {
+    "kind": "unclear",
+    "reason": "negative"
+   }
+  },
+  {
+   "id": "mr-negative-2",
+   "lang": "mr",
+   "about": "not paid: nothing proposed",
+   "text": "भाजीचे साडेचार हजार दिले नाहीत",
+   "expect": {
+    "kind": "unclear",
+    "reason": "negative"
+   }
+  },
+  {
+   "id": "mr-negative-3",
+   "lang": "mr",
+   "about": "not paid: nothing proposed",
+   "text": "टेम्पोचे 2000 दिले नाहीत",
+   "expect": {
+    "kind": "unclear",
+    "reason": "negative"
+   }
+  },
+  {
+   "id": "mr-negative-4",
+   "lang": "mr",
+   "about": "not paid: nothing proposed",
+   "text": "गॅसचे दीड हजार दिले नाहीत",
+   "expect": {
+    "kind": "unclear",
+    "reason": "negative"
+   }
+  },
+  {
+   "id": "hg-negative-1",
+   "lang": "hg",
+   "about": "not paid: nothing proposed",
+   "text": "gas ka 1200 nahi diya",
+   "expect": {
+    "kind": "unclear",
+    "reason": "negative"
+   }
+  },
+  {
+   "id": "hg-negative-2",
+   "lang": "hg",
+   "about": "not paid: nothing proposed",
+   "text": "sabzi ka saadhe chaar hazaar nahi diya",
+   "expect": {
+    "kind": "unclear",
+    "reason": "negative"
+   }
+  },
+  {
+   "id": "hg-negative-3",
+   "lang": "hg",
+   "about": "not paid: nothing proposed",
+   "text": "tempo ka 2000 nahi diya",
+   "expect": {
+    "kind": "unclear",
+    "reason": "negative"
+   }
+  },
+  {
+   "id": "hg-negative-4",
+   "lang": "hg",
+   "about": "not paid: nothing proposed",
+   "text": "gas ka dedh hazaar nahi diya",
+   "expect": {
+    "kind": "unclear",
+    "reason": "negative"
+   }
+  },
+  {
+   "id": "en-future-pay-1",
+   "lang": "en",
+   "about": "still to pay: nothing proposed",
+   "text": "Will pay Ramesh 5000 tomorrow",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "en-future-pay-2",
+   "lang": "en",
+   "about": "still to pay: nothing proposed",
+   "text": "Will pay Ramesh two thousand tomorrow",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "en-future-pay-3",
+   "lang": "en",
+   "about": "still to pay: nothing proposed",
+   "text": "Will pay Ramesh 10000 tomorrow",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "en-future-pay-4",
+   "lang": "en",
+   "about": "still to pay: nothing proposed",
+   "text": "Will pay Ramesh five thousand tomorrow",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "hi-future-pay-1",
+   "lang": "hi",
+   "about": "still to pay: nothing proposed",
+   "text": "रमेश को 5000 कल देने हैं",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "hi-future-pay-2",
+   "lang": "hi",
+   "about": "still to pay: nothing proposed",
+   "text": "रमेश को दो हजार कल देने हैं",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "hi-future-pay-3",
+   "lang": "hi",
+   "about": "still to pay: nothing proposed",
+   "text": "रमेश को 10000 कल देने हैं",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "hi-future-pay-4",
+   "lang": "hi",
+   "about": "still to pay: nothing proposed",
+   "text": "रमेश को पांच हजार कल देने हैं",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "mr-future-pay-1",
+   "lang": "mr",
+   "about": "still to pay: nothing proposed",
+   "text": "रमेशला 5000 उद्या देणार",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "mr-future-pay-2",
+   "lang": "mr",
+   "about": "still to pay: nothing proposed",
+   "text": "रमेशला दोन हजार उद्या देणार",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "mr-future-pay-3",
+   "lang": "mr",
+   "about": "still to pay: nothing proposed",
+   "text": "रमेशला 10000 उद्या देणार",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "mr-future-pay-4",
+   "lang": "mr",
+   "about": "still to pay: nothing proposed",
+   "text": "रमेशला पाच हजार उद्या देणार",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "hg-future-pay-1",
+   "lang": "hg",
+   "about": "still to pay: nothing proposed",
+   "text": "Ramesh ko 5000 kal dena hai",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "hg-future-pay-2",
+   "lang": "hg",
+   "about": "still to pay: nothing proposed",
+   "text": "Ramesh ko do hazaar kal dena hai",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "hg-future-pay-3",
+   "lang": "hg",
+   "about": "still to pay: nothing proposed",
+   "text": "Ramesh ko 10000 kal dena hai",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "hg-future-pay-4",
+   "lang": "hg",
+   "about": "still to pay: nothing proposed",
+   "text": "Ramesh ko paanch hazaar kal dena hai",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "en-future-receipt-1",
+   "lang": "en",
+   "about": "still to come: never money received",
+   "text": "The client will pay 5000 next week",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "en-future-receipt-2",
+   "lang": "en",
+   "about": "still to come: never money received",
+   "text": "The client will pay fifty thousand next week",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "en-future-receipt-3",
+   "lang": "en",
+   "about": "still to come: never money received",
+   "text": "The client will pay 20000 next week",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "en-future-receipt-4",
+   "lang": "en",
+   "about": "still to come: never money received",
+   "text": "The client will pay two thousand next week",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "hi-future-receipt-1",
+   "lang": "hi",
+   "about": "still to come: never money received",
+   "text": "ग्राहक से 5000 आने वाले हैं",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "hi-future-receipt-2",
+   "lang": "hi",
+   "about": "still to come: never money received",
+   "text": "ग्राहक से पचास हजार आने वाले हैं",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "hi-future-receipt-3",
+   "lang": "hi",
+   "about": "still to come: never money received",
+   "text": "ग्राहक से 20000 आने वाले हैं",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "hi-future-receipt-4",
+   "lang": "hi",
+   "about": "still to come: never money received",
+   "text": "ग्राहक से दो हजार आने वाले हैं",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "mr-future-receipt-1",
+   "lang": "mr",
+   "about": "still to come: never money received",
+   "text": "ग्राहकाकडून 5000 येणार आहेत",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "mr-future-receipt-2",
+   "lang": "mr",
+   "about": "still to come: never money received",
+   "text": "ग्राहकाकडून पन्नास हजार येणार आहेत",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "mr-future-receipt-3",
+   "lang": "mr",
+   "about": "still to come: never money received",
+   "text": "ग्राहकाकडून 20000 येणार आहेत",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "mr-future-receipt-4",
+   "lang": "mr",
+   "about": "still to come: never money received",
+   "text": "ग्राहकाकडून दोन हजार येणार आहेत",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "hg-future-receipt-1",
+   "lang": "hg",
+   "about": "still to come: never money received",
+   "text": "Client se 5000 aane wale hain",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "hg-future-receipt-2",
+   "lang": "hg",
+   "about": "still to come: never money received",
+   "text": "Client se pachas hazaar aane wale hain",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "hg-future-receipt-3",
+   "lang": "hg",
+   "about": "still to come: never money received",
+   "text": "Client se 20000 aane wale hain",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "hg-future-receipt-4",
+   "lang": "hg",
+   "about": "still to come: never money received",
+   "text": "Client se do hazaar aane wale hain",
+   "expect": {
+    "kind": "unclear",
+    "reason": "future"
+   }
+  },
+  {
+   "id": "en-refund-1",
+   "lang": "en",
+   "about": "refund: declined safely",
+   "text": "gas 1200 refunded",
+   "expect": {
+    "kind": "unclear",
+    "reason": "refund"
+   }
+  },
+  {
+   "id": "en-refund-2",
+   "lang": "en",
+   "about": "refund: declined safely",
+   "text": "tempo one thousand five hundred refunded",
+   "expect": {
+    "kind": "unclear",
+    "reason": "refund"
+   }
+  },
+  {
+   "id": "en-refund-3",
+   "lang": "en",
+   "about": "refund: declined safely",
+   "text": "vegetables 500 refunded",
+   "expect": {
+    "kind": "unclear",
+    "reason": "refund"
+   }
+  },
+  {
+   "id": "en-refund-4",
+   "lang": "en",
+   "about": "refund: declined safely",
+   "text": "paneer two thousand refunded",
+   "expect": {
+    "kind": "unclear",
+    "reason": "refund"
+   }
+  },
+  {
+   "id": "hi-refund-1",
+   "lang": "hi",
+   "about": "refund: declined safely",
+   "text": "गैस के 1200 वापस मिले",
+   "expect": {
+    "kind": "unclear",
+    "reason": "refund"
+   }
+  },
+  {
+   "id": "hi-refund-2",
+   "lang": "hi",
+   "about": "refund: declined safely",
+   "text": "टेम्पो के डेढ़ हजार वापस मिले",
+   "expect": {
+    "kind": "unclear",
+    "reason": "refund"
+   }
+  },
+  {
+   "id": "hi-refund-3",
+   "lang": "hi",
+   "about": "refund: declined safely",
+   "text": "सब्जी के 500 वापस मिले",
+   "expect": {
+    "kind": "unclear",
+    "reason": "refund"
+   }
+  },
+  {
+   "id": "hi-refund-4",
+   "lang": "hi",
+   "about": "refund: declined safely",
+   "text": "पनीर के दो हजार वापस मिले",
+   "expect": {
+    "kind": "unclear",
+    "reason": "refund"
+   }
+  },
+  {
+   "id": "mr-refund-1",
+   "lang": "mr",
+   "about": "refund: declined safely",
+   "text": "गॅसचे 1200 परत मिळाले",
+   "expect": {
+    "kind": "unclear",
+    "reason": "refund"
+   }
+  },
+  {
+   "id": "mr-refund-2",
+   "lang": "mr",
+   "about": "refund: declined safely",
+   "text": "टेम्पोचे दीड हजार परत मिळाले",
+   "expect": {
+    "kind": "unclear",
+    "reason": "refund"
+   }
+  },
+  {
+   "id": "mr-refund-3",
+   "lang": "mr",
+   "about": "refund: declined safely",
+   "text": "भाजीचे 500 परत मिळाले",
+   "expect": {
+    "kind": "unclear",
+    "reason": "refund"
+   }
+  },
+  {
+   "id": "mr-refund-4",
+   "lang": "mr",
+   "about": "refund: declined safely",
+   "text": "पनीरचे दोन हजार परत मिळाले",
+   "expect": {
+    "kind": "unclear",
+    "reason": "refund"
+   }
+  },
+  {
+   "id": "hg-refund-1",
+   "lang": "hg",
+   "about": "refund: declined safely",
+   "text": "gas ka 1200 wapas mila",
+   "expect": {
+    "kind": "unclear",
+    "reason": "refund"
+   }
+  },
+  {
+   "id": "hg-refund-2",
+   "lang": "hg",
+   "about": "refund: declined safely",
+   "text": "tempo ka dedh hazaar wapas mila",
+   "expect": {
+    "kind": "unclear",
+    "reason": "refund"
+   }
+  },
+  {
+   "id": "hg-refund-3",
+   "lang": "hg",
+   "about": "refund: declined safely",
+   "text": "sabzi ka 500 wapas mila",
+   "expect": {
+    "kind": "unclear",
+    "reason": "refund"
+   }
+  },
+  {
+   "id": "hg-refund-4",
+   "lang": "hg",
+   "about": "refund: declined safely",
+   "text": "paneer ka do hazaar wapas mila",
+   "expect": {
+    "kind": "unclear",
+    "reason": "refund"
+   }
+  },
+  {
+   "id": "en-multi-1",
+   "lang": "en",
+   "about": "two amounts: one at a time",
+   "text": "Gas 1200 cash and vegetables 4500 cash",
+   "expect": {
+    "kind": "multi",
+    "amounts": [
+     1200,
+     4500
+    ]
+   }
+  },
+  {
+   "id": "en-multi-2",
+   "lang": "en",
+   "about": "two amounts: one at a time",
+   "text": "Gas 800 cash and vegetables 3000 cash",
+   "expect": {
+    "kind": "multi",
+    "amounts": [
+     800,
+     3000
+    ]
+   }
+  },
+  {
+   "id": "en-multi-3",
+   "lang": "en",
+   "about": "two amounts: one at a time",
+   "text": "Gas one thousand five hundred cash and vegetables two thousand five hundred cash",
+   "expect": {
+    "kind": "multi",
+    "amounts": [
+     1500,
+     2500
+    ]
+   }
+  },
+  {
+   "id": "en-multi-4",
+   "lang": "en",
+   "about": "two amounts: one at a time",
+   "text": "Gas 2000 cash and vegetables fourteen hundred cash",
+   "expect": {
+    "kind": "multi",
+    "amounts": [
+     2000,
+     1400
+    ]
+   }
+  },
+  {
+   "id": "hi-multi-1",
+   "lang": "hi",
+   "about": "two amounts: one at a time",
+   "text": "गैस 1200 नकद और सब्जी 4500 नकद",
+   "expect": {
+    "kind": "multi",
+    "amounts": [
+     1200,
+     4500
+    ]
+   }
+  },
+  {
+   "id": "hi-multi-2",
+   "lang": "hi",
+   "about": "two amounts: one at a time",
+   "text": "गैस 800 नकद और सब्जी 3000 नकद",
+   "expect": {
+    "kind": "multi",
+    "amounts": [
+     800,
+     3000
+    ]
+   }
+  },
+  {
+   "id": "hi-multi-3",
+   "lang": "hi",
+   "about": "two amounts: one at a time",
+   "text": "गैस डेढ़ हजार नकद और सब्जी ढाई हजार नकद",
+   "expect": {
+    "kind": "multi",
+    "amounts": [
+     1500,
+     2500
+    ]
+   }
+  },
+  {
+   "id": "hi-multi-4",
+   "lang": "hi",
+   "about": "two amounts: one at a time",
+   "text": "गैस 2000 नकद और सब्जी चौदह सौ नकद",
+   "expect": {
+    "kind": "multi",
+    "amounts": [
+     2000,
+     1400
+    ]
+   }
+  },
+  {
+   "id": "mr-multi-1",
+   "lang": "mr",
+   "about": "two amounts: one at a time",
+   "text": "गॅस 1200 रोख आणि भाजी 4500 रोख",
+   "expect": {
+    "kind": "multi",
+    "amounts": [
+     1200,
+     4500
+    ]
+   }
+  },
+  {
+   "id": "mr-multi-2",
+   "lang": "mr",
+   "about": "two amounts: one at a time",
+   "text": "गॅस 800 रोख आणि भाजी 3000 रोख",
+   "expect": {
+    "kind": "multi",
+    "amounts": [
+     800,
+     3000
+    ]
+   }
+  },
+  {
+   "id": "mr-multi-3",
+   "lang": "mr",
+   "about": "two amounts: one at a time",
+   "text": "गॅस दीड हजार रोख आणि भाजी अडीच हजार रोख",
+   "expect": {
+    "kind": "multi",
+    "amounts": [
+     1500,
+     2500
+    ]
+   }
+  },
+  {
+   "id": "mr-multi-4",
+   "lang": "mr",
+   "about": "two amounts: one at a time",
+   "text": "गॅस 2000 रोख आणि भाजी चौदाशे रोख",
+   "expect": {
+    "kind": "multi",
+    "amounts": [
+     2000,
+     1400
+    ]
+   }
+  },
+  {
+   "id": "hg-multi-1",
+   "lang": "hg",
+   "about": "two amounts: one at a time",
+   "text": "Gas 1200 cash aur sabzi 4500 cash",
+   "expect": {
+    "kind": "multi",
+    "amounts": [
+     1200,
+     4500
+    ]
+   }
+  },
+  {
+   "id": "hg-multi-2",
+   "lang": "hg",
+   "about": "two amounts: one at a time",
+   "text": "Gas 800 cash aur sabzi 3000 cash",
+   "expect": {
+    "kind": "multi",
+    "amounts": [
+     800,
+     3000
+    ]
+   }
+  },
+  {
+   "id": "hg-multi-3",
+   "lang": "hg",
+   "about": "two amounts: one at a time",
+   "text": "Gas dedh hazaar cash aur sabzi adhai hazaar cash",
+   "expect": {
+    "kind": "multi",
+    "amounts": [
+     1500,
+     2500
+    ]
+   }
+  },
+  {
+   "id": "hg-multi-4",
+   "lang": "hg",
+   "about": "two amounts: one at a time",
+   "text": "Gas 2000 cash aur sabzi chaudah sau cash",
+   "expect": {
+    "kind": "multi",
+    "amounts": [
+     2000,
+     1400
+    ]
+   }
+  },
+  {
+   "id": "en-pay-conflict-1",
+   "lang": "en",
+   "about": "credit and a way of paying: asked",
+   "text": "gas 1200 credit UPI",
+   "expect": {
+    "kind": "expense",
+    "amount": 1200,
+    "pay": "",
+    "payConflict": true
+   }
+  },
+  {
+   "id": "en-pay-conflict-2",
+   "lang": "en",
+   "about": "credit and a way of paying: asked",
+   "text": "vegetables forty five hundred credit UPI",
+   "expect": {
+    "kind": "expense",
+    "amount": 4500,
+    "pay": "",
+    "payConflict": true
+   }
+  },
+  {
+   "id": "en-pay-conflict-3",
+   "lang": "en",
+   "about": "credit and a way of paying: asked",
+   "text": "tempo 900 credit UPI",
+   "expect": {
+    "kind": "expense",
+    "amount": 900,
+    "pay": "",
+    "payConflict": true
+   }
+  },
+  {
+   "id": "en-pay-conflict-4",
+   "lang": "en",
+   "about": "credit and a way of paying: asked",
+   "text": "gas twenty seven hundred credit UPI",
+   "expect": {
+    "kind": "expense",
+    "amount": 2700,
+    "pay": "",
+    "payConflict": true
+   }
+  },
+  {
+   "id": "hi-pay-conflict-1",
+   "lang": "hi",
+   "about": "credit and a way of paying: asked",
+   "text": "गैस 1200 उधार यूपीआई",
+   "expect": {
+    "kind": "expense",
+    "amount": 1200,
+    "pay": "",
+    "payConflict": true
+   }
+  },
+  {
+   "id": "hi-pay-conflict-2",
+   "lang": "hi",
+   "about": "credit and a way of paying: asked",
+   "text": "सब्जी पैंतालीस सौ उधार यूपीआई",
+   "expect": {
+    "kind": "expense",
+    "amount": 4500,
+    "pay": "",
+    "payConflict": true
+   }
+  },
+  {
+   "id": "hi-pay-conflict-3",
+   "lang": "hi",
+   "about": "credit and a way of paying: asked",
+   "text": "टेम्पो 900 उधार यूपीआई",
+   "expect": {
+    "kind": "expense",
+    "amount": 900,
+    "pay": "",
+    "payConflict": true
+   }
+  },
+  {
+   "id": "hi-pay-conflict-4",
+   "lang": "hi",
+   "about": "credit and a way of paying: asked",
+   "text": "गैस सत्ताईस सौ उधार यूपीआई",
+   "expect": {
+    "kind": "expense",
+    "amount": 2700,
+    "pay": "",
+    "payConflict": true
+   }
+  },
+  {
+   "id": "mr-pay-conflict-1",
+   "lang": "mr",
+   "about": "credit and a way of paying: asked",
+   "text": "गॅस 1200 उधार यूपीआय",
+   "expect": {
+    "kind": "expense",
+    "amount": 1200,
+    "pay": "",
+    "payConflict": true
+   }
+  },
+  {
+   "id": "mr-pay-conflict-2",
+   "lang": "mr",
+   "about": "credit and a way of paying: asked",
+   "text": "भाजी साडेचार हजार उधार यूपीआय",
+   "expect": {
+    "kind": "expense",
+    "amount": 4500,
+    "pay": "",
+    "payConflict": true
+   }
+  },
+  {
+   "id": "mr-pay-conflict-3",
+   "lang": "mr",
+   "about": "credit and a way of paying: asked",
+   "text": "टेम्पो 900 उधार यूपीआय",
+   "expect": {
+    "kind": "expense",
+    "amount": 900,
+    "pay": "",
+    "payConflict": true
+   }
+  },
+  {
+   "id": "mr-pay-conflict-4",
+   "lang": "mr",
+   "about": "credit and a way of paying: asked",
+   "text": "गॅस सत्तावीसशे उधार यूपीआय",
+   "expect": {
+    "kind": "expense",
+    "amount": 2700,
+    "pay": "",
+    "payConflict": true
+   }
+  },
+  {
+   "id": "hg-pay-conflict-1",
+   "lang": "hg",
+   "about": "credit and a way of paying: asked",
+   "text": "gas 1200 udhar UPI",
+   "expect": {
+    "kind": "expense",
+    "amount": 1200,
+    "pay": "",
+    "payConflict": true
+   }
+  },
+  {
+   "id": "hg-pay-conflict-2",
+   "lang": "hg",
+   "about": "credit and a way of paying: asked",
+   "text": "sabzi saadhe chaar hazaar udhar UPI",
+   "expect": {
+    "kind": "expense",
+    "amount": 4500,
+    "pay": "",
+    "payConflict": true
+   }
+  },
+  {
+   "id": "hg-pay-conflict-3",
+   "lang": "hg",
+   "about": "credit and a way of paying: asked",
+   "text": "tempo 900 udhar UPI",
+   "expect": {
+    "kind": "expense",
+    "amount": 900,
+    "pay": "",
+    "payConflict": true
+   }
+  },
+  {
+   "id": "hg-pay-conflict-4",
+   "lang": "hg",
+   "about": "credit and a way of paying: asked",
+   "text": "gas sattais sau udhar UPI",
+   "expect": {
+    "kind": "expense",
+    "amount": 2700,
+    "pay": "",
+    "payConflict": true
+   }
+  },
+  {
+   "id": "en-mode-conflict-1",
+   "lang": "en",
+   "about": "two ways of paying: asked",
+   "text": "gas 1200 cash or UPI",
+   "expect": {
+    "kind": "expense",
+    "amount": 1200,
+    "mode": "",
+    "modeConflict": true
+   }
+  },
+  {
+   "id": "en-mode-conflict-2",
+   "lang": "en",
+   "about": "two ways of paying: asked",
+   "text": "vegetables forty five hundred cash or UPI",
+   "expect": {
+    "kind": "expense",
+    "amount": 4500,
+    "mode": "",
+    "modeConflict": true
+   }
+  },
+  {
+   "id": "en-mode-conflict-3",
+   "lang": "en",
+   "about": "two ways of paying: asked",
+   "text": "tempo 900 cash or UPI",
+   "expect": {
+    "kind": "expense",
+    "amount": 900,
+    "mode": "",
+    "modeConflict": true
+   }
+  },
+  {
+   "id": "en-mode-conflict-4",
+   "lang": "en",
+   "about": "two ways of paying: asked",
+   "text": "gas twenty seven hundred cash or UPI",
+   "expect": {
+    "kind": "expense",
+    "amount": 2700,
+    "mode": "",
+    "modeConflict": true
+   }
+  },
+  {
+   "id": "hi-mode-conflict-1",
+   "lang": "hi",
+   "about": "two ways of paying: asked",
+   "text": "गैस 1200 नकद या यूपीआई",
+   "expect": {
+    "kind": "expense",
+    "amount": 1200,
+    "mode": "",
+    "modeConflict": true
+   }
+  },
+  {
+   "id": "hi-mode-conflict-2",
+   "lang": "hi",
+   "about": "two ways of paying: asked",
+   "text": "सब्जी पैंतालीस सौ नकद या यूपीआई",
+   "expect": {
+    "kind": "expense",
+    "amount": 4500,
+    "mode": "",
+    "modeConflict": true
+   }
+  },
+  {
+   "id": "hi-mode-conflict-3",
+   "lang": "hi",
+   "about": "two ways of paying: asked",
+   "text": "टेम्पो 900 नकद या यूपीआई",
+   "expect": {
+    "kind": "expense",
+    "amount": 900,
+    "mode": "",
+    "modeConflict": true
+   }
+  },
+  {
+   "id": "hi-mode-conflict-4",
+   "lang": "hi",
+   "about": "two ways of paying: asked",
+   "text": "गैस सत्ताईस सौ नकद या यूपीआई",
+   "expect": {
+    "kind": "expense",
+    "amount": 2700,
+    "mode": "",
+    "modeConflict": true
+   }
+  },
+  {
+   "id": "mr-mode-conflict-1",
+   "lang": "mr",
+   "about": "two ways of paying: asked",
+   "text": "गॅस 1200 रोख किंवा यूपीआय",
+   "expect": {
+    "kind": "expense",
+    "amount": 1200,
+    "mode": "",
+    "modeConflict": true
+   }
+  },
+  {
+   "id": "mr-mode-conflict-2",
+   "lang": "mr",
+   "about": "two ways of paying: asked",
+   "text": "भाजी साडेचार हजार रोख किंवा यूपीआय",
+   "expect": {
+    "kind": "expense",
+    "amount": 4500,
+    "mode": "",
+    "modeConflict": true
+   }
+  },
+  {
+   "id": "mr-mode-conflict-3",
+   "lang": "mr",
+   "about": "two ways of paying: asked",
+   "text": "टेम्पो 900 रोख किंवा यूपीआय",
+   "expect": {
+    "kind": "expense",
+    "amount": 900,
+    "mode": "",
+    "modeConflict": true
+   }
+  },
+  {
+   "id": "mr-mode-conflict-4",
+   "lang": "mr",
+   "about": "two ways of paying: asked",
+   "text": "गॅस सत्तावीसशे रोख किंवा यूपीआय",
+   "expect": {
+    "kind": "expense",
+    "amount": 2700,
+    "mode": "",
+    "modeConflict": true
+   }
+  },
+  {
+   "id": "hg-mode-conflict-1",
+   "lang": "hg",
+   "about": "two ways of paying: asked",
+   "text": "gas 1200 cash ya UPI",
+   "expect": {
+    "kind": "expense",
+    "amount": 1200,
+    "mode": "",
+    "modeConflict": true
+   }
+  },
+  {
+   "id": "hg-mode-conflict-2",
+   "lang": "hg",
+   "about": "two ways of paying: asked",
+   "text": "sabzi saadhe chaar hazaar cash ya UPI",
+   "expect": {
+    "kind": "expense",
+    "amount": 4500,
+    "mode": "",
+    "modeConflict": true
+   }
+  },
+  {
+   "id": "hg-mode-conflict-3",
+   "lang": "hg",
+   "about": "two ways of paying: asked",
+   "text": "tempo 900 cash ya UPI",
+   "expect": {
+    "kind": "expense",
+    "amount": 900,
+    "mode": "",
+    "modeConflict": true
+   }
+  },
+  {
+   "id": "hg-mode-conflict-4",
+   "lang": "hg",
+   "about": "two ways of paying: asked",
+   "text": "gas sattais sau cash ya UPI",
+   "expect": {
+    "kind": "expense",
+    "amount": 2700,
+    "mode": "",
+    "modeConflict": true
+   }
+  },
+  {
+   "id": "en-quick-event-1",
+   "lang": "en",
+   "about": "quick event tomorrow",
+   "text": "Birthday tomorrow at Vashi for 100 guests",
+   "expect": {
+    "kind": "event",
+    "guests": 100,
+    "date": "2026-11-29"
+   }
+  },
+  {
+   "id": "en-quick-event-2",
+   "lang": "en",
+   "about": "quick event tomorrow",
+   "text": "Birthday tomorrow at Vashi for 150 guests",
+   "expect": {
+    "kind": "event",
+    "guests": 150,
+    "date": "2026-11-29"
+   }
+  },
+  {
+   "id": "en-quick-event-3",
+   "lang": "en",
+   "about": "quick event tomorrow",
+   "text": "Birthday tomorrow at Vashi for 80 guests",
+   "expect": {
+    "kind": "event",
+    "guests": 80,
+    "date": "2026-11-29"
+   }
+  },
+  {
+   "id": "en-quick-event-4",
+   "lang": "en",
+   "about": "quick event tomorrow",
+   "text": "Birthday tomorrow at Vashi for 200 guests",
+   "expect": {
+    "kind": "event",
+    "guests": 200,
+    "date": "2026-11-29"
+   }
+  },
+  {
+   "id": "hi-quick-event-1",
+   "lang": "hi",
+   "about": "quick event tomorrow",
+   "text": "कल वाशी में 100 प्लेट का बर्थडे है",
+   "expect": {
+    "kind": "event",
+    "guests": 100,
+    "date": "2026-11-29"
+   }
+  },
+  {
+   "id": "hi-quick-event-2",
+   "lang": "hi",
+   "about": "quick event tomorrow",
+   "text": "कल वाशी में 150 प्लेट का बर्थडे है",
+   "expect": {
+    "kind": "event",
+    "guests": 150,
+    "date": "2026-11-29"
+   }
+  },
+  {
+   "id": "hi-quick-event-3",
+   "lang": "hi",
+   "about": "quick event tomorrow",
+   "text": "कल वाशी में 80 प्लेट का बर्थडे है",
+   "expect": {
+    "kind": "event",
+    "guests": 80,
+    "date": "2026-11-29"
+   }
+  },
+  {
+   "id": "hi-quick-event-4",
+   "lang": "hi",
+   "about": "quick event tomorrow",
+   "text": "कल वाशी में 200 प्लेट का बर्थडे है",
+   "expect": {
+    "kind": "event",
+    "guests": 200,
+    "date": "2026-11-29"
+   }
+  },
+  {
+   "id": "mr-quick-event-1",
+   "lang": "mr",
+   "about": "quick event tomorrow",
+   "text": "उद्या वाशीमध्ये 100 पाहुण्यांचा वाढदिवस आहे",
+   "expect": {
+    "kind": "event",
+    "guests": 100,
+    "date": "2026-11-29"
+   }
+  },
+  {
+   "id": "mr-quick-event-2",
+   "lang": "mr",
+   "about": "quick event tomorrow",
+   "text": "उद्या वाशीमध्ये 150 पाहुण्यांचा वाढदिवस आहे",
+   "expect": {
+    "kind": "event",
+    "guests": 150,
+    "date": "2026-11-29"
+   }
+  },
+  {
+   "id": "mr-quick-event-3",
+   "lang": "mr",
+   "about": "quick event tomorrow",
+   "text": "उद्या वाशीमध्ये 80 पाहुण्यांचा वाढदिवस आहे",
+   "expect": {
+    "kind": "event",
+    "guests": 80,
+    "date": "2026-11-29"
+   }
+  },
+  {
+   "id": "mr-quick-event-4",
+   "lang": "mr",
+   "about": "quick event tomorrow",
+   "text": "उद्या वाशीमध्ये 200 पाहुण्यांचा वाढदिवस आहे",
+   "expect": {
+    "kind": "event",
+    "guests": 200,
+    "date": "2026-11-29"
+   }
+  },
+  {
+   "id": "hg-quick-event-1",
+   "lang": "hg",
+   "about": "quick event tomorrow",
+   "text": "Kal Vashi mein 100 plates ka birthday hai",
+   "expect": {
+    "kind": "event",
+    "guests": 100,
+    "date": "2026-11-29"
+   }
+  },
+  {
+   "id": "hg-quick-event-2",
+   "lang": "hg",
+   "about": "quick event tomorrow",
+   "text": "Kal Vashi mein 150 plates ka birthday hai",
+   "expect": {
+    "kind": "event",
+    "guests": 150,
+    "date": "2026-11-29"
+   }
+  },
+  {
+   "id": "hg-quick-event-3",
+   "lang": "hg",
+   "about": "quick event tomorrow",
+   "text": "Kal Vashi mein 80 plates ka birthday hai",
+   "expect": {
+    "kind": "event",
+    "guests": 80,
+    "date": "2026-11-29"
+   }
+  },
+  {
+   "id": "hg-quick-event-4",
+   "lang": "hg",
+   "about": "quick event tomorrow",
+   "text": "Kal Vashi mein 200 plates ka birthday hai",
+   "expect": {
+    "kind": "event",
+    "guests": 200,
+    "date": "2026-11-29"
+   }
+  },
+  {
+   "id": "en-dated-event-1",
+   "lang": "en",
+   "about": "event on a calendar date",
+   "text": "New wedding at Vashi on 12 Dec 2026 for 100 guests",
+   "expect": {
+    "kind": "event",
+    "guests": 100,
+    "date": "2026-12-12"
+   }
+  },
+  {
+   "id": "en-dated-event-2",
+   "lang": "en",
+   "about": "event on a calendar date",
+   "text": "New wedding at Vashi on 5 January 2027 for 250 guests",
+   "expect": {
+    "kind": "event",
+    "guests": 250,
+    "date": "2027-01-05"
+   }
+  },
+  {
+   "id": "en-dated-event-3",
+   "lang": "en",
+   "about": "event on a calendar date",
+   "text": "New wedding at Vashi on 20 Dec 2026 for 80 guests",
+   "expect": {
+    "kind": "event",
+    "guests": 80,
+    "date": "2026-12-20"
+   }
+  },
+  {
+   "id": "en-dated-event-4",
+   "lang": "en",
+   "about": "event on a calendar date",
+   "text": "New wedding at Vashi on 15 Feb 2027 for 300 guests",
+   "expect": {
+    "kind": "event",
+    "guests": 300,
+    "date": "2027-02-15"
+   }
+  },
+  {
+   "id": "hi-dated-event-1",
+   "lang": "hi",
+   "about": "event on a calendar date",
+   "text": "12 दिसंबर 2026 को वाशी में 100 प्लेट की शादी",
+   "expect": {
+    "kind": "event",
+    "guests": 100,
+    "date": "2026-12-12"
+   }
+  },
+  {
+   "id": "hi-dated-event-2",
+   "lang": "hi",
+   "about": "event on a calendar date",
+   "text": "5 जनवरी 2027 को वाशी में 250 प्लेट की शादी",
+   "expect": {
+    "kind": "event",
+    "guests": 250,
+    "date": "2027-01-05"
+   }
+  },
+  {
+   "id": "hi-dated-event-3",
+   "lang": "hi",
+   "about": "event on a calendar date",
+   "text": "20 दिसंबर 2026 को वाशी में 80 प्लेट की शादी",
+   "expect": {
+    "kind": "event",
+    "guests": 80,
+    "date": "2026-12-20"
+   }
+  },
+  {
+   "id": "hi-dated-event-4",
+   "lang": "hi",
+   "about": "event on a calendar date",
+   "text": "15 फरवरी 2027 को वाशी में 300 प्लेट की शादी",
+   "expect": {
+    "kind": "event",
+    "guests": 300,
+    "date": "2027-02-15"
+   }
+  },
+  {
+   "id": "mr-dated-event-1",
+   "lang": "mr",
+   "about": "event on a calendar date",
+   "text": "12 डिसेंबर 2026 ला वाशीत 100 पाहुण्यांचे लग्न",
+   "expect": {
+    "kind": "event",
+    "guests": 100,
+    "date": "2026-12-12"
+   }
+  },
+  {
+   "id": "mr-dated-event-2",
+   "lang": "mr",
+   "about": "event on a calendar date",
+   "text": "5 जानेवारी 2027 ला वाशीत 250 पाहुण्यांचे लग्न",
+   "expect": {
+    "kind": "event",
+    "guests": 250,
+    "date": "2027-01-05"
+   }
+  },
+  {
+   "id": "mr-dated-event-3",
+   "lang": "mr",
+   "about": "event on a calendar date",
+   "text": "20 डिसेंबर 2026 ला वाशीत 80 पाहुण्यांचे लग्न",
+   "expect": {
+    "kind": "event",
+    "guests": 80,
+    "date": "2026-12-20"
+   }
+  },
+  {
+   "id": "mr-dated-event-4",
+   "lang": "mr",
+   "about": "event on a calendar date",
+   "text": "15 फेब्रुवारी 2027 ला वाशीत 300 पाहुण्यांचे लग्न",
+   "expect": {
+    "kind": "event",
+    "guests": 300,
+    "date": "2027-02-15"
+   }
+  },
+  {
+   "id": "hg-dated-event-1",
+   "lang": "hg",
+   "about": "event on a calendar date",
+   "text": "12 Dec 2026 ko Vashi mein 100 plates ki shaadi",
+   "expect": {
+    "kind": "event",
+    "guests": 100,
+    "date": "2026-12-12"
+   }
+  },
+  {
+   "id": "hg-dated-event-2",
+   "lang": "hg",
+   "about": "event on a calendar date",
+   "text": "5 Jan 2027 ko Vashi mein 250 plates ki shaadi",
+   "expect": {
+    "kind": "event",
+    "guests": 250,
+    "date": "2027-01-05"
+   }
+  },
+  {
+   "id": "hg-dated-event-3",
+   "lang": "hg",
+   "about": "event on a calendar date",
+   "text": "20 Dec 2026 ko Vashi mein 80 plates ki shaadi",
+   "expect": {
+    "kind": "event",
+    "guests": 80,
+    "date": "2026-12-20"
+   }
+  },
+  {
+   "id": "hg-dated-event-4",
+   "lang": "hg",
+   "about": "event on a calendar date",
+   "text": "15 February 2027 ko Vashi mein 300 plates ki shaadi",
+   "expect": {
+    "kind": "event",
+    "guests": 300,
+    "date": "2027-02-15"
+   }
+  },
+  {
+   "id": "en-labour-asked-1",
+   "lang": "en",
+   "about": "workers asked for",
+   "text": "Need fifteen waiters for dinner tomorrow",
+   "expect": {
+    "kind": "labour",
+    "count": 15,
+    "labour": "asked",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "en-labour-asked-2",
+   "lang": "en",
+   "about": "workers asked for",
+   "text": "Need 20 waiters for dinner tomorrow",
+   "expect": {
+    "kind": "labour",
+    "count": 20,
+    "labour": "asked",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "en-labour-asked-3",
+   "lang": "en",
+   "about": "workers asked for",
+   "text": "Need twelve waiters for dinner tomorrow",
+   "expect": {
+    "kind": "labour",
+    "count": 12,
+    "labour": "asked",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "en-labour-asked-4",
+   "lang": "en",
+   "about": "workers asked for",
+   "text": "Need 8 waiters for dinner tomorrow",
+   "expect": {
+    "kind": "labour",
+    "count": 8,
+    "labour": "asked",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "hi-labour-asked-1",
+   "lang": "hi",
+   "about": "workers asked for",
+   "text": "कल डिनर के लिए पंद्रह वेटर बुलाओ",
+   "expect": {
+    "kind": "labour",
+    "count": 15,
+    "labour": "asked",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "hi-labour-asked-2",
+   "lang": "hi",
+   "about": "workers asked for",
+   "text": "कल डिनर के लिए 20 वेटर बुलाओ",
+   "expect": {
+    "kind": "labour",
+    "count": 20,
+    "labour": "asked",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "hi-labour-asked-3",
+   "lang": "hi",
+   "about": "workers asked for",
+   "text": "कल डिनर के लिए बारह वेटर बुलाओ",
+   "expect": {
+    "kind": "labour",
+    "count": 12,
+    "labour": "asked",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "hi-labour-asked-4",
+   "lang": "hi",
+   "about": "workers asked for",
+   "text": "कल डिनर के लिए 8 वेटर बुलाओ",
+   "expect": {
+    "kind": "labour",
+    "count": 8,
+    "labour": "asked",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "mr-labour-asked-1",
+   "lang": "mr",
+   "about": "workers asked for",
+   "text": "उद्या डिनरसाठी पंधरा वेटर पाहिजे",
+   "expect": {
+    "kind": "labour",
+    "count": 15,
+    "labour": "asked",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "mr-labour-asked-2",
+   "lang": "mr",
+   "about": "workers asked for",
+   "text": "उद्या डिनरसाठी 20 वेटर पाहिजे",
+   "expect": {
+    "kind": "labour",
+    "count": 20,
+    "labour": "asked",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "mr-labour-asked-3",
+   "lang": "mr",
+   "about": "workers asked for",
+   "text": "उद्या डिनरसाठी बारा वेटर पाहिजे",
+   "expect": {
+    "kind": "labour",
+    "count": 12,
+    "labour": "asked",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "mr-labour-asked-4",
+   "lang": "mr",
+   "about": "workers asked for",
+   "text": "उद्या डिनरसाठी 8 वेटर पाहिजे",
+   "expect": {
+    "kind": "labour",
+    "count": 8,
+    "labour": "asked",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "hg-labour-asked-1",
+   "lang": "hg",
+   "about": "workers asked for",
+   "text": "Dinner ke liye pandrah boys bulana",
+   "expect": {
+    "kind": "labour",
+    "count": 15,
+    "labour": "asked",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "hg-labour-asked-2",
+   "lang": "hg",
+   "about": "workers asked for",
+   "text": "Dinner ke liye 20 boys bulana",
+   "expect": {
+    "kind": "labour",
+    "count": 20,
+    "labour": "asked",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "hg-labour-asked-3",
+   "lang": "hg",
+   "about": "workers asked for",
+   "text": "Dinner ke liye barah boys bulana",
+   "expect": {
+    "kind": "labour",
+    "count": 12,
+    "labour": "asked",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "hg-labour-asked-4",
+   "lang": "hg",
+   "about": "workers asked for",
+   "text": "Dinner ke liye 8 boys bulana",
+   "expect": {
+    "kind": "labour",
+    "count": 8,
+    "labour": "asked",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "en-labour-came-1",
+   "lang": "en",
+   "about": "workers who came",
+   "text": "twelve waiters came for dinner",
+   "expect": {
+    "kind": "labour",
+    "count": 12,
+    "labour": "came",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "en-labour-came-2",
+   "lang": "en",
+   "about": "workers who came",
+   "text": "15 waiters came for dinner",
+   "expect": {
+    "kind": "labour",
+    "count": 15,
+    "labour": "came",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "en-labour-came-3",
+   "lang": "en",
+   "about": "workers who came",
+   "text": "twenty waiters came for dinner",
+   "expect": {
+    "kind": "labour",
+    "count": 20,
+    "labour": "came",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "en-labour-came-4",
+   "lang": "en",
+   "about": "workers who came",
+   "text": "8 waiters came for dinner",
+   "expect": {
+    "kind": "labour",
+    "count": 8,
+    "labour": "came",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "hi-labour-came-1",
+   "lang": "hi",
+   "about": "workers who came",
+   "text": "डिनर में बारह वेटर आए",
+   "expect": {
+    "kind": "labour",
+    "count": 12,
+    "labour": "came",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "hi-labour-came-2",
+   "lang": "hi",
+   "about": "workers who came",
+   "text": "डिनर में 15 वेटर आए",
+   "expect": {
+    "kind": "labour",
+    "count": 15,
+    "labour": "came",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "hi-labour-came-3",
+   "lang": "hi",
+   "about": "workers who came",
+   "text": "डिनर में बीस वेटर आए",
+   "expect": {
+    "kind": "labour",
+    "count": 20,
+    "labour": "came",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "hi-labour-came-4",
+   "lang": "hi",
+   "about": "workers who came",
+   "text": "डिनर में 8 वेटर आए",
+   "expect": {
+    "kind": "labour",
+    "count": 8,
+    "labour": "came",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "mr-labour-came-1",
+   "lang": "mr",
+   "about": "workers who came",
+   "text": "डिनरला बारा वेटर आले",
+   "expect": {
+    "kind": "labour",
+    "count": 12,
+    "labour": "came",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "mr-labour-came-2",
+   "lang": "mr",
+   "about": "workers who came",
+   "text": "डिनरला 15 वेटर आले",
+   "expect": {
+    "kind": "labour",
+    "count": 15,
+    "labour": "came",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "mr-labour-came-3",
+   "lang": "mr",
+   "about": "workers who came",
+   "text": "डिनरला वीस वेटर आले",
+   "expect": {
+    "kind": "labour",
+    "count": 20,
+    "labour": "came",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "mr-labour-came-4",
+   "lang": "mr",
+   "about": "workers who came",
+   "text": "डिनरला 8 वेटर आले",
+   "expect": {
+    "kind": "labour",
+    "count": 8,
+    "labour": "came",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "hg-labour-came-1",
+   "lang": "hg",
+   "about": "workers who came",
+   "text": "Dinner mein barah boys aaye",
+   "expect": {
+    "kind": "labour",
+    "count": 12,
+    "labour": "came",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "hg-labour-came-2",
+   "lang": "hg",
+   "about": "workers who came",
+   "text": "Dinner mein 15 boys aaye",
+   "expect": {
+    "kind": "labour",
+    "count": 15,
+    "labour": "came",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "hg-labour-came-3",
+   "lang": "hg",
+   "about": "workers who came",
+   "text": "Dinner mein bees boys aaye",
+   "expect": {
+    "kind": "labour",
+    "count": 20,
+    "labour": "came",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "hg-labour-came-4",
+   "lang": "hg",
+   "about": "workers who came",
+   "text": "Dinner mein 8 boys aaye",
+   "expect": {
+    "kind": "labour",
+    "count": 8,
+    "labour": "came",
+    "meal": "dinner"
+   }
+  },
+  {
+   "id": "en-cook-1",
+   "lang": "en",
+   "about": "cooking work by order",
+   "text": "Chinese cook for noodles and manchurian, 2 people",
+   "expect": {
+    "kind": "cook",
+    "people": 2,
+    "role": "Chinese Cook – चायनीज आचारी"
+   }
+  },
+  {
+   "id": "en-cook-2",
+   "lang": "en",
+   "about": "cooking work by order",
+   "text": "Sweets cook for jalebi and gulab jamun, three people",
+   "expect": {
+    "kind": "cook",
+    "people": 3,
+    "role": "Sweet Labour – मिठाई मजूर"
+   }
+  },
+  {
+   "id": "en-cook-3",
+   "lang": "en",
+   "about": "cooking work by order",
+   "text": "Roti cook for puri and phulka, two people",
+   "expect": {
+    "kind": "cook",
+    "people": 2,
+    "role": "Roti Cook (Puri / Phulka) – पोळी आचारी"
+   }
+  },
+  {
+   "id": "en-cook-4",
+   "lang": "en",
+   "about": "cooking work by order",
+   "text": "Chinese cook for noodles and manchurian, 4 people",
+   "expect": {
+    "kind": "cook",
+    "people": 4,
+    "role": "Chinese Cook – चायनीज आचारी"
+   }
+  },
+  {
+   "id": "hi-cook-1",
+   "lang": "hi",
+   "about": "cooking work by order",
+   "text": "चाइनीज़ के लिए नूडल्स और मंचूरियन, 2 लोग",
+   "expect": {
+    "kind": "cook",
+    "people": 2,
+    "role": "Chinese Cook – चायनीज आचारी"
+   }
+  },
+  {
+   "id": "hi-cook-2",
+   "lang": "hi",
+   "about": "cooking work by order",
+   "text": "मिठाई के लिए जलेबी और गुलाब जामुन, तीन लोग",
+   "expect": {
+    "kind": "cook",
+    "people": 3,
+    "role": "Sweet Labour – मिठाई मजूर"
+   }
+  },
+  {
+   "id": "hi-cook-3",
+   "lang": "hi",
+   "about": "cooking work by order",
+   "text": "रोटी के लिए पूरी और फुलका, दो लोग",
+   "expect": {
+    "kind": "cook",
+    "people": 2,
+    "role": "Roti Cook (Puri / Phulka) – पोळी आचारी"
+   }
+  },
+  {
+   "id": "hi-cook-4",
+   "lang": "hi",
+   "about": "cooking work by order",
+   "text": "चाइनीज़ के लिए नूडल्स और मंचूरियन, 4 लोग",
+   "expect": {
+    "kind": "cook",
+    "people": 4,
+    "role": "Chinese Cook – चायनीज आचारी"
+   }
+  },
+  {
+   "id": "mr-cook-1",
+   "lang": "mr",
+   "about": "cooking work by order",
+   "text": "चायनीज साठी नूडल्स आणि मंचुरियन, 2 जण",
+   "expect": {
+    "kind": "cook",
+    "people": 2,
+    "role": "Chinese Cook – चायनीज आचारी"
+   }
+  },
+  {
+   "id": "mr-cook-2",
+   "lang": "mr",
+   "about": "cooking work by order",
+   "text": "मिठाईसाठी जिलेबी आणि गुलाबजाम, तीन जण",
+   "expect": {
+    "kind": "cook",
+    "people": 3,
+    "role": "Sweet Labour – मिठाई मजूर"
+   }
+  },
+  {
+   "id": "mr-cook-3",
+   "lang": "mr",
+   "about": "cooking work by order",
+   "text": "पोळीसाठी पुरी आणि फुलके, दोन जण",
+   "expect": {
+    "kind": "cook",
+    "people": 2,
+    "role": "Roti Cook (Puri / Phulka) – पोळी आचारी"
+   }
+  },
+  {
+   "id": "mr-cook-4",
+   "lang": "mr",
+   "about": "cooking work by order",
+   "text": "चायनीज साठी नूडल्स आणि मंचुरियन, 4 जण",
+   "expect": {
+    "kind": "cook",
+    "people": 4,
+    "role": "Chinese Cook – चायनीज आचारी"
+   }
+  },
+  {
+   "id": "hg-cook-1",
+   "lang": "hg",
+   "about": "cooking work by order",
+   "text": "Chinese ke liye noodles aur Manchurian, 2 log",
+   "expect": {
+    "kind": "cook",
+    "people": 2,
+    "role": "Chinese Cook – चायनीज आचारी"
+   }
+  },
+  {
+   "id": "hg-cook-2",
+   "lang": "hg",
+   "about": "cooking work by order",
+   "text": "Mithai ke liye jalebi aur gulab jamun, teen log",
+   "expect": {
+    "kind": "cook",
+    "people": 3,
+    "role": "Sweet Labour – मिठाई मजूर"
+   }
+  },
+  {
+   "id": "hg-cook-3",
+   "lang": "hg",
+   "about": "cooking work by order",
+   "text": "Roti ke liye puri aur phulka, do log",
+   "expect": {
+    "kind": "cook",
+    "people": 2,
+    "role": "Roti Cook (Puri / Phulka) – पोळी आचारी"
+   }
+  },
+  {
+   "id": "hg-cook-4",
+   "lang": "hg",
+   "about": "cooking work by order",
+   "text": "Chinese ke liye noodles aur Manchurian, 4 log",
+   "expect": {
+    "kind": "cook",
+    "people": 4,
+    "role": "Chinese Cook – चायनीज आचारी"
+   }
+  },
+  {
+   "id": "en-order-1",
+   "lang": "en",
+   "about": "supplier order of several items",
+   "text": "Order 25 kg rice and 10 kg sugar from kirana",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      25,
+      "kg"
+     ],
+     [
+      10,
+      "kg"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "en-order-2",
+   "lang": "en",
+   "about": "supplier order of several items",
+   "text": "Order 50 kg rice and 10 kg sugar from kirana",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      50,
+      "kg"
+     ],
+     [
+      10,
+      "kg"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "en-order-3",
+   "lang": "en",
+   "about": "supplier order of several items",
+   "text": "Order 10 kg rice and 10 kg sugar from kirana",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      10,
+      "kg"
+     ],
+     [
+      10,
+      "kg"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "en-order-4",
+   "lang": "en",
+   "about": "supplier order of several items",
+   "text": "Order 20 kg rice and 10 kg sugar from kirana",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      20,
+      "kg"
+     ],
+     [
+      10,
+      "kg"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "hi-order-1",
+   "lang": "hi",
+   "about": "supplier order of several items",
+   "text": "किराना से 25 किलो चावल और 10 किलो चीनी मंगाओ",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      25,
+      "kg"
+     ],
+     [
+      10,
+      "kg"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "hi-order-2",
+   "lang": "hi",
+   "about": "supplier order of several items",
+   "text": "किराना से 50 किलो चावल और 10 किलो चीनी मंगाओ",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      50,
+      "kg"
+     ],
+     [
+      10,
+      "kg"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "hi-order-3",
+   "lang": "hi",
+   "about": "supplier order of several items",
+   "text": "किराना से 10 किलो चावल और 10 किलो चीनी मंगाओ",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      10,
+      "kg"
+     ],
+     [
+      10,
+      "kg"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "hi-order-4",
+   "lang": "hi",
+   "about": "supplier order of several items",
+   "text": "किराना से 20 किलो चावल और 10 किलो चीनी मंगाओ",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      20,
+      "kg"
+     ],
+     [
+      10,
+      "kg"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "mr-order-1",
+   "lang": "mr",
+   "about": "supplier order of several items",
+   "text": "किराण्याकडून 25 किलो तांदूळ आणि 10 किलो साखर मागवा",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      25,
+      "kg"
+     ],
+     [
+      10,
+      "kg"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "mr-order-2",
+   "lang": "mr",
+   "about": "supplier order of several items",
+   "text": "किराण्याकडून 50 किलो तांदूळ आणि 10 किलो साखर मागवा",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      50,
+      "kg"
+     ],
+     [
+      10,
+      "kg"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "mr-order-3",
+   "lang": "mr",
+   "about": "supplier order of several items",
+   "text": "किराण्याकडून 10 किलो तांदूळ आणि 10 किलो साखर मागवा",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      10,
+      "kg"
+     ],
+     [
+      10,
+      "kg"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "mr-order-4",
+   "lang": "mr",
+   "about": "supplier order of several items",
+   "text": "किराण्याकडून 20 किलो तांदूळ आणि 10 किलो साखर मागवा",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      20,
+      "kg"
+     ],
+     [
+      10,
+      "kg"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "hg-order-1",
+   "lang": "hg",
+   "about": "supplier order of several items",
+   "text": "Kirana wale ko 25 kilo rice aur 10 kilo sugar",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      25,
+      "kg"
+     ],
+     [
+      10,
+      "kg"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "hg-order-2",
+   "lang": "hg",
+   "about": "supplier order of several items",
+   "text": "Kirana wale ko 50 kilo rice aur 10 kilo sugar",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      50,
+      "kg"
+     ],
+     [
+      10,
+      "kg"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "hg-order-3",
+   "lang": "hg",
+   "about": "supplier order of several items",
+   "text": "Kirana wale ko 10 kilo rice aur 10 kilo sugar",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      10,
+      "kg"
+     ],
+     [
+      10,
+      "kg"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "hg-order-4",
+   "lang": "hg",
+   "about": "supplier order of several items",
+   "text": "Kirana wale ko 20 kilo rice aur 10 kilo sugar",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      20,
+      "kg"
+     ],
+     [
+      10,
+      "kg"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "en-ladi-1",
+   "lang": "en",
+   "about": "bread in ladi",
+   "text": "Order 5 ladi bread",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      5,
+      "ladi"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "en-ladi-2",
+   "lang": "en",
+   "about": "bread in ladi",
+   "text": "Order 10 ladi bread",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      10,
+      "ladi"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "en-ladi-3",
+   "lang": "en",
+   "about": "bread in ladi",
+   "text": "Order 3 ladi bread",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      3,
+      "ladi"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "en-ladi-4",
+   "lang": "en",
+   "about": "bread in ladi",
+   "text": "Order 8 ladi bread",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      8,
+      "ladi"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "hi-ladi-1",
+   "lang": "hi",
+   "about": "bread in ladi",
+   "text": "ब्रेड की 5 लडी मंगाओ",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      5,
+      "ladi"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "hi-ladi-2",
+   "lang": "hi",
+   "about": "bread in ladi",
+   "text": "ब्रेड की 10 लडी मंगाओ",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      10,
+      "ladi"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "hi-ladi-3",
+   "lang": "hi",
+   "about": "bread in ladi",
+   "text": "ब्रेड की 3 लडी मंगाओ",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      3,
+      "ladi"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "hi-ladi-4",
+   "lang": "hi",
+   "about": "bread in ladi",
+   "text": "ब्रेड की 8 लडी मंगाओ",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      8,
+      "ladi"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "mr-ladi-1",
+   "lang": "mr",
+   "about": "bread in ladi",
+   "text": "ब्रेडच्या 5 लडी मागवा",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      5,
+      "ladi"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "mr-ladi-2",
+   "lang": "mr",
+   "about": "bread in ladi",
+   "text": "ब्रेडच्या 10 लडी मागवा",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      10,
+      "ladi"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "mr-ladi-3",
+   "lang": "mr",
+   "about": "bread in ladi",
+   "text": "ब्रेडच्या 3 लडी मागवा",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      3,
+      "ladi"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "mr-ladi-4",
+   "lang": "mr",
+   "about": "bread in ladi",
+   "text": "ब्रेडच्या 8 लडी मागवा",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      8,
+      "ladi"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "hg-ladi-1",
+   "lang": "hg",
+   "about": "bread in ladi",
+   "text": "Bread ki 5 ladi mangao",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      5,
+      "ladi"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "hg-ladi-2",
+   "lang": "hg",
+   "about": "bread in ladi",
+   "text": "Bread ki 10 ladi mangao",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      10,
+      "ladi"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "hg-ladi-3",
+   "lang": "hg",
+   "about": "bread in ladi",
+   "text": "Bread ki 3 ladi mangao",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      3,
+      "ladi"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "hg-ladi-4",
+   "lang": "hg",
+   "about": "bread in ladi",
+   "text": "Bread ki 8 ladi mangao",
+   "expect": {
+    "kind": "order",
+    "items": [
+     [
+      8,
+      "ladi"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "en-guests-1",
+   "lang": "en",
+   "about": "guest count change",
+   "text": "Dinner changed from 350 to 400 plates",
+   "expect": {
+    "kind": "guests",
+    "from": 350,
+    "to": 400
+   }
+  },
+  {
+   "id": "en-guests-2",
+   "lang": "en",
+   "about": "guest count change",
+   "text": "Dinner changed from 350 to 450 plates",
+   "expect": {
+    "kind": "guests",
+    "from": 350,
+    "to": 450
+   }
+  },
+  {
+   "id": "en-guests-3",
+   "lang": "en",
+   "about": "guest count change",
+   "text": "Dinner changed from 350 to 500 plates",
+   "expect": {
+    "kind": "guests",
+    "from": 350,
+    "to": 500
+   }
+  },
+  {
+   "id": "en-guests-4",
+   "lang": "en",
+   "about": "guest count change",
+   "text": "Dinner changed from 350 to 380 plates",
+   "expect": {
+    "kind": "guests",
+    "from": 350,
+    "to": 380
+   }
+  },
+  {
+   "id": "hi-guests-1",
+   "lang": "hi",
+   "about": "guest count change",
+   "text": "डिनर 350 से 400 प्लेट हो गया",
+   "expect": {
+    "kind": "guests",
+    "from": 350,
+    "to": 400
+   }
+  },
+  {
+   "id": "hi-guests-2",
+   "lang": "hi",
+   "about": "guest count change",
+   "text": "डिनर 350 से 450 प्लेट हो गया",
+   "expect": {
+    "kind": "guests",
+    "from": 350,
+    "to": 450
+   }
+  },
+  {
+   "id": "hi-guests-3",
+   "lang": "hi",
+   "about": "guest count change",
+   "text": "डिनर 350 से 500 प्लेट हो गया",
+   "expect": {
+    "kind": "guests",
+    "from": 350,
+    "to": 500
+   }
+  },
+  {
+   "id": "hi-guests-4",
+   "lang": "hi",
+   "about": "guest count change",
+   "text": "डिनर 350 से 380 प्लेट हो गया",
+   "expect": {
+    "kind": "guests",
+    "from": 350,
+    "to": 380
+   }
+  },
+  {
+   "id": "mr-guests-1",
+   "lang": "mr",
+   "about": "guest count change",
+   "text": "डिनर 350 वरून 400 झाले",
+   "expect": {
+    "kind": "guests",
+    "from": 350,
+    "to": 400
+   }
+  },
+  {
+   "id": "mr-guests-2",
+   "lang": "mr",
+   "about": "guest count change",
+   "text": "डिनर 350 वरून 450 झाले",
+   "expect": {
+    "kind": "guests",
+    "from": 350,
+    "to": 450
+   }
+  },
+  {
+   "id": "mr-guests-3",
+   "lang": "mr",
+   "about": "guest count change",
+   "text": "डिनर 350 वरून 500 झाले",
+   "expect": {
+    "kind": "guests",
+    "from": 350,
+    "to": 500
+   }
+  },
+  {
+   "id": "mr-guests-4",
+   "lang": "mr",
+   "about": "guest count change",
+   "text": "डिनर 350 वरून 380 झाले",
+   "expect": {
+    "kind": "guests",
+    "from": 350,
+    "to": 380
+   }
+  },
+  {
+   "id": "hg-guests-1",
+   "lang": "hg",
+   "about": "guest count change",
+   "text": "Dinner 350 se 400 plates ho gaya",
+   "expect": {
+    "kind": "guests",
+    "from": 350,
+    "to": 400
+   }
+  },
+  {
+   "id": "hg-guests-2",
+   "lang": "hg",
+   "about": "guest count change",
+   "text": "Dinner 350 se 450 plates ho gaya",
+   "expect": {
+    "kind": "guests",
+    "from": 350,
+    "to": 450
+   }
+  },
+  {
+   "id": "hg-guests-3",
+   "lang": "hg",
+   "about": "guest count change",
+   "text": "Dinner 350 se 500 plates ho gaya",
+   "expect": {
+    "kind": "guests",
+    "from": 350,
+    "to": 500
+   }
+  },
+  {
+   "id": "hg-guests-4",
+   "lang": "hg",
+   "about": "guest count change",
+   "text": "Dinner 350 se 380 plates ho gaya",
+   "expect": {
+    "kind": "guests",
+    "from": 350,
+    "to": 380
+   }
+  },
+  {
+   "id": "en-new-vendor-1",
+   "lang": "en",
+   "about": "new vendor with a phone number (never money)",
+   "text": "New supplier Raj phone 9876543210",
+   "expect": {
+    "kind": "vendor",
+    "phone": "9876543210",
+    "amount": 0,
+    "named": true
+   }
+  },
+  {
+   "id": "en-new-vendor-2",
+   "lang": "en",
+   "about": "new vendor with a phone number (never money)",
+   "text": "New supplier Suresh phone 98765 43210",
+   "expect": {
+    "kind": "vendor",
+    "phone": "9876543210",
+    "amount": 0,
+    "named": true
+   }
+  },
+  {
+   "id": "en-new-vendor-3",
+   "lang": "en",
+   "about": "new vendor with a phone number (never money)",
+   "text": "New supplier Mahesh phone +91 9123456780",
+   "expect": {
+    "kind": "vendor",
+    "phone": "9123456780",
+    "amount": 0,
+    "named": true
+   }
+  },
+  {
+   "id": "en-new-vendor-4",
+   "lang": "en",
+   "about": "new vendor with a phone number (never money)",
+   "text": "New supplier Ganesh phone 9988776655",
+   "expect": {
+    "kind": "vendor",
+    "phone": "9988776655",
+    "amount": 0,
+    "named": true
+   }
+  },
+  {
+   "id": "hi-new-vendor-1",
+   "lang": "hi",
+   "about": "new vendor with a phone number (never money)",
+   "text": "नया सप्लायर राज फोन 9876543210",
+   "expect": {
+    "kind": "vendor",
+    "phone": "9876543210",
+    "amount": 0,
+    "named": true
+   }
+  },
+  {
+   "id": "hi-new-vendor-2",
+   "lang": "hi",
+   "about": "new vendor with a phone number (never money)",
+   "text": "नया सप्लायर सुरेश फोन 98765 43210",
+   "expect": {
+    "kind": "vendor",
+    "phone": "9876543210",
+    "amount": 0,
+    "named": true
+   }
+  },
+  {
+   "id": "hi-new-vendor-3",
+   "lang": "hi",
+   "about": "new vendor with a phone number (never money)",
+   "text": "नया सप्लायर महेश फोन +91 9123456780",
+   "expect": {
+    "kind": "vendor",
+    "phone": "9123456780",
+    "amount": 0,
+    "named": true
+   }
+  },
+  {
+   "id": "hi-new-vendor-4",
+   "lang": "hi",
+   "about": "new vendor with a phone number (never money)",
+   "text": "नया सप्लायर गणेश फोन 9988776655",
+   "expect": {
+    "kind": "vendor",
+    "phone": "9988776655",
+    "amount": 0,
+    "named": true
+   }
+  },
+  {
+   "id": "mr-new-vendor-1",
+   "lang": "mr",
+   "about": "new vendor with a phone number (never money)",
+   "text": "नवीन सप्लायर राज फोन 9876543210",
+   "expect": {
+    "kind": "vendor",
+    "phone": "9876543210",
+    "amount": 0,
+    "named": true
+   }
+  },
+  {
+   "id": "mr-new-vendor-2",
+   "lang": "mr",
+   "about": "new vendor with a phone number (never money)",
+   "text": "नवीन सप्लायर सुरेश फोन 98765 43210",
+   "expect": {
+    "kind": "vendor",
+    "phone": "9876543210",
+    "amount": 0,
+    "named": true
+   }
+  },
+  {
+   "id": "mr-new-vendor-3",
+   "lang": "mr",
+   "about": "new vendor with a phone number (never money)",
+   "text": "नवीन सप्लायर महेश फोन +91 9123456780",
+   "expect": {
+    "kind": "vendor",
+    "phone": "9123456780",
+    "amount": 0,
+    "named": true
+   }
+  },
+  {
+   "id": "mr-new-vendor-4",
+   "lang": "mr",
+   "about": "new vendor with a phone number (never money)",
+   "text": "नवीन सप्लायर गणेश फोन 9988776655",
+   "expect": {
+    "kind": "vendor",
+    "phone": "9988776655",
+    "amount": 0,
+    "named": true
+   }
+  },
+  {
+   "id": "hg-new-vendor-1",
+   "lang": "hg",
+   "about": "new vendor with a phone number (never money)",
+   "text": "Naya supplier Raj add karo phone 9876543210",
+   "expect": {
+    "kind": "vendor",
+    "phone": "9876543210",
+    "amount": 0,
+    "named": true
+   }
+  },
+  {
+   "id": "hg-new-vendor-2",
+   "lang": "hg",
+   "about": "new vendor with a phone number (never money)",
+   "text": "Naya supplier Suresh add karo phone 98765 43210",
+   "expect": {
+    "kind": "vendor",
+    "phone": "9876543210",
+    "amount": 0,
+    "named": true
+   }
+  },
+  {
+   "id": "hg-new-vendor-3",
+   "lang": "hg",
+   "about": "new vendor with a phone number (never money)",
+   "text": "Naya supplier Mahesh add karo phone +91 9123456780",
+   "expect": {
+    "kind": "vendor",
+    "phone": "9123456780",
+    "amount": 0,
+    "named": true
+   }
+  },
+  {
+   "id": "hg-new-vendor-4",
+   "lang": "hg",
+   "about": "new vendor with a phone number (never money)",
+   "text": "Naya supplier Ganesh add karo phone 9988776655",
+   "expect": {
+    "kind": "vendor",
+    "phone": "9988776655",
+    "amount": 0,
+    "named": true
+   }
+  },
+  {
+   "id": "en-yesterday-1",
+   "lang": "en",
+   "about": "money moved yesterday",
+   "text": "Yesterday gas 1500 cash paid",
+   "expect": {
+    "kind": "expense",
+    "amount": 1500,
+    "pay": "paid",
+    "date": "2026-11-27"
+   }
+  },
+  {
+   "id": "en-yesterday-2",
+   "lang": "en",
+   "about": "money moved yesterday",
+   "text": "Yesterday tempo two thousand UPI paid",
+   "expect": {
+    "kind": "expense",
+    "amount": 2000,
+    "pay": "paid",
+    "date": "2026-11-27"
+   }
+  },
+  {
+   "id": "en-yesterday-3",
+   "lang": "en",
+   "about": "money moved yesterday",
+   "text": "Yesterday vegetables 800 cash paid",
+   "expect": {
+    "kind": "expense",
+    "amount": 800,
+    "pay": "paid",
+    "date": "2026-11-27"
+   }
+  },
+  {
+   "id": "en-yesterday-4",
+   "lang": "en",
+   "about": "money moved yesterday",
+   "text": "Yesterday gas fourteen hundred cash paid",
+   "expect": {
+    "kind": "expense",
+    "amount": 1400,
+    "pay": "paid",
+    "date": "2026-11-27"
+   }
+  },
+  {
+   "id": "hi-yesterday-1",
+   "lang": "hi",
+   "about": "money moved yesterday",
+   "text": "कल गैस के 1500 नकद दिए",
+   "expect": {
+    "kind": "expense",
+    "amount": 1500,
+    "pay": "paid",
+    "date": "2026-11-27"
+   }
+  },
+  {
+   "id": "hi-yesterday-2",
+   "lang": "hi",
+   "about": "money moved yesterday",
+   "text": "कल टेम्पो के दो हजार यूपीआई दिए",
+   "expect": {
+    "kind": "expense",
+    "amount": 2000,
+    "pay": "paid",
+    "date": "2026-11-27"
+   }
+  },
+  {
+   "id": "hi-yesterday-3",
+   "lang": "hi",
+   "about": "money moved yesterday",
+   "text": "कल सब्जी के 800 नकद दिए",
+   "expect": {
+    "kind": "expense",
+    "amount": 800,
+    "pay": "paid",
+    "date": "2026-11-27"
+   }
+  },
+  {
+   "id": "hi-yesterday-4",
+   "lang": "hi",
+   "about": "money moved yesterday",
+   "text": "कल गैस के चौदह सौ नकद दिए",
+   "expect": {
+    "kind": "expense",
+    "amount": 1400,
+    "pay": "paid",
+    "date": "2026-11-27"
+   }
+  },
+  {
+   "id": "mr-yesterday-1",
+   "lang": "mr",
+   "about": "money moved yesterday",
+   "text": "काल गॅसचे 1500 रोख दिले",
+   "expect": {
+    "kind": "expense",
+    "amount": 1500,
+    "pay": "paid",
+    "date": "2026-11-27"
+   }
+  },
+  {
+   "id": "mr-yesterday-2",
+   "lang": "mr",
+   "about": "money moved yesterday",
+   "text": "काल टेम्पोचे दोन हजार यूपीआय दिले",
+   "expect": {
+    "kind": "expense",
+    "amount": 2000,
+    "pay": "paid",
+    "date": "2026-11-27"
+   }
+  },
+  {
+   "id": "mr-yesterday-3",
+   "lang": "mr",
+   "about": "money moved yesterday",
+   "text": "काल भाजीचे 800 रोख दिले",
+   "expect": {
+    "kind": "expense",
+    "amount": 800,
+    "pay": "paid",
+    "date": "2026-11-27"
+   }
+  },
+  {
+   "id": "mr-yesterday-4",
+   "lang": "mr",
+   "about": "money moved yesterday",
+   "text": "काल गॅसचे चौदाशे रोख दिले",
+   "expect": {
+    "kind": "expense",
+    "amount": 1400,
+    "pay": "paid",
+    "date": "2026-11-27"
+   }
+  },
+  {
+   "id": "hg-yesterday-1",
+   "lang": "hg",
+   "about": "money moved yesterday",
+   "text": "Kal gas ka 1500 cash diya",
+   "expect": {
+    "kind": "expense",
+    "amount": 1500,
+    "pay": "paid",
+    "date": "2026-11-27"
+   }
+  },
+  {
+   "id": "hg-yesterday-2",
+   "lang": "hg",
+   "about": "money moved yesterday",
+   "text": "Kal tempo ka do hazaar GPay diya",
+   "expect": {
+    "kind": "expense",
+    "amount": 2000,
+    "pay": "paid",
+    "date": "2026-11-27"
+   }
+  },
+  {
+   "id": "hg-yesterday-3",
+   "lang": "hg",
+   "about": "money moved yesterday",
+   "text": "Kal sabzi ka 800 cash diya",
+   "expect": {
+    "kind": "expense",
+    "amount": 800,
+    "pay": "paid",
+    "date": "2026-11-27"
+   }
+  },
+  {
+   "id": "hg-yesterday-4",
+   "lang": "hg",
+   "about": "money moved yesterday",
+   "text": "Kal gas ka chaudah sau cash diya",
+   "expect": {
+    "kind": "expense",
+    "amount": 1400,
+    "pay": "paid",
+    "date": "2026-11-27"
+   }
+  }
+ ]
+}

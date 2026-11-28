@@ -77,7 +77,7 @@ const CTX = { today: '2026-11-28',
 
   await test('an advance with a booking is a client payment after the event, never the bill', async () => {
     const [r] = await U(['Book Sample Joshi wedding 300 guests at Vashi kal, 25000 advance received']);
-    assert.deepEqual([r.kind, r.guests, r.advance, r.amount, r.bill], ['event', 300, 25000, 25000, undefined]);
+    assert.deepEqual([r.kind, r.guests, r.advance, r.amount, r.bill], ['event', 300, 25000, 25000, 0], 'no bill said: none set');
   });
 
   await test('two events or two vendors that fit are asked about, never the first one picked', async () => {
@@ -123,7 +123,7 @@ const CTX = { today: '2026-11-28',
     assert.deepEqual([r[0].kind, r[0].name, r[0].phone, r[0].amount], ['vendor', 'Raj', '9876543210', 0]);
     assert.deepEqual([r[1].phone, r[1].amount], ['9876543210', 0]);
     assert.deepEqual([r[2].amount, r[2].ref], [1200, '1452']);
-    assert.deepEqual([r[3].amount, r[3].dateWritten, r[3].ask.includes('date')], [4500, '12/11', true]);
+    assert.deepEqual([r[3].amount, r[3].txDate, r[3].dateCheck], [4500, '2026-11-12', true], 'a written date is the date of the entry, to check (no year said)');
     assert.deepEqual([r[4].kind, r[4].amount], ['payven', 2000]);
   });
 
@@ -159,6 +159,36 @@ const CTX = { today: '2026-11-28',
       ['paid', 'credit', 'Milk & Dairy – दूध व दुग्धजन्य पदार्थ', 'UPI', 'paid', true, true, true, 'asked', 'came']);
     assert.deepEqual([r[15].items, r[16].counter, r[16].items[0].name, r[17].from, r[17].to, r[18].phone, r[19].txDate],
       [[{ name: 'Bread', qty: 5, unit: 'ladi' }], true, 'Chaat', 350, 400, '9876543210', '2026-11-27']);
+  });
+
+  await test('audit: Marathi and English payees, refunds, money still to come, Marathi negation, a bill to be made', async () => {
+    const r = await U(['रमेशला पाच हजार यूपीआय दिले', 'रमेशला दोन हजार ॲडव्हान्स रोख दिले', 'Paid Ramesh 5000 by UPI', 'Gas 1200 cash refunded', 'ग्राहक से 5000 आने वाले हैं', 'गॅसचे 1200 रोख दिले नाहीत', 'Patil ko 25000 bill banana']);
+    assert.deepEqual(r.slice(0, 3).map(x => [x.kind, x.amount, x.vendor.id, !!x.advance]), [['payven', 5000, 'ram', false], ['payven', 2000, 'ram', true], ['payven', 5000, 'ram', false]]);
+    assert.deepEqual(r.slice(3).map(x => [x.kind, x.reason]), [['unclear', 'refund'], ['unclear', 'future'], ['unclear', 'negative'], ['unclear', 'document']]);
+  });
+
+  await test('audit: a bill amount is money, a bill number is not; a booking keeps its bill and its advance apart', async () => {
+    const r = await U(['Patil gas bill 1200 paid cash', 'Patil client receipt 20000 cash', 'Gas bill no 1452 1200 cash', 'Gas invoice INV-88 1200 cash', 'Birthday tomorrow at Vashi, 50 guests, bill 25000, advance 5000 cash']);
+    assert.deepEqual([r[0].kind, r[0].amount, r[0].pay, r[0].head.head], ['expense', 1200, 'paid', 'Gas / Cylinder – सिलिंडर']);
+    assert.deepEqual([r[1].kind, r[1].amount, r[1].mode], ['cpay', 20000, 'Cash – रोख']);
+    assert.deepEqual([r[2].amount, r[2].ref, r[3].amount, r[3].ref], [1200, '1452', 1200, 'inv-88']);
+    assert.deepEqual([r[4].kind, r[4].bill, r[4].advance, r[4].guests, r[4].date], ['event', 25000, 5000, 50, '2026-11-29']);
+  });
+
+  await test('audit: Indian numbers 0–99 in Hindi and Marathi, joined Marathi hundreds, fractions', async () => {
+    assert.deepEqual(await A(['सवा लाख', 'सत्ताईस सौ', 'चौदह सौ', 'पैंतालीस सौ', 'सत्तावीसशे', 'चौदाशे', 'पाचशे', 'अडीचशे', 'निन्यानवे हजार', 'नव्व्याण्णव हजार', 'chhattis sau', 'paintalis sau', '2490.29']),
+      [125000, 2700, 1400, 4500, 2700, 1400, 500, 250, 99000, 99000, 3600, 4500, 2490.29]);
+    const r = await U(['पंधरा वेटर पाहिजे डिनरसाठी', 'पंद्रह वेटर बुलाओ डिनर', 'पाऊण किलो पनीर मागवा', 'अर्धा किलो तूप मागवा', 'सव्वा किलो साखर मागवा', 'दीड लिटर दूध मागवा', 'अडीच किलो कांदा मागवा', 'दोन डझन केळी मागवा', 'पाच लडी पाव मागवा']);
+    assert.deepEqual([r[0].count, r[1].count], [15, 15]);
+    assert.deepEqual(r.slice(2).map(x => x.items.map(i => [i.qty, i.unit])[0]), [[0.75, 'kg'], [0.5, 'kg'], [1.25, 'kg'], [1.5, 'litre'], [2.5, 'kg'], [2, 'dozen'], [5, 'ladi']]);
+  });
+
+  await test('audit: calendar dates in English, Hindi and Marathi; a year is never money', async () => {
+    const r = await U(['New birthday at Vashi on 12 Dec 2026 for 100 guests', '12 नवंबर को वाशी में 100 प्लेट की शादी', '१२ डिसेंबरला वाशीत 100 पाहुण्यांचे लग्न', 'Gas 1200 cash on 25 nov', 'gas 1200 cash 12/11/2026', 'gas 1200 cash 20 tarikh']);
+    assert.deepEqual([r[0].kind, r[0].date, r[0].dateCheck, r[0].amount], ['event', '2026-12-12', undefined, 0]);
+    assert.deepEqual([r[1].kind, r[1].date, r[1].dateCheck], ['event', '2027-11-12', true], 'no year: the next 12 November, to check');
+    assert.deepEqual([r[2].kind, r[2].date, r[2].guests], ['event', '2026-12-12', 100]);
+    assert.deepEqual([r[3].amount, r[3].txDate, r[4].txDate, r[5].txDate, r[5].dateCheck], [1200, '2026-11-25', '2026-11-12', '2026-11-20', true]);
   });
 
   await test('nothing understood: the review asks, nothing is made up', async () => {
