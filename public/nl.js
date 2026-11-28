@@ -50,6 +50,7 @@ const WORKERS = [['Boys – बॉईज', 'boys boy waiter waiters ladke servic
 const COOKS = [['Chinese Cook – चायनीज आचारी', 'chinese चायनीज चाइनीज'], ['Sweet Labour – मिठाई मजूर', 'sweet sweets mithai मिठाई halwai हलवाई'],
   ['Roti Cook (Puri / Phulka) – पोळी आचारी', 'roti puri phulka poli पोळी chapati रोटी पूरी फुलका चपाती'], ['Starter / Farsan Labour – स्टार्टर / फरसाण मजूर', 'starter starters farsan'],
   ['Cook – स्वयंपाकी', 'cook cooks aachari आचारी maharaj महाराज bawarchi swaypaki कुक रसोइया बावर्ची']];
+const COOK_WORDS = new Set(COOKS.flatMap(([, w]) => w.split(' ')));
 const PEOPLE = W('log logo people persons person jan jana janan जण जणं लोक लोग manus माणसं आदमी');
 const GUESTS = W('plates plate pax guests guest thali ताट पाहुणे mehman प्लेट प्लेटें प्लेट्स गेस्ट मेहमान');
 const UNITS = { kg: 'kg', kgs: 'kg', kilo: 'kg', kilos: 'kg', killo: 'kg', किलो: 'kg', litre: 'litre', litres: 'litre', liter: 'litre', liters: 'litre', ltr: 'litre', लिटर: 'litre',
@@ -272,7 +273,7 @@ export function understand(text, ctx = {}) {
     out.kind = 'cook'; out.role = cookRole; out.people = (people || workersN).v; out.meal = meal;
     const f = toks.findIndex(t => VOCAB.forWord.includes(t)), stop = (people || workersN).start;
     const seg = f >= 0 && f < stop ? toks.slice(f + 1, stop) : [];
-    out.dishes = seg.join(' ').split(new RegExp(`\\s(?:${VOCAB.join.join('|')})\\s`)).map(x => x.split(' ').filter(w => !STOP.has(w)).join(' ').trim()).filter(Boolean).map(title);
+    out.dishes = seg.join(' ').split(new RegExp(`\\s(?:${VOCAB.join.join('|')})\\s`)).map(x => x.split(' ').filter(w => !STOP.has(w) && !COOK_WORDS.has(w)).join(' ').trim()).filter(Boolean).map(title);   // "Chinese noodles": Chinese is the cook
     if (!out.dishes.length) out.ask.push('dishes');
     withEvent(day === null ? '' : futureDay(day)); if (!meal) out.ask.push('meal'); return out;
   }

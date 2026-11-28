@@ -11,7 +11,7 @@ const ev = (id, name, date, x = {}) => ({ id, name, date, type: 'Wedding – ल
 const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
   events: [ev('P', 'Sample Patil Wedding', iso(1), { venue: 'Sample Lawns', locality: 'Vashi' }), ev('D', 'Sample Desai Reception', iso(1)), ev('K', 'Sample Kulkarni Pooja', iso(0))],
   vendors: [{ id: 'veg', name: 'Sample Bhaji Supplier', cat: 'Raw Material', specialty: 'Vegetable – भाजी' }, { id: 'ram', name: 'Ramesh Mukadam', cat: 'Labour', specialty: 'Boys – बॉईज' },
-    { id: 'bos', name: 'Bay of Snacks', cat: 'Live Counter', specialty: 'Starter – स्टार्टर' }],
+    { id: 'bos', name: 'Bay of Snacks', cat: 'Live Counter', specialty: 'Starter – स्टार्टर' }, { id: 'gro', name: 'Sample Kirana Store', cat: 'Raw Material', specialty: 'Grocery – किराणा' }],
   expenses: [{ id: 'x1', evId: 'K', date: iso(-1), cat: 'Labour', head: 'Boys – बॉईज', amt: 12000, venId: 'ram', pay: 'credit', mode: '', photoIds: [] }] });
 
 (async () => {
@@ -118,10 +118,11 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
     assert.equal(await p.inputValue('#ven-name'), 'Suresh');
   });
 
-  await test('labour need opens the event, with what to add', async () => {
+  await test('labour need opens the event\'s labour sheet with the workers filled in', async () => {
     const t = await sayIt('Patil dinner ke liye 15 boys bulana'); assert.match(t, /15 Boys/); assert.match(t, /Dinner/);
-    await go(); await p.waitForSelector('#tab-evdetail.active');
+    await go(); await p.waitForSelector('#lab-modal.active');
     assert.match(await p.locator('#tab-evdetail').innerText(), /Sample Patil Wedding/);
+    await p.locator('#lab-modal [data-action="close-modal"]').first().click(); await p.waitForTimeout(300);
   });
 
   await test('new vendor opens the vendor form with what they supply', async () => {
@@ -137,7 +138,49 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
     await sayIt('Sabzi ka 4500 cash diya');
     const r = await p.evaluate(() => { const sh = document.querySelector('#say-modal .sheet'); return document.documentElement.scrollWidth <= innerWidth && sh.scrollWidth <= sh.clientWidth; });
     assert.equal(r, true);
-    const d = await dump(); assert.equal(JSON.stringify(d.expenses.map(({ _rev, ...x }) => x)), JSON.stringify(JSON.parse(before).map(({ _rev, ...x }) => x))); assert.deepEqual([d.cPays.length, d.vPays.length, d.events.length, d.vendors.length], [0, 0, 3, 3]);
+    const d = await dump(); assert.equal(JSON.stringify(d.expenses.map(({ _rev, ...x }) => x)), JSON.stringify(JSON.parse(before).map(({ _rev, ...x }) => x))); assert.deepEqual([d.cPays.length, d.vPays.length, d.events.length, d.vendors.length], [0, 0, 3, 4]);
+  });
+
+  // 6.0-E: these save (by pressing the form's own Save), so they run after the "nothing saved by typing" check
+  await test('6.0-E labour: "15 boys for dinner" is on the sheet as 15 asked for, evening shift; saved only with Save sheet', async () => {
+    await sayIt('Patil dinner ke liye 15 boys bulana'); await go(); await p.waitForSelector('#lab-modal.active');
+    assert.equal((await dump()).events.find(e => e.id === 'P').labour, undefined, 'not saved yet');
+    await p.locator('#btn-save-lab').click(); await p.waitForTimeout(800);
+    const rows = (await dump()).events.find(e => e.id === 'P').labour.rows;
+    assert.deepEqual(rows.map(r => [r.role, r.counts, r.asked]), [['Boys – बॉईज', { e: 15 }, 15]]);
+  });
+
+  await test('6.0-E said again: the same worker type is updated, not added twice', async () => {
+    await sayIt('Patil lunch ke liye 12 boys'); await go(); await p.waitForSelector('#lab-modal.active');
+    await p.locator('#btn-save-lab').click(); await p.waitForTimeout(800);
+    const rows = (await dump()).events.find(e => e.id === 'P').labour.rows;
+    assert.deepEqual(rows.map(r => [r.role, r.counts, r.asked]), [['Boys – बॉईज', { e: 15, m: 12 }, 12]]);
+  });
+
+  await test('6.0-E cooking work: a by-order cook line with people and dishes', async () => {
+    await sayIt('Patil ke liye Chinese noodles aur Manchurian, 2 log'); await go(); await p.waitForSelector('#lab-modal.active');
+    await p.locator('#btn-save-lab').click(); await p.waitForTimeout(800);
+    const job = (await dump()).events.find(e => e.id === 'P').labour.rows.find(r => r.job);
+    assert.deepEqual([job.role, job.people, job.dishes], ['Chinese Cook – चायनीज आचारी', 2, ['Noodles', 'Manchurian']]);
+  });
+
+  await test('6.0-E supplier order: items said in words become one order of other items, supplier chosen; saved as prepared, not sent', async () => {
+    const t = await sayIt('Patil ke liye kirana wale ko 25 kilo rice aur 10 kilo sugar');
+    assert.equal(await p.inputValue('#say-ven'), 'gro');
+    await go(); await p.waitForSelector('#buy-modal.active');
+    assert.deepEqual([await p.inputValue('#buy-item'), await p.inputValue('#buy-qty'), await p.inputValue('#buy-unit'), await p.inputValue('#buy-ven')], ['Rice', '25', 'kg', 'gro']);
+    assert.deepEqual([await p.inputValue('#buy-more [data-bm="0"] [data-bk="name"]'), await p.inputValue('#buy-more [data-bm="0"] [data-bk="qty"]')], ['Sugar', '10']);
+    await p.fill('#buy-time-t', '10:30'); await p.locator('#buy-time-am').click();   // when to deliver is always the person's choice
+    await p.locator('#btn-send-buy').click(); await p.waitForTimeout(900);
+    const pur = (await dump()).events.find(e => e.id === 'P').purchases;
+    assert.deepEqual(pur.map(x => [x.item, x.qty, x.unit, x.venId, x.extra, x.status]).sort(), [['Rice', 25, 'kg', 'gro', true, 'prepared'], ['Sugar', 10, 'kg', 'gro', true, 'prepared']]);
+    assert.equal(new Set(pur.map(x => x.grp)).size, 1, 'one order');
+  });
+
+  await test('6.0-E guest change: the count sheet opens with the new count, nothing applied until saved', async () => {
+    await closeAll(); await sayIt('Patil 200 se 250 plates ho gaya'); await go(); await p.waitForSelector('#count-modal.active');
+    assert.equal(await p.inputValue('#count-n'), '250');
+    assert.equal((await dump()).events.find(e => e.id === 'P').guestCounts, undefined, 'not applied');
   });
 
   await test('no page errors', async () => { assert.deepEqual(errors, []); });

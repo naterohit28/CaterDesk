@@ -2089,9 +2089,10 @@ function purchasesHit(before, after) {
 }
 const flagPurchases = (ev, after, patch) => { const hit = new Set(purchasesHit(ev, after)); if (hit.size) patch.purchases = ev.purchases.map(p => hit.has(p.id) ? { ...p, changed: true } : p); return hit.size; };
 
-function openBuyModal({ key = '', id = '' }) {
+function openBuyModal({ key = '', id = '', free = null }) {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
-  const p = id ? (ev.purchases || []).find(x => x.id === id) : null, row = p ? null : buyRows(ev).find(r => r.key === key);
+  const p = id ? (ev.purchases || []).find(x => x.id === id) : null,
+    row = p ? null : free ? { name: free.items[0].name, svc: '', src: 'buy' } : buyRows(ev).find(r => r.key === key);
   if (!p && !row) return;
   const item = p?.item || row.name, svc = p ? p.svc || '' : row.svc, src = p?.src || row.src;
   const all = eventServices(ev).services, s = svc ? all.find(x => x.id === svc) : null;
@@ -2108,6 +2109,13 @@ function openBuyModal({ key = '', id = '' }) {
   const mates = p ? buyGroup(ev, p).filter(x => x.id !== p.id) : [], ordered = new Set((ev.purchases || []).filter(x => x.status !== 'cancelled').map(x => buyKey(x.svc, x.item)));
   buyMore = [...mates.map(x => ({ id: x.id, name: x.item, src: x.src, svc: x.svc || '', qty: x.qty, unit: x.unit, on: true, extra: !!x.extra })),
     ...(p && p.status === 'delivered' ? [] : buyRows(ev).filter(r => !ordered.has(r.key) && r.key !== key).map(r => ({ key: r.key, name: r.name, src: r.src, svc: r.svc, label: r.label, qty: '', unit: 'pcs', on: false })))];
+  q('buy-item').dataset.free = free ? '1' : '';
+  if (free) {   // v6.0-E: items said in words, not on the menu: an order of "other items", checked before saving
+    const [first, ...rest] = free.items;
+    q('buy-qty').value = first.qty; q('buy-unit').value = BUY_UNITS.some(([u]) => u === first.unit) ? first.unit : 'pcs';
+    if (free.venId && [...q('buy-ven').options].some(o => o.value === free.venId)) { q('buy-ven').value = free.venId; q('buy-ven').dataset.prev = free.venId; }
+    buyMore = [...rest.map(x => ({ free: true, name: x.name, src: 'buy', svc: '', qty: x.qty, unit: BUY_UNITS.some(([u]) => u === x.unit) ? x.unit : 'pcs', on: true })), ...buyMore];
+  }
   renderBuyMore();
   clearFieldErrors(); openSheet('buy-modal');
 }
@@ -2138,7 +2146,7 @@ async function sendBuy() {
   const all = eventServices(ev).services, s = qv('buy-svc') ? all.find(x => x.id === qv('buy-svc')) : null;
   const now = new Date().toISOString();
   const status = !old || old.status === 'cancelled' ? 'prepared' : old.status;   // saved first, sent second (offerWhatsApp)
-  const p = { ...(old || {}), id, item: qv('buy-item'), src: qv('buy-src'), venId, qty, unit, date, status, at: now,
+  const p = { ...(old || {}), id, item: qv('buy-item'), src: qv('buy-src'), venId, qty, unit, date, status, at: now, ...(q('buy-item').dataset.free ? { extra: true } : {}),
     basis: { item: qv('buy-item'), src: qv('buy-src'), meal: s?.meal || '' } };
   if (qv('buy-svc')) p.svc = qv('buy-svc'); else delete p.svc;
   for (const [k, v] of [['time', qv('buy-time')], ['notes', qv('buy-notes').trim()]]) if (v) p[k] = v; else delete p[k];
@@ -3973,7 +3981,7 @@ function renderSay() {
   const evSel = evPick ? `<div class="field"><label for="say-ev">${k === 'payven' ? tr('Event (optional)', 'कार्यक्रम (ऐच्छिक)') : tr('Which event', 'कोणता कार्यक्रम')}</label>
     <select id="say-ev">${[{ v: '', l: k === 'payven' ? 'No event – कार्यक्रम नाही' : 'Choose – निवडा' }, ...eventOptions()].map(o => `<option value="${esc(o.v)}"${o.v === say.ev ? ' selected' : ''}>${esc(o.l)}</option>`).join('')}</select>${fits}</div>` : '';
   const vens = [...(r.vendor?.candidates || []).map(c => D.vendors.find(v => v.id === c.id)).filter(Boolean), ...D.vendors.filter(v => !(r.vendor?.candidates || []).some(c => c.id === v.id)).sort((a, b) => a.name.localeCompare(b.name))];
-  const venSel = ['payven', 'expense'].includes(k) ? `<div class="field"><label for="say-ven">${k === 'payven' ? tr('Paid to', 'कोणाला दिले') : say.pay === 'credit' ? tr('Owed to', 'कोणाला देणे') : tr('Vendor (optional)', 'विक्रेता (ऐच्छिक)')}</label>
+  const venSel = ['payven', 'expense'].includes(k) || (k === 'order' && !r.counter) ? `<div class="field"><label for="say-ven">${k === 'order' ? tr('Supplier (optional)', 'पुरवठादार (ऐच्छिक)') : k === 'payven' ? tr('Paid to', 'कोणाला दिले') : say.pay === 'credit' ? tr('Owed to', 'कोणाला देणे') : tr('Vendor (optional)', 'विक्रेता (ऐच्छिक)')}</label>
     <select id="say-ven">${[{ v: '', l: 'Choose – निवडा' }, ...vens.map(v => ({ v: v.id, l: v.name }))].map(o => `<option value="${esc(o.v)}"${o.v === say.ven ? ' selected' : ''}>${esc(o.l)}</option>`).join('')}</select>
     ${!say.ven && r.vendor?.candidates?.length ? `<div class="meta">${tr('Check: ', 'तपासा: ')}${r.vendor.candidates.map(c => `<span data-nl>${esc(c.name)}</span>`).join(', ')}</div>` : r.who && !say.ven ? `<div class="meta">${tr('You wrote: ', 'तुम्ही लिहिले: ')}<span data-nl>${esc(r.who)}</span></div>` : ''}</div>` : '';
   const paySeg = k === 'expense' ? `<div class="field"><div class="seg" role="group" aria-label="Paid now or on credit" id="say-pay">
@@ -3991,11 +3999,11 @@ function renderSay() {
     + (r.advance ? line('Advance', 'आगाऊ', fmtCurrency(r.advance) + ' (money received, not the bill)', '') : '');
   if (k === 'labour') lines += line('Workers', 'मजूर', `${r.count} ${short(r.role)}`, '') + line('Meal', 'जेवण', SAY_MEAL[r.meal], need('choose on the sheet', 'शीटवर निवडा')) + (r.rate ? line('Rate', 'दर', fmtCurrency(r.rate), '') : '');
   if (k === 'cook') lines += line('Cook', 'आचारी', `${short(r.role)} · ${r.people} ${r.people === 1 ? 'person' : 'people'}`, '') + line('Dishes', 'पदार्थ', (r.dishes || []).join(', '), need('choose on the sheet', 'शीटवर निवडा'));
-  if (k === 'order') lines += line('Items', 'वस्तू', r.items.map(i => `${i.qty} ${i.unit} ${i.name}`).join(', '), '') + line('Supplier', 'पुरवठादार', r.vendor?.id ? D.vendors.find(v => v.id === r.vendor.id)?.name : '', need('choose in the order', 'ऑर्डरमध्ये निवडा'));
+  if (k === 'order') lines += line('Items', 'वस्तू', r.items.map(i => `${i.qty} ${i.unit} ${i.name}`).join(', '), '');
   if (k === 'guests') lines += line('Guests', 'पाहुणे', `${r.from} → ${r.to}`, '') + line('Meal', 'जेवण', SAY_MEAL[r.meal], need('check', 'तपासा'));
   if (k === 'vendor') lines += line('Supplies', 'पुरवतो', short(r.specialty) || short(r.cat), need('choose in the form', 'फॉर्ममध्ये निवडा')) + line('Name', 'नाव', r.name, need('type it in the form', 'फॉर्ममध्ये लिहा'));
   const go = { expense: ['Check and save', 'तपासून जतन'], cpay: ['Check and save', 'तपासून जतन'], payven: ['Check and pay', 'तपासून देयक'], event: ['Check and create', 'तपासून तयार करा'],
-    labour: ['Open the event', 'कार्यक्रम उघडा'], cook: ['Open the event', 'कार्यक्रम उघडा'], order: ['Open the event', 'कार्यक्रम उघडा'], guests: ['Open the event', 'कार्यक्रम उघडा'], vendor: ['Check and add', 'तपासून जोडा'] }[k];
+    labour: ['Add to the labour sheet', 'मजूर शीटवर जोडा'], cook: ['Add to the labour sheet', 'मजूर शीटवर जोडा'], order: r.counter ? ['Open the event', 'कार्यक्रम उघडा'] : ['Prepare the order', 'ऑर्डर तयार करा'], guests: ['Open the guest count', 'पाहुणे मोजणी उघडा'], vendor: ['Check and add', 'तपासून जोडा'] }[k];
   q('say-result').innerHTML = k === 'unknown'
     ? `<div class="card pad say-card"><div class="say-err">${tr('Not understood. Add the amount and what it was for, e.g. "Gas 1200 cash" – रक्कम आणि कशासाठी ते लिहा.', 'समजले नाही.')}</div></div>`
     : `<div class="sec"><span class="sec-title">I understood – समजले</span></div><div class="card pad say-card">${lines}${r.fromPay ? `<div class="meta">${tr('Nothing is owed to this vendor, so this is a new purchase.', 'या विक्रेत्याचे काही देणे नाही: नवीन खर्च.')}</div>` : ''}
@@ -4070,14 +4078,42 @@ async function sayGo() {
     if (r.name) q('ven-name').value = r.name; if (r.phone && q('ven-phone')) q('ven-phone').value = r.phone;
     if (r.specialty && [...q('ven-specialty').options].some(o => o.value === r.specialty)) q('ven-specialty').value = r.specialty;
   } else {
-    // Labour, cooking work, orders and guest changes are filled in on the event (v6.0-E will fill them in directly)
+    // v6.0-E: labour, cooking work, supplier orders and guest changes open on the event, filled in, for checking and saving
     await showEvDetail(say.ev);
-    const what = k === 'labour' ? `${r.count} ${short(r.role)}${r.meal ? ' for ' + SAY_MEAL[r.meal] : ''}: add them on the labour card`
-      : k === 'cook' ? `${short(r.role)}, ${r.people} ${r.people === 1 ? 'person' : 'people'}${r.dishes?.length ? ' for ' + r.dishes.join(', ') : ''}: add on the labour card`
-      : k === 'order' ? `${r.items.map(i => `${i.qty} ${i.unit} ${i.name}`).join(', ')}: add as a supplier order`
-      : `${r.from} → ${r.to} guests${r.meal ? ' (' + SAY_MEAL[r.meal] + ')' : ''}: record the change for approval`;
-    showToast(what);
+    if (k === 'labour' || k === 'cook') { openLabModal(); sayIntoLabour(r); }
+    else if (k === 'order' && !r.counter) openBuyModal({ free: { items: r.items, venId: say.ven || r.vendor?.id || '' } });
+    else if (k === 'guests') {
+      const ev = D.events.find(e => e.id === say.ev), keys = ev ? countKeys(ev) : [];
+      if (r.meal && keys.includes(r.meal)) countMeal = r.meal;
+      openCountModal();
+      if (q('count-n')) q('count-n').value = r.to;
+      if (q('count-note') && r.from) q('count-note').value = `${r.from} → ${r.to}`;
+      showToast(`Check the meal, then Save count. Extra plates need the client's approval. – जेवण तपासा, मग मोजणी जतन करा.`);
+    } else {   // counter plates (dosa, chaat…): the event's menu and counter orders
+      showToast(`${r.items.map(i => `${i.qty} ${i.unit} ${i.name}`).join(', ')}: add them as counter orders from the menu.`);
+    }
   }
+}
+// Shift for a meal on the labour sheet: breakfast and lunch are the morning shift, high tea and dinner the evening, late night the night
+const SAY_SHIFT = { breakfast: 'm', lunch: 'm', hightea: 'e', dinner: 'e', latenight: 'n' };
+function sayIntoLabour(r) {
+  const ev = D.events.find(e => e.id === curRef); if (!ev) return;
+  if (!(ev.labour?.rows || []).length && labRows.length === 1 && !heads(labRows[0]) && !(Number(labRows[0].rate) > 0)) labRows = [];   // the empty starter line
+  if (r.kind === 'labour') {
+    const shift = SAY_SHIFT[r.meal] || 'e', same = labRows.find(x => !isExtra(x) && !isJob(x) && x.role === r.role);
+    const row = same || newWorkerRow(r.role);
+    row.counts = { ...(row.counts || {}), [shift]: r.count }; row.asked = r.count;
+    if (r.rate > 0 && !(Number(row.rate) > 0)) row.rate = r.rate;
+    if (!same) labRows.push(row);
+    showToast(`${r.count} ${short(r.role)} added for the ${SHIFTS[shift].split(' – ')[0].toLowerCase()} shift. Choose the contractor, check and save.`);
+  } else {
+    const row = newWorkerRow(r.role);
+    row.people = r.people; row.dishes = [...(r.dishes || [])];
+    if (r.meal) { row.meal = r.meal; const svcs = eventServices(ev).services.filter(x => x.meal === r.meal); if (svcs.length === 1) row.svc = svcs[0].id; }
+    labRows.push(row);
+    showToast(`${short(r.role)} added: ${r.people} ${r.people === 1 ? 'person' : 'people'}${row.dishes.length ? ' for ' + row.dishes.join(', ') : ''}. Check and save.`);
+  }
+  renderLabRows();
 }
 document.addEventListener('click', e => {
   const b = e.target.closest('#say-modal [data-say-pay]');
