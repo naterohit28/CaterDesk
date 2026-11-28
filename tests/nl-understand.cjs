@@ -108,6 +108,59 @@ const CTX = { today: '2026-11-28',
     assert.deepEqual([r[7].kind, r[7].from, r[7].to, r[7].amount], ['guests', 350, 400, 0]);
   });
 
+  await test('CTO review: negation, cancellation, money still to be paid', async () => {
+    const r = await U(['Gas 1200 cash nahi diya', 'Client ne 2000 nahi diya', 'Ramesh ko 5000 UPI mat dena', 'गॅस 1200 रोख दिले नाही', 'पैसे नको देऊ 5000', 'Gas 1200 order cancel', 'Ramesh ko 5000 dena hai', 'kal 3000 dunga']);
+    assert.deepEqual(r.map(x => [x.kind, x.reason]), [['unclear', 'negative'], ['unclear', 'negative'], ['unclear', 'negative'], ['unclear', 'negative'], ['unclear', 'negative'], ['unclear', 'cancel'], ['unclear', 'future'], ['unclear', 'future']]);
+  });
+
+  await test('CTO review: several amounts are never reduced to the largest; one Indian number stays one', async () => {
+    const r = await U(['Gas 1200 cash aur sabzi 4500 cash', 'Gas 1200 aur sabzi 4500', 'do hazaar aur paanch sau gas', 'Ramesh 10 hazaar 500']);
+    assert.deepEqual(r.map(x => [x.kind, x.amounts || x.amount]), [['multi', [1200, 4500]], ['multi', [1200, 4500]], ['expense', 2500], ['expense', 10500]], '"10 hazaar 500" is ₹10,500');
+  });
+
+  await test('CTO review: phone, bill and written-date numbers are never money', async () => {
+    const r = await U(['New supplier name Raj phone 9876543210', 'Naya supplier Raj phone +91 98765 43210', 'Gas bill no 1452 amount 1200 cash', 'Sabzi 4500 cash 12/11', 'Ramesh 9876543210 ko 2000 diye']);
+    assert.deepEqual([r[0].kind, r[0].name, r[0].phone, r[0].amount], ['vendor', 'Raj', '9876543210', 0]);
+    assert.deepEqual([r[1].phone, r[1].amount], ['9876543210', 0]);
+    assert.deepEqual([r[2].amount, r[2].ref], [1200, '1452']);
+    assert.deepEqual([r[3].amount, r[3].dateWritten, r[3].ask.includes('date')], [4500, '12/11', true]);
+    assert.deepEqual([r[4].kind, r[4].amount], ['payven', 2000]);
+  });
+
+  await test('CTO review: credit with a way of paying, or two ways of paying: nothing chosen', async () => {
+    const r = await U(['Gas 1200 udhar UPI', 'Gas 1200 credit cash', 'Gas 1200 cash or UPI']);
+    assert.deepEqual([r[0].pay, r[0].payConflict, r[1].pay, r[1].payConflict], ['', true, '', true]);
+    assert.deepEqual([r[2].mode, r[2].modeConflict, r[2].ask.includes('mode')], ['', ['UPI', 'Cash – रोख'], true]);
+  });
+
+  await test('CTO review: venue and locality find the event; a stated day that conflicts chooses nothing; transaction date', async () => {
+    const ctx = { ...CTX, events: [...CTX.events, { id: 'M', name: 'Sample Joshi Reception', date: '2026-11-27', venue: 'MLA Hall', locality: 'Nerul' }] };
+    const r = await U(['MLA Hall sabzi 4500 cash', 'Nerul gas 1200 cash', 'Kulkarni 1200 gas udya', 'Kal gas ka 1500 cash diya', 'Sabzi ka 4500 cash diya'], ctx);
+    assert.deepEqual([r[0].event.id, r[1].event.id], ['M', 'M']);
+    assert.deepEqual([r[2].event.id, r[2].event.dateConflict, r[2].event.candidates.map(e => e.id)], ['', true, ['K']]);
+    assert.deepEqual([r[3].txDate, r[3].dateCheck, r[3].daySaid], ['2026-11-27', true, true]);
+    assert.deepEqual([r[4].txDate, r[4].daySaid, r[4].unknownWords], ['', false, []]);
+  });
+
+  await test('CTO review: workers asked for or came', async () => {
+    const r = await U(['Dinner ke liye 15 boys bulana', 'उद्या डिनरसाठी 15 बॉईज पाहिजे', 'Dinner mein 12 boys aaye', 'डिनरला 12 वेटर आले', 'Dinner 15 boys']);
+    assert.deepEqual(r.map(x => [x.kind, x.count, x.labour]), [['labour', 15, 'asked'], ['labour', 15, 'asked'], ['labour', 12, 'came'], ['labour', 12, 'came'], ['labour', 15, 'asked']]);
+  });
+
+  await test('CTO review: the twenty phone acceptance sentences (understanding only)', async () => {
+    const r = await U(['Sabzi ka saadhe chaar hazaar cash diya', 'पनीरचे साडेआठ हजार उधार आहेत', 'Tempo ka dedh hazaar GPay kiya', 'MLA Hall ka gas 1200 cash', 'Client ne sava lakh advance diya',
+      'Ramesh ko paanch hazaar diye', 'Gas 1200 cash nahi diya', 'Client ne abhi advance nahi diya', 'Sabzi 4500 udhar UPI', 'Gas 1200 aur sabzi 4500', 'Kal Vashi mein 100 plates ka birthday hai',
+      'उद्या डिनरसाठी 15 बॉईज पाहिजे', 'Dinner mein 12 boys aaye', 'Chinese ke liye noodles Manchurian, do log', 'Kirana 25 kilo rice aur 10 kilo sugar', 'Bread ki 5 ladi mangao',
+      'Chaat 300 plates order karo', 'Dinner 350 se 400 plates ho gaya', 'Naya supplier Raj phone 9876543210', 'Kal gas ka 1500 cash diya']);
+    const got = r.map(x => [x.kind, x.amount || 0]);
+    assert.deepEqual(got, [['expense', 4500], ['expense', 8500], ['expense', 1500], ['expense', 1200], ['cpay', 125000], ['payven', 5000], ['unclear', 1200], ['unclear', 0], ['expense', 4500], ['multi', 0],
+      ['event', 0], ['labour', 0], ['labour', 0], ['cook', 0], ['order', 0], ['order', 0], ['order', 0], ['guests', 0], ['vendor', 0], ['expense', 1500]]);
+    assert.deepEqual([r[0].pay, r[1].pay, r[1].head.head, r[2].mode, r[2].pay, r[5].ask.includes('mode'), r[8].payConflict, r[10].dateCheck, r[11].labour, r[12].labour],
+      ['paid', 'credit', 'Milk & Dairy – दूध व दुग्धजन्य पदार्थ', 'UPI', 'paid', true, true, true, 'asked', 'came']);
+    assert.deepEqual([r[15].items, r[16].counter, r[16].items[0].name, r[17].from, r[17].to, r[18].phone, r[19].txDate],
+      [[{ name: 'Bread', qty: 5, unit: 'ladi' }], true, 'Chaat', 350, 400, '9876543210', '2026-11-27']);
+  });
+
   await test('nothing understood: the review asks, nothing is made up', async () => {
     const r = await U(['', 'hello', 'kar do']);
     assert.deepEqual(r.map(x => [x.kind, x.amount, x.ask]), [['unknown', 0, ['amount']], ['unknown', 0, ['amount']], ['unknown', 0, ['amount']]]);

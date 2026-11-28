@@ -142,19 +142,27 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
   });
 
   // 6.0-E: these save (by pressing the form's own Save), so they run after the "nothing saved by typing" check
-  await test('6.0-E labour: "15 boys for dinner" is on the sheet as 15 asked for, evening shift; saved only with Save sheet', async () => {
+  await test('6.0-E labour: "15 boys bulana" is 15 asked for; who came (and the cost) untouched; saved only with Save sheet', async () => {
     await sayIt('Patil dinner ke liye 15 boys bulana'); await go(); await p.waitForSelector('#lab-modal.active');
     assert.equal((await dump()).events.find(e => e.id === 'P').labour, undefined, 'not saved yet');
     await p.locator('#btn-save-lab').click(); await p.waitForTimeout(800);
     const rows = (await dump()).events.find(e => e.id === 'P').labour.rows;
-    assert.deepEqual(rows.map(r => [r.role, r.counts, r.asked]), [['Boys – बॉईज', { e: 15 }, 15]]);
+    assert.deepEqual(rows.map(r => [r.role, r.counts, r.asked]), [['Boys – बॉईज', {}, 15]]);
+    assert.equal((await dump()).expenses.filter(x => x.evId === 'P').length, 0, 'a plan costs nothing');
   });
 
-  await test('6.0-E said again: the same worker type is updated, not added twice', async () => {
-    await sayIt('Patil lunch ke liye 12 boys'); await go(); await p.waitForSelector('#lab-modal.active');
+  await test('6.0-E attendance: "dinner mein 12 boys aaye" sets the evening shift on the same line; asked for stays 15', async () => {
+    await sayIt('Patil dinner mein 12 boys aaye'); await go(); await p.waitForSelector('#lab-modal.active');
     await p.locator('#btn-save-lab').click(); await p.waitForTimeout(800);
     const rows = (await dump()).events.find(e => e.id === 'P').labour.rows;
-    assert.deepEqual(rows.map(r => [r.role, r.counts, r.asked]), [['Boys – बॉईज', { e: 15, m: 12 }, 12]]);
+    assert.deepEqual(rows.map(r => [r.role, r.counts, r.asked]), [['Boys – बॉईज', { e: 12 }, 15]], 'one line, not two');
+  });
+
+  await test('6.0-E attendance with no meal said: no shift guessed', async () => {
+    await sayIt('Patil 10 boys aaye'); await go(); await p.waitForSelector('#lab-modal.active');
+    await p.locator('#btn-save-lab').click(); await p.waitForTimeout(800);
+    const rows = (await dump()).events.find(e => e.id === 'P').labour.rows;
+    assert.deepEqual(rows.map(r => [r.counts, r.asked]), [[{ e: 12 }, 15]], 'unchanged');
   });
 
   await test('6.0-E cooking work: a by-order cook line with people and dishes', async () => {
@@ -181,6 +189,66 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
     await closeAll(); await sayIt('Patil 200 se 250 plates ho gaya'); await go(); await p.waitForSelector('#count-modal.active');
     assert.equal(await p.inputValue('#count-n'), '250');
     assert.equal((await dump()).events.find(e => e.id === 'P').guestCounts, undefined, 'not applied');
+  });
+
+  // CTO review (v6.0): what must never become a completed entry, and what must be asked
+  await test('CTO: not done, not to be done, or to be paid later: nothing proposed, no button', async () => {
+    for (const t of ['Gas 1200 cash nahi diya', 'Client ne 2000 nahi diya', 'Ramesh ko 5000 UPI mat dena', 'Ramesh ko 5000 dena hai', 'Client ne abhi advance nahi diya']) {
+      await sayIt(t); assert.equal(await p.locator('[data-say-stop]').count(), 1, t); assert.equal(await p.locator('#btn-say-go').count(), 0, t);
+    }
+  });
+
+  await test('CTO: two amounts: one entry at a time, neither dropped', async () => {
+    const t = await sayIt('Gas 1200 cash aur sabzi 4500 cash');
+    assert.match(t, /2 amounts found \(₹1,200, ₹4,500\)[\s\S]*one entry at a time/); assert.equal(await p.locator('#btn-say-go').count(), 0);
+  });
+
+  await test('CTO: credit and a way of paying, or two ways: nothing chosen until you choose', async () => {
+    await sayIt('Patil gas 1200 udhar UPI');
+    assert.match(await p.locator('[data-say-note]').innerText(), /both credit and a way of paying/);
+    assert.deepEqual([await p.locator('#say-pay [data-say-pay="paid"]').getAttribute('aria-pressed'), await p.locator('#say-pay [data-say-pay="credit"]').getAttribute('aria-pressed')], ['false', 'false']);
+    await sayIt('Patil gas 1200 cash or UPI');
+    assert.match(await p.locator('#say-result').innerText(), /You said UPI and Cash/);
+    await p.locator('#say-pay [data-say-pay="paid"]').click(); await p.waitForTimeout(100);
+    assert.equal(await p.inputValue('#say-mode'), '', 'no way of paying chosen for you'); await go();
+    assert.match(await p.locator('#say-err').innerText(), /Choose how it was paid/, 'the form\'s usual way of paying never stands in');
+  });
+
+  await test('CTO: a phone number is never money; the vendor form gets the name and phone', async () => {
+    const t = await sayIt('Naya supplier Raj phone 9876543210');
+    assert.match(t, /New vendor/); assert.doesNotMatch(t, /₹/);
+    await go(); await p.waitForSelector('#ven-modal.active');
+    assert.deepEqual([await p.inputValue('#ven-name'), await p.inputValue('#ven-phone')], ['Raj', '9876543210']);
+  });
+
+  await test('CTO: a day said that does not match the event found: nothing chosen, the conflict shown', async () => {
+    await sayIt('Kulkarni gas 1200 cash udya');
+    assert.equal(await p.inputValue('#say-ev'), ''); assert.match(await p.locator('#say-result').innerText(), /Sample Kulkarni Pooja is on .*not the day you said/);
+  });
+
+  await test('CTO: "kal gas ka 1500 cash diya": dated yesterday, to check; no event assumed; the form gets that date', async () => {
+    const t = await sayIt('Kal gas ka 1500 cash diya');
+    assert.match(t, /Date of this entry: .* – check it/); assert.equal(await p.locator('[data-say-guess]').count(), 0, 'no "today\'s only event"');
+    await p.selectOption('#say-ev', 'K'); await go(); await p.waitForSelector('#exp-modal.active');
+    assert.equal(await p.inputValue('#exp-date'), iso(-1));
+  });
+
+  await test('CTO: a place the app does not know is not replaced by today\'s event', async () => {
+    await sayIt('Shivaji Mandir sabzi 4500 cash'); assert.equal(await p.inputValue('#say-ev'), ''); assert.equal(await p.locator('[data-say-guess]').count(), 0);
+  });
+
+  await test('CTO: the locality names its event ("Vashi" → the Patil wedding at Sample Lawns, Vashi)', async () => {
+    await sayIt('Vashi ka gas 1200 cash'); assert.equal(await p.inputValue('#say-ev'), 'P');
+  });
+
+  await test('CTO: an advance to a supplier who is owed nothing stays a payment to them', async () => {
+    const t = await sayIt('Bay of Snacks ko 5000 advance diya UPI');
+    assert.match(t, /Payment to a vendor/); assert.doesNotMatch(t, /new purchase\./);
+  });
+
+  await test('CTO: editing the text after it was understood: the old reading cannot be used', async () => {
+    await sayIt('Patil gas 1200 cash'); await p.fill('#say-text', 'Patil gas 1500 cash');
+    assert.equal(await p.locator('#btn-say-go').count(), 0); assert.match(await p.locator('#say-result').innerText(), /text changed/i);
   });
 
   await test('no page errors', async () => { assert.deepEqual(errors, []); });

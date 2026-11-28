@@ -1740,7 +1740,7 @@ async function saveLabour() {
           ...((r.dishes || []).length ? { dishes: [...new Set(r.dishes.map(n => String(n).trim().slice(0, 80)).filter(Boolean))].slice(0, 40) } : {}),
           ...Object.fromEntries(['meal', 'svc', 'items', 'date', 'time', 'note'].map(k => [k, String(r[k] || '').trim().slice(0, 200)]).filter(([, v]) => v)), ...withVen(r) }
       : { id: r.id, role: r.role, rate: Number(r.rate) || 0, counts: clean(r.counts), ...(Number(r.asked) > 0 ? { asked: Math.min(10000, Math.round(Number(r.asked))) } : {}), ...withVen(r) })
-    .filter(r => isExtra(r) ? r.count > 0 : isJob(r) ? r.people > 0 || r.rate > 0 || r.final > 0 || r.fare > 0 || !!(r.items || r.note || r.meal || r.dishes || r.confirmed) : heads(r) > 0);   // a line with people but no rate yet is kept (owner, 4.31.24)
+    .filter(r => isExtra(r) ? r.count > 0 : isJob(r) ? r.people > 0 || r.rate > 0 || r.final > 0 || r.fare > 0 || !!(r.items || r.note || r.meal || r.dishes || r.confirmed) : heads(r) > 0 || r.asked > 0);   // a line with people but no rate yet is kept (owner, 4.31.24)
   const unpriced = rows.filter(r => !(r.rate > 0));   // with no rate yet; a cleared rate keeps its earlier expense (shown on the card)
   const billTotal = money(Number(qv('lab-bill')) || 0);
   /* 5.1.3 (owner): how each line is paid follows its contractor, not one switch for the sheet. A line with a contractor
@@ -1756,7 +1756,7 @@ async function saveLabour() {
   const parts = rows.flatMap(r => !isJob(r) ? [r] : [
     ...(jobCharge(r) > 0 ? [{ ...r, rate: jobCharge(r), part: jobCharge(r) }] : []),
     ...(jobFare(r) > 0 ? [{ id: r.id + '~fare', kind: 'x', extra: 'travel', label: `${short(r.role)} transport`, count: 1, rate: jobFare(r), ...withVen(r) }] : [])]);
-  for (const r of parts.filter(r => r.rate > 0)) {
+  for (const r of parts.filter(r => r.rate > 0 && (isExtra(r) || isJob(r) || heads(r) > 0))) {   // asked for, nobody counted yet: no cost
     const key = labExpKey(r);
     if (!byKey.has(key)) byKey.set(key, []);
     byKey.get(key).push(r);
@@ -3934,10 +3934,12 @@ function runSay() {
   const text = qv('say-text').trim();
   if (!text) { q('say-result').innerHTML = `<div class="say-err">${tr('Write what happened first', 'आधी काय झाले ते लिहा')}</div>`; return; }
   const r = understand(text, { events: D.events, vendors: D.vendors, today: today() });
-  if (r.kind === 'payven' && r.vendor?.id && !hasDues(r.vendor.id)) { r.kind = 'expense'; r.fromPay = true; r.pay = r.mode ? 'paid' : ''; }   // nothing owed: a new paid purchase
-  say = { r, ev: r.event?.id || '', pay: r.pay || '', mode: r.mode || '', ven: r.vendor?.id || '', evGuess: false };
-  // No event said, and only one event today: shown chosen, marked "check" (never when two could fit)
-  if (!say.ev && !(r.event?.candidates || []).length && ['expense', 'cpay', 'labour', 'cook', 'order'].includes(r.kind)) {
+  // Nothing owed and no advance said: a new paid purchase. An advance to a supplier stays a payment to them (CTO review)
+  if (r.kind === 'payven' && r.vendor?.id && !hasDues(r.vendor.id) && !r.advance) { r.kind = 'expense'; r.fromPay = true; r.pay = r.mode ? 'paid' : ''; }
+  say = { r, text, ev: r.event?.id || '', pay: r.pay || '', mode: r.mode || '', ven: r.vendor?.id || '', evGuess: false };
+  // No event said, and only one event today: shown chosen, marked "check". Never when two could fit, when a day or date
+  // was said, or when a word was left that may name another place or event (CTO review, v6.0)
+  if (!say.ev && !(r.event?.candidates || []).length && !r.daySaid && !(r.unknownWords || []).length && ['expense', 'cpay', 'labour', 'cook', 'order'].includes(r.kind)) {
     const todays = D.events.filter(e => e.date === today());
     if (todays.length === 1) { say.ev = todays[0].id; say.evGuess = true; }
   }
@@ -3975,6 +3977,16 @@ function sayMoney() {
 }
 const hasDues = venId => calcVendorBalance(venId, D.expenses, D.vPays).balance > 0;
 function renderSay() {
+  const UNCLEAR = { negative: ['This says it was not done, or should not be done ("nahi", "mat"). Nothing to record. If it did happen, write it again without that word.', 'हे झाले नाही असे दिसते. काहीही नोंदवले जाणार नाही.'],
+    cancel: ['This says it was cancelled. Nothing is recorded here: open the entry itself to cancel it.', 'रद्द झाले असे दिसते. इथे काहीही नोंदवले जाणार नाही.'],
+    future: ['This sounds like money still to be paid, not paid yet. Nothing to record now. To note what you owe a supplier, write it with "udhaar".', 'हे अजून द्यायचे आहे असे दिसते. आता काहीही नोंदवले जाणार नाही.'] };
+  const R0 = say.r;
+  if (R0.kind === 'unclear' || R0.kind === 'multi') {
+    q('say-result').innerHTML = `<div class="card pad say-card" data-say-stop><div class="say-err">${R0.kind === 'multi'
+      ? tr(`${R0.amounts.length} amounts found (${R0.amounts.map(a => fmtCurrency(a)).join(', ')}). Please write one entry at a time.`, `${R0.amounts.length} रकमा सापडल्या. एका वेळी एकच नोंद लिहा.`)
+      : tr(...UNCLEAR[R0.reason])}</div></div>`;
+    return;
+  }
   const { r } = say, k = r.kind, line = (en, mr, v, need) => `<div class="say-line"><span class="k">${tr(en, mr)}</span><span class="${v ? 'v' : 'miss'}" data-nl>${v ? esc(String(v)) : need}</span></div>`;
   const need = (en, mr) => tr(en, mr);
   const evPick = ['expense', 'cpay', 'payven', 'labour', 'cook', 'order', 'guests'].includes(k);
@@ -4008,7 +4020,7 @@ function renderSay() {
   q('say-result').innerHTML = k === 'unknown'
     ? `<div class="card pad say-card"><div class="say-err">${tr('Not understood. Add the amount and what it was for, e.g. "Gas 1200 cash" – रक्कम आणि कशासाठी ते लिहा.', 'समजले नाही.')}</div></div>`
     : `<div class="sec"><span class="sec-title">I understood – समजले</span></div><div class="card pad say-card">${lines}${r.fromPay ? `<div class="meta">${tr('Nothing is owed to this vendor, so this is a new purchase.', 'या विक्रेत्याचे काही देणे नाही: नवीन खर्च.')}</div>` : ''}
-      ${evSel}${say.evGuess && say.ev ? `<div class="meta due" data-say-guess>${tr("Today's only event – check it is the right one.", 'आजचा एकमेव कार्यक्रम – बरोबर आहे का ते तपासा.')}</div>` : ''}${paySeg}${venSel}${sayMoney()}${modeSel}<div class="say-err" id="say-err" role="alert"></div></div>
+      ${evSel}${say.evGuess && say.ev ? `<div class="meta due" data-say-guess>${tr("Today's only event – check it is the right one.", 'आजचा एकमेव कार्यक्रम – बरोबर आहे का ते तपासा.')}</div>` : ''}${sayNotes()}${paySeg}${venSel}${sayMoney()}${modeSel}<div class="say-err" id="say-err" role="alert"></div></div>
       <div class="btn-row"><button type="button" class="btn btn-primary" id="btn-say-go">${go[0]} – ${go[1]}</button></div>
       ${k === 'payven' ? `<button type="button" class="btn btn-secondary" id="btn-say-alt" style="width:100%;margin-top:var(--s2)">It was a new purchase – नवीन खर्च</button>` : ''}
       ${k === 'payven' && !say.ven && r.who ? `<button type="button" class="btn btn-secondary" id="btn-say-newven" style="width:100%;margin-top:var(--s2)">Add "${esc(r.who)}" as a new vendor – नवीन विक्रेता</button>` : ''}`;
@@ -4018,7 +4030,7 @@ function renderSay() {
    browser's own speech service; CaterDesk keeps no audio, and says so before the first use. What is heard goes into
    the text box, where it can be corrected, and is then understood like typed text: nothing is saved from speech. */
 const SpeechRec = () => window.SpeechRecognition || window.webkitSpeechRecognition || null;
-let mic = null, micOn = false, micText = '';
+let mic = null, micOn = false, micText = '', micSession = 0;
 function sayLang() { return readPref('ffv2_saylang', getLang() === 'mr' ? 'mr-IN' : getLang() === 'hi' ? 'hi-IN' : 'en-IN'); }
 function sayMicSetup() {
   const can = !!SpeechRec(), online = navigator.onLine !== false;
@@ -4031,7 +4043,12 @@ function sayMicSetup() {
   setMicBtn();
 }
 function setMicBtn() { const b = q('btn-say-mic'); if (!b) return; b.setAttribute('aria-pressed', String(micOn)); b.textContent = micOn ? '■ Listening – tap to stop' : '🎤 Tap and speak – बोला'; }
-function stopMic() { if (mic) { try { mic.abort(); } catch {} } mic = null; micOn = false; setMicBtn(); }
+function stopMic() {
+  micSession++;   // late results or errors from this session are ignored from now on
+  if (micText) { const box = q('say-text'); if (box) box.value = (box.value.trim() + ' ' + micText).trim(); micText = ''; }   // keep what was heard
+  if (mic) { try { mic.abort(); } catch {} } mic = null; micOn = false; setMicBtn(); if (q('say-heard')) q('say-heard').textContent = '';
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden && micOn) stopMic(); });
 const MIC_ERR = { 'not-allowed': "The microphone is blocked for CaterDesk. Allow it in the browser's site settings, or use your keyboard's 🎤.",
   'service-not-allowed': "The microphone is blocked for CaterDesk. Allow it in the browser's site settings, or use your keyboard's 🎤.",
   network: "No connection to the speech service. Use your keyboard's 🎤, or type.", 'no-speech': 'Nothing heard. Tap and speak again.',
@@ -4042,15 +4059,26 @@ function toggleMic() {
   if (navigator.onLine === false) { sayMicSetup(); return; }
   writePref('ffv2_mic_told', true); q('say-mic-note').textContent = '';
   micText = ''; q('say-heard').textContent = '';
+  const sess = ++micSession, live = () => sess === micSession;
   mic = new SR(); mic.lang = sayLang(); mic.interimResults = true; mic.continuous = false; mic.maxAlternatives = 1;
-  mic.onresult = e => { let fin = '', part = '';
+  mic.onresult = e => { if (!live()) return; let fin = '', part = '';
     for (let i = e.resultIndex; i < e.results.length; i++) { const t = e.results[i][0]?.transcript || ''; if (e.results[i].isFinal) fin += ' ' + t; else part += ' ' + t; }
     if (fin) micText = (micText + ' ' + fin).replace(/\s+/g, ' ').trim();
     q('say-heard').textContent = (micText + ' ' + part).replace(/\s+/g, ' ').trim(); };
-  mic.onerror = e => { q('say-mic-note').textContent = MIC_ERR[e.error] || "The microphone stopped. Try again, or use your keyboard's 🎤."; };
-  mic.onend = () => { micOn = false; mic = null; setMicBtn(); q('say-heard').textContent = '';
+  mic.onerror = e => { if (!live()) return; q('say-mic-note').textContent = MIC_ERR[e.error] || "The microphone stopped. Try again, or use your keyboard's 🎤."; };
+  mic.onend = () => { if (!live()) return; micOn = false; mic = null; setMicBtn(); q('say-heard').textContent = '';
     if (micText) { const box = q('say-text'); box.value = (box.value.trim() + ' ' + micText).trim(); micText = ''; runSay(); } };
   try { mic.start(); micOn = true; setMicBtn(); } catch { mic = null; q('say-mic-note').textContent = "The microphone didn't start. Try again, or use your keyboard's 🎤."; }
+}
+// What the review must point out before anything opens (CTO review, v6.0)
+function sayNotes() {
+  const { r } = say, n = [];
+  if (r.event?.dateConflict) n.push(tr(`${r.event.candidates.map(e => `${esc(e.name)} is on ${fmtDate(e.date)}`).join('; ')}, not the day you said. Choose the event.`, 'तुम्ही सांगितलेल्या दिवशी हा कार्यक्रम नाही. कार्यक्रम निवडा.'));
+  if (r.payConflict) n.push(tr('You said both credit and a way of paying. Which is it?', 'उधार आणि पैसे दिले दोन्ही सांगितले. कोणते?'));
+  if (r.modeConflict) n.push(tr(`You said ${r.modeConflict.map(m => short(m)).join(' and ')}. Choose how it was paid.`, 'कसे दिले ते निवडा.'));
+  if (r.txDate) n.push(tr(`Date of this entry: ${fmtDate(r.txDate)}${r.dateCheck ? ' – check it' : ''}.`, `नोंदीची तारीख: ${fmtDate(r.txDate)}`));
+  if (r.dateWritten) n.push(tr(`A date was written ("${esc(r.dateWritten)}"): set it in the form.`, 'लिहिलेली तारीख फॉर्ममध्ये भरा.'));
+  return n.map(x => `<div class="meta due" data-say-note>${x}</div>`).join('');
 }
 function sayErr(msg) { const e = q('say-err'); if (e) e.textContent = msg; }
 function sayRead() { if (!say) return; say.ev = q('say-ev')?.value ?? say.ev; say.mode = q('say-mode')?.value ?? say.mode; say.ven = q('say-ven')?.value ?? say.ven; }
@@ -4060,15 +4088,17 @@ async function sayGo() {
   if (['expense', 'cpay', 'labour', 'cook', 'order', 'guests'].includes(k) && !say.ev) return sayErr('Choose the event – कार्यक्रम निवडा');
   if (k === 'expense' && !say.pay) return sayErr('Choose paid now or on credit – दिले की उधार ते निवडा');
   if (k === 'payven' && !say.ven) return sayErr('Choose who was paid – कोणाला दिले ते निवडा');
+  if (((k === 'expense' && say.pay === 'paid') || k === 'cpay' || k === 'payven' || (k === 'event' && r.advance)) && !say.mode) return sayErr('Choose how it was paid – कसे दिले ते निवडा');
+  if (qv('say-text').trim() !== say.text) { say = null; q('say-result').innerHTML = ''; return; }   // the text changed after it was understood
   await closeOverlay();
   if (k === 'expense') {
-    openExpModal({ prefill: { evId: say.ev, cat: r.head?.cat || '', head: r.head?.head || '', venId: say.ven, pay: say.pay, mode: say.pay === 'paid' ? say.mode : '' } });
+    openExpModal({ prefill: { evId: say.ev, cat: r.head?.cat || '', head: r.head?.head || '', venId: say.ven, pay: say.pay, mode: say.pay === 'paid' ? say.mode : '', ...(r.txDate ? { date: r.txDate } : {}) } });
     q('exp-amt').value = r.amount; expTouched.pay = true;
     if (say.pay === 'paid' && say.mode) q('exp-mode').value = say.mode;
   } else if (k === 'cpay') {
-    openCPayModal(say.ev); q('cpay-amt').value = r.amount; if (say.mode) q('cpay-mode').value = say.mode;
+    openCPayModal(say.ev); q('cpay-amt').value = r.amount; q('cpay-mode').value = say.mode; if (r.txDate) q('cpay-date').value = r.txDate;
   } else if (k === 'payven') {
-    openVPayModal(say.ven, null, '', { amt: r.amount, evId: say.ev }); if (say.mode && q('vpay-mode')) q('vpay-mode').value = say.mode;
+    openVPayModal(say.ven, null, '', { amt: r.amount, evId: say.ev }); if (q('vpay-mode')) q('vpay-mode').value = say.mode; if (r.txDate && q('vpay-date')) q('vpay-date').value = r.txDate;
   } else if (k === 'event') {
     openQuickEvent();
     q('qev-name').value = [short(r.type) === 'Other' ? 'Event' : short(r.type), r.venue].filter(Boolean).join(' – ');
@@ -4082,7 +4112,7 @@ async function sayGo() {
     // v6.0-E: labour, cooking work, supplier orders and guest changes open on the event, filled in, for checking and saving
     await showEvDetail(say.ev);
     if (k === 'labour' || k === 'cook') { openLabModal(); sayIntoLabour(r); }
-    else if (k === 'order' && !r.counter) openBuyModal({ free: { items: r.items, venId: say.ven || r.vendor?.id || '' } });
+    else if (k === 'order' && !r.counter) { openBuyModal({ free: { items: r.items, venId: say.ven || r.vendor?.id || '' } }); if (r.date) q('buy-date').value = r.date; }
     else if (k === 'guests') {
       const ev = D.events.find(e => e.id === say.ev), keys = ev ? countKeys(ev) : [];
       if (r.meal && keys.includes(r.meal)) countMeal = r.meal;
@@ -4101,12 +4131,18 @@ function sayIntoLabour(r) {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   if (!(ev.labour?.rows || []).length && labRows.length === 1 && !heads(labRows[0]) && !(Number(labRows[0].rate) > 0)) labRows = [];   // the empty starter line
   if (r.kind === 'labour') {
-    const shift = SAY_SHIFT[r.meal] || 'e', same = labRows.find(x => !isExtra(x) && !isJob(x) && x.role === r.role);
-    const row = same || newWorkerRow(r.role);
-    row.counts = { ...(row.counts || {}), [shift]: r.count }; row.asked = r.count;
-    if (r.rate > 0 && !(Number(row.rate) > 0)) row.rate = r.rate;
-    if (!same) labRows.push(row);
-    showToast(`${r.count} ${short(r.role)} added for the ${SHIFTS[shift].split(' – ')[0].toLowerCase()} shift. Choose the contractor, check and save.`);
+    /* CTO review (v6.0): "15 boys bulana" is a requirement, "12 boys aaye" is attendance. A requirement sets only how many
+       were asked for: shift counts (who came, and the cost) are never touched. Attendance sets the meal's shift on the
+       one line of that worker type; with several lines (contractors), or no meal said, nothing is guessed. */
+    const same = labRows.filter(x => !isExtra(x) && !isJob(x) && x.role === r.role), shift = SAY_SHIFT[r.meal];
+    if (same.length > 1) { showToast(`${short(r.role)} is on ${same.length} lines (different contractors). Enter ${r.count} on the right one.`); renderLabRows(); return; }
+    if (r.labour === 'came' && !shift) { showToast(`Enter the ${r.count} ${short(r.role)} who came in the right shift.`); renderLabRows(); return; }
+    const row = same[0] || newWorkerRow(r.role);
+    if (r.labour === 'came') row.counts = { ...(row.counts || {}), [shift]: r.count };
+    else row.asked = r.count;
+    if (!same.length) labRows.push(row);
+    showToast(r.labour === 'came' ? `${r.count} ${short(r.role)} came: ${SHIFTS[shift].split(' – ')[0].toLowerCase()} shift. Check the contractor and save.`
+      : `${r.count} ${short(r.role)} asked for${r.meal ? ' (' + SAY_MEAL[r.meal] + ')' : ''}. Who came is entered later. Check the contractor and save.`);
   } else {
     const row = newWorkerRow(r.role);
     row.people = r.people; row.dishes = [...(r.dishes || [])];
@@ -4127,6 +4163,8 @@ document.addEventListener('click', e => {
   else if (e.target.closest('#btn-say-newven')) { const who = say?.r?.who || ''; closeOverlay().then(() => { openVenModal(null, 'vendor', { cat: say?.r?.head?.cat || '' }); q('ven-name').value = who; }); }
   else if (e.target.closest('#btn-say-alt')) { sayRead(); say.r = { ...say.r, kind: 'expense', head: say.r.head || null }; say.pay = say.mode ? 'paid' : ''; renderSay(); }
 });
+document.addEventListener('input', e => { if (e.target.id !== 'say-text' || !say) return;
+  say = null; q('say-result').innerHTML = `<div class="meta due" data-say-stale>${tr('The text changed. Tap Understand again.', 'मजकूर बदलला. पुन्हा "समजून घ्या" दाबा.')}</div>`; });
 document.addEventListener('change', e => { const sel = e.target.closest('#say-modal select'); if (!sel || !say) return;
   sayRead(); if (sel.id === 'say-ev') say.evGuess = false;
   if (sel.id === 'say-ev' || sel.id === 'say-ven') renderSay(); });

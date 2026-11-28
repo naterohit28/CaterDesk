@@ -28,6 +28,16 @@ export const VOCAB = {
   bulana: W('bulana bulao chahiye pahije बुलाना बुलाओ'),
   today: W('aaj aj today आज'), tomorrow: W('udya udyaa tomorrow उद्या'), yesterday: W('kaal yesterday काल'), kal: W('kal कल'),
   ka: W('ka ke ki का के की cha chi che चा ची चे'),
+  // Not done, or not to be done (CTO review, v6.0): never a completed transaction
+  neg: W("nahi nahin nahi nai nhi not dont don't didnt didn't never mat नहीं नही नाही नको मत नाय"),
+  cancel: W('cancel cancelled canceled radd रद्द band बंद'),
+  // Still to happen: a plan or a promise, not money that has moved
+  future: W('dena dene deni denge dunga dungi dega degi dyayche dyaycha dyaychi dyayla dena_hai देना देने देंगे दूंगा दूँगा देगा देणार द्यायचे द्यायचा will shall karenge karna'),
+  attended: W('aaye aaya aayi aye aale ale aali came attended present hajar haazir hazir हजर हाजिर आले आलेत आए आये आई'),
+  plan: W('bulana bulao chahiye chahie pahije need needed required book पाहिजे चाहिए बुलाना बुलाओ हवे'),
+  // Words that say what kind of entry it is but name nothing; with these and the vocabulary above, a word left over may
+  // be a name the app does not know (a venue, a person), so the event is never guessed from "today" then
+  plain: W('expense kharcha kharch kharchi खर्च paisa paise paise money bill bills payment pay paid hisab hisaab total entry record amount rs name naam number add kar karo kiya kiye ki kya hai hain he aahe आहे आहेत है हैं tha thi the hua hui ho gaya gayi zala zale abhi aata आता ab'),
   forWord: W('liye sathi saathi साठी लिए लिये for'),
   to: W('ko को la ला to'),
   join: W('aur and ani आणि और'),
@@ -83,6 +93,8 @@ export function normalise(text) {
   // the keyboard's 🎤 turns "साडेआठ हजार" into "8:30 hajar"
   s = s.replace(/\b(\d+):30\s*(?=(hajar|hajaar|hazar|hazaar|thousand|हजार|हज़ार|lakh|लाख)\b)/g, (_, a) => ` ${Number(a) + 0.5} `);
   // sade / साडे n = n½, sava / सव्वा n = n¼, paune / पावणे n = n−¼, dedh = 1½, adhai = 2½ (also written joined: साडेआठ)
+  s = s.replace(/(?:\bsava|\bsavva|सव्वा)\s+(?=(?:lakh|lac|लाख|hazar|hazaar|hajar|thousand|हजार|सौ|sau)(?![\p{L}\p{M}]))/gu, ' 1.25 ')
+    .replace(/(?:\bpaune|\bpavne|पावणे|पौने)\s+(?=(?:lakh|lac|लाख|hazar|hazaar|hajar|thousand|हजार)(?![\p{L}\p{M}]))/gu, ' 0.75 ');
   const frac = (re, d) => { s = s.replace(re, (m, n) => { const v = word(n) ?? NUM_AMBIG[n]; return v === undefined ? m : ` ${v + d} `; }); };
   frac(/(?:\bsade|\bsaade|\bsadhe|\bsaadhe|साडे|साढ़े|साढे)\s*([a-z]+|\d+|[ऀ-ॿ]+)/g, 0.5);
   frac(/(?:\bsava|\bsavva|सव्वा)\s*([a-z]+|\d+|[ऀ-ॿ]+)/g, 0.25);
@@ -91,6 +103,18 @@ export function normalise(text) {
   return s.replace(/[,.:](?!\d)/g, ' ').replace(/\s+/g, ' ').trim();
 }
 const tokens = s => s.split(' ').filter(Boolean);
+/* Numbers that are never money, taken out first (CTO review, v6.0): a mobile number ("9876543210", "+91 98765 43210"),
+   a bill / invoice / receipt / challan / order number ("bill no 1452"), and a written date ("12/11", "12-11-2026").
+   They are kept for the review (a phone for a new vendor; a date to be checked), never added to an amount. */
+export function prep(text) {
+  let s = normalise(text); const phones = [], refs = [], dates = [];
+  s = s.replace(/(?:\+?91[\s-]?)?\b[6-9]\d{4}[\s-]?\d{5}\b/g, m => { phones.push(m.replace(/\D/g, '').slice(-10)); return ' '; });
+  s = s.replace(/\b(?:bill|invoice|inv|receipt|ref|reference|challan|pavti|पावती|बिल)\s*(?:no|number|num|nos|#|क्रमांक|नंबर)?\s*#?\s*([a-z]{0,4}\d[\w/-]*)/g, (m, r) => { refs.push(r); return ' '; });
+  s = s.replace(/\border\s*(?:no|number|#)\s*#?\s*([a-z]{0,4}\d[\w/-]*)/g, (m, r) => { refs.push(r); return ' '; });
+  s = s.replace(/#\s*(\d[\w/-]*)/g, (m, r) => { refs.push(r); return ' '; });
+  s = s.replace(/\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/g, m => { dates.push(m); return ' '; });
+  return { s: s.replace(/\s+/g, ' ').trim(), phones, refs, dates };
+}
 
 // Every number in the sentence with where it sits: "two thousand five hundred", "50 thousand", "teen sau pachas"
 export function numbers(textOrToks) {
@@ -135,7 +159,7 @@ function numberRole(toks, g) {
 
 // The money amount: the largest number that is not guests, a quantity, workers, a time, a date or a rate
 export function amountOf(text) {
-  const toks = tokens(normalise(text)), gs = numbers(toks);
+  const toks = tokens(prep(text).s), gs = numbers(toks);
   const money = gs.filter(g => numberRole(toks, g) === 'money' && !(g.words && g.v < 10));
   return money.length ? Math.max(...money.map(g => g.v)) : 0;
 }
@@ -159,7 +183,7 @@ const nameIn = (w, toks) => toks.some(x => { const sx = stem(x);
   return isDev(w) !== isDev(x) && a.length >= 2 && a === b; });
 const starts = (toks, list) => toks.some(t => list.some(w => w.length >= 4 ? t.startsWith(w) : t === w));
 const pick = (toks, table) => (table.find(([, w]) => starts(toks, w.split(' '))) || [''])[0];
-const GENERIC = new Set(W('sample the and new event wedding lagna party function caterers caterer foods food enterprises traders trader stores store shop supplier vendor contractor services service'));
+const GENERIC = new Set(W('sample the and new event wedding lagna party function caterers caterer foods food enterprises traders trader stores store shop supplier vendor contractor services service hall halls lawn lawns banquet banquets ground garden gardens club hotel resort mandir temple society sabhagruh karyalay mangal complex road nagar'));
 
 // Hindi words in Devanagari, as the phone's Hindi speech recognition writes them (HEAD_WORDS has English and Marathi)
 const HINDI_HEADS = { 'Vegetable': 'सब्जी सब्जियां सब्जीवाला प्याज आलू टमाटर', 'Grocery': 'किराना राशन चावल चीनी आटा दाल मैदा बेसन नमक', 'Oil / Ghee': 'तेल घी',
@@ -170,7 +194,7 @@ const HINDI_HEADS = { 'Vegetable': 'सब्जी सब्जियां स
 export function headOf(toks) {
   for (const [cat, heads] of Object.entries(EXPENSE_HEADS)) for (const head of heads) {
     const en = head.split(' – ')[0], ws = norm(en + ' ' + (HEAD_WORDS[en] || '') + ' ' + (HINDI_HEADS[en] || '') + ' ' + (head.split(' – ')[1] || '')).split(' ').filter(w => w.length >= 3);
-    if (ws.some(w => toks.some(t => t === w || stem(t) === w || (w.length >= 4 && t.startsWith(w) && t.length - w.length <= 4)))) return { cat, head };
+    if (ws.some(w => toks.some(t => word(t) === undefined && NUM_AMBIG[t] === undefined && !MULT[t] && (t === w || stem(t) === w || (w.length >= 4 && t.startsWith(w) && t.length - w.length <= 4))))) return { cat, head };
   }
   return null;
 }
@@ -188,15 +212,29 @@ export function matchVendor(text, vendors = [], hint = null) {
   return { id: list.length === 1 && how !== 'supplies' ? list[0].id : '', sure: list.length === 1 && how === 'name', how: list.length ? how : '', candidates: list };
 }
 
-// Events the sentence points to: by a distinctive name word, else by the day said; two that fit are asked about
+/* Events the sentence points to: by a distinctive word of the name, the venue or the locality ("MLA Hall", "Vashi"),
+   else by the day said; two that fit are asked about. A day that was said and does not match the event found is a
+   conflict: nothing is chosen (CTO review, v6.0). */
 export function matchEvent(toks, events = [], date = '') {
   const live = events.filter(e => e && e.name && !e.deleted);
-  let c = live.filter(e => norm(e.name).split(' ').some(w => w.length >= 3 && !GENERIC.has(w) && nameIn(w, toks)));
-  if (date) { const onDay = (c.length ? c : live).filter(e => e.date === date); if (onDay.length || !c.length) c = onDay; }
+  const words = e => norm([e.name, e.venue, e.locality].filter(Boolean).join(' ')).split(' ');
+  let c = live.filter(e => words(e).some(w => w.length >= 3 && !GENERIC.has(w) && nameIn(w, toks)));
+  let dateConflict = false;
+  if (date) { const onDay = (c.length ? c : live).filter(e => e.date === date);
+    if (c.length && !onDay.length) dateConflict = true; else c = onDay; }
   const list = c.slice(0, 6).map(e => ({ id: e.id, name: e.name, date: e.date }));
-  return { id: list.length === 1 ? list[0].id : '', candidates: list };
+  return { id: list.length === 1 && !dateConflict ? list[0].id : '', candidates: list, ...(dateConflict ? { dateConflict: true } : {}) };
 }
 
+let KNOWN = null;
+function isKnown(t) {
+  if (!KNOWN) { KNOWN = new Set([...Object.values(VOCAB).flat(), ...MODE_WORDS.flatMap(([, w]) => w.split(' ')), ...MEAL_WORDS.flatMap(([, w]) => w.split(' ')),
+    ...EVENT_WORDS.flatMap(([, w]) => w.split(' ')), ...WORKERS.flatMap(([, w]) => w.split(' ')), ...COOKS.flatMap(([, w]) => w.split(' ')), ...PEOPLE, ...GUESTS,
+    ...Object.keys(UNITS), ...TIME_AFTER, ...DATE_NEAR, ...RATE_BEFORE, ...STOP, ...Object.keys(NUMW), ...Object.keys(MULT), ...Object.keys(NUM_AMBIG)].map(w => norm(w)));
+    for (const heads of Object.values(EXPENSE_HEADS)) for (const h of heads) { const en = h.split(' – ')[0];
+      for (const w of norm(h + ' ' + (HEAD_WORDS[en] || '') + ' ' + (HINDI_HEADS[en] || '')).split(' ')) KNOWN.add(w); } }
+  return KNOWN.has(t) || KNOWN.has(stem(t)) || !!headOf([t]);
+}
 const addDays = (iso, n) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const title = s => s.replace(/(^|\s)\S/g, m => m.toUpperCase());
 
@@ -206,31 +244,43 @@ const title = s => s.replace(/(^|\s)\S/g, m => m.toUpperCase());
      ask: [what the review screen must ask for] } */
 export function understand(text, ctx = {}) {
   const { events = [], vendors = [], today = new Date().toISOString().slice(0, 10) } = ctx;
-  const s = normalise(text), toks = tokens(s), gs = numbers(toks);
+  const P = prep(text), s = P.s, toks = tokens(s), gs = numbers(toks);
   const roles = gs.map(g => ({ ...g, role: numberRole(toks, g) }));
   const money = roles.filter(g => g.role === 'money' && !(g.words && g.v < 10));
   const amount = money.length ? Math.max(...money.map(g => g.v)) : 0;
   const first = role => roles.find(g => g.role === role);
   const out = { kind: 'unknown', text: String(text || ''), amount, ask: [] };
+  if (P.phones.length) out.phone = P.phones[0]; if (P.refs.length) out.ref = P.refs[0]; if (P.dates.length) { out.dateWritten = P.dates[0]; out.ask.push('date'); }
   const moneyNow = () => { const m = roles.filter(g => g.role === 'money' && !(g.words && g.v < 10)); return m.length ? Math.max(...m.map(g => g.v)) : 0; };
 
-  // Payment words
-  const mode = MODE_WORDS.find(([, w]) => has(toks, w.split(' ')))?.[0] || '';
+  // Payment words. Two ways of paying said ("cash or UPI"), or paid and credit together ("udhar UPI"): nothing is chosen
+  const modes = MODE_WORDS.filter(([, w]) => has(toks, w.split(' '))).map(([m]) => m);
+  const mode = modes.length === 1 ? modes[0] : '';
+  if (modes.length > 1) out.modeConflict = modes;
   const credit = has(toks, VOCAB.credit), creditMaybe = !credit && has(toks, VOCAB.creditUnsure);
+  const negated = has(toks, VOCAB.neg), cancelled = has(toks, VOCAB.cancel), future = has(toks, VOCAB.future);
   const gave = has(toks, VOCAB.give), got = has(toks, VOCAB.receive), adv = has(toks, VOCAB.advance), client = starts(toks, VOCAB.client);
   // The day: aaj / udya / kaal are clear; Hindi "kal" is both yesterday and tomorrow, so it follows the kind and is confirmed
   const day = has(toks, VOCAB.today) ? 0 : has(toks, VOCAB.tomorrow) ? 1 : has(toks, VOCAB.yesterday) ? -1 : has(toks, VOCAB.kal) ? 'kal' : null;
+  out.daySaid = day !== null || !!P.dates.length;
   const meal = pick(toks, MEAL_WORDS);
   const head = headOf(toks);
   const evType = pick(toks, EVENT_WORDS);
   const futureDay = d => d === 'kal' ? addDays(today, 1) : d === null ? '' : addDays(today, d);
   const pastDay = d => d === 'kal' ? addDays(today, -1) : d === null ? '' : addDays(today, d);
   const withEvent = (d) => { const m = matchEvent(toks, events, d); out.event = m; if (!m.id) out.ask.push('event'); };
+  // Words left that the app does not know (a venue or a name it has no record of): then "today's only event" is never assumed
+  out.unknownWords = toks.filter(t => t.length >= 3 && word(t) === undefined && !MULT[t] && !isKnown(t)
+    && !events.some(e => [e.name, e.venue, e.locality].some(x => x && nameIn(t, tokens(norm(x)))))
+    && !vendors.some(v => v.name && nameIn(t, tokens(norm(v.name)))));
   const items = [];
   { // "25 kilo rice aur 10 kilo sugar"
     for (const g of roles.filter(g => g.role === 'qty')) {
       const unit = UNITS[toks[g.end + 1]], name = [];
       for (let i = g.end + 2; i < toks.length; i++) { const w = toks[i]; if (VOCAB.join.includes(w) || word(w) !== undefined || VOCAB.order.includes(w) || STOP.has(w) || MODE_WORDS.some(([, x]) => x.split(' ').includes(w))) break; name.push(w); }
+      if (!name.length && has(toks, VOCAB.order)) for (let i = g.start - 1; i >= 0 && name.length < 3; i--) {   // "Bread ki 5 ladi mangao"
+        const w = toks[i]; if (STOP.has(w) || VOCAB.ka.includes(w)) { if (name.length) break; continue; }
+        if (VOCAB.join.includes(w) || word(w) !== undefined || VOCAB.order.includes(w) || VOCAB.to.includes(w)) break; name.unshift(w); }
       if (name.length) items.push({ name: title(name.join(' ')), qty: g.v, unit });
     }
     // "Order 100 dosa plates and 50 chaat plates": counter plates, only when an order word is said
@@ -239,16 +289,26 @@ export function understand(text, ctx = {}) {
       for (; i < toks.length && !GUESTS.includes(toks[i]) && !VOCAB.join.includes(toks[i]) && word(toks[i]) === undefined && name.length < 4; i++) name.push(toks[i]);
       if (name.length && GUESTS.includes(toks[i])) { items.push({ name: title(name.join(' ')), qty: g.v, unit: 'plates' }); g.role = 'qty'; }
     }
+    if (has(toks, VOCAB.order)) for (const g of roles.filter(g => g.role === 'guests')) {   // "Chaat 300 plates order karo"
+      const name = []; for (let i = g.start - 1; i >= 0 && name.length < 3; i--) { const w = toks[i];
+        if (STOP.has(w) || VOCAB.join.includes(w) || word(w) !== undefined || VOCAB.order.includes(w) || VOCAB.ka.includes(w)) break; name.unshift(w); }
+      if (name.length) { items.push({ name: title(name.join(' ')), qty: g.v, unit: 'plates' }); g.role = 'qty'; }
+    }
   }
 
   if (items.some(x => x.unit === 'plates')) out.amount = moneyNow();
   const amt = out.amount;
+  // Not done, not to be done, or cancelled: nothing is proposed (CTO review, v6.0)
+  if (negated || cancelled) { out.kind = 'unclear'; out.reason = cancelled ? 'cancel' : 'negative'; out.ask = ['rewrite']; return out; }
+  // Two or more amounts of money: one entry at a time ("Gas 1200 cash aur sabzi 4500 cash"); never the larger one alone
+  const moneyGroups = roles.filter(g => g.role === 'money' && !(g.words && g.v < 10));
+  if (moneyGroups.length > 1) { out.kind = 'multi'; out.amounts = moneyGroups.map(g => g.v); out.amount = 0; out.ask = ['one-at-a-time']; return out; }
   // 1. A new vendor: "Naya vegetable supplier add karo"
   if (has(toks, VOCAB.newWord) && starts(toks, VOCAB.vendorWord) && !amt) {
     out.kind = 'vendor'; out.cat = head?.cat || (pick(toks, WORKERS) || pick(toks, COOKS) ? 'Labour' : ''); out.specialty = head?.head || '';
-    const phone = (s.match(/\b[6-9]\d{9}\b/) || [])[0]; if (phone) out.phone = phone;
     const named = String(text).match(/\b(?:naam|name|named|नाव|नाम)\s+([A-Za-zऀ-ॿ][\wऀ-ॿ ]{1,40}?)(?=\s+(?:hai|he|aahe|है|आहे|phone|number|\d)|[,.]|$)/i);
-    out.name = named ? named[1].trim() : ''; if (!out.name) out.ask.push('name');
+    const after = named ? null : String(text).match(/\b(?:supplier|vendor|contractor|mukadam|सप्लायर|वेंडर|ठेकेदार)\s+(?!(?:add|jodo|joda|karo|kar|ka|ki|ke|hai|ko)\b)([A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F]+(?:\s+[A-Z][A-Za-z]+)?)(?=\s+(?:phone|mobile|number|no|ka|ki|ke|add|jodo|karo|का|की)\b|\s*[,.]|\s*\+?\d|\s*$)/i);
+    out.name = (named ? named[1].trim() : after ? after[1].trim() : '').replace(/\s+(?:phone|mobile|number|no|ka|ki|ke)$/i, ''); if (!out.name) out.ask.push('name');
     return out;
   }
 
@@ -282,6 +342,8 @@ export function understand(text, ctx = {}) {
   const worker = pick(toks, WORKERS);
   if (worker && workersN && !(amt && gave)) {
     out.kind = 'labour'; out.role = worker; out.count = workersN.v; out.meal = meal; const rate = first('rate'); if (rate) out.rate = rate.v;
+    // "15 boys bulana" is a requirement; "12 boys aaye" is attendance. Not said: a requirement (it changes no cost)
+    out.labour = has(toks, VOCAB.attended) && !has(toks, VOCAB.plan) ? 'came' : 'asked';
     if (!meal) out.ask.push('meal'); withEvent(day === null ? '' : futureDay(day)); return out;
   }
 
@@ -303,6 +365,10 @@ export function understand(text, ctx = {}) {
 
   if (!amt) { out.ask.push('amount'); return out; }
   out.mode = mode;
+  // "Ramesh ko 5000 dena hai", "kal dunga": still to be paid, not paid (CTO review, v6.0)
+  if (future && !got) { out.kind = 'unclear'; out.reason = 'future'; out.ask = ['rewrite']; return out; }
+  // The date of this money: said ("kaal", "kal" = yesterday for money already moved, checked) or written; else today in the form
+  out.txDate = day === null ? '' : pastDay(day); if (day === 'kal' || out.txDate > today) out.dateCheck = true;   // money dated in the future: checked
 
   // 7. Money from the client: "Client ne 50 thousand advance diya", "received 25000 via UPI as advance"
   const toIdx = toks.findIndex(t => VOCAB.to.includes(t) && t !== 'to');
@@ -329,13 +395,15 @@ export function understand(text, ctx = {}) {
 
   // 9. Otherwise a bill: "Sabzi ka 4500 cash diya", "Bay of Snacks ka 2490 udhaar hai"
   out.kind = 'expense';
-  out.pay = credit ? 'credit' : (gave || mode) && mode ? 'paid' : '';
-  if (creditMaybe && !out.pay) out.payHint = 'credit';
+  const paidWord = (gave || mode) && !!mode;
+  if ((credit || creditMaybe) && (paidWord || modes.length)) { out.pay = ''; out.payConflict = true; }   // "udhar UPI": which is it?
+  else out.pay = credit ? 'credit' : paidWord ? 'paid' : '';
+  if (creditMaybe && !out.pay && !out.payConflict) out.payHint = 'credit';
   out.vendor = matchVendor(text, vendors, head);
   // no item said: the named supplier's usual item, shown for checking
   const vSpec = out.vendor.id && vendors.find(v => v.id === out.vendor.id)?.specialty;
   out.head = head || (vSpec ? { cat: Object.keys(EXPENSE_HEADS).find(c => EXPENSE_HEADS[c].includes(vSpec)) || '', head: vSpec, fromVendor: true } : null);
-  if (!out.head) out.ask.push('item'); if (!out.pay) out.ask.push('pay'); if (out.pay === 'paid' && !mode) out.ask.push('mode');
+  if (!out.head) out.ask.push('item'); if (!out.pay) out.ask.push('pay'); if (out.pay !== 'credit' && !mode) out.ask.push('mode');
   if (out.pay === 'credit' && !out.vendor.id) out.ask.push('vendor');
   withEvent(day === null ? '' : pastDay(day));
   return out;

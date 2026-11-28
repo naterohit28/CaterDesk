@@ -81,6 +81,26 @@ const FAKE = () => {
     await p.evaluate(() => { window.__mic.hold = false; });
   });
 
+  await test('CTO: results that arrive after the sheet was closed, or after a language switch, change nothing', async () => {
+    await open(); await p.evaluate(() => { window.__mic.hold = true; });
+    await p.locator('#btn-say-mic').click(); await p.waitForTimeout(150);
+    await p.locator('#say-lang [data-say-lang="en-IN"]').click(); await p.waitForTimeout(100);   // switching stops the old session
+    await p.evaluate(() => { const o = window.__micObj; o.onresult?.({ resultIndex: 0, results: [Object.assign([{ transcript: 'Gas 9999 cash' }], { isFinal: true })] }); o.onend?.(); });
+    await p.waitForTimeout(200);
+    assert.doesNotMatch(await p.inputValue('#say-text'), /9999/, 'a stale session cannot write'); assert.equal(await p.locator('#btn-say-go').count(), 0);
+    await p.evaluate(() => { window.__mic.hold = false; });
+  });
+
+  await test('CTO: going to the background stops listening and keeps what was already heard', async () => {
+    await open(); await p.fill('#say-text', 'Patil'); await p.evaluate(() => { window.__mic.hold = true; window.__mic.aborted = false; });
+    await p.locator('#btn-say-mic').click(); await p.waitForTimeout(250);   // the stand-in has delivered its final words and holds
+    await p.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => true }); document.dispatchEvent(new Event('visibilitychange')); });
+    await p.waitForTimeout(150);
+    assert.equal(await p.evaluate(() => window.__mic.aborted), true);
+    assert.equal(await p.inputValue('#say-text'), 'Patil Patil lagnasathi bhajiwala 8:30 hajar udhar', 'typed text and heard words kept');
+    await p.evaluate(() => { delete document.hidden; window.__mic.hold = false; });
+  });
+
   await test('offline: no page microphone; the keyboard 🎤 is suggested', async () => {
     await ctx.setOffline(true); await open();
     assert.equal(await p.locator('#say-mic-row').isVisible(), false);
