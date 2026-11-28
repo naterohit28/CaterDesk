@@ -8,10 +8,10 @@ const { chromium, devices } = require('playwright');
 const assert = require('node:assert/strict');
 
 const ev = (id, name, date, x = {}) => ({ id, name, date, type: 'Other – इतर', venue: '', billing: 10000, guests: 50, photoIds: [], ...x });
-const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [], expenses: [],
-  vendors: [{ id: 'g', name: 'Sample Grocer', cat: 'Raw Material' }],
+const DATA = () => ({ version: 'ffv2', photos: [], vPays: [], expenses: [],
+  vendors: [{ id: 'g', name: 'Sample Grocer', cat: 'Raw Material', phone: '9000000011' }], cPays: [{ id: 'cp', evId: 'A', amt: 5000, date: '2026-11-20', mode: 'UPI' }],
   events: [
-    ev('A', 'Sample Joshi Wedding', '2026-12-12', { venue: 'Sample Lawns', locality: 'Vashi' }),
+    ev('A', 'Sample Joshi Wedding', '2026-12-12', { venue: 'Sample Lawns', locality: 'Vashi', mobile: '9000000012' }),
     ev('B', 'Sample Rao Reception', '2026-12-12', { venue: 'Sample Grand Hall', locality: 'Nerul', services: [{ id: 's1', meal: 'lunch', time: '12:30' }] }),
     ev('C', 'Sample Mehta Sangeet', '2026-12-12', { venue: 'Sample Grand Hall', locality: 'Nerul', services: [{ id: 's2', meal: 'dinner', time: '19:30' }] }),
     ev('D', 'Sample Shah Pooja', '2026-12-10', { venue: 'Sample Vashi Gymkhana', locality: 'Vashi' }),
@@ -78,6 +78,19 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [], expense
     const r = await p.evaluate(() => { const s = document.getElementById('exp-ev'), sh = document.querySelector('#exp-modal .sheet');
       return { size: parseFloat(getComputedStyle(s).fontSize), page: document.documentElement.scrollWidth <= innerWidth, sheet: sh.scrollWidth <= sh.clientWidth }; });
     assert.deepEqual(r, { size: 16, page: true, sheet: true });
+  });
+
+  await test('WhatsApp: vendor account names venue and date, never the event; client receipt adds them after the event name', async () => {
+    await p.locator('#exp-modal [data-action="close-modal"]').first().click().catch(() => {}); await p.waitForTimeout(300);
+    await p.locator('#n-vendors:visible').click(); await p.waitForTimeout(300);
+    await p.locator('#ven-list [data-action="vendetail"]', { hasText: 'Sample Grocer' }).first().click(); await p.waitForSelector('#tab-vendetail.active');
+    const dues = decodeURIComponent(await p.locator('#tab-vendetail a[href*="As%20per%20my%20records"]').first().getAttribute('href'));
+    assert.match(dues, /• .* – Sample Grand Hall, Nerul · .*: ₹1,500/);
+    assert.doesNotMatch(dues, /Mehta|Sangeet/, 'no event or client name to a vendor');
+    await p.locator('#n-events:visible').click(); await p.waitForTimeout(300);
+    await p.locator('#ev-list [data-action="evdetail"]', { hasText: 'Sample Joshi Wedding' }).first().click(); await p.waitForSelector('#tab-evdetail.active');
+    const rec = decodeURIComponent(await p.locator('a[aria-label="Send receipt on WhatsApp"]').first().getAttribute('href'));
+    assert.match(rec, /Payment receipt for Sample Joshi Wedding \(Sample Lawns, Vashi · [^)]+\)/);
   });
 
   await test('no page errors', async () => { assert.deepEqual(errors, []); });

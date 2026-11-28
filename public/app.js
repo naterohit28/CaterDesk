@@ -1243,7 +1243,7 @@ function priceCheckCard(vn) {
   return `<div class="sec"><span class="sec-title">Price check – दर तपासणी</span></div>
     <div class="card list" id="price-check">${rises.map(r => {
       const item = short(r.head);
-      const msg = `Namaste ${vn.name}! For ${item}, my recent bill (${r.ev.name}) came to ${fmtCurrency(r.latest)} per plate, against about ${fmtCurrency(r.avg)} per plate before. Has your rate changed? Thank you!`;
+      const msg = `Namaste ${vn.name}! For ${item}, my recent bill (${evWhere(r.ev)}) came to ${fmtCurrency(r.latest)} per plate, against about ${fmtCurrency(r.avg)} per plate before. Has your rate changed? Thank you!`;
       return `<div class="row" style="min-height:52px">
         <div class="row-body"><div class="title-sm trunc">${esc(item)}</div>
           <div class="meta">${tr(`Spend ${fmtCurrency(r.latest)}/plate now · ${fmtCurrency(r.avg)} before (${r.n} event${r.n > 1 ? 's' : ''})`, `खर्च आता ${fmtCurrency(r.latest)}/ताट · आधी ${fmtCurrency(r.avg)}`)}</div></div>
@@ -1258,7 +1258,7 @@ function priceCheckCard(vn) {
 function vendorDuesLink(vn, bal) {
   const items = pendingCredit().filter(u => u.x.venId === vn.id).map(({ x, left }) => {
     const ev = D.events.find(e => e.id === x.evId);
-    return `• ${(x.head || x.cat || '').split(' – ')[0]}${ev ? ' – ' + ev.name : ''} (${fmtDate(x.date)}): ${fmtCurrency(left)}`;
+    return `• ${(x.head || x.cat || '').split(' – ')[0]}${ev ? ' – ' + evWhere(ev) : ` (${fmtDate(x.date)})`}: ${fmtCurrency(left)}`;
   });
   const msg = `Namaste ${vn.name}! As per my records:\n`
     + `${isPerson(vn) ? 'Lent / paid for me' : 'Supplied'}: ${fmtCurrency(bal.supplied)}\nPaid: ${fmtCurrency(bal.paid)}\n` + (bal.credits ? `Credit notes: ${fmtCurrency(bal.credits)}\n` : '')
@@ -1275,7 +1275,7 @@ function receiptLink(ev, p) {
   const upTo = D.cPays.filter(x => x.evId === ev.id && (x.date < p.date || (x.date === p.date && x.id <= p.id)) || x.id === p.id);
   const received = upTo.reduce((s, x) => s + (Number(x.amt) || 0), 0), left = Math.max(0, clientDue(ev) - received);
   const mode = String(p.mode || 'Cash').split(' – ')[0];
-  const msg = `Namaste! Payment receipt for ${ev.name} (${fmtDate(ev.date)})
+  const msg = `Namaste! Payment receipt for ${ev.name} (${evWhere(ev)})
 `
     + `Received: ${fmtCurrency(p.amt)} on ${fmtDate(p.date)} by ${mode}${p.notes ? ' · ' + p.notes : ''}
 
@@ -1301,9 +1301,9 @@ function reminderLink(ev, pending) {
   // With a schedule, ask only for what is due now (never the whole outstanding as if it were overdue)
   const s = paymentSchedule(ev, D.cPays);
   const msg = s.scheduled && s.dueNow > 0
-    ? `Namaste! A gentle reminder from CaterDesk: ${fmtCurrency(s.dueNow)} is now due for ${ev.name} (${fmtDate(ev.date)}) as per the payment schedule (total balance ${fmtCurrency(s.outstanding)}). Kindly arrange the payment. Thank you!\n\n`
+    ? `Namaste! A gentle reminder from CaterDesk: ${fmtCurrency(s.dueNow)} is now due for ${ev.name} (${evWhere(ev)}) as per the payment schedule (total balance ${fmtCurrency(s.outstanding)}). Kindly arrange the payment. Thank you!\n\n`
       + `नमस्कार! ${ev.name} साठी ठरलेल्या हप्त्यानुसार ${fmtCurrency(s.dueNow)} आता देय आहे (एकूण बाकी ${fmtCurrency(s.outstanding)}). धन्यवाद!`
-    : `Namaste! A gentle reminder from CaterDesk: ${fmtCurrency(pending)} is pending for ${ev.name} (${fmtDate(ev.date)}). Kindly arrange the payment. Thank you!\n\n`
+    : `Namaste! A gentle reminder from CaterDesk: ${fmtCurrency(pending)} is pending for ${ev.name} (${evWhere(ev)}). Kindly arrange the payment. Thank you!\n\n`
       + `नमस्कार! ${ev.name} साठी ${fmtCurrency(pending)} बाकी आहे. कृपया देयक करावे. धन्यवाद!`;
   return `https://wa.me/${phoneDigits(ev.mobile)}?text=${encodeURIComponent(msg)}`;
 }
@@ -1569,7 +1569,7 @@ function labourListText(ev, venId) {
   const rows = (ev.labour?.rows || []).map(labRow).filter(r => r.venId === venId);
   const lines = rows.map(r => isJob(r) ? `${labName(r)}: ${[jobWhat(r), jobGuests(ev, r) ? `${jobGuests(ev, r)} guests` : '', heads(r) ? `${heads(r)} ${heads(r) === 1 ? 'person' : 'people'}` : ''].filter(Boolean).join(' · ') || 'for the menu'}`
     : isExtra(r) ? `${labName(r)}: ${r.count}${r.rate > 0 ? ' × ' + fmtCurrency(r.rate) : ''}` : `${labName(r)}: ${shiftList(r)}${r.rate > 0 ? ' @ ' + fmtCurrency(r.rate) : ''}`);
-  return `Namaste ${venName(venId)}! Labour needed:\nDate: ${fmtDate(ev.date)}\n${lines.join('\n')}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n\nPlease confirm. Thank you!`;
+  return `Namaste ${venName(venId)}! Labour needed:\nDate: ${fmtDate(ev.date)}\n${lines.join('\n')}\nVenue: ${placeOf(ev, true) || '-'}\n\nPlease confirm. Thank you!`;
 }
 function sendLabourList(venId) {
   const ev = D.events.find(e => e.id === curRef), ven = D.vendors.find(v => v.id === venId); if (!ev || !ven) return;
@@ -2116,7 +2116,7 @@ function buyMessage(ev, p, ven, group = [p]) {
   // One fact per line, in the order a supplier needs them; venue notes and your contact only when you have entered them
   const venue = venueNotes(ev), me = getProfile(), contact = [me.contact || me.name, me.phone].filter(Boolean).join(', ');
   return `Namaste ${ven.name}! Purchase order:\n${what}`
-    + `Date: ${fmtDate(p.date)}${meal ? ' (' + meal + ')' : ''}\nDeliver by: ${fmtTime(p.time) || '-'}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n`
+    + `Date: ${fmtDate(p.date)}${meal ? ' (' + meal + ')' : ''}\nDeliver by: ${fmtTime(p.time) || '-'}\nVenue: ${placeOf(ev, true) || '-'}\n`
     + (venue ? `At the venue: ${venue}\n` : '') + (p.notes ? `Note: ${p.notes}\n` : '') + (contact ? `Contact: ${contact}\n` : '') + `\nPlease confirm. Thank you!`;
 }
 async function sendBuy() {
@@ -2201,7 +2201,7 @@ async function buyAction(id) {
   if (next === 'remind') {
     const phone = phoneDigits(ven?.phone);
     if (!phone) { showToast(`${ven?.name || 'This supplier'} has no phone number – add it to send a reminder on WhatsApp.`, 'error'); return; }
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(`Namaste ${ven.name}! A reminder for this purchase:\nItem: ${p.item}\nQuantity: ${qtyText(p)}\nDate: ${fmtDate(p.date)}\nDeliver by: ${fmtTime(p.time) || '-'}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n\nPlease confirm everything is on track. Thank you!`)}`, '_blank', 'noopener');
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(`Namaste ${ven.name}! A reminder for this purchase:\nItem: ${p.item}\nQuantity: ${qtyText(p)}\nDate: ${fmtDate(p.date)}\nDeliver by: ${fmtTime(p.time) || '-'}\nVenue: ${placeOf(ev, true) || '-'}\n\nPlease confirm everything is on track. Thank you!`)}`, '_blank', 'noopener');
     await patchEvent(ev.id, { purchases: ev.purchases.map(x => x.id === id ? { ...x, reminded: [...(x.reminded || []), new Date().toISOString()].slice(-20) } : x) });
     refreshCurrent(); return;
   }
@@ -2482,7 +2482,7 @@ function orderMessage(ev, o, ven) {
   return `Namaste ${ven.name}! New order:\n`
     + (ev.outsourced ? `Order: Full event catering\nMenu: ${items || '-'}\nQuantity: ${o.plates || '-'} guests\n`
                      : `Counter: ${short(o.head)}\nItems: ${items || '-'}\nQuantity: ${o.plates || '-'} plates\n`)
-    + `Date: ${fmtDate(o.date)}${meal ? ' (' + meal + ')' : ''}\nReady by: ${fmtTime(o.time) || '-'}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n`
+    + `Date: ${fmtDate(o.date)}${meal ? ' (' + meal + ')' : ''}\nReady by: ${fmtTime(o.time) || '-'}\nVenue: ${placeOf(ev, true) || '-'}\n`
     + (venue ? `At the venue: ${venue}\n` : '')
     + (o.notes ? `Note: ${o.notes}\n` : '') + `\nPlease confirm. Thank you!`;
 }
@@ -2731,7 +2731,7 @@ function reminderMessage(ev, o, ven) {
   return `Namaste ${ven.name}! A reminder for this order:\n`
     + (ev.outsourced ? `Order: Full event catering\nMenu: ${items || '-'}\nQuantity: ${o.plates || '-'} guests\n`
                      : `Counter: ${short(o.head)}\nItems: ${items || '-'}\nQuantity: ${o.plates || '-'} plates\n`)
-    + `Date: ${fmtDate(o.date)}${meal ? ' (' + meal + ')' : ''}\nReady by: ${fmtTime(o.time) || '-'}\nVenue: ${[ev.venue, ev.locality].filter(Boolean).join(', ') || '-'}\n`
+    + `Date: ${fmtDate(o.date)}${meal ? ' (' + meal + ')' : ''}\nReady by: ${fmtTime(o.time) || '-'}\nVenue: ${placeOf(ev, true) || '-'}\n`
     + `\nPlease confirm everything is on track. Thank you!`;
 }
 async function remindOrder(evId, orderId) {
@@ -3292,7 +3292,7 @@ function printMenuDoc() {
 function shareMenuDoc() {
   const ev = D.events.find(e => e.id === curRef); if (!ev) return;
   const cm = clientMenu(ev, qv('md-ver')); if (!cm) return;
-  const text = `Menu for ${ev.name} – ${fmtDate(ev.date)}\n\n${clientMenuText(cm)}`, phone = phoneDigits(ev.mobile);
+  const text = `Menu for ${ev.name} – ${evWhere(ev)}\n\n${clientMenuText(cm)}`, phone = phoneDigits(ev.mobile);
   window.open(phone ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
   showToast('WhatsApp opened. Tap "I have sent it" after you send it, to keep a copy – पाठवल्यावर नोंदवा');
 }
@@ -3860,7 +3860,7 @@ async function saveCountPolicy() {
 // Prefilled, editable request to the client's representative; amounts come from the agreed data (spec §11.5)
 function extraPlatesMessage(ev, k, s, qty) {
   const cp = ev.countPolicy || {}, meal = MEAL_NAME(k).toLowerCase(), method = COUNT_METHODS.find(m => m.id === cp.method);
-  return `Hello${cp.rep ? ' ' + cp.rep : ''}, for ${ev.name}${k === 'all' ? '' : ' ' + meal} on ${fmtDate(ev.date)}, the confirmed quantity is ${s.contracted} covers at ${fmtCurrency(s.rate)} per additional cover, before any applicable tax. `
+  return `Hello${cp.rep ? ' ' + cp.rep : ''}, for ${ev.name}${k === 'all' ? '' : ' ' + meal}${placeOf(ev, true) ? ' at ' + placeOf(ev, true) : ''} on ${fmtDate(ev.date)}, the confirmed quantity is ${s.contracted} covers at ${fmtCurrency(s.rate)} per additional cover, before any applicable tax. `
     + `Our ${method ? method.en.toLowerCase() : 'count'} currently shows ${s.counted}, i.e. ${qty} more (estimated ${fmtCurrency(toPaise(s.rate) * qty / 100)}). `
     + `Please reply "Approved: ${qty} extra ${k === 'all' ? '' : meal + ' '}covers at ${fmtCurrency(s.rate)} each" (or call us to discuss) so we can record your approval.`;
 }
@@ -5006,11 +5006,14 @@ document.addEventListener('click', queueSyncRequired, true);
    - The locality is added unless the venue already says it; a long venue drops the locality to stay readable.
    - Two events at the same venue on the same day add their start time when it tells them apart, else their name.
    - No venue recorded: the event name and date, as before. */
-const placeOf = e => {
-  const venue = String(e.venue || '').trim(), loc = String(e.locality || '').trim();
-  if (!venue) return '';
-  return loc && !venue.toLocaleLowerCase().includes(loc.toLocaleLowerCase()) && venue.length + loc.length <= 40 ? `${venue}, ${loc}` : venue;
+const placeOf = (e, full = false) => {
+  const venue = String(e?.venue || '').trim(), loc = String(e?.locality || '').trim();
+  if (!venue) return loc;
+  return loc && !venue.toLocaleLowerCase().includes(loc.toLocaleLowerCase()) && (full || venue.length + loc.length <= 40) ? `${venue}, ${loc}` : venue;
 };
+// The same words in WhatsApp messages (5.6.2, owner): "Sample Lawns, Vashi · 12 Dec 2026". Vendors never get the
+// client's or event's name; clients see their event's name followed by this.
+const evWhere = e => [placeOf(e, true), fmtDate(e.date)].filter(Boolean).join(' · ');
 const firstTime = e => (e.services || []).map(s => s.time).filter(Boolean).sort()[0] || e.time || '';
 function eventOptions() {
   const evs = [...D.events].sort((a, b) => b.date.localeCompare(a.date));
