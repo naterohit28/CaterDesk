@@ -105,6 +105,9 @@ export function normalise(text) {
   let s = String(text || '').normalize('NFKC').replace(/\u093C/g, '').toLocaleLowerCase()
     .replace(/[०-९]/g, c => '०१२३४५६७८९'.indexOf(c))
     .replace(/(\d),(?=\d)/g, '$1')
+    // Speech services sometimes write 4,500 as "4.500" (a dot for thousands; phone test, 28 Nov): a dot followed by exactly
+    // three digits is thousands ("4.500", "12.000", "1.25.000"); paise ("2490.50") and "1.25 lakh" stay as they are
+    .replace(/(\d)\.(?=\d{2}\.\d{3}(?!\d))/g, '$1').replace(/(\d)\.(?=\d{3}(?!\d)(?![.,]\d))/g, '$1')
     .replace(/₹|\brs\.?(?=\s*\d)|\brupees?\b|\brupaye\b|\brupaiye\b|रुपये|रुपए|रु\./g, ' ')
     .replace(/(\d)\s*k\b/g, '$1 k').replace(/(\d)(?=[a-zऀ-ॿ])/g, '$1 ')
     .replace(/[“”"!?;()]/g, ' ');

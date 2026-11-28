@@ -212,6 +212,12 @@ const CTX = { today: '2026-11-28',
     assert.deepEqual([r[3].kind, r[3].parts], ['multi', undefined], 'a receipt with a payment is not split');
   });
 
+  await test('phone recheck: a dot for thousands ("4.500", "1.25.000") is thousands; paise stay paise', async () => {
+    assert.deepEqual(await A(['sabji 4.500 cash', 'gas 12.000 cash', '1.25.000 advance', '2490.50 gas cash', '1.25 lakh', '2490.29']), [4500, 12000, 125000, 2490.5, 125000, 2490.29]);
+    const [r] = await U(['gas 1200 cash aur sabji 4.500 cash for the Patil event']);
+    assert.deepEqual(r.parts.map(p => p.amount), [1200, 4500]);
+  });
+
   await test('nothing understood: the review asks, nothing is made up', async () => {
     const r = await U(['', 'hello', 'kar do']);
     assert.deepEqual(r.map(x => [x.kind, x.amount, x.ask]), [['unknown', 0, ['amount']], ['unknown', 0, ['amount']], ['unknown', 0, ['amount']]]);
