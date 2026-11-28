@@ -1,6 +1,6 @@
 # CaterDesk product roadmap
 
-**Status:** live version 5.6.2 (28 Nov 2026). v5 feature development is complete: from now on v5.6.x carries only small fixes found in real use. **Next: v6.0 voice and natural-language entry** (stages below). Each release also adds one plain-language line to the in-app "What's new" (`WHATS_NEW` in app.js). Engineering rules: [AGENTS.md](../AGENTS.md).
+**Status:** live version 5.6.2 (28 Nov 2026). v5 feature development is complete: from now on v5.6.x carries only small fixes found in real use. **Next: v6.0 voice and natural-language entry** (stages below; 6.0-A and 6.0-B built, not released). After v6.0 is released, the former 6.1–6.6 milestones ship together as **v6.5.0** (owner, 28 Nov 2026). Each release also adds one plain-language line to the in-app "What's new" (`WHATS_NEW` in app.js). Engineering rules: [AGENTS.md](../AGENTS.md).
 
 ## Objective
 Make CaterDesk a compact, reliable catering operations and money app that cuts paperwork, admin time, repeated entry and forgotten transactions for independent Indian caterers (operators aged 40–70, coming from paper, Excel and WhatsApp).
@@ -61,17 +61,16 @@ The owner's spreadsheet was checked read-only, outside this repository, in Nov 2
 | **5.4.0** | Suppliers and labour contractors easier to use | **Shipped first step (5.4.0):** Suppliers \| Contractors lists with their own totals, contractors grouped by worker type, the owner's labour types added. **5.4.1:** cooking labour (Chinese, sweets, starters, roti, cooks) by order: people, labour for the job and transport, no shifts; Rojiya, Ghati, Boys stay by shift. | Tell vendors and contractors apart; worker types with usual rates; requested vs actual attendance; extras and transport; searchable ledgers. Keep the current contractor accounting. No payroll or HR |
 | **5.6.0** | Event Financial Closure Report (done in 5.6.0: per event, provisional until reconciled) and consolidated reports | Printable report built on the existing calculations: final bill, receipts, costs by category and supplier, labour by contractor, payables, shared and unallocated costs, estimated vs actual, cost per plate, contribution (not company profit), reconciliation status |
 | 5.6.2 | Same layout on Events, Expenses and Vendors (search on top); event pickers and WhatsApp messages by venue and date | Shipped (5.6.1 folded in) |
-| **6.0.0** | **Voice and typed natural-language entry (next)** | Speak or type → interpret → review → confirm → save. Stages below; rules in the next section |
-| 6.1 (proposed) | Mistake detection, connected | Connect and strengthen the checks that exist: duplicates, unusually high amounts, likely wrong event, misspelt vendor, a payment that is really a settlement, missing labour, bill photo already used, guest-count changes against quotes, cooks and orders, incomplete costs |
-| 6.2 (proposed) | Personal business memory, on the phone | Learned only from confirmed records and corrections: regular suppliers and their name variants, usual cooking arrangements, contractor rates, frequent items, venue charges, past event costs, usual menu combinations. No model training, no paid AI |
-| 6.3 (planned) | Compact event workspace; Simple and Full mode | Simple: add event, add expense, record payment, prepare order, check balance, speak or type. Full: everything. Same records in both |
-| 6.4 (planned) | Multi-event coordination | One view across same-day events: supplier needs, cooks and contractors, deliveries and shortages, shared bills, collections and payments due, unfinished work. Not an inventory or production system |
-| 7.0 (proposed) | CaterDesk Intelligence | Questions answered from the caterer's own confirmed records and the existing calculations ("Aaj kya kaam baaki hai?", lowest-margin events, supplier price rises, quotation from similar past events) |
-| 7.x (proposed) | Reading bills and documents | Optional, with the owner's approval for any outside service |
-| 8.x (proposed) | Advanced business intelligence | |
+| **6.0.0** | **CaterDesk Voice: voice and typed natural-language entry (in development)** | Speak or type → interpret → review → confirm → save. Stages below; rules in the next section |
+| **6.5.0** | **CaterDesk Smart: an app that understands how you work** (approved direction) | One public release built from six work packages (below). The first commercial pilot milestone |
+| 7.0 (proposed) | CaterDesk Intelligence: one assistant | Questions answered from the caterer's own confirmed records and the existing calculations ("Aaj kya kaam baaki hai?", lowest-margin events, supplier price rises, quotation from similar past events) |
+| 7.5 (proposed) | Reading bills and documents | Optional, with the owner's approval for any outside service |
+| 8.0 (proposed) | Business intelligence and analytics | |
+| 8.5 (proposed) | Multi-device sync, multi-user accounts and permissions | Real owner / manager / staff access control lives here, not in Simple/Pro mode |
+| 9.0 (future) | Mature commercial product | |
 | Parallel | Commercial: Play Store, licensing, customer onboarding, pilot with other caterers | Play Store kit in draft PR #91 |
 
-Version numbers after 6.0 are directional; the 6.1–8.x items are the reviewer's recommended sequence (28 Nov 2026), not yet committed requirements.
+Versions after 6.5 are directional. v5.6.x stays limited to genuine maintenance and usability corrections while v6 is developed.
 
 ### v6.0 stages
 | Stage | Scope |
@@ -85,8 +84,24 @@ Version numbers after 6.0 are directional; the 6.1–8.x items are the reviewer'
 
 Target sentences (become regression tests): "Sabzi ka 4500 cash diya" (paid vegetables), "Bay of Snacks ka 2490 udhaar hai" (credit with that supplier), "Client ne 50 thousand advance diya" (client receipt), "Ramesh ko 10 hazaar diye" (possible settlement: ask), "Kal Vashi mein 100 plates ka birthday hai" (quick event), "Dinner ke liye 15 boys bulana" (labour need), "Chinese ke liye noodles aur Manchurian, 2 log" (cooking assignment), "Kirana wale ko 25 kilo rice aur 10 kilo sugar" (multi-item order), "Dinner 350 se 400 plates ho gaya" (guest change for approval), "Naya vegetable supplier add karo" (vendor form).
 
-### Smaller items still open
-Simpler payment entry (with v6) · wider Hinglish vocabulary (from phone feedback) · outsourced charge status: agreed, incurred, paid, unpaid (with quick events and voice) · multi-event closing report (6.x) · check supplier-order revisions and partial deliveries, and free-form quantities, against real catering lists before v6 orders · Excel export (after the voice MVP), import later · page-by-page unpaid-bill list (before commercial scale) · Google Drive sync, multi-device and staff use (commercial) · licensing and subscriptions (before launch).
+### v6.5: one release, six work packages (owner, 28 Nov 2026)
+Built and tested as separate work packages, each in its own commits and reviewable PRs (never one oversized change), and released together as v6.5.0. **v6.5 work starts only after v6.0 has passed its release requirements.** No merge or deployment without the owner's authorisation.
+
+| Package | Scope |
+|---|---|
+| **6.5-A** Mistake detection | Connect and strengthen the existing checks: duplicate expenses and invoices, unusual amounts, likely wrong event or supplier, misspelt names and aliases, settlement vs new expense, missing labour and expected costs, incomplete event accounts, guest-count changes against cooks and orders, inconsistent quantities, dates and paid/credit. **Never silently correct a financial record:** suggest, then confirm |
+| **6.5-B** Business memory | Local only, from confirmed records and corrections: regular suppliers and name variants, sourcing habits, contractor rates, purchases, menu combinations, venue needs, past costs. Editable, explainable and resettable. No outside AI, no model training |
+| **6.5-C** Compact event workspace | Planning, menus, cooks, orders, deliveries, labour, expenses, billing, payments and closure connected in one place, with fewer screens, taps and repeats. Reuses the existing records, components and financial engine |
+| **6.5-D** Multi-event coordination | Same-day view across events: supplier needs, contractors and attendance, deliveries, shortages, shared bills, collections, payments, unfinished work. Each event keeps its own identity and money. No compulsory inventory or production system |
+| **6.5-E** Simple and Pro mode | Simple: everyday work (quick entry and voice, expenses, orders, labour, deliveries, receipts, pending work). Pro: everything (quotes, ledgers, contribution, reconciliation, closing reports, recommendations). Same database, rules and money engine; switching changes no record. An interface preference, not a permission |
+| **6.5-F** Usability and pilot readiness | The backlog below, performance work backed by benchmarks, accessibility and Android usability, and a controlled pilot with real catering operators (not only synthetic examples) |
+
+Must be preserved throughout: event and vendor IDs, offline use, encrypted backups, historical records, integer-paise accounting, reconciliation and the transaction safeguards.
+
+Product names: v5 CaterDesk (manage your catering business) · v6.0 CaterDesk Voice (speak instead of typing) · v6.5 CaterDesk Smart · v7 CaterDesk Intelligence (your business assistant) · v8 CaterDesk Business Intelligence.
+
+### Smaller items still open (go into 6.5-F unless fixed earlier)
+Simpler payment entry (with v6) · wider Hinglish vocabulary (from phone feedback) · outsourced charge status: agreed, incurred, paid, unpaid (with quick events and voice) · multi-event closing report (6.5) · check supplier-order revisions and partial deliveries, and free-form quantities, against real catering lists before v6 orders · Excel export (after the voice MVP), import later · page-by-page unpaid-bill list (before commercial scale) · Google Drive sync, multi-device and staff use (commercial) · licensing and subscriptions (before launch).
 
 ### 5.2.x: meals, menus and sourcing (owner's additional requirements, 26 Nov 2026)
 Principle: CaterDesk must follow how a caterer works, not make the caterer follow the software's assumptions. Keep historical records readable and editable, keep the financial engine, keep the interface compact.
