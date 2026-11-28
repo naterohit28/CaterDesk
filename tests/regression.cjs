@@ -177,7 +177,7 @@ await test('call and WhatsApp for clients and vendors; vendor dues message',asyn
  const evLinks=await p.locator('#ev-contact a').evaluateAll(a=>a.map(x=>x.getAttribute('href')));assert.equal(evLinks[0],'tel:+919876543210');assert.equal(evLinks[1],'https://wa.me/919876543210','paid event: plain WhatsApp chat');
  await p.locator('#n-vendors').click();await p.locator('#ven-list [data-action="vendetail"]',{hasText:'Murugan'}).click();await p.waitForSelector('#ven-contact');
  const vLinks=await p.locator('#ven-contact a').evaluateAll(a=>a.map(x=>x.getAttribute('href')));assert.equal(vLinks[0],'tel:+919123456780');assert.equal(vLinks[1],'https://wa.me/919123456780');
- const dues=decodeURIComponent(await p.locator('a',{hasText:'Share dues on WhatsApp'}).getAttribute('href'));assert.match(dues,/^https:\/\/wa\.me\/919123456780\?text=Namaste Murugan![\s\S]*Balance due to you: ₹15,000[\s\S]*• Dosa – Wedding/);
+ const dues=decodeURIComponent(await p.locator('a',{hasText:'Share dues on WhatsApp'}).getAttribute('href'));assert.match(dues,/^https:\/\/wa\.me\/919123456780\?text=Namaste Murugan![\s\S]*Balance due to you: ₹15,000[\s\S]*• Dosa – Pune · /);
  await p.locator('#n-vendors').click();await p.locator('#ven-list [data-action="vendetail"]',{hasText:'No Phone'}).click();await p.locator('[data-action="open-ven-edit"]').click();await p.waitForSelector('#ven-modal.active');assert.equal(await p.locator('#ven-name').inputValue(),'No Phone');
  await p.locator('#ven-modal [data-action="close-modal"]').click();await p.waitForTimeout(150);
 });
