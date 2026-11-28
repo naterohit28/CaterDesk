@@ -28,7 +28,7 @@ import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
 
 // Shown in Settings; bump with each release so the phone can confirm which code it runs
-const APP_BUILD = '5.6.2';
+const APP_BUILD = '6.0.0';
 
 /* ── STATE ───────────────────────────────────────── */
 // drafts: bills snapped but not filled in yet. Stored in the expenses store with
@@ -362,6 +362,7 @@ function saveExpSnapshot() {
    the app so it works offline. Each release adds one entry (version, release date, English and Marathi). No popup after
    updates: only an entry marked `intro` (a notable change) shows a small card on Home once, which can be dismissed. */
 const WHATS_NEW = [
+  { v: '6.0.0', date: '2026-11-28', intro: true, en: 'Type it in words: on Home, write or speak what happened ("Sabzi ka 4500 cash diya", "Client ne 50 thousand advance diya", "Dinner ke liye 15 boys"), in English, Hindi or Marathi. CaterDesk shows what it understood, asks what it is not sure of (which event, paid or credit), then opens the usual form filled in. Nothing is saved until you check it and press Save. The microphone works where the phone is online; offline, use the 🎤 on your keyboard.', mr: 'शब्दांत लिहा: होमवर काय झाले ते लिहा किंवा बोला (इंग्रजी, हिंदी, मराठी). CaterDesk समजलेले दाखवते, शंका असेल ते विचारते, मग नेहमीचा फॉर्म भरून उघडते. तपासून जतन केल्याशिवाय काहीही जतन होत नाही.' },
   { v: '5.6.2', date: '2026-11-28', intro: true, en: 'Events, Expenses and Vendors all open with the search bar on top. When you choose an event for an expense, a shared bill or a vendor payment, it now shows the venue and date ("Sample Lawns, Vashi · 12 Dec"); two functions at the same place on the same day also show the time or name. WhatsApp messages to vendors name the venue and date, never the client.', mr: 'तिन्ही टॅबमध्ये शोध सर्वात वर. खर्च, वाटलेले बिल किंवा विक्रेता देयकासाठी कार्यक्रम निवडताना ठिकाण आणि तारीख दिसते. विक्रेत्यांना WhatsApp वर ठिकाण आणि तारीख जाते, ग्राहकाचे नाव नाही.' },
   { v: '5.6.0', date: '2026-11-27', intro: true, en: 'A closing report for each event: bill, GST, money received, costs by supplier and contractor, contribution and what is still open. Home lists pending work: cooks and orders to confirm, labour rates, events to reconcile. Quick event for a small job. Hinglish as a language in Settings. More expense items, the ones you use first.', mr: 'प्रत्येक कार्यक्रमाचा हिशोब अहवाल. होमवर बाकी कामे. छोट्या कामासाठी छोटा कार्यक्रम. सेटिंग्जमध्ये Hinglish भाषा. खर्चाचे अधिक प्रकार, नेहमीचे आधी.' },
   { v: '5.5.0', date: '2026-11-27', en: 'The function sheet now goes meal by meal. One supplier order can carry several items, in dozen or ladi too, with one WhatsApp message. Tick the entries a bill photo covers when the app does not find them. Search expense items by everyday words like paneer or tempo. Usual labour rate in one tap, and who was asked for against who came. Late Night, Punjabi and Fasting menus.', mr: 'फंक्शन शीट जेवणानुसार. एका ऑर्डरमध्ये अनेक वस्तू, एकच WhatsApp संदेश. बिल फोटो कोणत्या नोंदींचा ते स्वतः निवडा. पनीर, टेम्पो असे शब्द लिहून खर्च शोधा. नेहमीचा मजुरी दर एका टॅपवर; मागितले विरुद्ध आले. लेट नाईट, पंजाबी, उपवास मेनू.' },

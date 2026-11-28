@@ -4,7 +4,7 @@
 
 An offline-first app for catering events, expenses, vendor credit, client collections, menus and vendor orders. Business records stay in the device's browser storage; the hosted app also sends limited error diagnostics to its server.
 
-**Current source and hosted web build: v5.6.2.** Documentation checked on **28 November 2026**.
+**Current source and hosted web build: v6.0.0.** Documentation checked on **28 November 2026**.
 
 **Development status: Active — focused improvements (from v5.2.0).** v5.0.0 was the stable internal release (the owner's full 25-check event test passed on their Android phone, the owner confirmed the installed app, and the money is checked against hand-worked figures); 5.1.x then fixed defects found in use. Since the owner's development directive of 26 Nov 2026, small recording-first improvements ship one at a time, each in its own reviewed PR with tests, following [AGENTS.md](AGENTS.md) and the [product roadmap](docs/PRODUCT_ROADMAP.md). Financial rules, stored data and backups stay compatible; nothing is merged or released without the owner's approval.
 
@@ -34,16 +34,16 @@ Four things carry version numbers, and they are **independent**: the **hosted we
 
 | Component | State (checked 20 November 2026 unless noted) | Meaning |
 | --- | --- | --- |
-| Source and hosted web app | **5.6.2** | Current UI, data/export version, service worker and error reporter |
+| Source and hosted web app | **6.0.0** | Current UI, data/export version, service worker and error reporter |
 | Service-worker release cache | `flavor-fusion-v2-cache-v122` | Installed web assets; this number is not the database schema version |
 | Android wrapper in the owner's local workspace | **3.0.0**, versionCode **9** (inspected 3 November 2026) | APK package inspected locally; launches the hosted app, which can run 4.31.16 |
 | Android requirements for that local wrapper | min API **24**, target API **36** | Android 7.0+ and a compatible browser provider |
 | Latest GitHub Release with downloadable binaries | **2.4.7** | APK and desktop ZIP; later source tags do not imply newer binaries were uploaded |
 | Desktop package currently in the owner's `Apps/Desktop` folder | **2.4.7** | A static older bundle, not the current source build |
-| Desktop launcher source/instructions | **5.6.2** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
+| Desktop launcher source/instructions | **6.0.0** | Build a new bundle to use the current source on desktop; see the packaging caveat below |
 | IndexedDB schema | **4** | Kept separate from application version changes |
 
-Do not relabel an older package as 5.6.2. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
+Do not relabel an older package as 6.0.0. Use the [release assets](https://github.com/naterohit28/CaterDesk/releases) and their verification files for the actual binary you distribute. Source tags and release downloads serve different purposes.
 
 ## Current features
 
@@ -161,13 +161,13 @@ The APK is a **Trusted Web Activity** wrapper around the hosted site. It does no
 1. Keep a business-data backup.
 2. Obtain the intended APK from its actual release assets or the owner's prepared local package. Install over the existing app with the same package/signing identity.
 3. Open online to download updates. Check the **web build in Settings**, not just Android App info.
-4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **5.6.2**.
+4. After saving/closing entries, choose **Check for app updates → Reload saved app**, or reopen the app. The current web build is **6.0.0**.
 
 A newer web release may reload automatically during the first 20 seconds of startup when no active form/save/overlay prevents it, at most once per release per session. Otherwise it waits for a later start or explicit reload. Refresh can also switch versions when no form/save is open. Service-worker cache mappings preserve matching assets for older open pages until navigation.
 
 Do not uninstall or clear browser/site storage to force an update. If Android rejects an APK, check package, versionCode and signing certificate before proceeding. The public certificate association is [`public/.well-known/assetlinks.json`](public/.well-known/assetlinks.json).
 
-The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **5.6.2**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
+The local wrapper currently has package version **3.0.0**, versionCode **9**, while the hosted app is **6.0.0**. That distinction is expected. The latest downloadable GitHub APK is older still; consult the version table rather than assuming a source tag includes a binary.
 
 ## Windows desktop testing
 
@@ -369,6 +369,7 @@ This is a short source-feature history, not a list of available binary downloads
 
 | Version | Main changes |
 | --- | --- |
+| 6.0.0 | **CaterDesk Voice: type or speak what happened** (v6.0-A to E). "Type it in words" on Home: English, Hindi, Marathi and Hinglish, typed or spoken (page microphone where online; the keyboard's 🎤 otherwise). `public/nl.js` understands the sentence (Indian amounts such as hazaar, lakh, dedh, sade, "8:30 hajar"; Devanagari and romanised words; event and vendor matching across scripts) and the review shows what it understood and asks for what it cannot decide: which event (two that fit are never picked), paid or credit (never guessed), who was paid. Then the usual form opens filled in: expense, client payment (balance before and after), vendor payment (bills it pays, oldest first; a switch to a new purchase), quick event (an advance is money received, never the bill), labour sheet (workers or a by-order cook), supplier order (other items, delivery time still chosen) or guest count. Nothing is saved until that form is saved. Needs `Permissions-Policy: microphone=(self)` (separate PR) for the page microphone. |
 | 5.6.2 | **Same layout on Events, Expenses and Vendors; events chosen by venue and date** (5.6.2 and 5.6.2 combined, one test run). The Vendors tab starts with the search bar, then Suppliers/Contractors, filters and sort, then the totals. Event pickers for expenses, the expense filter, shared-bill rows and vendor payments show "Venue, Locality · Date" (locality not repeated, long venues drop it; same venue and day adds the start time or the name; no venue: name and date). WhatsApp: vendor messages give venue and date, never the event or client name; client messages keep their event name, then venue and date. Presentation only: event IDs, order and links unchanged. |
 | 5.6.0 | **Closing report, pending work, quick events, Hinglish** (owner's requirements, one batch, with the 5.5.0 phone-check fixes). **Event closing report** (event tools): quotation, final bill, GST, receipts, outstanding, costs by category, supplier and labour contractor (this event's part only), shared bills, budget against actual, per plate, contribution and margin, reconciliation; *provisional* until reconciled or while anything is still open (cost gaps, deliveries without a bill, order estimates, bill photos to fill in); whole supplier balances and common stock listed apart, never added. Share, copy or print. Built only on the existing calculations. **Pending work** on Home: cooking jobs and supplier orders to confirm, labour costs without a rate, events to reconcile (the existing delivery, bill-photo, payment, collection, missing-cost and backup cards stay). **Quick event**: name and date, optional plates, place, bill, money received and an outsourced caterer's charge, saved as an ordinary event. **Hinglish** as a fourth interface language (Settings); data, documents and WhatsApp unchanged. **Cooking assignments** per service (two dinners on different dates), with finished and part-bought dishes; ready-made ones not offered. **Expense items**: non-veg, eggs, bakery, frozen / ready food, charcoal, flowers, cleaning, laundry, rent, electricity, bank charges, accountant, all in the same six categories with everyday names; items used before listed first. Phone fixes: tick boxes in a supplier order, one "charge not set", other items on the function sheet. |
 | 5.5.0 | **Kitchen, orders and easier entry** (owner's requirements, one batch). **Function sheet meal by meal**: each meal's time and guests, what our kitchen cooks, what is cooked at the venue, the cooks given work for that meal (with their stage), bought items and counters with supplier and status; no money on it. **Several items in one supplier order**: each item keeps its own quantity and unit (dozen and ladi added), one WhatsApp message lists them all, sending, confirming and delivery move together and the bill is linked once; an item not on the menu (e.g. grocery) can be added. **Manual bill matching**: tick the entries a bill photo covers when the automatic check finds none; amounts untouched. **Menu preview** marked *Preview · not saved*; using it goes straight on to kitchen and orders. **Find an expense item** by everyday words in English, Hindi or Marathi (paneer, tempo, waiter). **Late Night, Punjabi and Fasting** starter menus, with no price. **Labour**: the usual rate as one tap (never filled in by itself) and people asked for against who came. |
