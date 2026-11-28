@@ -217,13 +217,14 @@
 
   <!-- VENDORS -->
   <div id="tab-vendors" class="tab">
-    <div class="seg ven-split" id="ven-split" role="group" aria-label="Suppliers or labour contractors"></div>
-    <div id="ven-sum"></div>
+    <!-- Same order as Events and Expenses: search first, then filters, then the totals -->
     <div class="toolbar" id="ven-tools">
-      <label class="search"><i data-ic="search" data-size="18"></i><input type="search" id="ven-q" placeholder="Name, category, phone or GSTIN" aria-label="Search vendors" enterkeyhint="search" autocomplete="off"></label>
+      <label class="search"><i data-ic="search" data-size="18"></i><input type="search" id="ven-q" placeholder="Search vendors, phone, GSTIN…" aria-label="Search vendors" enterkeyhint="search" autocomplete="off"></label>
+      <div class="seg ven-split" id="ven-split" role="group" aria-label="Suppliers or labour contractors"></div>
       <div class="chips-row" id="ven-filters" role="group" aria-label="Filter vendors"></div>
       <div class="field ven-sortrow"><label for="ven-sort">Sort – क्रम</label><select id="ven-sort"></select></div>
     </div>
+    <div id="ven-sum"></div>
     <div id="ven-list"></div>
   </div>
 
