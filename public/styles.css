@@ -769,7 +769,7 @@ button.d-brand:focus-visible { outline: 2px solid var(--brand-text); outline-off
 .today-open .pos { color: var(--pos); }
 
 /* 5.4.0 Suppliers | Contractors switch on the Vendors tab */
-.seg.ven-split { margin: 0 0 var(--s3); }
+.seg.ven-split { margin: var(--s2) 0 0; }
 .seg.ven-split .n { font-weight: 500; opacity: .75; }
 
 /* v6.0-B: "Type it in words" — what the app understood, one fact per line; missing facts in the due colour */
