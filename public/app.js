@@ -22,6 +22,7 @@ import {
 
 import { icon, hydrateIcons, CAT_ICON } from './icons.js';
 import { initLang, getLang, setLang } from './i18n.js';
+import { understand } from './nl.js';
 import { newRecoveryKey, parseRecoveryKey, differingGroups, keyIdOf, importBackupKey, encryptBackup, decryptBackup, readHeader, checkEnds } from './backup-crypto.js';
 import * as drive from './drive-backup.js';
 import { DRIVE_CLIENT_ID, DRIVE_ORIGINS } from './drive-config.js';
@@ -3901,6 +3902,116 @@ async function saveQuickEvent() {
   showToast('Quick event saved – details can be added later – जतन', 'success', CT !== 'evdetail' ? { label: 'Open – उघडा', run: () => showEvDetail(record.id) } : null);
 }
 
+/* ── TYPE IT IN WORDS (v6.0-B) ──
+   Type what happened, or use the keyboard's 🎤 (works offline, Hindi and Marathi come out in English letters).
+   understand() in nl.js only proposes; this sheet shows "I understood", asks for what it can't decide (which event,
+   paid or credit, who was paid), then opens the ordinary form filled in. Nothing is saved here: the form is checked
+   and saved as always. Rules (roadmap, v6): paid/credit never guessed, an advance is a client payment and never the
+   bill, two events or vendors that fit are asked about, "paid X to <vendor>" is a payment with a switch to a new expense. */
+const SAY_KIND = {
+  expense: ['Expense', 'खर्च'], cpay: ['Money received from the client (the bill stays as it is)', 'ग्राहकाकडून मिळाले (बिल तसेच)'],
+  payven: ['Payment to a vendor or contractor', 'विक्रेत्याला देयक'], event: ['New quick event', 'छोटा कार्यक्रम'],
+  labour: ['Labour needed', 'मजूर हवे'], cook: ['Cooking work by order', 'आचारी काम'], order: ['Supplier order (draft)', 'ऑर्डर (मसुदा)'],
+  guests: ['Guest count change (for approval)', 'पाहुणे बदल (मंजुरीसाठी)'], vendor: ['New vendor', 'नवीन विक्रेता'], unknown: ['Not understood yet', 'समजले नाही'] };
+const SAY_MEAL = { breakfast: 'Breakfast', lunch: 'Lunch', hightea: 'High tea', dinner: 'Dinner', latenight: 'Late night' };
+let say = null;   // { r: understood, ev, pay, mode, ven }
+function openSay() {
+  q('say-text').value = ''; q('say-result').innerHTML = ''; say = null;
+  clearFieldErrors(); openSheet('say-modal');
+  q('say-text').focus({ preventScroll: true });
+}
+function runSay() {
+  const text = qv('say-text').trim();
+  if (!text) { q('say-result').innerHTML = `<div class="say-err">${tr('Write what happened first', 'आधी काय झाले ते लिहा')}</div>`; return; }
+  const r = understand(text, { events: D.events, vendors: D.vendors, today: today() });
+  if (r.kind === 'payven' && r.vendor?.id && !hasDues(r.vendor.id)) { r.kind = 'expense'; r.fromPay = true; r.pay = r.mode ? 'paid' : ''; }   // nothing owed: a new paid purchase
+  say = { r, ev: r.event?.id || '', pay: r.pay || '', mode: r.mode || '', ven: r.vendor?.id || '' };
+  renderSay();
+}
+const hasDues = venId => calcVendorBalance(venId, D.expenses, D.vPays).balance > 0;
+function renderSay() {
+  const { r } = say, k = r.kind, line = (en, mr, v, need) => `<div class="say-line"><span class="k">${tr(en, mr)}</span><span class="${v ? 'v' : 'miss'}" data-nl>${v ? esc(String(v)) : need}</span></div>`;
+  const need = (en, mr) => tr(en, mr);
+  const evPick = ['expense', 'cpay', 'payven', 'labour', 'cook', 'order', 'guests'].includes(k);
+  const fits = (r.event?.candidates || []).length > 1 && !say.ev ? `<div class="meta">${tr('More than one event fits: ', 'एकापेक्षा जास्त कार्यक्रम: ')}${r.event.candidates.map(e => `<span data-nl>${esc(e.name)}</span>`).join(', ')}</div>` : '';
+  const evSel = evPick ? `<div class="field"><label for="say-ev">${k === 'payven' ? tr('Event (optional)', 'कार्यक्रम (ऐच्छिक)') : tr('Which event', 'कोणता कार्यक्रम')}</label>
+    <select id="say-ev">${[{ v: '', l: k === 'payven' ? 'No event – कार्यक्रम नाही' : 'Choose – निवडा' }, ...eventOptions()].map(o => `<option value="${esc(o.v)}"${o.v === say.ev ? ' selected' : ''}>${esc(o.l)}</option>`).join('')}</select>${fits}</div>` : '';
+  const vens = [...(r.vendor?.candidates || []).map(c => D.vendors.find(v => v.id === c.id)).filter(Boolean), ...D.vendors.filter(v => !(r.vendor?.candidates || []).some(c => c.id === v.id)).sort((a, b) => a.name.localeCompare(b.name))];
+  const venSel = ['payven', 'expense'].includes(k) ? `<div class="field"><label for="say-ven">${k === 'payven' ? tr('Paid to', 'कोणाला दिले') : say.pay === 'credit' ? tr('Owed to', 'कोणाला देणे') : tr('Vendor (optional)', 'विक्रेता (ऐच्छिक)')}</label>
+    <select id="say-ven">${[{ v: '', l: 'Choose – निवडा' }, ...vens.map(v => ({ v: v.id, l: v.name }))].map(o => `<option value="${esc(o.v)}"${o.v === say.ven ? ' selected' : ''}>${esc(o.l)}</option>`).join('')}</select>
+    ${!say.ven && r.vendor?.candidates?.length ? `<div class="meta">${tr('Check: ', 'तपासा: ')}${r.vendor.candidates.map(c => `<span data-nl>${esc(c.name)}</span>`).join(', ')}</div>` : r.who && !say.ven ? `<div class="meta">${tr('You wrote: ', 'तुम्ही लिहिले: ')}<span data-nl>${esc(r.who)}</span></div>` : ''}</div>` : '';
+  const paySeg = k === 'expense' ? `<div class="field"><div class="seg" role="group" aria-label="Paid now or on credit" id="say-pay">
+      <button type="button" data-say-pay="paid" aria-pressed="${say.pay === 'paid'}">Paid now – दिले</button><button type="button" data-say-pay="credit" aria-pressed="${say.pay === 'credit'}">On credit – उधार</button></div>
+      ${!say.pay ? `<div class="meta">${r.payHint ? tr('It sounds like credit – please choose.', 'उधार वाटते – कृपया निवडा.') : tr('Not said – please choose.', 'सांगितले नाही – निवडा.')}</div>` : ''}</div>` : '';
+  const wantsMode = (k === 'expense' && say.pay === 'paid') || k === 'cpay' || k === 'payven' || (k === 'event' && r.advance);
+  const modeSel = wantsMode ? `<div class="field"><label for="say-mode">${tr('How', 'कसे')}</label><select id="say-mode">${[{ v: '', l: 'Choose – निवडा' }, ...PAY_MODES.map(m => ({ v: m, l: m }))].map(o => `<option value="${esc(o.v)}"${o.v === say.mode ? ' selected' : ''}>${esc(o.l)}</option>`).join('')}</select></div>` : '';
+  const amt = r.amount ? fmtCurrency(r.amount) : '';
+  let lines = line('What', 'काय', SAY_KIND[k][0] + ' – ' + SAY_KIND[k][1], '');
+  if (['expense', 'cpay', 'payven'].includes(k)) lines += line('Amount', 'रक्कम', amt, need('not said', 'सांगितले नाही'));
+  if (k === 'expense') lines += line('For', 'कशासाठी', r.head ? short(r.head.head) + (r.head.fromVendor ? ' (usual for this vendor)' : '') : '', need('choose in the form', 'फॉर्ममध्ये निवडा'));
+  if (k === 'cpay' && r.advance) lines += `<div class="meta">${tr('An advance is money received. The bill is not changed.', 'आगाऊ म्हणजे मिळालेली रक्कम; बिल बदलत नाही.')}</div>`;
+  if (k === 'event') lines += line('Type', 'प्रकार', short(r.type), '') + line('Date', 'दिनांक', r.date ? fmtDate(r.date) + (r.dateCheck ? ' (check: "kal")' : '') : '', need('choose', 'निवडा'))
+    + line('Plates', 'ताटे', r.guests || '', need('optional', 'ऐच्छिक')) + line('Place', 'ठिकाण', r.venue, need('optional', 'ऐच्छिक'))
+    + (r.advance ? line('Advance', 'आगाऊ', fmtCurrency(r.advance) + ' (money received, not the bill)', '') : '');
+  if (k === 'labour') lines += line('Workers', 'मजूर', `${r.count} ${short(r.role)}`, '') + line('Meal', 'जेवण', SAY_MEAL[r.meal], need('choose on the sheet', 'शीटवर निवडा')) + (r.rate ? line('Rate', 'दर', fmtCurrency(r.rate), '') : '');
+  if (k === 'cook') lines += line('Cook', 'आचारी', `${short(r.role)} · ${r.people} ${r.people === 1 ? 'person' : 'people'}`, '') + line('Dishes', 'पदार्थ', (r.dishes || []).join(', '), need('choose on the sheet', 'शीटवर निवडा'));
+  if (k === 'order') lines += line('Items', 'वस्तू', r.items.map(i => `${i.qty} ${i.unit} ${i.name}`).join(', '), '') + line('Supplier', 'पुरवठादार', r.vendor?.id ? D.vendors.find(v => v.id === r.vendor.id)?.name : '', need('choose in the order', 'ऑर्डरमध्ये निवडा'));
+  if (k === 'guests') lines += line('Guests', 'पाहुणे', `${r.from} → ${r.to}`, '') + line('Meal', 'जेवण', SAY_MEAL[r.meal], need('check', 'तपासा'));
+  if (k === 'vendor') lines += line('Supplies', 'पुरवतो', short(r.specialty) || short(r.cat), need('choose in the form', 'फॉर्ममध्ये निवडा')) + line('Name', 'नाव', r.name, need('type it in the form', 'फॉर्ममध्ये लिहा'));
+  const go = { expense: ['Check and save', 'तपासून जतन'], cpay: ['Check and save', 'तपासून जतन'], payven: ['Check and pay', 'तपासून देयक'], event: ['Check and create', 'तपासून तयार करा'],
+    labour: ['Open the event', 'कार्यक्रम उघडा'], cook: ['Open the event', 'कार्यक्रम उघडा'], order: ['Open the event', 'कार्यक्रम उघडा'], guests: ['Open the event', 'कार्यक्रम उघडा'], vendor: ['Check and add', 'तपासून जोडा'] }[k];
+  q('say-result').innerHTML = k === 'unknown'
+    ? `<div class="card pad say-card"><div class="say-err">${tr('Not understood. Add the amount and what it was for, e.g. "Gas 1200 cash" – रक्कम आणि कशासाठी ते लिहा.', 'समजले नाही.')}</div></div>`
+    : `<div class="sec"><span class="sec-title">I understood – समजले</span></div><div class="card pad say-card">${lines}${r.fromPay ? `<div class="meta">${tr('Nothing is owed to this vendor, so this is a new purchase.', 'या विक्रेत्याचे काही देणे नाही: नवीन खर्च.')}</div>` : ''}
+      ${evSel}${paySeg}${venSel}${modeSel}<div class="say-err" id="say-err" role="alert"></div></div>
+      <div class="btn-row"><button type="button" class="btn btn-primary" id="btn-say-go">${go[0]} – ${go[1]}</button></div>
+      ${k === 'payven' ? `<button type="button" class="btn btn-secondary" id="btn-say-alt" style="width:100%;margin-top:var(--s2)">It was a new purchase – नवीन खर्च</button>` : ''}`;
+}
+function sayErr(msg) { const e = q('say-err'); if (e) e.textContent = msg; }
+function sayRead() { if (!say) return; say.ev = q('say-ev')?.value ?? say.ev; say.mode = q('say-mode')?.value ?? say.mode; say.ven = q('say-ven')?.value ?? say.ven; }
+async function sayGo() {
+  sayRead(); const { r } = say, k = r.kind;
+  if (['expense', 'cpay', 'payven'].includes(k) && !(r.amount > 0)) return sayErr('Write the amount – रक्कम लिहा');
+  if (['expense', 'cpay', 'labour', 'cook', 'order', 'guests'].includes(k) && !say.ev) return sayErr('Choose the event – कार्यक्रम निवडा');
+  if (k === 'expense' && !say.pay) return sayErr('Choose paid now or on credit – दिले की उधार ते निवडा');
+  if (k === 'payven' && !say.ven) return sayErr('Choose who was paid – कोणाला दिले ते निवडा');
+  await closeOverlay();
+  if (k === 'expense') {
+    openExpModal({ prefill: { evId: say.ev, cat: r.head?.cat || '', head: r.head?.head || '', venId: say.ven, pay: say.pay, mode: say.pay === 'paid' ? say.mode : '' } });
+    q('exp-amt').value = r.amount; expTouched.pay = true;
+    if (say.pay === 'paid' && say.mode) q('exp-mode').value = say.mode;
+  } else if (k === 'cpay') {
+    openCPayModal(say.ev); q('cpay-amt').value = r.amount; if (say.mode) q('cpay-mode').value = say.mode;
+  } else if (k === 'payven') {
+    openVPayModal(say.ven, null, '', { amt: r.amount, evId: say.ev }); if (say.mode && q('vpay-mode')) q('vpay-mode').value = say.mode;
+  } else if (k === 'event') {
+    openQuickEvent();
+    q('qev-name').value = [short(r.type) === 'Other' ? 'Event' : short(r.type), r.venue].filter(Boolean).join(' – ');
+    if (r.date) q('qev-date').value = r.date; if (r.guests) q('qev-guests').value = r.guests; if (r.venue) q('qev-venue').value = r.venue;
+    if (r.advance) { q('qev-rec').value = r.advance; q('qev-rec').dispatchEvent(new Event('input', { bubbles: true })); if (say.mode) q('qev-mode').value = say.mode; }
+  } else if (k === 'vendor') {
+    openVenModal(null, 'vendor', { cat: r.cat || '' });
+    if (r.name) q('ven-name').value = r.name; if (r.phone && q('ven-phone')) q('ven-phone').value = r.phone;
+    if (r.specialty && [...q('ven-specialty').options].some(o => o.value === r.specialty)) q('ven-specialty').value = r.specialty;
+  } else {
+    // Labour, cooking work, orders and guest changes are filled in on the event (v6.0-E will fill them in directly)
+    await showEvDetail(say.ev);
+    const what = k === 'labour' ? `${r.count} ${short(r.role)}${r.meal ? ' for ' + SAY_MEAL[r.meal] : ''}: add them on the labour card`
+      : k === 'cook' ? `${short(r.role)}, ${r.people} ${r.people === 1 ? 'person' : 'people'}${r.dishes?.length ? ' for ' + r.dishes.join(', ') : ''}: add on the labour card`
+      : k === 'order' ? `${r.items.map(i => `${i.qty} ${i.unit} ${i.name}`).join(', ')}: add as a supplier order`
+      : `${r.from} → ${r.to} guests${r.meal ? ' (' + SAY_MEAL[r.meal] + ')' : ''}: record the change for approval`;
+    showToast(what);
+  }
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('#say-modal [data-say-pay]');
+  if (b) { sayRead(); say.pay = b.dataset.sayPay; renderSay(); return; }
+  if (e.target.closest('#btn-say')) runSay();
+  else if (e.target.closest('#btn-say-go')) sayGo();
+  else if (e.target.closest('#btn-say-alt')) { sayRead(); say.r = { ...say.r, kind: 'expense', head: say.r.head || null }; say.pay = say.mode ? 'paid' : ''; renderSay(); }
+});
+document.addEventListener('change', e => { if (e.target.closest('#say-modal select')) sayRead(); });
+
 /* ── EVENT CLOSING REPORT (5.6.0): closureReport() in utils.js, shown, shared as text or printed ── */
 const RECON_NAME = { reconciled: 'Reconciled', reopened: 'Reopened after changes – check again', pending: 'Not reconciled yet' };
 const ADJ_NAME = { discount: 'Discount', waiver: 'Waived', writeoff: 'Written off' };
@@ -6900,6 +7011,7 @@ function bindAllEvents() {
         if (id === 'expense') openExpModal();
         if (id === 'vendor')  openVenModal();
         if (id === 'qevent')  openQuickEvent();
+        if (id === 'say')     openSay();
         break;
       case 'close-modal':
       case 'close-lightbox': dismissOverlay(); break;

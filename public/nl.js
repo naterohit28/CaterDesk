@@ -289,7 +289,7 @@ export function understand(text, ctx = {}) {
     out.venue = a > 0 && !['at', 'in'].includes(toks[a]) ? title(toks.slice(Math.max(0, a - 2), a).filter(w => !STOP.has(w) && word(w) === undefined && ![...VOCAB.today, ...VOCAB.tomorrow, ...VOCAB.kal, ...VOCAB.yesterday].includes(w)).join(' '))
       : a >= 0 ? title(toks.slice(a + 1, a + 3).filter(w => !STOP.has(w) && word(w) === undefined && !GUESTS.includes(w)).join(' ')) : '';
     // An advance said with the booking is recorded as a client payment after the event is saved, never as the bill
-    out.advance = (adv || got) && amt ? amt : 0; out.amount = out.advance;
+    out.advance = (adv || got) && amt ? amt : 0; out.amount = out.advance; out.mode = mode;
     const pp = first('rate'); if (pp) out.perPlate = pp.v;
     if (!out.date) out.ask.push('date'); if (!out.guests) out.ask.push('guests'); if (out.advance && !mode) out.ask.push('mode');
     return out;

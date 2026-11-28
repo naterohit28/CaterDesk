@@ -771,3 +771,16 @@ button.d-brand:focus-visible { outline: 2px solid var(--brand-text); outline-off
 /* 5.4.0 Suppliers | Contractors switch on the Vendors tab */
 .seg.ven-split { margin: 0 0 var(--s3); }
 .seg.ven-split .n { font-weight: 500; opacity: .75; }
+
+/* v6.0-B: "Type it in words" — what the app understood, one fact per line; missing facts in the due colour */
+#say-text { min-height: 84px; resize: vertical; }
+.say-card { margin-top: var(--s2); }
+.say-line { display: grid; grid-template-columns: minmax(84px, 30%) 1fr; gap: var(--s2); padding: 6px 0; border-bottom: 1px solid var(--line); align-items: baseline; }
+.say-line:last-of-type { border-bottom: 0; }
+.say-line .k { color: var(--text-2); font-size: var(--fs-sm); }
+.say-line .v { font-weight: 600; overflow-wrap: anywhere; }
+.say-line .miss { color: var(--due); font-size: var(--fs-sm); }
+.say-card .field { margin: var(--s3) 0 0; }
+.say-err { color: var(--neg); font-weight: 600; font-size: var(--fs-sm); }
+.say-err:empty { display: none; }
+#say-result .btn-row { margin-top: var(--s3); }
