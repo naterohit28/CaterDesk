@@ -179,6 +179,10 @@
       <button type="button" class="qa wide" data-action="quick" data-id="qevent">
         <span class="qa-ic"><i data-ic="calendar"></i></span><span><span class="t-en">Quick event (small job)</span><span class="t-mr">छोटा कार्यक्रम</span></span>
       </button>
+      <!-- v6.0: speak (or type) what happened; the app shows what it understood, then opens the form -->
+      <button type="button" class="qa wide" data-action="quick" data-id="say">
+        <span class="qa-ic"><i data-ic="mic"></i></span><span><span class="t-en">Speak or type</span><span class="t-mr">बोला किंवा लिहा</span></span>
+      </button>
     </div>
     <div id="nudges"></div>
     <div class="sec"><span class="sec-title">Pending collections – बाकी वसुली</span><span class="sec-amt due" id="od-total" hidden></span></div>
@@ -840,6 +844,28 @@
       <div class="field"><label for="qev-out-charge">Their charge ₹ (owed to them) – त्यांचे बिल</label><input type="number" id="qev-out-charge" min="1" step="0.01" inputmode="decimal" placeholder="optional"></div>
     </div>
     <div class="s-foot"><div class="btn-row"><button type="button" class="btn btn-primary" id="btn-save-qev">Save – जतन</button></div></div>
+  </div>
+</div>
+
+<div class="modal-ov" id="say-modal">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="say-mtitle">
+    <div class="s-handle"></div>
+    <div class="s-head"><div class="s-title" id="say-mtitle">Speak or type – बोला किंवा लिहा</div><button type="button" class="icon-btn" data-action="close-modal" aria-label="Close"><i data-ic="x"></i></button></div>
+    <div class="meta" style="margin-bottom:var(--s3)">Say or write what happened, in any language. Nothing is saved until you check it in the form. – कोणत्याही भाषेत सांगा; तपासल्याशिवाय काहीही जतन होत नाही.</div>
+    <div class="field"><label for="say-text">What happened – काय झाले</label>
+      <textarea id="say-text" rows="3" maxlength="300" autocomplete="off" enterkeyhint="done" placeholder="e.g. Sabzi ka 4500 cash diya · Client ne 50 thousand advance diya"></textarea></div>
+    <!-- v6.0-C: the page microphone, only where the browser has speech recognition and the phone is online -->
+    <div id="say-mic-row" hidden>
+      <button type="button" class="link-btn" id="btn-say-langs" aria-expanded="false">Speaking another language? – दुसरी भाषा?</button>
+      <div class="seg" role="group" aria-label="Language you speak" id="say-lang" hidden>
+        <button type="button" data-say-lang="en-IN">English</button><button type="button" data-say-lang="hi-IN">हिंदी</button><button type="button" data-say-lang="mr-IN">मराठी</button>
+      </div>
+      <button type="button" class="btn btn-primary" id="btn-say-mic" aria-pressed="false" style="width:100%;margin-top:var(--s2)">🎤 Tap and speak – बोला</button>
+      <div class="say-heard" id="say-heard" aria-live="polite"></div>
+    </div>
+    <div class="meta" id="say-mic-note" aria-live="polite"></div>
+    <button type="button" class="btn btn-secondary" id="btn-say" style="width:100%;margin-top:var(--s2)">Understand – समजून घ्या</button>
+    <div id="say-result" aria-live="polite"></div>
   </div>
 </div>
 
