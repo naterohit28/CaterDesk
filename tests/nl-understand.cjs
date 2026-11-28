@@ -191,6 +191,19 @@ const CTX = { today: '2026-11-28',
     assert.deepEqual([r[3].amount, r[3].txDate, r[4].txDate, r[5].txDate, r[5].dateCheck], [1200, '2026-11-25', '2026-11-12', '2026-11-20', true]);
   });
 
+  await test('phone test (28 Nov 2026): what the phone actually heard', async () => {
+    const r = await U(['vegetables of Rs 2500 paid by cash', 'ped 5000 to Ramesh by upi', 'पाटिल शादी के लिए पनीर के 8:30 हजार रुपए उधार', 'पाटील लग्नासाठी शे भाडी भाजीचे साडेचार हजार रोग दिले',
+      'रमेश ला दोन हजार रुपये ऍडव्हान्स रोग घेतले', 'कल वाशी में सो प्लेट का बर्थडे है', 'new supplier Raj new supplier Raj phone number 9867 543 210', 'गॅस शे 1200 दिले नाहीत', 'ग्राहक के 5000 आने वाले हैं']);
+    assert.deepEqual([r[0].kind, r[0].amount, r[0].pay, r[0].mode], ['expense', 2500, 'paid', 'Cash – रोख'], '"paid by cash" names nobody');
+    assert.deepEqual([r[1].kind, r[1].amount, r[1].vendor.candidates.map(v => v.id), r[1].mode], ['payven', 5000, ['ram'], 'UPI'], '"ped" is paid');
+    assert.deepEqual([r[2].kind, r[2].amount, r[2].pay, r[2].event.id], ['expense', 8500, 'credit', 'P'], '"8:30 हजार" = ₹8,500');
+    assert.deepEqual([r[3].kind, r[3].amount, r[3].pay, r[3].mode], ['expense', 4500, 'paid', 'Cash – रोख'], '"रोग" heard for रोख');
+    assert.deepEqual([r[4].kind, r[4].amount, r[4].advance, r[4].vendor.candidates.map(v => v.id)], ['payven', 2000, true, ['ram']], 'रमेश ला … ऍडव्हान्स … घेतले');
+    assert.deepEqual([r[5].kind, r[5].guests], ['event', 100], '"सो प्लेट" = 100 plates');
+    assert.deepEqual([r[6].kind, r[6].phone, r[6].amount, r[6].name], ['vendor', '9867543210', 0, 'Raj'], 'a phone said in groups is never money');
+    assert.deepEqual([r[7].kind, r[8].kind], ['unclear', 'unclear']);
+  });
+
   await test('nothing understood: the review asks, nothing is made up', async () => {
     const r = await U(['', 'hello', 'kar do']);
     assert.deepEqual(r.map(x => [x.kind, x.amount, x.ask]), [['unknown', 0, ['amount']], ['unknown', 0, ['amount']], ['unknown', 0, ['amount']]]);

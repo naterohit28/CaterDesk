@@ -793,3 +793,7 @@ button.d-brand:focus-visible { outline: 2px solid var(--brand-text); outline-off
 .say-money ul { margin: var(--s1, 4px) 0 0; padding-left: 1.2em; }
 .say-money li { margin: 2px 0; overflow-wrap: anywhere; }
 .say-money .due, .say-money.due, [data-say-guess] { color: var(--due); }
+/* One step: the note at the top of a form filled in from words */
+.link-btn { background: none; border: 0; padding: var(--s1, 4px) 0; color: var(--text-2); text-decoration: underline; font: inherit; font-size: var(--fs-sm); cursor: pointer; min-height: 32px; }
+#say-lang { margin-top: var(--s2); }
+.say-filled { margin: 0 0 var(--s3); padding: var(--s2) var(--s3); border-radius: 10px; background: var(--info-soft); color: var(--info); font-weight: 600; }

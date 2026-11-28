@@ -3926,7 +3926,7 @@ const SAY_KIND = {
 const SAY_MEAL = { breakfast: 'Breakfast', lunch: 'Lunch', hightea: 'High tea', dinner: 'Dinner', latenight: 'Late night' };
 let say = null;   // { r: understood, ev, pay, mode, ven }
 function openSay() {
-  q('say-text').value = ''; q('say-result').innerHTML = ''; say = null;
+  q('say-text').value = ''; q('say-result').innerHTML = ''; say = null; sayLangOnce = ''; q('say-lang').hidden = true; q('btn-say-langs').setAttribute('aria-expanded', 'false');
   clearFieldErrors(); sayMicSetup(); openSheet('say-modal', stopMic);
   q('say-text').focus({ preventScroll: true });
 }
@@ -3936,6 +3936,8 @@ function runSay() {
   const r = understand(text, { events: D.events, vendors: D.vendors, today: today() });
   // Nothing owed and no advance said: a new paid purchase. An advance to a supplier stays a payment to them (CTO review)
   if (r.kind === 'payven' && r.vendor?.id && !hasDues(r.vendor.id) && !r.advance) { r.kind = 'expense'; r.fromPay = true; r.pay = r.mode ? 'paid' : ''; }
+  // Paid money to someone who is owed money, but understood as a new expense: they may be paying what is owed – ask (phone test)
+  if (r.kind === 'expense' && r.vendor?.id && hasDues(r.vendor.id) && r.pay !== 'credit') r.owedAsk = true;
   say = { r, text, ev: r.event?.id || '', pay: r.pay || '', mode: r.mode || '', ven: r.vendor?.id || '', evGuess: false };
   // No event said, and only one event today: shown chosen, marked "check". Never when two could fit, when a day or date
   // was said, or when a word was left that may name another place or event (CTO review, v6.0)
@@ -3944,6 +3946,7 @@ function runSay() {
     if (todays.length === 1) { say.ev = todays[0].id; say.evGuess = true; }
   }
   renderSay();
+  if (sayClear()) { sayDirect = true; sayGo(); }   // nothing to ask: straight to the filled form (one step)
 }
 /* v6.0-D: the money around this entry, so it is checked before the form opens.
    - Paying a vendor: what they are owed and which bills this settles, oldest first (as payments are applied);
@@ -4025,6 +4028,8 @@ function renderSay() {
       ${evSel}${say.evGuess && say.ev ? `<div class="meta due" data-say-guess>${tr("Today's only event – check it is the right one.", 'आजचा एकमेव कार्यक्रम – बरोबर आहे का ते तपासा.')}</div>` : ''}${sayNotes()}${paySeg}${venSel}${sayMoney()}${modeSel}<div class="say-err" id="say-err" role="alert"></div></div>
       <div class="btn-row"><button type="button" class="btn btn-primary" id="btn-say-go">${go[0]} – ${go[1]}</button></div>
       ${k === 'payven' ? `<button type="button" class="btn btn-secondary" id="btn-say-alt" style="width:100%;margin-top:var(--s2)">It was a new purchase – नवीन खर्च</button>` : ''}
+      ${k === 'expense' && r.owedAsk ? `<div class="meta due" data-say-owed style="margin-top:var(--s2)">${tr(`${esc(D.vendors.find(v => v.id === say.ven)?.name || '')} is owed ${fmtCurrency(calcVendorBalance(say.ven, D.expenses, D.vPays).balance)}. Was this paying that?`, 'यांचे देणे बाकी आहे. हे त्याचे देयक होते का?')}</div>
+        <button type="button" class="btn btn-secondary" id="btn-say-topay" style="width:100%;margin-top:var(--s2)">Yes, a payment of what's owed – देयक</button>` : ''}
       ${k === 'payven' && !say.ven && r.who ? `<button type="button" class="btn btn-secondary" id="btn-say-newven" style="width:100%;margin-top:var(--s2)">Add "${esc(r.who)}" as a new vendor – नवीन विक्रेता</button>` : ''}`;
 }
 /* v6.0-C: the page microphone (roadmap v6 rules). Online-first: the button shows only where the browser can turn
@@ -4033,7 +4038,11 @@ function renderSay() {
    the text box, where it can be corrected, and is then understood like typed text: nothing is saved from speech. */
 const SpeechRec = () => window.SpeechRecognition || window.webkitSpeechRecognition || null;
 let mic = null, micOn = false, micText = '', micSession = 0;
-function sayLang() { return readPref('ffv2_saylang', getLang() === 'mr' ? 'mr-IN' : getLang() === 'hi' ? 'hi-IN' : 'en-IN'); }
+// The microphone listens in the app language (owner, phone test): मराठी and English–मराठी → Marathi (it also catches English
+// words), हिंदी / Hinglish → Hindi, English → English. A different language for one entry is behind a small link.
+const appSpeech = () => ({ mr: 'mr-IN', both: 'mr-IN', hi: 'hi-IN' }[getLang()] || 'en-IN');
+let sayLangOnce = '';
+function sayLang() { return sayLangOnce || appSpeech(); }
 function sayMicSetup() {
   const can = !!SpeechRec(), online = navigator.onLine !== false;
   q('say-mic-row').hidden = !(can && online);
@@ -4126,6 +4135,37 @@ async function sayGo() {
       showToast(`${r.items.map(i => `${i.qty} ${i.unit} ${i.name}`).join(', ')}: add them as counter orders from the menu.`);
     }
   }
+  sayFilledNote();
+}
+/* One step (owner, 28 Nov 2026): when the sentence leaves nothing to decide, the review is skipped and the ordinary form
+   opens filled in, with this line at its top; it is still checked and saved there. Anything to ask or check keeps the review:
+   a missing or guessed event, paid / credit or how it was paid, a conflict, a date to check, two amounts, a payment above
+   what is owed or above the balance, nothing owed, workers who came with no meal said, counter plates. */
+function sayClear() {
+  const { r } = say, k = r.kind;
+  if (['unknown', 'unclear', 'multi'].includes(k)) return false;
+  if (r.event?.dateConflict || r.payConflict || r.modeConflict || r.dateCheck || r.dateWritten || say.evGuess || r.fromPay || r.owedAsk) return false;
+  if (['expense', 'cpay', 'labour', 'cook', 'order', 'guests'].includes(k) && !say.ev) return false;
+  if (k === 'expense' && (!(r.amount > 0) || !say.pay || (say.pay === 'paid' && !say.mode) || (say.pay === 'credit' && !say.ven) || !r.head)) return false;
+  if (k === 'cpay') { const ev = D.events.find(e => e.id === say.ev);
+    if (!(r.amount > 0) || !say.mode || !ev || (billSet(ev) && r.amount > Math.max(0, clientDue(ev) - calcEventReceived(ev.id, D.cPays)))) return false; }
+  if (k === 'payven') { const owed = say.ven ? calcVendorBalance(say.ven, D.expenses, D.vPays).balance : 0;
+    if (!(r.amount > 0) || !say.ven || !say.mode || !(owed > 0) || r.amount > owed) return false; }
+  if (k === 'event' && (!r.date || (r.advance && !say.mode))) return false;
+  if (k === 'labour' && r.labour === 'came' && !SAY_SHIFT[r.meal]) return false;
+  if (k === 'order' && r.counter) return false;
+  return true;
+}
+let sayDirect = false;
+function sayFilledNote() {
+  if (!sayDirect) return; sayDirect = false;
+  const ov = [...document.querySelectorAll('.modal-ov.active')].filter(o => o.id !== 'say-modal').pop(); if (!ov) return;
+  ov.querySelector('.say-filled')?.remove();
+  const note = document.createElement('div'); note.className = 'meta say-filled'; note.setAttribute('role', 'status');
+  note.innerHTML = tr('Filled in from what you said – check and save.', 'तुम्ही सांगितल्याप्रमाणे भरले आहे – तपासून जतन करा.');
+  const head = ov.querySelector('.s-head'); head ? head.after(note) : ov.querySelector('.sheet')?.prepend(note);
+  const watch = new MutationObserver(() => { if (!ov.classList.contains('active')) { note.remove(); watch.disconnect(); } });   // only for this opening
+  watch.observe(ov, { attributes: true, attributeFilter: ['class'] });
 }
 // Shift for a meal on the labour sheet: breakfast and lunch are the morning shift, high tea and dinner the evening, late night the night
 const SAY_SHIFT = { breakfast: 'm', lunch: 'm', hightea: 'e', dinner: 'e', latenight: 'n' };
@@ -4158,11 +4198,13 @@ document.addEventListener('click', e => {
   const b = e.target.closest('#say-modal [data-say-pay]');
   if (b) { sayRead(); say.pay = b.dataset.sayPay; renderSay(); return; }
   const lb = e.target.closest('#say-modal [data-say-lang]');
-  if (lb) { writePref('ffv2_saylang', lb.dataset.sayLang); stopMic(); sayMicSetup(); return; }
+  if (lb) { sayLangOnce = lb.dataset.sayLang; stopMic(); sayMicSetup(); return; }
+  if (e.target.closest('#btn-say-langs')) { const g = q('say-lang'), show = g.hidden; g.hidden = !show; q('btn-say-langs').setAttribute('aria-expanded', String(show)); return; }
   if (e.target.closest('#btn-say-mic')) { toggleMic(); return; }
   if (e.target.closest('#btn-say')) runSay();
   else if (e.target.closest('#btn-say-go')) sayGo();
   else if (e.target.closest('#btn-say-newven')) { const who = say?.r?.who || ''; closeOverlay().then(() => { openVenModal(null, 'vendor', { cat: say?.r?.head?.cat || '' }); q('ven-name').value = who; }); }
+  else if (e.target.closest('#btn-say-topay')) { sayRead(); say.r = { ...say.r, kind: 'payven', owedAsk: false, alt: 'expense' }; renderSay(); }
   else if (e.target.closest('#btn-say-alt')) { sayRead(); say.r = { ...say.r, kind: 'expense', head: say.r.head || null }; say.pay = say.mode ? 'paid' : ''; renderSay(); }
 });
 document.addEventListener('input', e => { if (e.target.id !== 'say-text' || !say) return;

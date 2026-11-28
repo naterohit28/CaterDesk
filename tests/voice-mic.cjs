@@ -40,10 +40,12 @@ const FAKE = () => {
     for (let i = 0; i < 3 && await p.locator('.modal-ov.active').count(); i++) { await p.locator('.modal-ov.active [data-action="close-modal"]').first().click(); await p.waitForTimeout(250); }
     await p.locator('[data-action="quick"][data-id="say"]').click(); await p.waitForSelector('#say-modal.active'); };
 
-  await test('online with speech recognition: the 🎤 button, three languages and the privacy note before first use', async () => {
+  await test('online with speech recognition: the 🎤 button, the privacy note before first use; other languages behind a link', async () => {
     await open();
     assert.equal(await p.locator('#say-mic-row').isVisible(), true);
     assert.match(await p.locator('#say-mic-note').innerText(), /keeps no audio/);
+    assert.equal(await p.locator('#say-lang').isVisible(), false, 'no language to choose each time (phone test)');
+    await p.locator('#btn-say-langs').click();
     assert.deepEqual(await p.locator('#say-lang button').allInnerTexts(), ['English', 'हिंदी', 'मराठी']);
   });
 
@@ -57,10 +59,11 @@ const FAKE = () => {
     assert.equal((await dump()).expenses.length, 0, 'nothing saved from speech');
   });
 
-  await test('the language choice is remembered', async () => {
-    await open(); assert.equal(await p.locator('#say-lang [data-say-lang="mr-IN"]').getAttribute('aria-pressed'), 'true');
-    await p.locator('#btn-say-mic').click(); await p.waitForTimeout(300);
-    assert.equal(await p.evaluate(() => window.__mic.starts.at(-1).lang), 'mr-IN');
+  await test('the microphone listens in the app language: English, मराठी, English–मराठी, हिंदी; a one-off choice is not kept', async () => {
+    const langOf = async mode => { await p.evaluate(async m => (await import('./i18n.js')).setLang(m), mode); await open();
+      await p.locator('#btn-say-mic').click(); await p.waitForTimeout(300); return p.evaluate(() => window.__mic.starts.at(-1).lang); };
+    assert.deepEqual([await langOf('en'), await langOf('mr'), await langOf('both'), await langOf('hi')], ['en-IN', 'mr-IN', 'mr-IN', 'hi-IN']);
+    await p.evaluate(async () => (await import('./i18n.js')).setLang('en'));
   });
 
   await test('blocked microphone or no network: says what to do, keyboard 🎤 offered', async () => {
@@ -84,7 +87,7 @@ const FAKE = () => {
   await test('CTO: results that arrive after the sheet was closed, or after a language switch, change nothing', async () => {
     await open(); await p.evaluate(() => { window.__mic.hold = true; });
     await p.locator('#btn-say-mic').click(); await p.waitForTimeout(150);
-    await p.locator('#say-lang [data-say-lang="en-IN"]').click(); await p.waitForTimeout(100);   // switching stops the old session
+    await p.locator('#btn-say-langs').click(); await p.locator('#say-lang [data-say-lang="en-IN"]').click(); await p.waitForTimeout(100);   // switching stops the old session
     await p.evaluate(() => { const o = window.__micObj; o.onresult?.({ resultIndex: 0, results: [Object.assign([{ transcript: 'Gas 9999 cash' }], { isFinal: true })] }); o.onend?.(); });
     await p.waitForTimeout(200);
     assert.doesNotMatch(await p.inputValue('#say-text'), /9999/, 'a stale session cannot write'); assert.equal(await p.locator('#btn-say-go').count(), 0);

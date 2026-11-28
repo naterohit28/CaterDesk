@@ -1,4 +1,4 @@
-// v6.0-B: "Type it in words". Text → "I understood" → the ordinary form, filled in. Nothing is saved by the sheet;
+// v6.0-B: "Speak or type" (was "Type it in words"). Text → "I understood" → the ordinary form, filled in. Nothing is saved by the sheet;
 // paid/credit is never guessed; an advance is money received, never the bill; two events that fit must be chosen;
 // "paid X to <vendor>" with money owed opens a vendor payment, with nothing owed it becomes a new expense.
 // Synthetic sample data only.
@@ -28,10 +28,13 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
   const sayIt = async text => {
     await closeAll(); if (!(await p.locator('#tab-home.active').count())) { await p.locator('#n-home:visible').click(); await p.waitForTimeout(200); }
     await p.locator('[data-action="quick"][data-id="say"]').click(); await p.waitForSelector('#say-modal.active');
-    await p.fill('#say-text', text); await p.locator('#btn-say').click(); await p.waitForTimeout(150);
-    return p.locator('#say-result').innerText();
+    await p.fill('#say-text', text); await p.locator('#btn-say').click(); await p.waitForTimeout(500);
+    return (await p.locator('#say-modal.active').count()) ? p.locator('#say-result').innerText() : '';   // '' = nothing to ask: the form opened directly
   };
-  const go = async () => { await p.locator('#btn-say-go').click(); await p.waitForTimeout(500); };
+  // One step (owner, phone test): when nothing needs asking the form is already open; otherwise press the review's button
+  const go = async () => { if (await p.locator('#say-modal.active #btn-say-go').count()) await p.locator('#btn-say-go').click(); await p.waitForTimeout(500); };
+  const direct = async sel => { await p.waitForSelector(sel); assert.equal(await p.locator('#say-modal.active').count(), 0, 'no review screen');
+    assert.match(await p.locator(sel + ' .say-filled').innerText(), /Filled in from what you said/); };
   const before = JSON.stringify((await dump()).expenses);
 
   await test('expense: paid or credit must be chosen; the form opens filled in; nothing saved by the sheet', async () => {
@@ -61,21 +64,26 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
     assert.equal(await p.inputValue('#say-ev'), ''); assert.match(t, /More than one event fits/);
   });
 
-  await test('client advance: money received, the bill unchanged; the payment form opens filled in', async () => {
-    const t = await sayIt('Desai client ne 50 thousand advance diya UPI');
+  await test('one step: client advance with nothing to ask opens the filled payment form directly, marked "filled in"', async () => {
+    const t = await sayIt('Desai client ne 50 thousand advance diya UPI'); assert.equal(t, '');
+    await direct('#cpay-modal.active');
+    assert.deepEqual([await p.inputValue('#cpay-evid'), await p.inputValue('#cpay-amt'), await p.inputValue('#cpay-mode')], ['D', '50000', 'UPI']);
+    await closeAll(); await p.locator('[data-action="quick"][data-id="expense"]').click().catch(() => {}); await p.waitForTimeout(300);
+    assert.equal(await p.locator('.say-filled').count(), 0, 'the note goes with that form, never on the next one');
+  });
+
+  await test('the review stays when how it was paid is missing: money context shown', async () => {
+    const t = await sayIt('Desai client ne 50 thousand advance diya');
     assert.match(t, /Money received from the client/); assert.match(t, /bill is not changed/);
     assert.match(await p.locator('[data-say-money]').innerText(), /Bill ₹1,00,000 · received ₹0 · balance ₹1,00,000[\s\S]*After this: ₹50,000 left/);
-    await go(); await p.waitForSelector('#cpay-modal.active');
-    assert.deepEqual([await p.inputValue('#cpay-evid'), await p.inputValue('#cpay-amt'), await p.inputValue('#cpay-mode')], ['D', '50000', 'UPI']);
   });
 
   await test('paid to a contractor who is owed: a vendor payment, with a switch to a new expense', async () => {
-    const t = await sayIt('Ramesh ko 10 hazaar diye cash'); assert.match(t, /Payment to a vendor/);
-    assert.equal(await p.inputValue('#say-ven'), 'ram');
-    assert.equal(await p.locator('#btn-say-alt').count(), 1);
-    await go(); await p.waitForSelector('#vpay-modal.active');
+    const t = await sayIt('Ramesh ko 10 hazaar diye cash'); assert.equal(t, '', 'within what is owed, said how: straight to the payment');
+    await direct('#vpay-modal.active');
     assert.deepEqual([await p.inputValue('#vpay-venid'), await p.inputValue('#vpay-amt')], ['ram', '10000']);
-    const t2 = await sayIt('Ramesh ko 10 hazaar diye cash'); await p.locator('#btn-say-alt').click(); await p.waitForTimeout(100);
+    const t2 = await sayIt('Ramesh ko 10 hazaar diye'); assert.match(t2, /Payment to a vendor/);
+    await p.locator('#btn-say-alt').click(); await p.waitForTimeout(100);
     assert.match(await p.locator('#say-result').innerText(), /What\s*Expense/);
   });
 
@@ -96,7 +104,7 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
   });
 
   await test('paying a vendor shows what is owed and which bills it pays, oldest first; more than owed is an advance', async () => {
-    await sayIt('Ramesh ko 10 hazaar diye cash');
+    await sayIt('Ramesh ko 10 hazaar diye');
     const m = await p.locator('[data-say-money]').innerText();
     assert.match(m, /Owed to them now: ₹12,000/); assert.match(m, /Boys · .* · ₹12,000 \(₹10,000 of it\)/);
     await sayIt('Ramesh ko 15000 diye cash');
@@ -119,14 +127,14 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
   });
 
   await test('labour need opens the event\'s labour sheet with the workers filled in', async () => {
-    const t = await sayIt('Patil dinner ke liye 15 boys bulana'); assert.match(t, /15 Boys/); assert.match(t, /Dinner/);
-    await go(); await p.waitForSelector('#lab-modal.active');
+    const t = await sayIt('Patil dinner ke liye 15 boys bulana'); assert.equal(t, '');
+    await direct('#lab-modal.active');
     assert.match(await p.locator('#tab-evdetail').innerText(), /Sample Patil Wedding/);
     await p.locator('#lab-modal [data-action="close-modal"]').first().click(); await p.waitForTimeout(300);
   });
 
   await test('new vendor opens the vendor form with what they supply', async () => {
-    await sayIt('Naya vegetable supplier add karo'); await go(); await p.waitForSelector('#ven-modal.active');
+    await sayIt('Naya vegetable supplier add karo'); await go(); await p.waitForSelector('#ven-modal.active');   // nothing to ask: direct
     assert.deepEqual([await p.inputValue('#ven-cat'), await p.inputValue('#ven-specialty')], ['Raw Material', 'Vegetable – भाजी']);
   });
 
@@ -173,8 +181,7 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
   });
 
   await test('6.0-E supplier order: items said in words become one order of other items, supplier chosen; saved as prepared, not sent', async () => {
-    const t = await sayIt('Patil ke liye kirana wale ko 25 kilo rice aur 10 kilo sugar');
-    assert.equal(await p.inputValue('#say-ven'), 'gro');
+    await sayIt('Patil ke liye kirana wale ko 25 kilo rice aur 10 kilo sugar');
     await go(); await p.waitForSelector('#buy-modal.active');
     assert.deepEqual([await p.inputValue('#buy-item'), await p.inputValue('#buy-qty'), await p.inputValue('#buy-unit'), await p.inputValue('#buy-ven')], ['Rice', '25', 'kg', 'gro']);
     assert.deepEqual([await p.inputValue('#buy-more [data-bm="0"] [data-bk="name"]'), await p.inputValue('#buy-more [data-bm="0"] [data-bk="qty"]')], ['Sugar', '10']);
@@ -215,8 +222,7 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
   });
 
   await test('CTO: a phone number is never money; the vendor form gets the name and phone', async () => {
-    const t = await sayIt('Naya supplier Raj phone 9876543210');
-    assert.match(t, /New vendor/); assert.doesNotMatch(t, /₹/);
+    const t = await sayIt('Naya supplier Raj phone 9876543210'); assert.doesNotMatch(t, /₹/);
     await go(); await p.waitForSelector('#ven-modal.active');
     assert.deepEqual([await p.inputValue('#ven-name'), await p.inputValue('#ven-phone')], ['Raj', '9876543210']);
   });
@@ -247,8 +253,21 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
   });
 
   await test('CTO: editing the text after it was understood: the old reading cannot be used', async () => {
-    await sayIt('Patil gas 1200 cash'); await p.fill('#say-text', 'Patil gas 1500 cash');
+    await sayIt('Patil gas 1200'); await p.fill('#say-text', 'Patil gas 1500');
     assert.equal(await p.locator('#btn-say-go').count(), 0); assert.match(await p.locator('#say-result').innerText(), /text changed/i);
+  });
+
+  await test('phone test: money "to" someone who is owed, understood as a new expense, asks whether it pays what is owed', async () => {
+    const t = await sayIt('Ramesh mukadam boys 3000 cash'); assert.match(t, /is owed ₹12,000\. Was this paying that\?/);
+    await p.locator('#btn-say-topay').click(); await p.waitForTimeout(100);
+    assert.match(await p.locator('#say-result').innerText(), /Payment to a vendor/);
+  });
+
+  await test('Speak or type: the Home button and the sheet say you can speak', async () => {
+    await closeAll(); if (!(await p.locator('#tab-home.active').count())) { await p.locator('#n-home:visible').click(); await p.waitForTimeout(200); }
+    assert.match(await p.locator('[data-action="quick"][data-id="say"]').innerText(), /Speak or type/);
+    await p.locator('[data-action="quick"][data-id="say"]').click(); await p.waitForSelector('#say-modal.active');
+    assert.match(await p.locator('#say-mtitle').innerText(), /Speak or type/);
   });
 
   await test('no page errors', async () => { assert.deepEqual(errors, []); });

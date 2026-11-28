@@ -17,9 +17,9 @@ const W = s => s.split(' ');
 export const VOCAB = {
   credit: W('credit udhaar udhaari udhari udhaar उधार उधारी khate khata क्रेडिट खाते'),
   creditUnsure: W('udhar उधर baki baaki बाकी later baad'),          // may be a mishearing: hint only, ask
-  give: W('diya diye di dila dile dili दिले दिला दिली दिया दिए दी paid pay payment chukaya gave given'),
+  give: W('diya diye di dila dile dili दिले दिला दिली दिया दिए दी paid pay payment chukaya gave given ped payed peid घेतले घेतला घेतली ghetle ghetla liya लिया'),
   receive: W('मिल मिला मिली मिले मिलें आया आए जमा received receive recieved mila mile mili milaa milale milala मिळाले मिळाला मिली मिला मिले jama जमा got collected aaya aaye aale आले'),
-  advance: W('advance advans token bayana bayana isar isaar इसार ॲडव्हान्स अ‍ॅडव्हान्स एडवांस'),
+  advance: W('advance advans token bayana bayana isar isaar इसार ॲडव्हान्स अ‍ॅडव्हान्स ऍडव्हान्स ऍडवान्स एडव्हान्स एडवांस एडवान्स'),
   client: W('client clients grahak ग्राहक customer क्लाइंट क्लायंट कस्टमर पार्टी'),
   order: W('ऑर्डर मंगाओ मंगवाओ भेजो चाहिए order mangao mangwao mangwa mangva mangvo magva मागवा मंगवाओ bhejo bhej pathav pathva पाठवा send chahiye pahije पाहिजे'),
   newWord: W('naya nayi naye new navin navina नवीन नया नई नये न्यू'),
@@ -49,7 +49,7 @@ export const VOCAB = {
   change: W('se to ते वरून varun से'),
   changed: W('ho hua zale zala झाले झाला kar karo badha badhao vadha increase increased kam reduce reduced changed became हो गया हुआ बढ़ा बढा कम'),
 };
-const MODE_WORDS = [['UPI', 'upi gpay googlepay phonepe paytm bhim यूपीआय यूपीआई गूगलपे फोनपे पेटीएम'], ['Cash – रोख', 'cash nakad naqad rokh rokda रोख नकद कॅश कैश कॅश'],
+const MODE_WORDS = [['UPI', 'upi gpay googlepay phonepe paytm bhim यूपीआय यूपीआई गूगलपे फोनपे पेटीएम'], ['Cash – रोख', 'cash nakad naqad rokh rokda रोख रोग नकद कॅश कैश कॅश'],
   ['NEFT', 'neft rtgs imps'], ['Cheque – चेक', 'cheque check चेक'], ['Bank – बँक', 'bank transfer बँक']];
 const MEAL_WORDS = [['breakfast', 'breakfast nashta nasta नाश्ता नाश्त्याला ब्रेकफास्ट'], ['lunch', 'lunch dopahar dupar दुपार लंच'], ['hightea', 'hightea high-tea tea chai'],
   ['dinner', 'dinner raat ratri रात्री रात डिनर'], ['latenight', 'latenight midnight']];
@@ -94,7 +94,7 @@ const NUM_AMBIG = { do: 2, don: 2, 'दो': 2, saath: 60, sath: 60, sat: 7, che
 for (const k of Object.keys(NUM_AMBIG)) delete NUMW[k];
 const MULT = { hundred: 100, sau: 100, so: 100, shambhar: 100, सौ: 100, शंभर: 100, thousand: 1000, thousands: 1000, hazar: 1000, hazaar: 1000, hajar: 1000, hajaar: 1000,
   hazzar: 1000, hazaa: 1000, हजार: 1000, हज़ार: 1000, k: 1000, lakh: 100000, lakhs: 100000, lac: 100000, lacs: 100000, लाख: 100000, crore: 10000000, करोड: 10000000,
-  'शे': 100, she: 100 };   // Marathi hundreds: पाचशे, अडीचशे (split off below), "sattavis she"
+  'शे': 100, she: 100, 'सो': 100 };   // Marathi hundreds: पाचशे, अडीचशे (split off below), "sattavis she"
 // Marathi writes hundreds joined: सत्तावीसशे = 27 × 100, चौदाशे = 14 × 100, paachshe = 500
 const splitShe = t => { const m = /^(.+?)(शे|she)$/.exec(t); return m && (NUMW[devKey(m[1])] !== undefined || NUM_AMBIG[m[1]] !== undefined) ? `${m[1]} ${m[2]}` : t; };
 const word = t => NUMW[t] ?? (/^\d+(\.\d+)?$/.test(t) ? parseFloat(t) : undefined);
@@ -109,7 +109,7 @@ export function normalise(text) {
     .replace(/(\d)\s*k\b/g, '$1 k').replace(/(\d)(?=[a-zऀ-ॿ])/g, '$1 ')
     .replace(/[“”"!?;()]/g, ' ');
   // the keyboard's 🎤 turns "साडेआठ हजार" into "8:30 hajar"
-  s = s.replace(/\b(\d+):30\s*(?=(hajar|hajaar|hazar|hazaar|thousand|हजार|हज़ार|lakh|लाख)\b)/g, (_, a) => ` ${Number(a) + 0.5} `);
+  s = s.replace(/(^|\s)(\d+):30\s*(?=(?:hajar|hajaar|hazar|hazaar|thousand|हजार|हज़ार|lakh|लाख)(?![\p{L}\p{M}]))/gu, (_, b, a) => `${b}${Number(a) + 0.5} `);
   // sade / साडे n = n½, sava / सव्वा n = n¼, paune / पावणे n = n−¼, dedh = 1½, adhai = 2½ (also written joined: साडेआठ)
   s = s.split(' ').map(splitShe).join(' ').replace(/(\S)(मध्ये)(?=\s|$)/g, '$1 $2');
   // A fraction straight before a multiplier or a unit: सवा / सव्वा लाख, पाऊण किलो, अर्धा किलो, half kg
@@ -146,6 +146,8 @@ export function resolveDate(dt, today, ahead) {
 export function prep(text) {
   let s = normalise(text); const phones = [], refs = [], dates = [];
   s = s.replace(/(?:\+?91[\s-]?)?\b[6-9]\d{4}[\s-]?\d{5}\b/g, m => { phones.push(m.replace(/\D/g, '').slice(-10)); return ' '; });
+  // said in other groups (4-3-3, 3-3-4…): only right after a word for phone, so amounts are never joined into one
+  s = s.replace(/((?:phone|mobile|number|no|फोन|मोबाइल|मोबाईल|नंबर|नंबर)\s*(?:no|number|नंबर)?\s*)((?:\+?91[\s-]?)?[6-9](?:[\s-]?\d){9})(?!\d)/gu, (m, w, n) => { phones.push(n.replace(/\D/g, '').slice(-10)); return w; });
   // A bill / receipt number needs a marker ("bill no 1452", "invoice # 88", "INV-1452"); "gas bill 1200" is an amount
   s = s.replace(/(?:^|\s)(?:bill|invoice|inv|receipt|ref|reference|challan|pavti|पावती|बिल|रसीद)\s*(?:no|number|num|nos|#|क्रमांक|नंबर|नं)\s*#?\s*([a-z]{0,4}\d[\w/-]*)/g, (m, r) => { refs.push(r); return ' '; });
   s = s.replace(/(?:^|\s)(?:invoice|inv|ref|challan|bill)\s*#?\s*([a-z]{1,4}[-/]?\d[\w/-]*)/g, (m, r) => { refs.push(r); return ' '; });
@@ -176,6 +178,8 @@ export function numbers(textOrToks) {
       if (cur !== null && cur >= 20 && cur < 100 && cur % 10 === 0 && n < 10 && !digit) { cur += n; continue; }   // "twenty five"
       flush(i - 1); start = i; cur = n; words = !digit; continue;
     }
+    // "सौ / सो प्लेट", "sau plates": a hundred said alone before what is counted
+    if (MULT[t] === 100 && start < 0 && nx && (isGuests(nx) || PEOPLE.includes(nx) || UNITS[nx] || WORKER_WORDS().includes(nx))) { start = i; cur = 100; words = false; continue; }
     if (MULT[t] && start >= 0) { const m = MULT[t];
       if (m === 100) cur = (cur ?? 1) * 100; else { total += (cur ?? 1) * m; cur = null; last = m; }
       words = false; continue; }
@@ -478,7 +482,8 @@ export function understand(text, ctx = {}) {
   const datIdx = toks.findIndex(t => /(?:ला|ना|la)$/.test(t) && t.length > (isDev(t) ? 3 : 4) && !/^(मला|तुला|त्याला|याला|ह्याला|आम्हाला|त्यांना|mala|tula|tyala|kala)$/.test(t) && stem(t) !== t && !notName(stem(t)) && word(stem(t)) === undefined);
   // English "paid Ramesh 5000", "gave Ramesh 2000"
   // English "paid Ramesh 5000", "gave Ramesh 2000" — never "paid gas 2490": an expense item is not a payee
-  const engIdx = toks.findIndex((t, k) => /^(paid|pay|gave|given)$/.test(t) && toks[k + 1] && toks[k + 1] !== 'to' && !notName(toks[k + 1]) && !headOf([toks[k + 1]]) && word(toks[k + 1]) === undefined);
+  // ...and "paid by cash / via UPI / in cash / of rupees" never names anyone (phone test)
+  const engIdx = toks.findIndex((t, k) => /^(paid|pay|gave|given|ped|payed|peid)$/.test(t) && toks[k + 1] && !/^(to|by|via|in|with|through|from|for|of|rs|rupees|at|on)$/.test(toks[k + 1]) && !notName(toks[k + 1]) && !headOf([toks[k + 1]]) && word(toks[k + 1]) === undefined);
   if (gave && (toIdx > 0 || paidTo > 0 || datIdx >= 0 || engIdx >= 0) && !credit && !creditMaybe) {
     const BY = ['by', 'via', 'through', 'from', 'se', 'for', 'in', ...MODE_WORDS.flatMap(([, w]) => w.split(' '))];
     let who = toIdx > 0 ? toks.slice(Math.max(0, toIdx - 3), toIdx) : paidTo > 0 ? toks.slice(paidTo + 1, paidTo + 4) : datIdx >= 0 ? [stem(toks[datIdx])] : toks.slice(engIdx + 1, engIdx + 3).filter(t => !notName(t) && word(t) === undefined);
