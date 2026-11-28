@@ -324,6 +324,29 @@ const title = s => s.replace(/(^|\s)\S/g, m => m.toUpperCase());
    understand(text, { events, vendors, today: 'YYYY-MM-DD' }) →
    { kind: 'expense' | 'cpay' | 'payven' | 'event' | 'labour' | 'cook' | 'order' | 'guests' | 'vendor' | 'unknown', text, amount, ... ,
      ask: [what the review screen must ask for] } */
+/* Several expenses in one sentence (owner, phone test): "Gas 1200 cash aur sabzi 4500 cash" → two entries, each checked and
+   saved on its own, one after the other. Split at "and / aur / आणि / और" or a comma; offered only when every part is an
+   expense with exactly one amount and the parts carry all the amounts said (nothing dropped). An event or day said once
+   ("Patil ke liye …", "kal") is given to the parts that name none; how it was paid is never copied from one part to another.
+   Anything else (a receipt with a payment, a part with no amount) stays "one entry at a time". */
+function splitEntries(text, ctx, n) {
+  const pieces = text.split(/\s*,\s*|\s+(?:and|aur|ani|आणि|और)\s+/i).map(x => x.trim()).filter(Boolean);
+  if (pieces.length < 2) return null;
+  const sub = t => understand(t, { ...ctx, part: true });
+  // a piece with no amount of its own (an event or a day said first) is context for the others, not an entry
+  const lead = [], parts = [];
+  for (const piece of pieces) { const r = sub(piece); (r.amount > 0 && r.kind !== 'multi' ? parts : lead).push({ piece, r }); }
+  if (parts.length !== n || parts.some(p => p.r.kind !== 'expense')) return null;
+  const lead1 = lead.map(x => x.piece).join(' ');
+  const out = parts.map(({ piece }) => { const t = (lead1 ? lead1 + ' ' + piece : piece).replace(/\s+/g, ' ').trim(), r = sub(t);   // "Patil ke liye" + "gas 1200 cash"
+    return { text: t, amount: r.amount, head: r.head?.head || '', event: r.event?.id || '' }; });
+  // An event named in one part only ("gas 1200 cash aur sabzi 4500 cash Patil ke liye") is given to the others by its id,
+  // never by copying words (an item word must never travel to the other entry)
+  const evIds = new Set(out.map(p => p.event).filter(Boolean));
+  if (evIds.size === 1) { const id = [...evIds][0]; for (const p of out) if (!p.event) { p.event = id; p.eventShared = true; } }
+  if (out.some((p, i) => p.amount !== parts[i].r.amount)) return null;   // nothing may change an amount
+  return out;
+}
 export function understand(text, ctx = {}) {
   const { events = [], vendors = [], today = new Date().toISOString().slice(0, 10) } = ctx;
   const P = prep(text), s = P.s, toks = tokens(s), gs = numbers(toks);
@@ -402,7 +425,11 @@ export function understand(text, ctx = {}) {
   const evLike = !!evType && (toks.some(t => /^(book|booking|बुकिंग)$/.test(t)) || !!first('guests') || day !== null || P.dates.length === 1);
   const labels = moneyGroups.map(labelOf);
   const booked = evLike && moneyGroups.length === 2 && labels.includes('bill') && labels.includes('advance');
-  if (moneyGroups.length > 1 && !booked) { out.kind = 'multi'; out.amounts = moneyGroups.map(g => g.v); out.amount = 0; out.ask = ['one-at-a-time']; return out; }
+  if (moneyGroups.length > 1 && !booked) {
+    out.kind = 'multi'; out.amounts = moneyGroups.map(g => g.v); out.amount = 0; out.ask = ['one-at-a-time'];
+    if (!ctx.part) { const parts = splitEntries(String(text || ''), ctx, out.amounts.length); if (parts) out.parts = parts; }
+    return out;
+  }
   // 1. A new vendor: "Naya vegetable supplier add karo"
   if (has(toks, VOCAB.newWord) && starts(toks, VOCAB.vendorWord) && !amt) {
     out.kind = 'vendor'; out.cat = head?.cat || (pick(toks, WORKERS) || pick(toks, COOKS) ? 'Labour' : ''); out.specialty = head?.head || '';

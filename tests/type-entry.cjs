@@ -205,9 +205,21 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
     }
   });
 
-  await test('CTO: two amounts: one entry at a time, neither dropped', async () => {
-    const t = await sayIt('Gas 1200 cash aur sabzi 4500 cash');
-    assert.match(t, /2 amounts found \(₹1,200, ₹4,500\)[\s\S]*one entry at a time/); assert.equal(await p.locator('#btn-say-go').count(), 0);
+  await test('two expenses in one sentence: listed, then each opens on its own, one after the other; the event said once goes to both', async () => {
+    const t = await sayIt('Patil ke liye gas 1200 cash aur sabzi 4500 cash');
+    assert.match(t, /2 entries found[\s\S]*Gas \/ Cylinder · ₹1,200[\s\S]*Vegetable · ₹4,500/); assert.equal(await p.locator('#btn-say-go').count(), 0, 'nothing proposed together');
+    await p.locator('#btn-say-parts').click(); await p.waitForTimeout(600);
+    await p.waitForSelector('#exp-modal.active');
+    assert.deepEqual([await p.inputValue('#exp-amt'), await p.inputValue('#exp-ev'), await p.inputValue('#exp-head')], ['1200', 'P', 'Gas / Cylinder – सिलिंडर']);
+    await p.locator('#exp-modal [data-action="close-modal"]').first().click(); await p.waitForTimeout(900);   // not saved: the next still opens
+    await p.waitForSelector('#exp-modal.active');
+    assert.deepEqual([await p.inputValue('#exp-amt'), await p.inputValue('#exp-ev'), await p.inputValue('#exp-head')], ['4500', 'P', 'Vegetable – भाजी']);
+    await closeAll();
+  });
+
+  await test('two amounts that are not both expenses: still one entry at a time, neither dropped', async () => {
+    const t = await sayIt('Patil client ne 5000 advance diya aur 2000 balance diya');
+    assert.match(t, /2 amounts found \(₹5,000, ₹2,000\)[\s\S]*one entry at a time/); assert.equal(await p.locator('#btn-say-go').count(), 0);
   });
 
   await test('CTO: credit and a way of paying, or two ways: nothing chosen until you choose', async () => {

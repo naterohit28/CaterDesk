@@ -3925,7 +3925,17 @@ const SAY_KIND = {
   guests: ['Guest count change (for approval)', 'पाहुणे बदल (मंजुरीसाठी)'], vendor: ['New vendor', 'नवीन विक्रेता'], unknown: ['Not understood yet', 'समजले नाही'] };
 const SAY_MEAL = { breakfast: 'Breakfast', lunch: 'Lunch', hightea: 'High tea', dinner: 'Dinner', latenight: 'Late night' };
 let say = null;   // { r: understood, ev, pay, mode, ven }
+// Several entries said together: the ones still to do, and the one being done
+let sayQueue = [], sayPart = null, sayTotal = 0;
+function sayNextPart() {
+  const part = sayQueue.shift(); if (!part) { sayTotal = 0; return; }
+  const no = sayTotal - sayQueue.length;
+  const go = () => { q('say-text').value = part.text; q('say-result').innerHTML = ''; sayPart = { ...part, no, total: sayTotal }; runSay(); };
+  if (document.querySelector('#say-modal.active')) go(); else { sayMicSetup(); openSheet('say-modal', () => { stopMic(); if (!sayGoing) { sayQueue = []; sayTotal = 0; } }); go(); }
+}
+let sayGoing = false;   // closing the sheet to open a form is not cancelling the rest
 function openSay() {
+  sayQueue = []; sayTotal = 0; sayPart = null;
   q('say-text').value = ''; q('say-result').innerHTML = ''; say = null; sayLangOnce = ''; q('say-lang').hidden = true; q('btn-say-langs').setAttribute('aria-expanded', 'false');
   clearFieldErrors(); sayMicSetup(); openSheet('say-modal', stopMic);
   q('say-text').focus({ preventScroll: true });
@@ -3939,6 +3949,7 @@ function runSay() {
   // Paid money to someone who is owed money, but understood as a new expense: they may be paying what is owed – ask (phone test)
   if (r.kind === 'expense' && r.vendor?.id && hasDues(r.vendor.id) && r.pay !== 'credit') r.owedAsk = true;
   say = { r, text, ev: r.event?.id || '', pay: r.pay || '', mode: r.mode || '', ven: r.vendor?.id || '', evGuess: false };
+  if (sayPart) { say.part = sayPart; if (!say.ev && sayPart.event) say.ev = sayPart.event; sayPart = null; }   // one of several: its number, the event said once
   // No event said, and only one event today: shown chosen, marked "check". Never when two could fit, when a day or date
   // was said, or when a word was left that may name another place or event (CTO review, v6.0)
   if (!say.ev && !(r.event?.candidates || []).length && !r.daySaid && !(r.unknownWords || []).length && ['expense', 'cpay', 'labour', 'cook', 'order'].includes(r.kind)) {
@@ -3986,6 +3997,14 @@ function renderSay() {
     document: ['Bills and quotations are made from the event page, not here. Nothing is recorded.', 'बिल आणि कोटेशन कार्यक्रमाच्या पानावरून बनवा. काहीही नोंदवले नाही.'],
     future: ['This sounds like money still to be paid or still to come, not paid yet. Nothing to record now. To note what you owe a supplier, write it with "udhaar".', 'हे अजून द्यायचे आहे असे दिसते. आता काहीही नोंदवले जाणार नाही.'] };
   const R0 = say.r;
+  // Several expenses in one sentence: listed, then recorded one after the other (owner, phone test)
+  if (R0.kind === 'multi' && R0.parts) {
+    q('say-result').innerHTML = `<div class="sec"><span class="sec-title">${tr(`${R0.parts.length} entries found`, `${R0.parts.length} नोंदी`)}</span></div>
+      <div class="card pad say-card" data-say-parts>${R0.parts.map((x, i) => `<div class="say-line"><span class="k">${i + 1}</span><span class="v" data-nl>${esc(short(x.head) || 'Expense')} · ${fmtCurrency(x.amount)}</span></div>`).join('')}
+      <div class="meta">${tr('Each opens on its own to check and save, one after the other. Nothing is saved together.', 'प्रत्येक नोंद एकामागून एक उघडेल; प्रत्येक तपासून जतन करा.')}</div></div>
+      <div class="btn-row"><button type="button" class="btn btn-primary" id="btn-say-parts">${tr('Record them one by one', 'एकेक करून नोंदवा')}</button></div>`;
+    return;
+  }
   if (R0.kind === 'unclear' || R0.kind === 'multi') {
     q('say-result').innerHTML = `<div class="card pad say-card" data-say-stop><div class="say-err">${R0.kind === 'multi'
       ? tr(`${R0.amounts.length} amounts found (${R0.amounts.map(a => fmtCurrency(a)).join(', ')}). Please write one entry at a time.`, `${R0.amounts.length} रकमा सापडल्या. एका वेळी एकच नोंद लिहा.`)
@@ -4024,7 +4043,7 @@ function renderSay() {
     labour: ['Add to the labour sheet', 'मजूर शीटवर जोडा'], cook: ['Add to the labour sheet', 'मजूर शीटवर जोडा'], order: r.counter ? ['Open the event', 'कार्यक्रम उघडा'] : ['Prepare the order', 'ऑर्डर तयार करा'], guests: ['Open the guest count', 'पाहुणे मोजणी उघडा'], vendor: ['Check and add', 'तपासून जोडा'] }[k];
   q('say-result').innerHTML = k === 'unknown'
     ? `<div class="card pad say-card"><div class="say-err">${tr('Not understood. Add the amount and what it was for, e.g. "Gas 1200 cash" – रक्कम आणि कशासाठी ते लिहा.', 'समजले नाही.')}</div></div>`
-    : `<div class="sec"><span class="sec-title">I understood – समजले</span></div><div class="card pad say-card">${lines}${r.fromPay ? `<div class="meta">${tr('Nothing is owed to this vendor, so this is a new purchase.', 'या विक्रेत्याचे काही देणे नाही: नवीन खर्च.')}</div>` : ''}
+    : `<div class="sec"><span class="sec-title">${say.part ? tr(`Entry ${say.part.no} of ${say.part.total}`, `नोंद ${say.part.no} / ${say.part.total}`) + ' · ' : ''}I understood – समजले</span></div><div class="card pad say-card">${lines}${r.fromPay ? `<div class="meta">${tr('Nothing is owed to this vendor, so this is a new purchase.', 'या विक्रेत्याचे काही देणे नाही: नवीन खर्च.')}</div>` : ''}
       ${evSel}${say.evGuess && say.ev ? `<div class="meta due" data-say-guess>${tr("Today's only event – check it is the right one.", 'आजचा एकमेव कार्यक्रम – बरोबर आहे का ते तपासा.')}</div>` : ''}${sayNotes()}${paySeg}${venSel}${sayMoney()}${modeSel}<div class="say-err" id="say-err" role="alert"></div></div>
       <div class="btn-row"><button type="button" class="btn btn-primary" id="btn-say-go">${go[0]} – ${go[1]}</button></div>
       ${k === 'payven' ? `<button type="button" class="btn btn-secondary" id="btn-say-alt" style="width:100%;margin-top:var(--s2)">It was a new purchase – नवीन खर्च</button>` : ''}
@@ -4101,7 +4120,7 @@ async function sayGo() {
   if (k === 'payven' && !say.ven) return sayErr('Choose who was paid – कोणाला दिले ते निवडा');
   if (((k === 'expense' && say.pay === 'paid') || k === 'cpay' || k === 'payven' || (k === 'event' && r.advance)) && !say.mode) return sayErr('Choose how it was paid – कसे दिले ते निवडा');
   if (qv('say-text').trim() !== say.text) { say = null; q('say-result').innerHTML = ''; return; }   // the text changed after it was understood
-  await closeOverlay();
+  sayGoing = true; await closeOverlay(); sayGoing = false;
   if (k === 'expense') {
     openExpModal({ prefill: { evId: say.ev, cat: r.head?.cat || '', head: r.head?.head || '', venId: say.ven, pay: say.pay, mode: say.pay === 'paid' ? say.mode : '', ...(r.txDate ? { date: r.txDate } : {}) } });
     q('exp-amt').value = r.amount; expTouched.pay = true;
@@ -4157,7 +4176,15 @@ function sayClear() {
   return true;
 }
 let sayDirect = false;
+function sayAfterForm() {   // with entries still to do, the next opens when this form closes (saved or not)
+  if (!sayQueue.length) { sayTotal = 0; return; }
+  const ov = [...document.querySelectorAll('.modal-ov.active')].filter(o => o.id !== 'say-modal').pop();
+  if (!ov) { setTimeout(sayNextPart, 300); return; }
+  const watch = new MutationObserver(() => { if (!ov.classList.contains('active')) { watch.disconnect(); setTimeout(sayNextPart, 350); } });
+  watch.observe(ov, { attributes: true, attributeFilter: ['class'] });
+}
 function sayFilledNote() {
+  sayAfterForm();
   if (!sayDirect) return; sayDirect = false;
   const ov = [...document.querySelectorAll('.modal-ov.active')].filter(o => o.id !== 'say-modal').pop(); if (!ov) return;
   ov.querySelector('.say-filled')?.remove();
@@ -4201,6 +4228,7 @@ document.addEventListener('click', e => {
   if (lb) { sayLangOnce = lb.dataset.sayLang; stopMic(); sayMicSetup(); return; }
   if (e.target.closest('#btn-say-langs')) { const g = q('say-lang'), show = g.hidden; g.hidden = !show; q('btn-say-langs').setAttribute('aria-expanded', String(show)); return; }
   if (e.target.closest('#btn-say-mic')) { toggleMic(); return; }
+  if (e.target.closest('#btn-say-parts') && say?.r?.parts) { sayQueue = say.r.parts.slice(); sayTotal = sayQueue.length; sayNextPart(); return; }
   if (e.target.closest('#btn-say')) runSay();
   else if (e.target.closest('#btn-say-go')) sayGo();
   else if (e.target.closest('#btn-say-newven')) { const who = say?.r?.who || ''; closeOverlay().then(() => { openVenModal(null, 'vendor', { cat: say?.r?.head?.cat || '' }); q('ven-name').value = who; }); }

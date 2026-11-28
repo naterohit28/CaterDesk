@@ -204,6 +204,14 @@ const CTX = { today: '2026-11-28',
     assert.deepEqual([r[7].kind, r[8].kind], ['unclear', 'unclear']);
   });
 
+  await test('several expenses in one sentence are split into entries; nothing dropped, no item word carried over', async () => {
+    const r = await U(['Gas 1200 cash aur sabzi 4500 cash', 'gas 1200 cash aur sabzi 4500 cash Patil ke liye', 'गॅस 1200 रोख आणि भाजी 4500 रोख, टेम्पो 800 यूपीआय', 'Patil client ne 5000 advance diya aur 2000 balance diya']);
+    assert.deepEqual(r[0].parts.map(p => [p.amount, p.head]), [[1200, 'Gas / Cylinder – सिलिंडर'], [4500, 'Vegetable – भाजी']]);
+    assert.deepEqual(r[1].parts.map(p => [p.amount, p.head, p.event]), [[1200, 'Gas / Cylinder – सिलिंडर', 'P'], [4500, 'Vegetable – भाजी', 'P']]);
+    assert.deepEqual(r[2].parts.map(p => p.amount), [1200, 4500, 800]);
+    assert.deepEqual([r[3].kind, r[3].parts], ['multi', undefined], 'a receipt with a payment is not split');
+  });
+
   await test('nothing understood: the review asks, nothing is made up', async () => {
     const r = await U(['', 'hello', 'kar do']);
     assert.deepEqual(r.map(x => [x.kind, x.amount, x.ask]), [['unknown', 0, ['amount']], ['unknown', 0, ['amount']], ['unknown', 0, ['amount']]]);
