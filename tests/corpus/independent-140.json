@@ -1,0 +1,1966 @@
+{
+  "about": "Independent ChatGPT 140 text commands, reconstructed from the exact two audit batches. Synthetic fixtures only. Not an audio benchmark.",
+  "reviewed_commit": "5cc92da1bd024f693025bd1731a11a7edc369fc8",
+  "contexts": {
+    "A": {
+      "today": "2026-11-28",
+      "events": [
+        {
+          "id": "P",
+          "name": "Patil Wedding",
+          "venue": "MLA Hall",
+          "locality": "Vashi",
+          "date": "2026-11-28"
+        },
+        {
+          "id": "D",
+          "name": "Desai Reception",
+          "venue": "Rosebelle",
+          "locality": "Thane",
+          "date": "2026-11-29"
+        },
+        {
+          "id": "K",
+          "name": "Kulkarni Pooja",
+          "venue": "Ganesh Hall",
+          "locality": "Nerul",
+          "date": "2026-11-28"
+        }
+      ],
+      "vendors": [
+        {
+          "id": "R",
+          "name": "Ramesh",
+          "cat": "Labour"
+        },
+        {
+          "id": "G",
+          "name": "Shah Kirana",
+          "cat": "Raw Material",
+          "specialty": "Grocery – किराणा"
+        },
+        {
+          "id": "B",
+          "name": "Bay of Snacks",
+          "cat": "Raw Material",
+          "specialty": "Frozen / Ready Food"
+        },
+        {
+          "id": "S",
+          "name": "Shinde Vegetables",
+          "cat": "Raw Material",
+          "specialty": "Vegetable – भाजी"
+        }
+      ]
+    },
+    "B": {
+      "today": "2026-11-28",
+      "events": [
+        {
+          "id": "P",
+          "name": "Patil Wedding",
+          "venue": "MLA Hall",
+          "locality": "Vashi",
+          "date": "2026-11-28"
+        },
+        {
+          "id": "D",
+          "name": "Desai Reception",
+          "venue": "Rosebelle",
+          "locality": "Thane",
+          "date": "2026-11-29"
+        },
+        {
+          "id": "K",
+          "name": "Kulkarni Pooja",
+          "venue": "Ganesh Hall",
+          "locality": "Nerul",
+          "date": "2026-11-28"
+        }
+      ],
+      "vendors": [
+        {
+          "id": "R",
+          "name": "Ramesh",
+          "cat": "Labour"
+        },
+        {
+          "id": "G",
+          "name": "Shah Kirana",
+          "cat": "Raw Material",
+          "specialty": "Grocery – किराणा"
+        }
+      ]
+    }
+  },
+  "scoring_notes": {
+    "event": "r.event?.id or empty string",
+    "vendor": "r.vendor?.id or empty string",
+    "head": "English portion before bilingual delimiter",
+    "items": "ordered [qty,unit] pairs (item names not scored in original audit)",
+    "dishes": "dish array length",
+    "venue": "lowercase; normalize वाशी to vashi",
+    "name": "Batch A only: normalize राज to Raj; Batch B exact",
+    "dateReview": "true if dateWritten, dateCheck, ask includes date, txDate, or date (for booking challenge)",
+    "safe": "kind in unclear, unknown, multi",
+    "bookingSafe": "kind multi OR kind event with bill 25000 and advance 5000; revised from original multi-only after supported booking fields were added",
+    "missing_fields": "Only the listed expected fields were scored. Expand assertions separately; do not silently weaken this baseline."
+  },
+  "sentences": [
+    {
+      "id": "en-A01",
+      "lang": "en",
+      "scenario": "paid veg",
+      "text": "Patil vegetable expense 4500 cash paid",
+      "expect": {
+        "kind": "expense",
+        "amount": 4500,
+        "pay": "paid",
+        "mode": "Cash – रोख",
+        "event": "P",
+        "head": "Vegetable"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hi-A01",
+      "lang": "hi",
+      "scenario": "paid veg",
+      "text": "पाटील की सब्जी के 4500 नकद दिए",
+      "expect": {
+        "kind": "expense",
+        "amount": 4500,
+        "pay": "paid",
+        "mode": "Cash – रोख",
+        "event": "P",
+        "head": "Vegetable"
+      },
+      "context": "A"
+    },
+    {
+      "id": "mr-A01",
+      "lang": "mr",
+      "scenario": "paid veg",
+      "text": "पाटीलच्या भाजीचे 4500 रोख दिले",
+      "expect": {
+        "kind": "expense",
+        "amount": 4500,
+        "pay": "paid",
+        "mode": "Cash – रोख",
+        "event": "P",
+        "head": "Vegetable"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hg-A01",
+      "lang": "hg",
+      "scenario": "paid veg",
+      "text": "Patil sabzi ka 4500 cash diya",
+      "expect": {
+        "kind": "expense",
+        "amount": 4500,
+        "pay": "paid",
+        "mode": "Cash – रोख",
+        "event": "P",
+        "head": "Vegetable"
+      },
+      "context": "A"
+    },
+    {
+      "id": "en-A02",
+      "lang": "en",
+      "scenario": "dairy credit",
+      "text": "Patil paneer 8500 on credit",
+      "expect": {
+        "kind": "expense",
+        "amount": 8500,
+        "pay": "credit",
+        "event": "P",
+        "head": "Milk & Dairy"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hi-A02",
+      "lang": "hi",
+      "scenario": "dairy credit",
+      "text": "पाटील का पनीर साढ़े आठ हजार उधार",
+      "expect": {
+        "kind": "expense",
+        "amount": 8500,
+        "pay": "credit",
+        "event": "P",
+        "head": "Milk & Dairy"
+      },
+      "context": "A"
+    },
+    {
+      "id": "mr-A02",
+      "lang": "mr",
+      "scenario": "dairy credit",
+      "text": "पाटीलचे पनीर साडेआठ हजार उधार",
+      "expect": {
+        "kind": "expense",
+        "amount": 8500,
+        "pay": "credit",
+        "event": "P",
+        "head": "Milk & Dairy"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hg-A02",
+      "lang": "hg",
+      "scenario": "dairy credit",
+      "text": "Patil paneer saadhe aath hazaar udhaar",
+      "expect": {
+        "kind": "expense",
+        "amount": 8500,
+        "pay": "credit",
+        "event": "P",
+        "head": "Milk & Dairy"
+      },
+      "context": "A"
+    },
+    {
+      "id": "en-A03",
+      "lang": "en",
+      "scenario": "transport",
+      "text": "Patil tempo one thousand five hundred UPI",
+      "expect": {
+        "kind": "expense",
+        "amount": 1500,
+        "pay": "paid",
+        "mode": "UPI",
+        "event": "P",
+        "head": "Transport"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hi-A03",
+      "lang": "hi",
+      "scenario": "transport",
+      "text": "पाटील का टेम्पो डेढ़ हजार यूपीआई",
+      "expect": {
+        "kind": "expense",
+        "amount": 1500,
+        "pay": "paid",
+        "mode": "UPI",
+        "event": "P",
+        "head": "Transport"
+      },
+      "context": "A"
+    },
+    {
+      "id": "mr-A03",
+      "lang": "mr",
+      "scenario": "transport",
+      "text": "पाटील टेम्पो दीड हजार यूपीआय",
+      "expect": {
+        "kind": "expense",
+        "amount": 1500,
+        "pay": "paid",
+        "mode": "UPI",
+        "event": "P",
+        "head": "Transport"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hg-A03",
+      "lang": "hg",
+      "scenario": "transport",
+      "text": "Patil tempo dedh hazaar GPay",
+      "expect": {
+        "kind": "expense",
+        "amount": 1500,
+        "pay": "paid",
+        "mode": "UPI",
+        "event": "P",
+        "head": "Transport"
+      },
+      "context": "A"
+    },
+    {
+      "id": "en-A04",
+      "lang": "en",
+      "scenario": "venue selection",
+      "text": "MLA Hall gas 1200 cash",
+      "expect": {
+        "kind": "expense",
+        "amount": 1200,
+        "pay": "paid",
+        "mode": "Cash – रोख",
+        "event": "P",
+        "head": "Gas / Cylinder"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hi-A04",
+      "lang": "hi",
+      "scenario": "venue selection",
+      "text": "एमएलए हॉल गैस 1200 नकद",
+      "expect": {
+        "kind": "expense",
+        "amount": 1200,
+        "pay": "paid",
+        "mode": "Cash – रोख",
+        "event": "P",
+        "head": "Gas / Cylinder"
+      },
+      "context": "A"
+    },
+    {
+      "id": "mr-A04",
+      "lang": "mr",
+      "scenario": "venue selection",
+      "text": "एमएलए हॉल गॅस 1200 रोख",
+      "expect": {
+        "kind": "expense",
+        "amount": 1200,
+        "pay": "paid",
+        "mode": "Cash – रोख",
+        "event": "P",
+        "head": "Gas / Cylinder"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hg-A04",
+      "lang": "hg",
+      "scenario": "venue selection",
+      "text": "MLA Hall gas ka 1200 cash",
+      "expect": {
+        "kind": "expense",
+        "amount": 1200,
+        "pay": "paid",
+        "mode": "Cash – रोख",
+        "event": "P",
+        "head": "Gas / Cylinder"
+      },
+      "context": "A"
+    },
+    {
+      "id": "en-A05",
+      "lang": "en",
+      "scenario": "client receipt",
+      "text": "Received fifty thousand from Patil client via UPI",
+      "expect": {
+        "kind": "cpay",
+        "amount": 50000,
+        "mode": "UPI",
+        "event": "P"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hi-A05",
+      "lang": "hi",
+      "scenario": "client receipt",
+      "text": "पाटील ग्राहक से पचास हजार यूपीआई मिले",
+      "expect": {
+        "kind": "cpay",
+        "amount": 50000,
+        "mode": "UPI",
+        "event": "P"
+      },
+      "context": "A"
+    },
+    {
+      "id": "mr-A05",
+      "lang": "mr",
+      "scenario": "client receipt",
+      "text": "पाटील ग्राहकाकडून पन्नास हजार यूपीआय मिळाले",
+      "expect": {
+        "kind": "cpay",
+        "amount": 50000,
+        "mode": "UPI",
+        "event": "P"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hg-A05",
+      "lang": "hg",
+      "scenario": "client receipt",
+      "text": "Patil client ne 50 hazaar UPI diye",
+      "expect": {
+        "kind": "cpay",
+        "amount": 50000,
+        "mode": "UPI",
+        "event": "P"
+      },
+      "context": "A"
+    },
+    {
+      "id": "en-A06",
+      "lang": "en",
+      "scenario": "client advance",
+      "text": "Patil client received 1.25 lakh advance cash",
+      "expect": {
+        "kind": "cpay",
+        "amount": 125000,
+        "advance": true,
+        "mode": "Cash – रोख",
+        "event": "P"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hi-A06",
+      "lang": "hi",
+      "scenario": "client advance",
+      "text": "पाटील ग्राहक ने सवा लाख एडवांस नकद दिया",
+      "expect": {
+        "kind": "cpay",
+        "amount": 125000,
+        "advance": true,
+        "mode": "Cash – रोख",
+        "event": "P"
+      },
+      "context": "A"
+    },
+    {
+      "id": "mr-A06",
+      "lang": "mr",
+      "scenario": "client advance",
+      "text": "पाटील ग्राहकाकडून सव्वा लाख ॲडव्हान्स रोख मिळाला",
+      "expect": {
+        "kind": "cpay",
+        "amount": 125000,
+        "advance": true,
+        "mode": "Cash – रोख",
+        "event": "P"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hg-A06",
+      "lang": "hg",
+      "scenario": "client advance",
+      "text": "Patil client ne sava lakh advance cash diya",
+      "expect": {
+        "kind": "cpay",
+        "amount": 125000,
+        "advance": true,
+        "mode": "Cash – रोख",
+        "event": "P"
+      },
+      "context": "A"
+    },
+    {
+      "id": "en-A07",
+      "lang": "en",
+      "scenario": "vendor settlement",
+      "text": "Paid 5000 to Ramesh by UPI",
+      "expect": {
+        "kind": "payven",
+        "amount": 5000,
+        "vendor": "R",
+        "mode": "UPI"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hi-A07",
+      "lang": "hi",
+      "scenario": "vendor settlement",
+      "text": "रमेश को पांच हजार यूपीआई दिए",
+      "expect": {
+        "kind": "payven",
+        "amount": 5000,
+        "vendor": "R",
+        "mode": "UPI"
+      },
+      "context": "A"
+    },
+    {
+      "id": "mr-A07",
+      "lang": "mr",
+      "scenario": "vendor settlement",
+      "text": "रमेशला पाच हजार यूपीआय दिले",
+      "expect": {
+        "kind": "payven",
+        "amount": 5000,
+        "vendor": "R",
+        "mode": "UPI"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hg-A07",
+      "lang": "hg",
+      "scenario": "vendor settlement",
+      "text": "Ramesh ko paanch hazaar UPI diye",
+      "expect": {
+        "kind": "payven",
+        "amount": 5000,
+        "vendor": "R",
+        "mode": "UPI"
+      },
+      "context": "A"
+    },
+    {
+      "id": "en-A08",
+      "lang": "en",
+      "scenario": "vendor advance",
+      "text": "Paid 2000 advance to Ramesh cash",
+      "expect": {
+        "kind": "payven",
+        "amount": 2000,
+        "advance": true,
+        "vendor": "R",
+        "mode": "Cash – रोख"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hi-A08",
+      "lang": "hi",
+      "scenario": "vendor advance",
+      "text": "रमेश को दो हजार एडवांस नकद दिए",
+      "expect": {
+        "kind": "payven",
+        "amount": 2000,
+        "advance": true,
+        "vendor": "R",
+        "mode": "Cash – रोख"
+      },
+      "context": "A"
+    },
+    {
+      "id": "mr-A08",
+      "lang": "mr",
+      "scenario": "vendor advance",
+      "text": "रमेशला दोन हजार ॲडव्हान्स रोख दिले",
+      "expect": {
+        "kind": "payven",
+        "amount": 2000,
+        "advance": true,
+        "vendor": "R",
+        "mode": "Cash – रोख"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hg-A08",
+      "lang": "hg",
+      "scenario": "vendor advance",
+      "text": "Ramesh ko do hazaar advance cash diya",
+      "expect": {
+        "kind": "payven",
+        "amount": 2000,
+        "advance": true,
+        "vendor": "R",
+        "mode": "Cash – रोख"
+      },
+      "context": "A"
+    },
+    {
+      "id": "en-A09",
+      "lang": "en",
+      "scenario": "new event",
+      "text": "Birthday tomorrow at Vashi 100 guests",
+      "expect": {
+        "kind": "event",
+        "amount": 0,
+        "guests": 100,
+        "date": "2026-11-29",
+        "venue": "vashi"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hi-A09",
+      "lang": "hi",
+      "scenario": "new event",
+      "text": "कल वाशी में 100 प्लेट का बर्थडे है",
+      "expect": {
+        "kind": "event",
+        "amount": 0,
+        "guests": 100,
+        "date": "2026-11-29",
+        "venue": "vashi"
+      },
+      "context": "A"
+    },
+    {
+      "id": "mr-A09",
+      "lang": "mr",
+      "scenario": "new event",
+      "text": "उद्या वाशी मध्ये 100 पाहुणे वाढदिवस",
+      "expect": {
+        "kind": "event",
+        "amount": 0,
+        "guests": 100,
+        "date": "2026-11-29",
+        "venue": "vashi"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hg-A09",
+      "lang": "hg",
+      "scenario": "new event",
+      "text": "Kal Vashi mein 100 plates ka birthday hai",
+      "expect": {
+        "kind": "event",
+        "amount": 0,
+        "guests": 100,
+        "date": "2026-11-29",
+        "venue": "vashi"
+      },
+      "context": "A"
+    },
+    {
+      "id": "en-A10",
+      "lang": "en",
+      "scenario": "new vendor",
+      "text": "New supplier named Raj phone 9876500000",
+      "expect": {
+        "kind": "vendor",
+        "amount": 0,
+        "phone": "9876500000",
+        "name": "Raj"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hi-A10",
+      "lang": "hi",
+      "scenario": "new vendor",
+      "text": "नया सप्लायर नाम राज फोन 9876500000",
+      "expect": {
+        "kind": "vendor",
+        "amount": 0,
+        "phone": "9876500000",
+        "name": "Raj"
+      },
+      "context": "A"
+    },
+    {
+      "id": "mr-A10",
+      "lang": "mr",
+      "scenario": "new vendor",
+      "text": "नवीन सप्लायर नाव राज फोन 9876500000",
+      "expect": {
+        "kind": "vendor",
+        "amount": 0,
+        "phone": "9876500000",
+        "name": "Raj"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hg-A10",
+      "lang": "hg",
+      "scenario": "new vendor",
+      "text": "Naya supplier Raj phone 9876500000",
+      "expect": {
+        "kind": "vendor",
+        "amount": 0,
+        "phone": "9876500000",
+        "name": "Raj"
+      },
+      "context": "A"
+    },
+    {
+      "id": "en-A11",
+      "lang": "en",
+      "scenario": "labour planning",
+      "text": "Patil dinner need 15 waiters",
+      "expect": {
+        "kind": "labour",
+        "amount": 0,
+        "count": 15,
+        "labour": "asked",
+        "meal": "dinner",
+        "event": "P"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hi-A11",
+      "lang": "hi",
+      "scenario": "labour planning",
+      "text": "पाटील डिनर के लिए 15 वेटर बुलाओ",
+      "expect": {
+        "kind": "labour",
+        "amount": 0,
+        "count": 15,
+        "labour": "asked",
+        "meal": "dinner",
+        "event": "P"
+      },
+      "context": "A"
+    },
+    {
+      "id": "mr-A11",
+      "lang": "mr",
+      "scenario": "labour planning",
+      "text": "पाटील डिनरसाठी 15 वेटर पाहिजे",
+      "expect": {
+        "kind": "labour",
+        "amount": 0,
+        "count": 15,
+        "labour": "asked",
+        "meal": "dinner",
+        "event": "P"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hg-A11",
+      "lang": "hg",
+      "scenario": "labour planning",
+      "text": "Patil dinner ke liye 15 boys bulana",
+      "expect": {
+        "kind": "labour",
+        "amount": 0,
+        "count": 15,
+        "labour": "asked",
+        "meal": "dinner",
+        "event": "P"
+      },
+      "context": "A"
+    },
+    {
+      "id": "en-A12",
+      "lang": "en",
+      "scenario": "actual attendance",
+      "text": "Patil dinner 12 waiters attended",
+      "expect": {
+        "kind": "labour",
+        "amount": 0,
+        "count": 12,
+        "labour": "came",
+        "meal": "dinner",
+        "event": "P"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hi-A12",
+      "lang": "hi",
+      "scenario": "actual attendance",
+      "text": "पाटील डिनर में 12 वेटर आए",
+      "expect": {
+        "kind": "labour",
+        "amount": 0,
+        "count": 12,
+        "labour": "came",
+        "meal": "dinner",
+        "event": "P"
+      },
+      "context": "A"
+    },
+    {
+      "id": "mr-A12",
+      "lang": "mr",
+      "scenario": "actual attendance",
+      "text": "पाटील डिनरला 12 वेटर आले",
+      "expect": {
+        "kind": "labour",
+        "amount": 0,
+        "count": 12,
+        "labour": "came",
+        "meal": "dinner",
+        "event": "P"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hg-A12",
+      "lang": "hg",
+      "scenario": "actual attendance",
+      "text": "Patil dinner mein 12 boys aaye",
+      "expect": {
+        "kind": "labour",
+        "amount": 0,
+        "count": 12,
+        "labour": "came",
+        "meal": "dinner",
+        "event": "P"
+      },
+      "context": "A"
+    },
+    {
+      "id": "en-A13",
+      "lang": "en",
+      "scenario": "cooking work",
+      "text": "Patil Chinese for noodles and Manchurian 2 people",
+      "expect": {
+        "kind": "cook",
+        "amount": 0,
+        "people": 2,
+        "event": "P",
+        "dishes": 2
+      },
+      "context": "A"
+    },
+    {
+      "id": "hi-A13",
+      "lang": "hi",
+      "scenario": "cooking work",
+      "text": "पाटील चाइनीज के लिए नूडल्स और मंचूरियन 2 लोग",
+      "expect": {
+        "kind": "cook",
+        "amount": 0,
+        "people": 2,
+        "event": "P",
+        "dishes": 2
+      },
+      "context": "A"
+    },
+    {
+      "id": "mr-A13",
+      "lang": "mr",
+      "scenario": "cooking work",
+      "text": "पाटील चायनीज साठी नूडल्स आणि मंचुरियन 2 जण",
+      "expect": {
+        "kind": "cook",
+        "amount": 0,
+        "people": 2,
+        "event": "P",
+        "dishes": 2
+      },
+      "context": "A"
+    },
+    {
+      "id": "hg-A13",
+      "lang": "hg",
+      "scenario": "cooking work",
+      "text": "Patil Chinese ke liye noodles aur Manchurian do log",
+      "expect": {
+        "kind": "cook",
+        "amount": 0,
+        "people": 2,
+        "event": "P",
+        "dishes": 2
+      },
+      "context": "A"
+    },
+    {
+      "id": "en-A14",
+      "lang": "en",
+      "scenario": "multi item order",
+      "text": "Patil Shah Kirana order 25 kg rice and 10 kg sugar",
+      "expect": {
+        "kind": "order",
+        "amount": 0,
+        "items": [
+          [
+            25,
+            "kg"
+          ],
+          [
+            10,
+            "kg"
+          ]
+        ],
+        "event": "P",
+        "vendor": "G"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hi-A14",
+      "lang": "hi",
+      "scenario": "multi item order",
+      "text": "पाटील शाह किराना को 25 किलो चावल और 10 किलो चीनी",
+      "expect": {
+        "kind": "order",
+        "amount": 0,
+        "items": [
+          [
+            25,
+            "kg"
+          ],
+          [
+            10,
+            "kg"
+          ]
+        ],
+        "event": "P",
+        "vendor": "G"
+      },
+      "context": "A"
+    },
+    {
+      "id": "mr-A14",
+      "lang": "mr",
+      "scenario": "multi item order",
+      "text": "पाटील शाह किराणा 25 किलो तांदूळ आणि 10 किलो साखर मागवा",
+      "expect": {
+        "kind": "order",
+        "amount": 0,
+        "items": [
+          [
+            25,
+            "kg"
+          ],
+          [
+            10,
+            "kg"
+          ]
+        ],
+        "event": "P",
+        "vendor": "G"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hg-A14",
+      "lang": "hg",
+      "scenario": "multi item order",
+      "text": "Patil Shah kirana wale ko 25 kilo rice aur 10 kilo sugar",
+      "expect": {
+        "kind": "order",
+        "amount": 0,
+        "items": [
+          [
+            25,
+            "kg"
+          ],
+          [
+            10,
+            "kg"
+          ]
+        ],
+        "event": "P",
+        "vendor": "G"
+      },
+      "context": "A"
+    },
+    {
+      "id": "en-A15",
+      "lang": "en",
+      "scenario": "bread quantity",
+      "text": "Patil order 5 ladi bread",
+      "expect": {
+        "kind": "order",
+        "amount": 0,
+        "items": [
+          [
+            5,
+            "ladi"
+          ]
+        ],
+        "event": "P"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hi-A15",
+      "lang": "hi",
+      "scenario": "bread quantity",
+      "text": "पाटील ब्रेड की 5 लड़ी मंगाओ",
+      "expect": {
+        "kind": "order",
+        "amount": 0,
+        "items": [
+          [
+            5,
+            "ladi"
+          ]
+        ],
+        "event": "P"
+      },
+      "context": "A"
+    },
+    {
+      "id": "mr-A15",
+      "lang": "mr",
+      "scenario": "bread quantity",
+      "text": "पाटील ब्रेड 5 लडी मागवा",
+      "expect": {
+        "kind": "order",
+        "amount": 0,
+        "items": [
+          [
+            5,
+            "ladi"
+          ]
+        ],
+        "event": "P"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hg-A15",
+      "lang": "hg",
+      "scenario": "bread quantity",
+      "text": "Patil bread ki 5 ladi mangao",
+      "expect": {
+        "kind": "order",
+        "amount": 0,
+        "items": [
+          [
+            5,
+            "ladi"
+          ]
+        ],
+        "event": "P"
+      },
+      "context": "A"
+    },
+    {
+      "id": "en-A16",
+      "lang": "en",
+      "scenario": "counter order",
+      "text": "Patil order 300 chaat plates",
+      "expect": {
+        "kind": "order",
+        "amount": 0,
+        "items": [
+          [
+            300,
+            "plates"
+          ]
+        ],
+        "event": "P",
+        "counter": true
+      },
+      "context": "A"
+    },
+    {
+      "id": "hi-A16",
+      "lang": "hi",
+      "scenario": "counter order",
+      "text": "पाटील चाट 300 प्लेट ऑर्डर करो",
+      "expect": {
+        "kind": "order",
+        "amount": 0,
+        "items": [
+          [
+            300,
+            "plates"
+          ]
+        ],
+        "event": "P",
+        "counter": true
+      },
+      "context": "A"
+    },
+    {
+      "id": "mr-A16",
+      "lang": "mr",
+      "scenario": "counter order",
+      "text": "पाटील चाट 300 ताट ऑर्डर",
+      "expect": {
+        "kind": "order",
+        "amount": 0,
+        "items": [
+          [
+            300,
+            "plates"
+          ]
+        ],
+        "event": "P",
+        "counter": true
+      },
+      "context": "A"
+    },
+    {
+      "id": "hg-A16",
+      "lang": "hg",
+      "scenario": "counter order",
+      "text": "Patil chaat 300 plates order karo",
+      "expect": {
+        "kind": "order",
+        "amount": 0,
+        "items": [
+          [
+            300,
+            "plates"
+          ]
+        ],
+        "event": "P",
+        "counter": true
+      },
+      "context": "A"
+    },
+    {
+      "id": "en-A17",
+      "lang": "en",
+      "scenario": "guest change",
+      "text": "Patil dinner 350 to 400 plates",
+      "expect": {
+        "kind": "guests",
+        "amount": 0,
+        "from": 350,
+        "to": 400,
+        "meal": "dinner",
+        "event": "P"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hi-A17",
+      "lang": "hi",
+      "scenario": "guest change",
+      "text": "पाटील डिनर 350 से 400 प्लेट हो गया",
+      "expect": {
+        "kind": "guests",
+        "amount": 0,
+        "from": 350,
+        "to": 400,
+        "meal": "dinner",
+        "event": "P"
+      },
+      "context": "A"
+    },
+    {
+      "id": "mr-A17",
+      "lang": "mr",
+      "scenario": "guest change",
+      "text": "पाटील डिनर 350 वरून 400 ताट झाले",
+      "expect": {
+        "kind": "guests",
+        "amount": 0,
+        "from": 350,
+        "to": 400,
+        "meal": "dinner",
+        "event": "P"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hg-A17",
+      "lang": "hg",
+      "scenario": "guest change",
+      "text": "Patil dinner 350 se 400 plates ho gaya",
+      "expect": {
+        "kind": "guests",
+        "amount": 0,
+        "from": 350,
+        "to": 400,
+        "meal": "dinner",
+        "event": "P"
+      },
+      "context": "A"
+    },
+    {
+      "id": "en-A18",
+      "lang": "en",
+      "scenario": "negated expense",
+      "text": "Patil gas 1200 cash not paid",
+      "expect": {
+        "kind": "unclear"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hi-A18",
+      "lang": "hi",
+      "scenario": "negated expense",
+      "text": "पाटील गैस 1200 नकद नहीं दिया",
+      "expect": {
+        "kind": "unclear"
+      },
+      "context": "A"
+    },
+    {
+      "id": "mr-A18",
+      "lang": "mr",
+      "scenario": "negated expense",
+      "text": "पाटील गॅस 1200 रोख दिले नाही",
+      "expect": {
+        "kind": "unclear"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hg-A18",
+      "lang": "hg",
+      "scenario": "negated expense",
+      "text": "Patil gas 1200 cash nahi diya",
+      "expect": {
+        "kind": "unclear"
+      },
+      "context": "A"
+    },
+    {
+      "id": "en-A19",
+      "lang": "en",
+      "scenario": "negated receipt",
+      "text": "Patil client did not pay 2000",
+      "expect": {
+        "kind": "unclear"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hi-A19",
+      "lang": "hi",
+      "scenario": "negated receipt",
+      "text": "पाटील ग्राहक ने 2000 नहीं दिया",
+      "expect": {
+        "kind": "unclear"
+      },
+      "context": "A"
+    },
+    {
+      "id": "mr-A19",
+      "lang": "mr",
+      "scenario": "negated receipt",
+      "text": "पाटील ग्राहकाने 2000 दिले नाही",
+      "expect": {
+        "kind": "unclear"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hg-A19",
+      "lang": "hg",
+      "scenario": "negated receipt",
+      "text": "Patil client ne 2000 nahi diya",
+      "expect": {
+        "kind": "unclear"
+      },
+      "context": "A"
+    },
+    {
+      "id": "en-A20",
+      "lang": "en",
+      "scenario": "multiple transactions",
+      "text": "Patil gas 1200 cash and vegetables 4500 cash",
+      "expect": {
+        "kind": "multi"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hi-A20",
+      "lang": "hi",
+      "scenario": "multiple transactions",
+      "text": "पाटील गैस 1200 नकद और सब्जी 4500 नकद",
+      "expect": {
+        "kind": "multi"
+      },
+      "context": "A"
+    },
+    {
+      "id": "mr-A20",
+      "lang": "mr",
+      "scenario": "multiple transactions",
+      "text": "पाटील गॅस 1200 रोख आणि भाजी 4500 रोख",
+      "expect": {
+        "kind": "multi"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hg-A20",
+      "lang": "hg",
+      "scenario": "multiple transactions",
+      "text": "Patil gas 1200 cash aur sabzi 4500 cash",
+      "expect": {
+        "kind": "multi"
+      },
+      "context": "A"
+    },
+    {
+      "id": "en-A21",
+      "lang": "en",
+      "scenario": "pay conflict",
+      "text": "Patil gas 1200 credit or UPI",
+      "expect": {
+        "kind": "expense",
+        "amount": 1200,
+        "pay": ""
+      },
+      "context": "A"
+    },
+    {
+      "id": "hi-A21",
+      "lang": "hi",
+      "scenario": "pay conflict",
+      "text": "पाटील गैस 1200 उधार यूपीआई",
+      "expect": {
+        "kind": "expense",
+        "amount": 1200,
+        "pay": ""
+      },
+      "context": "A"
+    },
+    {
+      "id": "mr-A21",
+      "lang": "mr",
+      "scenario": "pay conflict",
+      "text": "पाटील गॅस 1200 उधार यूपीआय",
+      "expect": {
+        "kind": "expense",
+        "amount": 1200,
+        "pay": ""
+      },
+      "context": "A"
+    },
+    {
+      "id": "hg-A21",
+      "lang": "hg",
+      "scenario": "pay conflict",
+      "text": "Patil gas 1200 udhar UPI",
+      "expect": {
+        "kind": "expense",
+        "amount": 1200,
+        "pay": ""
+      },
+      "context": "A"
+    },
+    {
+      "id": "en-A22",
+      "lang": "en",
+      "scenario": "mode conflict",
+      "text": "Patil gas 1200 cash or UPI",
+      "expect": {
+        "kind": "expense",
+        "amount": 1200,
+        "mode": ""
+      },
+      "context": "A"
+    },
+    {
+      "id": "hi-A22",
+      "lang": "hi",
+      "scenario": "mode conflict",
+      "text": "पाटील गैस 1200 नकद या यूपीआई",
+      "expect": {
+        "kind": "expense",
+        "amount": 1200,
+        "mode": ""
+      },
+      "context": "A"
+    },
+    {
+      "id": "mr-A22",
+      "lang": "mr",
+      "scenario": "mode conflict",
+      "text": "पाटील गॅस 1200 रोख किंवा यूपीआय",
+      "expect": {
+        "kind": "expense",
+        "amount": 1200,
+        "mode": ""
+      },
+      "context": "A"
+    },
+    {
+      "id": "hg-A22",
+      "lang": "hg",
+      "scenario": "mode conflict",
+      "text": "Patil gas 1200 cash ya UPI",
+      "expect": {
+        "kind": "expense",
+        "amount": 1200,
+        "mode": ""
+      },
+      "context": "A"
+    },
+    {
+      "id": "en-A23",
+      "lang": "en",
+      "scenario": "future payment",
+      "text": "Will pay 5000 to Ramesh cash",
+      "expect": {
+        "kind": "unclear"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hi-A23",
+      "lang": "hi",
+      "scenario": "future payment",
+      "text": "रमेश को 5000 नकद देना है",
+      "expect": {
+        "kind": "unclear"
+      },
+      "context": "A"
+    },
+    {
+      "id": "mr-A23",
+      "lang": "mr",
+      "scenario": "future payment",
+      "text": "रमेशला 5000 रोख द्यायचे",
+      "expect": {
+        "kind": "unclear"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hg-A23",
+      "lang": "hg",
+      "scenario": "future payment",
+      "text": "Ramesh ko 5000 cash dena hai",
+      "expect": {
+        "kind": "unclear"
+      },
+      "context": "A"
+    },
+    {
+      "id": "en-A24",
+      "lang": "en",
+      "scenario": "conflicting date",
+      "text": "Patil gas 1200 cash tomorrow",
+      "expect": {
+        "kind": "expense",
+        "amount": 1200,
+        "event": ""
+      },
+      "context": "A"
+    },
+    {
+      "id": "hi-A24",
+      "lang": "hi",
+      "scenario": "conflicting date",
+      "text": "पाटील गैस 1200 नकद कल",
+      "expect": {
+        "kind": "expense",
+        "amount": 1200,
+        "event": ""
+      },
+      "context": "A"
+    },
+    {
+      "id": "mr-A24",
+      "lang": "mr",
+      "scenario": "conflicting date",
+      "text": "पाटील गॅस 1200 रोख उद्या",
+      "expect": {
+        "kind": "expense",
+        "amount": 1200,
+        "event": ""
+      },
+      "context": "A"
+    },
+    {
+      "id": "hg-A24",
+      "lang": "hg",
+      "scenario": "conflicting date",
+      "text": "Patil gas 1200 cash udya",
+      "expect": {
+        "kind": "expense",
+        "amount": 1200,
+        "event": ""
+      },
+      "context": "A"
+    },
+    {
+      "id": "en-A25",
+      "lang": "en",
+      "scenario": "past transaction",
+      "text": "Yesterday Patil gas 1500 cash paid",
+      "expect": {
+        "kind": "expense",
+        "amount": 1500,
+        "txDate": "2026-11-27"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hi-A25",
+      "lang": "hi",
+      "scenario": "past transaction",
+      "text": "कल पाटील गैस 1500 नकद दिया",
+      "expect": {
+        "kind": "expense",
+        "amount": 1500,
+        "txDate": "2026-11-27"
+      },
+      "context": "A"
+    },
+    {
+      "id": "mr-A25",
+      "lang": "mr",
+      "scenario": "past transaction",
+      "text": "काल पाटील गॅस 1500 रोख दिले",
+      "expect": {
+        "kind": "expense",
+        "amount": 1500,
+        "txDate": "2026-11-27"
+      },
+      "context": "A"
+    },
+    {
+      "id": "hg-A25",
+      "lang": "hg",
+      "scenario": "past transaction",
+      "text": "Kal Patil gas 1500 cash diya",
+      "expect": {
+        "kind": "expense",
+        "amount": 1500,
+        "txDate": "2026-11-27"
+      },
+      "context": "A"
+    },
+    {
+      "id": "en-B01",
+      "lang": "en",
+      "scenario": "challenge",
+      "text": "Paid gas 2490.29 cash for Patil",
+      "expect": {
+        "kind": "expense",
+        "amount": 2490.29
+      },
+      "context": "B"
+    },
+    {
+      "id": "en-B02",
+      "lang": "en",
+      "scenario": "challenge",
+      "text": "Patil gas 1200 cash invoice no 1452",
+      "expect": {
+        "kind": "expense",
+        "amount": 1200
+      },
+      "context": "B"
+    },
+    {
+      "id": "en-B03",
+      "lang": "en",
+      "scenario": "challenge",
+      "text": "Patil gas bill 1200 paid cash",
+      "expect": {
+        "kind": "expense",
+        "amount": 1200
+      },
+      "context": "B"
+    },
+    {
+      "id": "en-B04",
+      "lang": "en",
+      "scenario": "challenge",
+      "text": "Paid Ramesh 5000 by UPI",
+      "expect": {
+        "kind": "payven",
+        "amount": 5000,
+        "vendor": "R"
+      },
+      "context": "B"
+    },
+    {
+      "id": "en-B05",
+      "lang": "en",
+      "scenario": "challenge",
+      "text": "Patil client receipt 20000 cash",
+      "expect": {
+        "kind": "cpay",
+        "amount": 20000
+      },
+      "context": "B"
+    },
+    {
+      "id": "en-B06",
+      "lang": "en",
+      "scenario": "challenge",
+      "text": "Patil gas 1200 cash on 27/11/2026",
+      "expect": {
+        "kind": "expense",
+        "amount": 1200,
+        "dateReview": true
+      },
+      "context": "B"
+    },
+    {
+      "id": "en-B07",
+      "lang": "en",
+      "scenario": "challenge",
+      "text": "New birthday at Vashi on 12 Dec 2026 for 100 guests",
+      "expect": {
+        "kind": "event",
+        "amount": 0,
+        "dateReview": true,
+        "guests": 100
+      },
+      "context": "B"
+    },
+    {
+      "id": "en-B08",
+      "lang": "en",
+      "scenario": "challenge",
+      "text": "Book birthday tomorrow at Vashi 50 guests bill 25000 advance 5000 cash",
+      "expect": {
+        "bookingSafe": true
+      },
+      "context": "B"
+    },
+    {
+      "id": "en-B09",
+      "lang": "en",
+      "scenario": "challenge",
+      "text": "Patil order 5 kg rice tomorrow",
+      "expect": {
+        "kind": "order",
+        "items": [
+          [
+            5,
+            "kg"
+          ]
+        ],
+        "date": "2026-11-29"
+      },
+      "context": "B"
+    },
+    {
+      "id": "en-B10",
+      "lang": "en",
+      "scenario": "challenge",
+      "text": "Gas 1200 cash refunded",
+      "expect": {
+        "safe": true
+      },
+      "context": "B"
+    },
+    {
+      "id": "hi-B01",
+      "lang": "hi",
+      "scenario": "challenge",
+      "text": "पाटील सब्जी के सत्ताईस सौ नकद दिए",
+      "expect": {
+        "kind": "expense",
+        "amount": 2700
+      },
+      "context": "B"
+    },
+    {
+      "id": "hi-B02",
+      "lang": "hi",
+      "scenario": "challenge",
+      "text": "पाटील गैस के चौदह सौ नकद दिए",
+      "expect": {
+        "kind": "expense",
+        "amount": 1400
+      },
+      "context": "B"
+    },
+    {
+      "id": "hi-B03",
+      "lang": "hi",
+      "scenario": "challenge",
+      "text": "पाटील पनीर के पैंतालीस सौ उधार",
+      "expect": {
+        "kind": "expense",
+        "amount": 4500
+      },
+      "context": "B"
+    },
+    {
+      "id": "hi-B04",
+      "lang": "hi",
+      "scenario": "challenge",
+      "text": "पाटील डिनर के लिए पंद्रह वेटर बुलाओ",
+      "expect": {
+        "kind": "labour",
+        "count": 15,
+        "labour": "asked"
+      },
+      "context": "B"
+    },
+    {
+      "id": "hi-B05",
+      "lang": "hi",
+      "scenario": "challenge",
+      "text": "रमेश को दो हजार नकद दिए",
+      "expect": {
+        "kind": "payven",
+        "amount": 2000,
+        "vendor": "R"
+      },
+      "context": "B"
+    },
+    {
+      "id": "hi-B06",
+      "lang": "hi",
+      "scenario": "challenge",
+      "text": "पाटील गैस 1200 नकद मत देना",
+      "expect": {
+        "kind": "unclear"
+      },
+      "context": "B"
+    },
+    {
+      "id": "hi-B07",
+      "lang": "hi",
+      "scenario": "challenge",
+      "text": "पाटील गैस 1200 नकद 29 नवंबर",
+      "expect": {
+        "kind": "expense",
+        "amount": 1200,
+        "dateReview": true
+      },
+      "context": "B"
+    },
+    {
+      "id": "hi-B08",
+      "lang": "hi",
+      "scenario": "challenge",
+      "text": "नया सप्लायर राज मोबाइल 9876500000",
+      "expect": {
+        "kind": "vendor",
+        "name": "राज",
+        "phone": "9876500000"
+      },
+      "context": "B"
+    },
+    {
+      "id": "hi-B09",
+      "lang": "hi",
+      "scenario": "challenge",
+      "text": "पाटील चावल 25 किलो मंगाओ",
+      "expect": {
+        "kind": "order",
+        "items": [
+          [
+            25,
+            "kg"
+          ]
+        ]
+      },
+      "context": "B"
+    },
+    {
+      "id": "hi-B10",
+      "lang": "hi",
+      "scenario": "challenge",
+      "text": "पाटील ग्राहक से 5000 आने वाले हैं",
+      "expect": {
+        "safe": true
+      },
+      "context": "B"
+    },
+    {
+      "id": "mr-B01",
+      "lang": "mr",
+      "scenario": "challenge",
+      "text": "पाटील भाजीचे साडेचार हजार रोख दिले",
+      "expect": {
+        "kind": "expense",
+        "amount": 4500
+      },
+      "context": "B"
+    },
+    {
+      "id": "mr-B02",
+      "lang": "mr",
+      "scenario": "challenge",
+      "text": "पाटील पनीरचे अडीच हजार उधार",
+      "expect": {
+        "kind": "expense",
+        "amount": 2500
+      },
+      "context": "B"
+    },
+    {
+      "id": "mr-B03",
+      "lang": "mr",
+      "scenario": "challenge",
+      "text": "पाटील भाजीचे सत्तावीसशे रोख दिले",
+      "expect": {
+        "kind": "expense",
+        "amount": 2700
+      },
+      "context": "B"
+    },
+    {
+      "id": "mr-B04",
+      "lang": "mr",
+      "scenario": "challenge",
+      "text": "पाटील गॅसचे चौदाशे रोख दिले",
+      "expect": {
+        "kind": "expense",
+        "amount": 1400
+      },
+      "context": "B"
+    },
+    {
+      "id": "mr-B05",
+      "lang": "mr",
+      "scenario": "challenge",
+      "text": "पाटील डिनरसाठी पंधरा वेटर पाहिजे",
+      "expect": {
+        "kind": "labour",
+        "count": 15,
+        "labour": "asked"
+      },
+      "context": "B"
+    },
+    {
+      "id": "mr-B06",
+      "lang": "mr",
+      "scenario": "challenge",
+      "text": "रमेशला 5000 द्यायचे आहेत",
+      "expect": {
+        "kind": "unclear"
+      },
+      "context": "B"
+    },
+    {
+      "id": "mr-B07",
+      "lang": "mr",
+      "scenario": "challenge",
+      "text": "पाटील ग्राहकाकडून 5000 चेक मिळाला",
+      "expect": {
+        "kind": "cpay",
+        "amount": 5000
+      },
+      "context": "B"
+    },
+    {
+      "id": "mr-B08",
+      "lang": "mr",
+      "scenario": "challenge",
+      "text": "पाटील भाजीचे 1200 रोख २७ नोव्हेंबर",
+      "expect": {
+        "kind": "expense",
+        "amount": 1200,
+        "dateReview": true
+      },
+      "context": "B"
+    },
+    {
+      "id": "mr-B09",
+      "lang": "mr",
+      "scenario": "challenge",
+      "text": "पाटील 2 डझन ब्रेड मागवा",
+      "expect": {
+        "kind": "order",
+        "items": [
+          [
+            2,
+            "dozen"
+          ]
+        ]
+      },
+      "context": "B"
+    },
+    {
+      "id": "mr-B10",
+      "lang": "mr",
+      "scenario": "challenge",
+      "text": "पाटील गॅसचे 1200 रोख दिले नाहीत",
+      "expect": {
+        "kind": "unclear"
+      },
+      "context": "B"
+    },
+    {
+      "id": "hg-B01",
+      "lang": "hg",
+      "scenario": "challenge",
+      "text": "Patil gas 1200 cash nahi par UPI diya",
+      "expect": {
+        "safe": true
+      },
+      "context": "B"
+    },
+    {
+      "id": "hg-B02",
+      "lang": "hg",
+      "scenario": "challenge",
+      "text": "Patil paneer 8:30 hajar udhaar",
+      "expect": {
+        "kind": "expense",
+        "amount": 8500
+      },
+      "context": "B"
+    },
+    {
+      "id": "hg-B03",
+      "lang": "hg",
+      "scenario": "challenge",
+      "text": "Patil gas 1 lakh 25 thousand cash",
+      "expect": {
+        "kind": "expense",
+        "amount": 125000
+      },
+      "context": "B"
+    },
+    {
+      "id": "hg-B04",
+      "lang": "hg",
+      "scenario": "challenge",
+      "text": "Patil sabzi 4500 cash 12 December 2026",
+      "expect": {
+        "kind": "expense",
+        "amount": 4500,
+        "dateReview": true
+      },
+      "context": "B"
+    },
+    {
+      "id": "hg-B05",
+      "lang": "hg",
+      "scenario": "challenge",
+      "text": "Patil gas bill number 5000 1200 cash diya",
+      "expect": {
+        "kind": "expense",
+        "amount": 1200
+      },
+      "context": "B"
+    },
+    {
+      "id": "hg-B06",
+      "lang": "hg",
+      "scenario": "challenge",
+      "text": "Patil ko 25000 bill banana",
+      "expect": {
+        "safe": true
+      },
+      "context": "B"
+    },
+    {
+      "id": "hg-B07",
+      "lang": "hg",
+      "scenario": "challenge",
+      "text": "Ramesh ko 5000 cash dene wale hain",
+      "expect": {
+        "kind": "unclear"
+      },
+      "context": "B"
+    },
+    {
+      "id": "hg-B08",
+      "lang": "hg",
+      "scenario": "challenge",
+      "text": "Patil 15 boys dinner ke liye confirm karo",
+      "expect": {
+        "kind": "labour",
+        "count": 15,
+        "labour": "asked"
+      },
+      "context": "B"
+    },
+    {
+      "id": "hg-B09",
+      "lang": "hg",
+      "scenario": "challenge",
+      "text": "Patil order 2.5 kg paneer aur 1.5 litre cream",
+      "expect": {
+        "kind": "order",
+        "items": [
+          [
+            2.5,
+            "kg"
+          ],
+          [
+            1.5,
+            "litre"
+          ]
+        ]
+      },
+      "context": "B"
+    },
+    {
+      "id": "hg-B10",
+      "lang": "hg",
+      "scenario": "challenge",
+      "text": "Patil client ne 5000 advance diya aur 2000 balance diya",
+      "expect": {
+        "kind": "multi"
+      },
+      "context": "B"
+    }
+  ]
+}

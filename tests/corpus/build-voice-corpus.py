@@ -1,6 +1,6 @@
 # Builds tests/corpus/voice-corpus.json: the permanent multilingual test set for CaterDesk's sentence understanding
-# (public/nl.js). 25 kinds of everyday catering entries × 4 languages (English, Hindi, Marathi, Hinglish) × 4 variations
-# = 400 sentences, each with the values the app must find (or the clarification it must ask for).
+# (public/nl.js). 26 kinds of everyday catering entries × 4 languages (English, Hindi, Marathi, Hinglish) × 4 variations
+# = 416 sentences, each with the values the app must find (or the clarification it must ask for).
 # Synthetic names and amounts only: no client records, no production data. Run with: python -I tests/corpus/build-voice-corpus.py
 # The JSON is committed; re-run only to change the corpus, then review the diff.
 import json, os
@@ -112,9 +112,11 @@ tpl('cook', 'cooking work by order', [('chinese', 2, 0), ('sweet', 3, 1), ('roti
 tpl('order', 'supplier order of several items', [(25,), (50,), (10,), (20,)],
   lambda li, f: [f'Order {f[0]} kg rice and 10 kg sugar from kirana', f'किराना से {f[0]} किलो चावल और 10 किलो चीनी मंगाओ', f'किराण्याकडून {f[0]} किलो तांदूळ आणि 10 किलो साखर मागवा', f'Kirana wale ko {f[0]} kilo rice aur 10 kilo sugar'][li],
   lambda f: {'kind': 'order', 'items': [[f[0], 'kg'], [10, 'kg']]})
+ORDER_NAMES = [['rice', 'sugar'], ['चावल', 'चीनी'], ['तांदूळ', 'साखर'], ['rice', 'sugar']]
 tpl('ladi', 'bread in ladi', [(5,), (10,), (3,), (8,)],
   lambda li, f: [f'Order {f[0]} ladi bread', f'ब्रेड की {f[0]} लडी मंगाओ', f'ब्रेडच्या {f[0]} लडी मागवा', f'Bread ki {f[0]} ladi mangao'][li],
   lambda f: {'kind': 'order', 'items': [[f[0], 'ladi']]})
+LADI_NAMES = [['bread'], ['ब्रेड'], ['ब्रेड'], ['bread']]
 tpl('guests', 'guest count change', [(400,), (450,), (500,), (380,)],
   lambda li, f: [f'Dinner changed from 350 to {f[0]} plates', f'डिनर 350 से {f[0]} प्लेट हो गया', f'डिनर 350 वरून {f[0]} झाले', f'Dinner 350 se {f[0]} plates ho gaya'][li],
   lambda f: {'kind': 'guests', 'from': 350, 'to': f[0]})
@@ -122,7 +124,12 @@ NAMES = [('Raj', 'राज'), ('Suresh', 'सुरेश'), ('Mahesh', 'मह
 PHONES = [('9876543210', '9876543210'), ('98765 43210', '9876543210'), ('+91 9123456780', '9123456780'), ('9988776655', '9988776655')]
 tpl('new-vendor', 'new vendor with a phone number (never money)', [(0,), (1,), (2,), (3,)],
   lambda li, f: [f'New supplier {NAMES[f[0]][0]} phone {PHONES[f[0]][0]}', f'नया सप्लायर {NAMES[f[0]][1]} फोन {PHONES[f[0]][0]}', f'नवीन सप्लायर {NAMES[f[0]][1]} फोन {PHONES[f[0]][0]}', f'Naya supplier {NAMES[f[0]][0]} add karo phone {PHONES[f[0]][0]}'][li],
-  lambda f: {'kind': 'vendor', 'phone': PHONES[f[0]][1], 'amount': 0, 'named': True})
+  lambda f: {'kind': 'vendor', 'phone': PHONES[f[0]][1], 'amount': 0})
+VENDOR_NAMES = lambda li, f: NAMES[f[0]][0 if li in (0, 3) else 1]
+tpl('booking', 'booking with its bill and its advance kept apart', [(50, 25000, 5000, 0), (100, 60000, 10000, 0), (80, 40000, 5000, 1), (120, 75000, 2000, 1)],
+  lambda li, f: [f'Book birthday tomorrow at Vashi {f[0]} guests bill {f[1]} advance {amt(f[2], li, f[3])} cash', f'कल वाशी में {f[0]} प्लेट का बर्थडे बुक करो, बिल {f[1]}, एडवांस {amt(f[2], li, f[3])} नकद',
+                 f'उद्या वाशीमध्ये {f[0]} पाहुण्यांचा वाढदिवस बुक, बिल {f[1]}, ॲडव्हान्स {amt(f[2], li, f[3])} रोख', f'Kal Vashi mein {f[0]} plates ka birthday book karo, bill {f[1]}, advance {amt(f[2], li, f[3])} cash'][li],
+  lambda f: {'kind': 'event', 'guests': f[0], 'bill': f[1], 'advance': f[2], 'date': '2026-11-29', 'mode': 'Cash – रोख'})
 tpl('yesterday', 'money moved yesterday', [(1500, 0, 'gas', 'cash'), (2000, 1, 'tempo', 'upi'), (800, 0, 'veg', 'cash'), (1400, 1, 'gas', 'cash')],
   lambda li, f: [f'Yesterday {it(f[2], li)} {amt(f[0], li, f[1])} {md(f[3], li)} paid', f'कल {it(f[2], li)} के {amt(f[0], li, f[1])} {md(f[3], li)} दिए',
                  f'काल {itc(f[2])} {amt(f[0], li, f[1])} {md(f[3], li)} दिले', f'Kal {it(f[2], li)} ka {amt(f[0], li, f[1])} {md(f[3], li)} diya'][li],
@@ -132,7 +139,11 @@ out = []
 for tid, about, fills, render, expect in T:
     for li, lang in enumerate(LANGS):
         for k, f in enumerate(fills):
-            out.append({'id': f'{lang}-{tid}-{k + 1}', 'lang': lang, 'about': about, 'text': render(li, f), 'expect': expect(f)})
+            e = expect(f)
+            if tid == 'order': e['itemNames'] = ORDER_NAMES[li]
+            if tid == 'ladi': e['itemNames'] = LADI_NAMES[li]
+            if tid == 'new-vendor': e['name'] = VENDOR_NAMES(li, f)
+            out.append({'id': f'{lang}-{tid}-{k + 1}', 'lang': lang, 'about': about, 'text': render(li, f), 'expect': e})
 ctx = {'today': '2026-11-28',
   'events': [{'id': 'P', 'name': 'Sample Patil Wedding', 'date': '2026-11-29', 'venue': 'Sample Lawns', 'locality': 'Vashi'},
              {'id': 'D', 'name': 'Sample Desai Reception', 'date': '2026-11-29', 'venue': 'Sample Banquet', 'locality': 'Thane'},
@@ -141,9 +152,9 @@ ctx = {'today': '2026-11-28',
               {'id': 'veg', 'name': 'Sample Bhaji Supplier', 'cat': 'Raw Material', 'specialty': 'Vegetable – भाजी'},
               {'id': 'gro', 'name': 'Sample Kirana Store', 'cat': 'Raw Material', 'specialty': 'Grocery – किराणा'},
               {'id': 'bos', 'name': 'Bay of Snacks', 'cat': 'Live Counter', 'specialty': 'Starter – स्टार्टर'}]}
-assert len(out) == 400, len(out)
+assert len(out) == 416, len(out)
 here = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(here, 'voice-corpus.json'), 'w', encoding='utf-8', newline='\n') as fh:
-    json.dump({'about': 'CaterDesk multilingual sentence corpus (synthetic). 100 sentences per language: en, hi, mr, hg (Hinglish). Built by build-voice-corpus.py.',
+    json.dump({'about': 'CaterDesk multilingual sentence corpus (synthetic). 104 sentences per language: en, hi, mr, hg (Hinglish). Built by build-voice-corpus.py.',
                'context': ctx, 'sentences': out}, fh, ensure_ascii=False, indent=1)
 print(len(out), 'sentences')

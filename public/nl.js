@@ -219,18 +219,43 @@ const DEV = { क: 'k', ख: 'k', ग: 'g', घ: 'g', च: 'c', छ: 'c', ज: '
 const isDev = t => /[ऀ-ॿ]/.test(t);
 export const skeleton = t => isDev(t) ? [...t.normalize('NFD')].map(c => DEV[c] || '').join('').replace(/(.)\1+/g, '$1')
   : t.replace(/([kgcjtdpbs])h/g, '$1').replace(/f/g, 'p').replace(/w/g, 'v').replace(/z/g, 'j').replace(/[aeiouyh]/g, '').replace(/(.)\1+/g, '$1');
+/* Devanagari written the way names are spelt in English letters ("शाह" → shah, "किराना" → kirana, "पाटील" → patil),
+   then both sides evened out (long vowels, doubled letters, a final a), so a whole word must sound the same */
+const TL_C = { क: 'k', ख: 'kh', ग: 'g', घ: 'gh', ङ: 'n', च: 'ch', छ: 'chh', ज: 'j', झ: 'jh', ञ: 'n', ट: 't', ठ: 'th', ड: 'd', ढ: 'dh', ण: 'n', त: 't', थ: 'th', द: 'd', ध: 'dh', न: 'n',
+  प: 'p', फ: 'f', ब: 'b', भ: 'bh', म: 'm', य: 'y', र: 'r', ल: 'l', व: 'v', श: 'sh', ष: 'sh', स: 's', ह: 'h', ळ: 'l' };
+const TL_V = { अ: 'a', आ: 'aa', इ: 'i', ई: 'ee', उ: 'u', ऊ: 'oo', ए: 'e', ऐ: 'ai', ओ: 'o', औ: 'au', ॲ: 'a', ऑ: 'o' };
+const TL_M = { 'ा': 'aa', 'ि': 'i', 'ी': 'ee', 'ु': 'u', 'ू': 'oo', 'े': 'e', 'ै': 'ai', 'ो': 'o', 'ौ': 'au', 'ॅ': 'e', 'ॉ': 'o' };
+function translit(t) {
+  const cs = [...t.normalize('NFC')]; let out = '';
+  for (let i = 0; i < cs.length; i++) { const c = cs[i], nx = cs[i + 1];
+    if (TL_C[c]) { out += TL_C[c]; if (nx !== '्' && !TL_M[nx]) out += 'a'; }
+    else if (TL_M[c]) out += TL_M[c]; else if (TL_V[c]) out += TL_V[c]; else if (c === 'ं' || c === 'ँ') out += 'n'; }
+  return out;
+}
+const even = s => s.replace(/ph/g, 'f').replace(/w/g, 'v').replace(/z/g, 'j').replace(/ee/g, 'i').replace(/oo/g, 'u').replace(/aa/g, 'a').replace(/(.)\1+/g, '$1').replace(/(?<=..)a$/, '');
+// Letters said one by one, written in Devanagari ("एमएलए" = MLA, "बीकेसी" = BKC)
+const LETTERS = [['एक्स', 'x'], ['डब्ल्यू', 'w'], ['क्यू', 'q'], ['एफ', 'f'], ['एच', 'h'], ['एल', 'l'], ['एम', 'm'], ['एन', 'n'], ['एस', 's'], ['आर', 'r'], ['आय', 'i'], ['आई', 'i'],
+  ['बी', 'b'], ['सी', 'c'], ['डी', 'd'], ['जी', 'g'], ['जे', 'j'], ['के', 'k'], ['पी', 'p'], ['टी', 't'], ['यू', 'u'], ['व्ही', 'v'], ['वी', 'v'], ['वाय', 'y'], ['झेड', 'z'], ['जेड', 'z'], ['ए', 'a'], ['ई', 'e'], ['ओ', 'o']];
+function lettersOf(t) { let s = t, out = '';
+  while (s) { const hit = LETTERS.find(([d]) => s.startsWith(d)); if (!hit) return ''; out += hit[1]; s = s.slice(hit[0].length); }
+  return out.length >= 2 ? out : ''; }
 // Does a word of a name appear in the sentence (also with an ending, or in the other script)?
 const nameIn = (w, toks) => toks.some(x => { const sx = stem(x);
   if (word(x) !== undefined || NUM_AMBIG[x] !== undefined || MULT[x]) return false;   // a number is never a name (वीस is not Vashi)
   if (x === w || sx === w || (w.length >= 4 && x.startsWith(w) && x.length - w.length <= 6)) return true;
   if (isDev(w) === isDev(x)) return false;
+  const dw = isDev(w) ? w : x, lw = isDev(w) ? x : w;
+  if (lettersOf(dw) && lettersOf(dw) === lw) return true;                                    // एमएलए = mla, exactly
+  if (lw.length >= 3 && (even(translit(isDev(w) ? w : sx)) === even(lw) || even(translit(dw)) === even(lw))) return true;   // शाह = shah
   // Across scripts by sound: three consonants alike, or two when both words are long enough to be names
   // ("देसाई" = "Desai"; "मिळाला" is not "MLA", "तीन" is not "Thane")
   const a = skeleton(w), b = skeleton(sx), dev = isDev(w) ? w : sx, lat = isDev(w) ? sx : w;
   return a === b && (a.length >= 3 || (a.length === 2 && [...dev].length >= 4 && lat.length >= 5)); });
 const starts = (toks, list) => toks.some(t => list.some(w => w.length >= 4 ? t.startsWith(w) : t === w));
 const pick = (toks, table) => (table.find(([, w]) => starts(toks, w.split(' '))) || [''])[0];
-const GENERIC = new Set(W('sample the and new event wedding lagna party function caterers caterer foods food enterprises traders trader stores store shop supplier vendor contractor services service hall halls lawn lawns banquet banquets ground garden gardens club hotel resort mandir temple society sabhagruh karyalay mangal complex road nagar'));
+// Words that describe rather than name: never enough on their own to pick an event or vendor ("Pooja", "Hall", "Stores")
+const GENERIC = new Set([...W('sample the and new event wedding lagna party function caterers caterer foods food enterprises traders trader stores store shop supplier vendor contractor services service hall halls lawn lawns banquet banquets ground garden gardens club hotel resort mandir temple society sabhagruh karyalay mangal complex road nagar'),
+  ...EVENT_WORDS.flatMap(([, w]) => w.split(' '))]);
 
 // Hindi words in Devanagari, as the phone's Hindi speech recognition writes them (HEAD_WORDS has English and Marathi)
 const HINDI_HEADS = { 'Vegetable': 'सब्जी सब्जियां सब्जीवाला प्याज आलू टमाटर भाज्या भाजीपाला vegetables veggies', 'Grocery': 'किराना राशन चावल चीनी आटा दाल मैदा बेसन नमक', 'Oil / Ghee': 'तेल घी',
@@ -254,7 +279,11 @@ export function matchVendor(text, vendors = [], hint = null) {
   let c = live.filter(v => norm(v.name).length >= 3 && t.includes(' ' + norm(v.name) + ' '));
   let how = 'name';
   if (!c.length) { how = 'word';
-    c = live.filter(v => norm(v.name).split(' ').some(w => w.length >= 3 && !GENERIC.has(w) && nameIn(w, toks))); }
+    // By the words of the name; when several vendors share a word ("Kirana"), the one with the most words said wins
+    // ("शाह किराना" → Shah Kirana, not Sample Kirana Store); a tie is still asked
+    const hits = live.map(v => [v, norm(v.name).split(' ').filter(w => w.length >= 3 && !GENERIC.has(w) && nameIn(w, toks)).length]).filter(([, n]) => n > 0);
+    const most = Math.max(0, ...hits.map(([, n]) => n));
+    c = hits.filter(([, n]) => n === most).map(([v]) => v); }
   if (!c.length && hint) { how = 'supplies';
     c = live.filter(v => v.kind !== 'person' && (v.specialty === hint.head || (!v.specialty && v.cat === hint.cat))); }
   const list = c.slice(0, 6).map(v => ({ id: v.id, name: v.name }));
@@ -329,10 +358,10 @@ export function understand(text, ctx = {}) {
   { // "25 kilo rice aur 10 kilo sugar"
     for (const g of roles.filter(g => g.role === 'qty')) {
       const unit = UNITS[toks[g.end + 1]], name = [];
-      for (let i = g.end + 2; i < toks.length; i++) { const w = toks[i]; if (VOCAB.join.includes(w) || word(w) !== undefined || VOCAB.order.includes(w) || STOP.has(w) || MODE_WORDS.some(([, x]) => x.split(' ').includes(w))) break; name.push(w); }
+      for (let i = g.end + 2; i < toks.length; i++) { const w = toks[i]; if (VOCAB.join.includes(w) || word(w) !== undefined || VOCAB.order.includes(w) || STOP.has(w) || /^(from|se|से|कडून)$/.test(w) || MODE_WORDS.some(([, x]) => x.split(' ').includes(w))) break; name.push(w); }   // "10 kg sugar from kirana": the item is sugar
       if (!name.length && has(toks, VOCAB.order)) for (let i = g.start - 1; i >= 0 && name.length < 3; i--) {   // "Bread ki 5 ladi mangao"
         const w = toks[i]; if (STOP.has(w) || VOCAB.ka.includes(w)) { if (name.length) break; continue; }
-        if (VOCAB.join.includes(w) || word(w) !== undefined || VOCAB.order.includes(w) || VOCAB.to.includes(w)) break; name.unshift(w); }
+        if (VOCAB.join.includes(w) || word(w) !== undefined || VOCAB.order.includes(w) || VOCAB.to.includes(w)) break; name.unshift(isDev(w) ? stem(w) : w); }   // ब्रेडच्या → ब्रेड
       if (name.length) items.push({ name: title(name.join(' ')), qty: g.v, unit });
     }
     // "Order 100 dosa plates and 50 chaat plates": counter plates, only when an order word is said
@@ -373,9 +402,9 @@ export function understand(text, ctx = {}) {
   // 1. A new vendor: "Naya vegetable supplier add karo"
   if (has(toks, VOCAB.newWord) && starts(toks, VOCAB.vendorWord) && !amt) {
     out.kind = 'vendor'; out.cat = head?.cat || (pick(toks, WORKERS) || pick(toks, COOKS) ? 'Labour' : ''); out.specialty = head?.head || '';
-    const named = String(text).match(/\b(?:naam|name|named|नाव|नाम)\s+([A-Za-zऀ-ॿ][\wऀ-ॿ ]{1,40}?)(?=\s+(?:hai|he|aahe|है|आहे|phone|number|\d)|[,.]|$)/i);
+    const named = String(text).match(/(?:^|\s)(?:naam|name|named|नाव|नाम)\s+([A-Za-zऀ-ॿ][A-Za-zऀ-ॿ ]{1,40}?)(?=\s+(?:hai|he|aahe|है|आहे|phone|mobile|number|फोन|मोबाइल|नंबर|\d)(?![\p{L}\p{M}])|\s*[,.]|\s*\+?\d|\s*$)/iu);
     const after = named ? null : String(text).match(/(?:^|\s)(?:supplier|vendor|contractor|mukadam|सप्लायर|वेंडर|ठेकेदार)\s+(?!(?:add|jodo|joda|karo|kar|ka|ki|ke|hai|ko)\b)([A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F]+(?:\s+[A-Z][A-Za-z]+)?)(?=\s+(?:phone|mobile|number|no|ka|ki|ke|add|jodo|karo|का|की|फोन|मोबाइल|नंबर|जोडा|करो)(?![\p{L}\p{M}])|\s*[,.]|\s*\+?\d|\s*$)/iu);
-    out.name = (named ? named[1].trim() : after ? after[1].trim() : '').replace(/\s+(?:phone|mobile|number|no|ka|ki|ke)$/i, ''); if (!out.name) out.ask.push('name');
+    out.name = (named ? named[1].trim() : after ? after[1].trim() : '').replace(/\s+(?:phone|mobile|number|no|ka|ki|ke|add|jodo|joda|karo|kar)$/i, ''); if (!out.name) out.ask.push('name');
     return out;
   }
 
@@ -448,7 +477,8 @@ export function understand(text, ctx = {}) {
   // Marathi puts "to" on the name: रमेशला, rameshla, भाजीवाल्याला (not मला / त्याला, a meal or an event)
   const datIdx = toks.findIndex(t => /(?:ला|ना|la)$/.test(t) && t.length > (isDev(t) ? 3 : 4) && !/^(मला|तुला|त्याला|याला|ह्याला|आम्हाला|त्यांना|mala|tula|tyala|kala)$/.test(t) && stem(t) !== t && !notName(stem(t)) && word(stem(t)) === undefined);
   // English "paid Ramesh 5000", "gave Ramesh 2000"
-  const engIdx = toks.findIndex((t, k) => /^(paid|pay|gave|given)$/.test(t) && toks[k + 1] && toks[k + 1] !== 'to' && !notName(toks[k + 1]) && word(toks[k + 1]) === undefined);
+  // English "paid Ramesh 5000", "gave Ramesh 2000" — never "paid gas 2490": an expense item is not a payee
+  const engIdx = toks.findIndex((t, k) => /^(paid|pay|gave|given)$/.test(t) && toks[k + 1] && toks[k + 1] !== 'to' && !notName(toks[k + 1]) && !headOf([toks[k + 1]]) && word(toks[k + 1]) === undefined);
   if (gave && (toIdx > 0 || paidTo > 0 || datIdx >= 0 || engIdx >= 0) && !credit && !creditMaybe) {
     const BY = ['by', 'via', 'through', 'from', 'se', 'for', 'in', ...MODE_WORDS.flatMap(([, w]) => w.split(' '))];
     let who = toIdx > 0 ? toks.slice(Math.max(0, toIdx - 3), toIdx) : paidTo > 0 ? toks.slice(paidTo + 1, paidTo + 4) : datIdx >= 0 ? [stem(toks[datIdx])] : toks.slice(engIdx + 1, engIdx + 3).filter(t => !notName(t) && word(t) === undefined);

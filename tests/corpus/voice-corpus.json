@@ -1,5 +1,5 @@
 {
- "about": "CaterDesk multilingual sentence corpus (synthetic). 100 sentences per language: en, hi, mr, hg (Hinglish). Built by build-voice-corpus.py.",
+ "about": "CaterDesk multilingual sentence corpus (synthetic). 104 sentences per language: en, hi, mr, hg (Hinglish). Built by build-voice-corpus.py.",
  "context": {
   "today": "2026-11-28",
   "events": [
@@ -3781,6 +3781,10 @@
       10,
       "kg"
      ]
+    ],
+    "itemNames": [
+     "rice",
+     "sugar"
     ]
    }
   },
@@ -3800,6 +3804,10 @@
       10,
       "kg"
      ]
+    ],
+    "itemNames": [
+     "rice",
+     "sugar"
     ]
    }
   },
@@ -3819,6 +3827,10 @@
       10,
       "kg"
      ]
+    ],
+    "itemNames": [
+     "rice",
+     "sugar"
     ]
    }
   },
@@ -3838,6 +3850,10 @@
       10,
       "kg"
      ]
+    ],
+    "itemNames": [
+     "rice",
+     "sugar"
     ]
    }
   },
@@ -3857,6 +3873,10 @@
       10,
       "kg"
      ]
+    ],
+    "itemNames": [
+     "चावल",
+     "चीनी"
     ]
    }
   },
@@ -3876,6 +3896,10 @@
       10,
       "kg"
      ]
+    ],
+    "itemNames": [
+     "चावल",
+     "चीनी"
     ]
    }
   },
@@ -3895,6 +3919,10 @@
       10,
       "kg"
      ]
+    ],
+    "itemNames": [
+     "चावल",
+     "चीनी"
     ]
    }
   },
@@ -3914,6 +3942,10 @@
       10,
       "kg"
      ]
+    ],
+    "itemNames": [
+     "चावल",
+     "चीनी"
     ]
    }
   },
@@ -3933,6 +3965,10 @@
       10,
       "kg"
      ]
+    ],
+    "itemNames": [
+     "तांदूळ",
+     "साखर"
     ]
    }
   },
@@ -3952,6 +3988,10 @@
       10,
       "kg"
      ]
+    ],
+    "itemNames": [
+     "तांदूळ",
+     "साखर"
     ]
    }
   },
@@ -3971,6 +4011,10 @@
       10,
       "kg"
      ]
+    ],
+    "itemNames": [
+     "तांदूळ",
+     "साखर"
     ]
    }
   },
@@ -3990,6 +4034,10 @@
       10,
       "kg"
      ]
+    ],
+    "itemNames": [
+     "तांदूळ",
+     "साखर"
     ]
    }
   },
@@ -4009,6 +4057,10 @@
       10,
       "kg"
      ]
+    ],
+    "itemNames": [
+     "rice",
+     "sugar"
     ]
    }
   },
@@ -4028,6 +4080,10 @@
       10,
       "kg"
      ]
+    ],
+    "itemNames": [
+     "rice",
+     "sugar"
     ]
    }
   },
@@ -4047,6 +4103,10 @@
       10,
       "kg"
      ]
+    ],
+    "itemNames": [
+     "rice",
+     "sugar"
     ]
    }
   },
@@ -4066,6 +4126,10 @@
       10,
       "kg"
      ]
+    ],
+    "itemNames": [
+     "rice",
+     "sugar"
     ]
    }
   },
@@ -4081,6 +4145,9 @@
       5,
       "ladi"
      ]
+    ],
+    "itemNames": [
+     "bread"
     ]
    }
   },
@@ -4096,6 +4163,9 @@
       10,
       "ladi"
      ]
+    ],
+    "itemNames": [
+     "bread"
     ]
    }
   },
@@ -4111,6 +4181,9 @@
       3,
       "ladi"
      ]
+    ],
+    "itemNames": [
+     "bread"
     ]
    }
   },
@@ -4126,6 +4199,9 @@
       8,
       "ladi"
      ]
+    ],
+    "itemNames": [
+     "bread"
     ]
    }
   },
@@ -4141,6 +4217,9 @@
       5,
       "ladi"
      ]
+    ],
+    "itemNames": [
+     "ब्रेड"
     ]
    }
   },
@@ -4156,6 +4235,9 @@
       10,
       "ladi"
      ]
+    ],
+    "itemNames": [
+     "ब्रेड"
     ]
    }
   },
@@ -4171,6 +4253,9 @@
       3,
       "ladi"
      ]
+    ],
+    "itemNames": [
+     "ब्रेड"
     ]
    }
   },
@@ -4186,6 +4271,9 @@
       8,
       "ladi"
      ]
+    ],
+    "itemNames": [
+     "ब्रेड"
     ]
    }
   },
@@ -4201,6 +4289,9 @@
       5,
       "ladi"
      ]
+    ],
+    "itemNames": [
+     "ब्रेड"
     ]
    }
   },
@@ -4216,6 +4307,9 @@
       10,
       "ladi"
      ]
+    ],
+    "itemNames": [
+     "ब्रेड"
     ]
    }
   },
@@ -4231,6 +4325,9 @@
       3,
       "ladi"
      ]
+    ],
+    "itemNames": [
+     "ब्रेड"
     ]
    }
   },
@@ -4246,6 +4343,9 @@
       8,
       "ladi"
      ]
+    ],
+    "itemNames": [
+     "ब्रेड"
     ]
    }
   },
@@ -4261,6 +4361,9 @@
       5,
       "ladi"
      ]
+    ],
+    "itemNames": [
+     "bread"
     ]
    }
   },
@@ -4276,6 +4379,9 @@
       10,
       "ladi"
      ]
+    ],
+    "itemNames": [
+     "bread"
     ]
    }
   },
@@ -4291,6 +4397,9 @@
       3,
       "ladi"
      ]
+    ],
+    "itemNames": [
+     "bread"
     ]
    }
   },
@@ -4306,6 +4415,9 @@
       8,
       "ladi"
      ]
+    ],
+    "itemNames": [
+     "bread"
     ]
    }
   },
@@ -4494,7 +4606,7 @@
     "kind": "vendor",
     "phone": "9876543210",
     "amount": 0,
-    "named": true
+    "name": "Raj"
    }
   },
   {
@@ -4506,7 +4618,7 @@
     "kind": "vendor",
     "phone": "9876543210",
     "amount": 0,
-    "named": true
+    "name": "Suresh"
    }
   },
   {
@@ -4518,7 +4630,7 @@
     "kind": "vendor",
     "phone": "9123456780",
     "amount": 0,
-    "named": true
+    "name": "Mahesh"
    }
   },
   {
@@ -4530,7 +4642,7 @@
     "kind": "vendor",
     "phone": "9988776655",
     "amount": 0,
-    "named": true
+    "name": "Ganesh"
    }
   },
   {
@@ -4542,7 +4654,7 @@
     "kind": "vendor",
     "phone": "9876543210",
     "amount": 0,
-    "named": true
+    "name": "राज"
    }
   },
   {
@@ -4554,7 +4666,7 @@
     "kind": "vendor",
     "phone": "9876543210",
     "amount": 0,
-    "named": true
+    "name": "सुरेश"
    }
   },
   {
@@ -4566,7 +4678,7 @@
     "kind": "vendor",
     "phone": "9123456780",
     "amount": 0,
-    "named": true
+    "name": "महेश"
    }
   },
   {
@@ -4578,7 +4690,7 @@
     "kind": "vendor",
     "phone": "9988776655",
     "amount": 0,
-    "named": true
+    "name": "गणेश"
    }
   },
   {
@@ -4590,7 +4702,7 @@
     "kind": "vendor",
     "phone": "9876543210",
     "amount": 0,
-    "named": true
+    "name": "राज"
    }
   },
   {
@@ -4602,7 +4714,7 @@
     "kind": "vendor",
     "phone": "9876543210",
     "amount": 0,
-    "named": true
+    "name": "सुरेश"
    }
   },
   {
@@ -4614,7 +4726,7 @@
     "kind": "vendor",
     "phone": "9123456780",
     "amount": 0,
-    "named": true
+    "name": "महेश"
    }
   },
   {
@@ -4626,7 +4738,7 @@
     "kind": "vendor",
     "phone": "9988776655",
     "amount": 0,
-    "named": true
+    "name": "गणेश"
    }
   },
   {
@@ -4638,7 +4750,7 @@
     "kind": "vendor",
     "phone": "9876543210",
     "amount": 0,
-    "named": true
+    "name": "Raj"
    }
   },
   {
@@ -4650,7 +4762,7 @@
     "kind": "vendor",
     "phone": "9876543210",
     "amount": 0,
-    "named": true
+    "name": "Suresh"
    }
   },
   {
@@ -4662,7 +4774,7 @@
     "kind": "vendor",
     "phone": "9123456780",
     "amount": 0,
-    "named": true
+    "name": "Mahesh"
    }
   },
   {
@@ -4674,7 +4786,231 @@
     "kind": "vendor",
     "phone": "9988776655",
     "amount": 0,
-    "named": true
+    "name": "Ganesh"
+   }
+  },
+  {
+   "id": "en-booking-1",
+   "lang": "en",
+   "about": "booking with its bill and its advance kept apart",
+   "text": "Book birthday tomorrow at Vashi 50 guests bill 25000 advance 5000 cash",
+   "expect": {
+    "kind": "event",
+    "guests": 50,
+    "bill": 25000,
+    "advance": 5000,
+    "date": "2026-11-29",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "en-booking-2",
+   "lang": "en",
+   "about": "booking with its bill and its advance kept apart",
+   "text": "Book birthday tomorrow at Vashi 100 guests bill 60000 advance 10000 cash",
+   "expect": {
+    "kind": "event",
+    "guests": 100,
+    "bill": 60000,
+    "advance": 10000,
+    "date": "2026-11-29",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "en-booking-3",
+   "lang": "en",
+   "about": "booking with its bill and its advance kept apart",
+   "text": "Book birthday tomorrow at Vashi 80 guests bill 40000 advance five thousand cash",
+   "expect": {
+    "kind": "event",
+    "guests": 80,
+    "bill": 40000,
+    "advance": 5000,
+    "date": "2026-11-29",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "en-booking-4",
+   "lang": "en",
+   "about": "booking with its bill and its advance kept apart",
+   "text": "Book birthday tomorrow at Vashi 120 guests bill 75000 advance two thousand cash",
+   "expect": {
+    "kind": "event",
+    "guests": 120,
+    "bill": 75000,
+    "advance": 2000,
+    "date": "2026-11-29",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "hi-booking-1",
+   "lang": "hi",
+   "about": "booking with its bill and its advance kept apart",
+   "text": "कल वाशी में 50 प्लेट का बर्थडे बुक करो, बिल 25000, एडवांस 5000 नकद",
+   "expect": {
+    "kind": "event",
+    "guests": 50,
+    "bill": 25000,
+    "advance": 5000,
+    "date": "2026-11-29",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "hi-booking-2",
+   "lang": "hi",
+   "about": "booking with its bill and its advance kept apart",
+   "text": "कल वाशी में 100 प्लेट का बर्थडे बुक करो, बिल 60000, एडवांस 10000 नकद",
+   "expect": {
+    "kind": "event",
+    "guests": 100,
+    "bill": 60000,
+    "advance": 10000,
+    "date": "2026-11-29",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "hi-booking-3",
+   "lang": "hi",
+   "about": "booking with its bill and its advance kept apart",
+   "text": "कल वाशी में 80 प्लेट का बर्थडे बुक करो, बिल 40000, एडवांस पांच हजार नकद",
+   "expect": {
+    "kind": "event",
+    "guests": 80,
+    "bill": 40000,
+    "advance": 5000,
+    "date": "2026-11-29",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "hi-booking-4",
+   "lang": "hi",
+   "about": "booking with its bill and its advance kept apart",
+   "text": "कल वाशी में 120 प्लेट का बर्थडे बुक करो, बिल 75000, एडवांस दो हजार नकद",
+   "expect": {
+    "kind": "event",
+    "guests": 120,
+    "bill": 75000,
+    "advance": 2000,
+    "date": "2026-11-29",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "mr-booking-1",
+   "lang": "mr",
+   "about": "booking with its bill and its advance kept apart",
+   "text": "उद्या वाशीमध्ये 50 पाहुण्यांचा वाढदिवस बुक, बिल 25000, ॲडव्हान्स 5000 रोख",
+   "expect": {
+    "kind": "event",
+    "guests": 50,
+    "bill": 25000,
+    "advance": 5000,
+    "date": "2026-11-29",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "mr-booking-2",
+   "lang": "mr",
+   "about": "booking with its bill and its advance kept apart",
+   "text": "उद्या वाशीमध्ये 100 पाहुण्यांचा वाढदिवस बुक, बिल 60000, ॲडव्हान्स 10000 रोख",
+   "expect": {
+    "kind": "event",
+    "guests": 100,
+    "bill": 60000,
+    "advance": 10000,
+    "date": "2026-11-29",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "mr-booking-3",
+   "lang": "mr",
+   "about": "booking with its bill and its advance kept apart",
+   "text": "उद्या वाशीमध्ये 80 पाहुण्यांचा वाढदिवस बुक, बिल 40000, ॲडव्हान्स पाच हजार रोख",
+   "expect": {
+    "kind": "event",
+    "guests": 80,
+    "bill": 40000,
+    "advance": 5000,
+    "date": "2026-11-29",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "mr-booking-4",
+   "lang": "mr",
+   "about": "booking with its bill and its advance kept apart",
+   "text": "उद्या वाशीमध्ये 120 पाहुण्यांचा वाढदिवस बुक, बिल 75000, ॲडव्हान्स दोन हजार रोख",
+   "expect": {
+    "kind": "event",
+    "guests": 120,
+    "bill": 75000,
+    "advance": 2000,
+    "date": "2026-11-29",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "hg-booking-1",
+   "lang": "hg",
+   "about": "booking with its bill and its advance kept apart",
+   "text": "Kal Vashi mein 50 plates ka birthday book karo, bill 25000, advance 5000 cash",
+   "expect": {
+    "kind": "event",
+    "guests": 50,
+    "bill": 25000,
+    "advance": 5000,
+    "date": "2026-11-29",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "hg-booking-2",
+   "lang": "hg",
+   "about": "booking with its bill and its advance kept apart",
+   "text": "Kal Vashi mein 100 plates ka birthday book karo, bill 60000, advance 10000 cash",
+   "expect": {
+    "kind": "event",
+    "guests": 100,
+    "bill": 60000,
+    "advance": 10000,
+    "date": "2026-11-29",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "hg-booking-3",
+   "lang": "hg",
+   "about": "booking with its bill and its advance kept apart",
+   "text": "Kal Vashi mein 80 plates ka birthday book karo, bill 40000, advance paanch hazaar cash",
+   "expect": {
+    "kind": "event",
+    "guests": 80,
+    "bill": 40000,
+    "advance": 5000,
+    "date": "2026-11-29",
+    "mode": "Cash – रोख"
+   }
+  },
+  {
+   "id": "hg-booking-4",
+   "lang": "hg",
+   "about": "booking with its bill and its advance kept apart",
+   "text": "Kal Vashi mein 120 plates ka birthday book karo, bill 75000, advance do hazaar cash",
+   "expect": {
+    "kind": "event",
+    "guests": 120,
+    "bill": 75000,
+    "advance": 2000,
+    "date": "2026-11-29",
+    "mode": "Cash – रोख"
    }
   },
   {
