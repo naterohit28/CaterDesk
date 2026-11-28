@@ -3918,7 +3918,7 @@ const SAY_MEAL = { breakfast: 'Breakfast', lunch: 'Lunch', hightea: 'High tea', 
 let say = null;   // { r: understood, ev, pay, mode, ven }
 function openSay() {
   q('say-text').value = ''; q('say-result').innerHTML = ''; say = null;
-  clearFieldErrors(); openSheet('say-modal');
+  clearFieldErrors(); sayMicSetup(); openSheet('say-modal', stopMic);
   q('say-text').focus({ preventScroll: true });
 }
 function runSay() {
@@ -3968,6 +3968,45 @@ function renderSay() {
       <div class="btn-row"><button type="button" class="btn btn-primary" id="btn-say-go">${go[0]} – ${go[1]}</button></div>
       ${k === 'payven' ? `<button type="button" class="btn btn-secondary" id="btn-say-alt" style="width:100%;margin-top:var(--s2)">It was a new purchase – नवीन खर्च</button>` : ''}`;
 }
+/* v6.0-C: the page microphone (roadmap v6 rules). Online-first: the button shows only where the browser can turn
+   speech into text and the phone is online; offline, the keyboard's 🎤 still works (English best). Speech goes to the
+   browser's own speech service; CaterDesk keeps no audio, and says so before the first use. What is heard goes into
+   the text box, where it can be corrected, and is then understood like typed text: nothing is saved from speech. */
+const SpeechRec = () => window.SpeechRecognition || window.webkitSpeechRecognition || null;
+let mic = null, micOn = false, micText = '';
+function sayLang() { return readPref('ffv2_saylang', getLang() === 'mr' ? 'mr-IN' : getLang() === 'hi' ? 'hi-IN' : 'en-IN'); }
+function sayMicSetup() {
+  const can = !!SpeechRec(), online = navigator.onLine !== false;
+  q('say-mic-row').hidden = !(can && online);
+  q('say-lang').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.sayLang === sayLang())));
+  q('say-heard').textContent = '';
+  q('say-mic-note').textContent = !can ? 'To speak, tap 🎤 on your keyboard. – बोलण्यासाठी कीबोर्डवरील 🎤 वापरा.'
+    : !online ? "Offline: tap 🎤 on your keyboard and speak (English works best), or type. – ऑफलाइन: कीबोर्डचा 🎤 वापरा."
+    : !readPref('ffv2_mic_told', false) ? "Your speech goes to your browser's speech service to be turned into text. CaterDesk keeps no audio. – आवाज साठवला जात नाही." : '';
+  setMicBtn();
+}
+function setMicBtn() { const b = q('btn-say-mic'); if (!b) return; b.setAttribute('aria-pressed', String(micOn)); b.textContent = micOn ? '■ Listening – tap to stop' : '🎤 Tap and speak – बोला'; }
+function stopMic() { if (mic) { try { mic.abort(); } catch {} } mic = null; micOn = false; setMicBtn(); }
+const MIC_ERR = { 'not-allowed': "The microphone is blocked for CaterDesk. Allow it in the browser's site settings, or use your keyboard's 🎤.",
+  'service-not-allowed': "The microphone is blocked for CaterDesk. Allow it in the browser's site settings, or use your keyboard's 🎤.",
+  network: "No connection to the speech service. Use your keyboard's 🎤, or type.", 'no-speech': 'Nothing heard. Tap and speak again.',
+  'audio-capture': "No microphone found. Use your keyboard's 🎤, or type.", 'language-not-supported': "This language isn't available here. Try English, or your keyboard's 🎤." };
+function toggleMic() {
+  if (micOn) { try { mic?.stop(); } catch {} return; }
+  const SR = SpeechRec(); if (!SR) return;
+  if (navigator.onLine === false) { sayMicSetup(); return; }
+  writePref('ffv2_mic_told', true); q('say-mic-note').textContent = '';
+  micText = ''; q('say-heard').textContent = '';
+  mic = new SR(); mic.lang = sayLang(); mic.interimResults = true; mic.continuous = false; mic.maxAlternatives = 1;
+  mic.onresult = e => { let fin = '', part = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) { const t = e.results[i][0]?.transcript || ''; if (e.results[i].isFinal) fin += ' ' + t; else part += ' ' + t; }
+    if (fin) micText = (micText + ' ' + fin).replace(/\s+/g, ' ').trim();
+    q('say-heard').textContent = (micText + ' ' + part).replace(/\s+/g, ' ').trim(); };
+  mic.onerror = e => { q('say-mic-note').textContent = MIC_ERR[e.error] || "The microphone stopped. Try again, or use your keyboard's 🎤."; };
+  mic.onend = () => { micOn = false; mic = null; setMicBtn(); q('say-heard').textContent = '';
+    if (micText) { const box = q('say-text'); box.value = (box.value.trim() + ' ' + micText).trim(); micText = ''; runSay(); } };
+  try { mic.start(); micOn = true; setMicBtn(); } catch { mic = null; q('say-mic-note').textContent = "The microphone didn't start. Try again, or use your keyboard's 🎤."; }
+}
 function sayErr(msg) { const e = q('say-err'); if (e) e.textContent = msg; }
 function sayRead() { if (!say) return; say.ev = q('say-ev')?.value ?? say.ev; say.mode = q('say-mode')?.value ?? say.mode; say.ven = q('say-ven')?.value ?? say.ven; }
 async function sayGo() {
@@ -4007,6 +4046,9 @@ async function sayGo() {
 document.addEventListener('click', e => {
   const b = e.target.closest('#say-modal [data-say-pay]');
   if (b) { sayRead(); say.pay = b.dataset.sayPay; renderSay(); return; }
+  const lb = e.target.closest('#say-modal [data-say-lang]');
+  if (lb) { writePref('ffv2_saylang', lb.dataset.sayLang); stopMic(); sayMicSetup(); return; }
+  if (e.target.closest('#btn-say-mic')) { toggleMic(); return; }
   if (e.target.closest('#btn-say')) runSay();
   else if (e.target.closest('#btn-say-go')) sayGo();
   else if (e.target.closest('#btn-say-alt')) { sayRead(); say.r = { ...say.r, kind: 'expense', head: say.r.head || null }; say.pay = say.mode ? 'paid' : ''; renderSay(); }

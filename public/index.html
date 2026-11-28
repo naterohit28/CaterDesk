@@ -854,7 +854,16 @@
     <div class="meta" style="margin-bottom:var(--s3)">Write what happened, or tap 🎤 on your keyboard and speak. Nothing is saved until you check it in the form. – तपासल्याशिवाय काहीही जतन होत नाही.</div>
     <div class="field"><label for="say-text">What happened – काय झाले</label>
       <textarea id="say-text" rows="3" maxlength="300" autocomplete="off" enterkeyhint="done" placeholder="e.g. Sabzi ka 4500 cash diya · Client ne 50 thousand advance diya"></textarea></div>
-    <button type="button" class="btn btn-secondary" id="btn-say" style="width:100%">Understand – समजून घ्या</button>
+    <!-- v6.0-C: the page microphone, only where the browser has speech recognition and the phone is online -->
+    <div id="say-mic-row" hidden>
+      <div class="seg" role="group" aria-label="Language you speak" id="say-lang">
+        <button type="button" data-say-lang="en-IN">English</button><button type="button" data-say-lang="hi-IN">हिंदी</button><button type="button" data-say-lang="mr-IN">मराठी</button>
+      </div>
+      <button type="button" class="btn btn-primary" id="btn-say-mic" aria-pressed="false" style="width:100%;margin-top:var(--s2)">🎤 Tap and speak – बोला</button>
+      <div class="say-heard" id="say-heard" aria-live="polite"></div>
+    </div>
+    <div class="meta" id="say-mic-note" aria-live="polite"></div>
+    <button type="button" class="btn btn-secondary" id="btn-say" style="width:100%;margin-top:var(--s2)">Understand – समजून घ्या</button>
     <div id="say-result" aria-live="polite"></div>
   </div>
 </div>

@@ -95,6 +95,19 @@ const CTX = { today: '2026-11-28',
     assert.deepEqual([r[3].kind, r[3].amount, r[3].pay, r[3].event.id, r[3].head.head], ['expense', 1200, 'paid', 'K', 'Gas / Cylinder – सिलिंडर']);
   });
 
+  await test('Hindi in Devanagari, as the phone’s Hindi speech recognition writes it (ज़ and ज alike)', async () => {
+    const r = await U(['सब्ज़ी का 4500 कैश दिया', 'क्लाइंट ने 50 हज़ार एडवांस दिया', 'रमेश को 10 हज़ार दिए', 'कल वाशी में 100 प्लेट का बर्थडे है', 'डिनर के लिए 15 वेटर बुलाना',
+      'चाइनीज़ के लिए नूडल्स और मंचूरियन, 2 लोग', 'किराना वाले को 25 किलो चावल और 10 किलो चीनी', 'डिनर 350 से 400 प्लेट हो गया']);
+    assert.deepEqual([r[0].kind, r[0].amount, r[0].pay, r[0].head.head], ['expense', 4500, 'paid', 'Vegetable – भाजी']);
+    assert.deepEqual([r[1].kind, r[1].amount, r[1].advance], ['cpay', 50000, true]);
+    assert.deepEqual([r[2].kind, r[2].vendor.candidates.map(v => v.id)], ['payven', ['ram']], 'रमेश matches Ramesh');
+    assert.deepEqual([r[3].kind, r[3].type, r[3].guests, r[3].venue], ['event', 'Birthday – वाढदिवस', 100, 'वाशी']);
+    assert.deepEqual([r[4].kind, r[4].count, r[4].meal], ['labour', 15, 'dinner']);
+    assert.deepEqual([r[5].kind, r[5].role, r[5].people, r[5].dishes.length], ['cook', 'Chinese Cook – चायनीज आचारी', 2, 2]);
+    assert.deepEqual([r[6].kind, r[6].items.map(i => [i.qty, i.unit]), r[6].supplies], ['order', [[25, 'kg'], [10, 'kg']], 'Grocery – किराणा']);
+    assert.deepEqual([r[7].kind, r[7].from, r[7].to, r[7].amount], ['guests', 350, 400, 0]);
+  });
+
   await test('nothing understood: the review asks, nothing is made up', async () => {
     const r = await U(['', 'hello', 'kar do']);
     assert.deepEqual(r.map(x => [x.kind, x.amount, x.ask]), [['unknown', 0, ['amount']], ['unknown', 0, ['amount']], ['unknown', 0, ['amount']]]);

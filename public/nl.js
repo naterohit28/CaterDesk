@@ -15,43 +15,43 @@ import { EXPENSE_HEADS, HEAD_WORDS, PAY_MODES } from './utils.js';
 /* ── Shared vocabulary (one place for v6 voice and typed entry) ── */
 const W = s => s.split(' ');
 export const VOCAB = {
-  credit: W('credit udhaar udhaari udhari udhaar उधार उधारी khate khata'),
+  credit: W('credit udhaar udhaari udhari udhaar उधार उधारी khate khata क्रेडिट खाते'),
   creditUnsure: W('udhar उधर baki baaki बाकी later baad'),          // may be a mishearing: hint only, ask
   give: W('diya diye di dila dile dili दिले दिला दिली दिया दिए दी paid pay payment chukaya'),
-  receive: W('received receive recieved mila mile mili milaa milale milala मिळाले मिळाला मिली मिला मिले jama जमा got collected aaya aaye aale आले'),
+  receive: W('मिल मिला मिली मिले मिलें आया आए जमा received receive recieved mila mile mili milaa milale milala मिळाले मिळाला मिली मिला मिले jama जमा got collected aaya aaye aale आले'),
   advance: W('advance advans token bayana bayana isar isaar इसार ॲडव्हान्स अ‍ॅडव्हान्स एडवांस'),
-  client: W('client clients grahak ग्राहक customer'),
-  order: W('order mangao mangwao mangwa mangva mangvo magva मागवा मंगवाओ bhejo bhej pathav pathva पाठवा send chahiye pahije पाहिजे'),
-  newWord: W('naya nayi naye new navin navina नवीन नया नई'),
-  vendorWord: W('supplier vendor contractor mukadam dukan dukaandar wala wale vala vale wali'),
-  add: W('add jodo jod joda जोडा karo kar'),
-  bulana: W('bulana bulao chahiye pahije'),
+  client: W('client clients grahak ग्राहक customer क्लाइंट क्लायंट कस्टमर पार्टी'),
+  order: W('ऑर्डर मंगाओ मंगवाओ भेजो चाहिए order mangao mangwao mangwa mangva mangvo magva मागवा मंगवाओ bhejo bhej pathav pathva पाठवा send chahiye pahije पाहिजे'),
+  newWord: W('naya nayi naye new navin navina नवीन नया नई नये न्यू'),
+  vendorWord: W('supplier vendor contractor mukadam dukan dukaandar wala wale vala vale wali सप्लायर वेंडर व्हेंडर ठेकेदार मुकादम दुकानदार वाला वाले'),
+  add: W('add jodo jod joda जोडा karo kar ऐड जोड़ो करो'),
+  bulana: W('bulana bulao chahiye pahije बुलाना बुलाओ'),
   today: W('aaj aj today आज'), tomorrow: W('udya udyaa tomorrow उद्या'), yesterday: W('kaal yesterday काल'), kal: W('kal कल'),
   ka: W('ka ke ki का के की cha chi che चा ची चे'),
-  forWord: W('liye sathi saathi साठी लिए for'),
+  forWord: W('liye sathi saathi साठी लिए लिये for'),
   to: W('ko को la ला to'),
   join: W('aur and ani आणि और'),
   at: W('mein me mai madhe madhye मध्ये में at in'),
-  change: W('se to ते वरून varun'),
-  changed: W('ho hua zale zala झाले झाला kar karo badha badhao vadha increase kam reduce'),
+  change: W('se to ते वरून varun से'),
+  changed: W('ho hua zale zala झाले झाला kar karo badha badhao vadha increase kam reduce हो गया हुआ बढ़ा बढा कम'),
 };
-const MODE_WORDS = [['UPI', 'upi gpay googlepay phonepe paytm bhim यूपीआय'], ['Cash – रोख', 'cash nakad naqad rokh rokda रोख नकद कॅश'],
+const MODE_WORDS = [['UPI', 'upi gpay googlepay phonepe paytm bhim यूपीआय यूपीआई गूगलपे फोनपे पेटीएम'], ['Cash – रोख', 'cash nakad naqad rokh rokda रोख नकद कॅश कैश कॅश'],
   ['NEFT', 'neft rtgs imps'], ['Cheque – चेक', 'cheque check चेक'], ['Bank – बँक', 'bank transfer बँक']];
 const MEAL_WORDS = [['breakfast', 'breakfast nashta nasta नाश्ता नाश्त्याला ब्रेकफास्ट'], ['lunch', 'lunch dopahar dupar दुपार लंच'], ['hightea', 'hightea high-tea tea chai'],
   ['dinner', 'dinner raat ratri रात्री रात डिनर'], ['latenight', 'latenight midnight']];
-const EVENT_WORDS = [['Wedding – लग्न', 'wedding shaadi shadi lagna lagn लग्न शादी vivah'], ['Engagement – साखरपुडा', 'engagement sagai sakharpuda साखरपुडा'],
-  ['Reception – स्वागत समारंभ', 'reception'], ['Haldi – हळद', 'haldi हळद mehendi mehndi sangeet'], ['Birthday – वाढदिवस', 'birthday bday vadhdivas वाढदिवस janamdin'],
+const EVENT_WORDS = [['Wedding – लग्न', 'wedding shaadi shadi lagna lagn लग्न शादी vivah वेडिंग विवाह'], ['Engagement – साखरपुडा', 'engagement sagai sakharpuda साखरपुडा सगाई एंगेजमेंट'],
+  ['Reception – स्वागत समारंभ', 'reception रिसेप्शन'], ['Haldi – हळद', 'haldi हळद mehendi mehndi sangeet'], ['Birthday – वाढदिवस', 'birthday bday vadhdivas वाढदिवस janamdin बर्थडे जन्मदिन'],
   ['Anniversary – वर्धापनदिन', 'anniversary'], ['Corporate – कॉर्पोरेट', 'corporate office seminar conference'],
-  ['Pooja / religious – पूजा', 'pooja puja पूजा satyanarayan havan'], ['Other – इतर', 'party function karyakram कार्यक्रम event booking barsa बारसे munj']];
+  ['Pooja / religious – पूजा', 'pooja puja पूजा satyanarayan havan हवन'], ['Other – इतर', 'party function karyakram कार्यक्रम event booking barsa बारसे munj पार्टी फंक्शन इवेंट बुकिंग']];
 // Worker words → labour types (shift labour); cooking roles are assigned per job, not per shift
 const WORKERS = [['Boys – बॉईज', 'boys boy waiter waiters ladke service वेटर बॉईज बॉयज मुले लड़के'], ['Ghati – घाटी', 'ghati घाटी'], ['Rojiya Labour – रोजीया मजूर', 'rojiya रोजीया मजूर'],
   ['Helper Staff', 'helper helpers हेल्पर'], ['Cleaner / Washing', 'cleaner cleaners washing bhandiwale'], ['Supervisor', 'supervisor captain'],
   ['Security – सुरक्षा', 'security guard guards watchman']];
-const COOKS = [['Chinese Cook – चायनीज आचारी', 'chinese चायनीज'], ['Sweet Labour – मिठाई मजूर', 'sweet sweets mithai मिठाई halwai'],
-  ['Roti Cook (Puri / Phulka) – पोळी आचारी', 'roti puri phulka poli पोळी chapati'], ['Starter / Farsan Labour – स्टार्टर / फरसाण मजूर', 'starter starters farsan'],
-  ['Cook – स्वयंपाकी', 'cook cooks aachari आचारी maharaj महाराज bawarchi swaypaki कुक']];
-const PEOPLE = W('log logo people persons person jan jana janan जण जणं लोक लोग manus माणसं');
-const GUESTS = W('plates plate pax guests guest thali ताट पाहुणे mehman');
+const COOKS = [['Chinese Cook – चायनीज आचारी', 'chinese चायनीज चाइनीज'], ['Sweet Labour – मिठाई मजूर', 'sweet sweets mithai मिठाई halwai हलवाई'],
+  ['Roti Cook (Puri / Phulka) – पोळी आचारी', 'roti puri phulka poli पोळी chapati रोटी पूरी फुलका चपाती'], ['Starter / Farsan Labour – स्टार्टर / फरसाण मजूर', 'starter starters farsan'],
+  ['Cook – स्वयंपाकी', 'cook cooks aachari आचारी maharaj महाराज bawarchi swaypaki कुक रसोइया बावर्ची']];
+const PEOPLE = W('log logo people persons person jan jana janan जण जणं लोक लोग manus माणसं आदमी');
+const GUESTS = W('plates plate pax guests guest thali ताट पाहुणे mehman प्लेट प्लेटें प्लेट्स गेस्ट मेहमान');
 const UNITS = { kg: 'kg', kgs: 'kg', kilo: 'kg', kilos: 'kg', killo: 'kg', किलो: 'kg', litre: 'litre', litres: 'litre', liter: 'litre', liters: 'litre', ltr: 'litre', लिटर: 'litre',
   packet: 'packet', packets: 'packet', pkt: 'packet', puda: 'packet', bottle: 'bottle', bottles: 'bottle', carton: 'carton', cartons: 'carton', khoka: 'carton',
   tub: 'tub', tubs: 'tub', box: 'box', boxes: 'box', dozen: 'dozen', darjan: 'dozen', डझन: 'dozen', ladi: 'ladi', लडी: 'ladi', nag: 'pcs', pcs: 'pcs', piece: 'pcs', pieces: 'pcs', नग: 'pcs' };
@@ -73,7 +73,7 @@ const word = t => NUMW[t] ?? (/^\d+(\.\d+)?$/.test(t) ? parseFloat(t) : undefine
 const r2 = v => Math.round(v * 100) / 100;
 
 export function normalise(text) {
-  let s = String(text || '').normalize('NFKC').toLocaleLowerCase()
+  let s = String(text || '').normalize('NFKC').replace(/\u093C/g, '').toLocaleLowerCase()
     .replace(/[०-९]/g, c => '०१२३४५६७८९'.indexOf(c))
     .replace(/(\d),(?=\d)/g, '$1')
     .replace(/₹|\brs\.?(?=\s*\d)|\brupees?\b|\brupaye\b|\brupaiye\b|रुपये|रुपए|रु\./g, ' ')
@@ -140,7 +140,7 @@ export function amountOf(text) {
 }
 
 /* ── Matching records ── */
-const norm = v => String(v || '').normalize('NFKC').toLocaleLowerCase().replace(/[^\p{L}\p{M}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+const norm = v => String(v || '').normalize('NFKC').replace(/\u093C/g, '').toLocaleLowerCase().replace(/[^\p{L}\p{M}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
 const has = (toks, list) => toks.some(t => list.includes(t));
 // Word endings that hide the word: bhajiwala, भाजीवाल्याला, lagnasathi, पाटलांच्या
 const SUFFIX = /(?:walyala|walyakade|walyane|wala|wale|wali|vala|vale|valyala|sathi|saathi|chya|cha|chi|che|kade|ne|la|वाल्याला|वाल्याकडे|वाल्याने|वाला|वाले|वाली|वाल्या|साठी|च्या|चा|ची|चे|कडे|ने|ला|ना)$/;
@@ -160,10 +160,15 @@ const starts = (toks, list) => toks.some(t => list.some(w => w.length >= 4 ? t.s
 const pick = (toks, table) => (table.find(([, w]) => starts(toks, w.split(' '))) || [''])[0];
 const GENERIC = new Set(W('sample the and new event wedding lagna party function caterers caterer foods food enterprises traders trader stores store shop supplier vendor contractor services service'));
 
+// Hindi words in Devanagari, as the phone's Hindi speech recognition writes them (HEAD_WORDS has English and Marathi)
+const HINDI_HEADS = { 'Vegetable': 'सब्जी सब्जियां सब्जीवाला प्याज आलू टमाटर', 'Grocery': 'किराना राशन चावल चीनी आटा दाल मैदा बेसन नमक', 'Oil / Ghee': 'तेल घी',
+  'Milk & Dairy': 'दूध पनीर दही मलाई मक्खन खोया छाछ', 'Ice': 'बर्फ', 'Water': 'पानी', 'Fruits': 'फल केला सेब आम', 'Sweet': 'मिठाई लड्डू जलेबी',
+  'Gas / Cylinder': 'गैस सिलेंडर', 'Transport': 'टेम्पो गाडी ट्रक भाडा ऑटो', 'Non-veg (Chicken / Mutton / Fish)': 'चिकन मटन मछली', 'Eggs': 'अंडे अंडा',
+  'Flowers / Decoration': 'फूल सजावट', 'Spices / Masala': 'मसाला', 'Rented Material': 'टेंट मंडप कुर्सी', 'Charcoal / Firewood': 'कोयला लकडी' };
 // Expense item: the first head whose name or everyday words appear in the sentence
 export function headOf(toks) {
   for (const [cat, heads] of Object.entries(EXPENSE_HEADS)) for (const head of heads) {
-    const en = head.split(' – ')[0], ws = norm(en + ' ' + (HEAD_WORDS[en] || '') + ' ' + (head.split(' – ')[1] || '')).split(' ').filter(w => w.length >= 3);
+    const en = head.split(' – ')[0], ws = norm(en + ' ' + (HEAD_WORDS[en] || '') + ' ' + (HINDI_HEADS[en] || '') + ' ' + (head.split(' – ')[1] || '')).split(' ').filter(w => w.length >= 3);
     if (ws.some(w => toks.some(t => t === w || stem(t) === w || (w.length >= 4 && t.startsWith(w) && t.length - w.length <= 4)))) return { cat, head };
   }
   return null;
