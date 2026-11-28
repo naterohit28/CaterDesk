@@ -3926,8 +3926,43 @@ function runSay() {
   if (!text) { q('say-result').innerHTML = `<div class="say-err">${tr('Write what happened first', 'आधी काय झाले ते लिहा')}</div>`; return; }
   const r = understand(text, { events: D.events, vendors: D.vendors, today: today() });
   if (r.kind === 'payven' && r.vendor?.id && !hasDues(r.vendor.id)) { r.kind = 'expense'; r.fromPay = true; r.pay = r.mode ? 'paid' : ''; }   // nothing owed: a new paid purchase
-  say = { r, ev: r.event?.id || '', pay: r.pay || '', mode: r.mode || '', ven: r.vendor?.id || '' };
+  say = { r, ev: r.event?.id || '', pay: r.pay || '', mode: r.mode || '', ven: r.vendor?.id || '', evGuess: false };
+  // No event said, and only one event today: shown chosen, marked "check" (never when two could fit)
+  if (!say.ev && !(r.event?.candidates || []).length && ['expense', 'cpay', 'labour', 'cook', 'order'].includes(r.kind)) {
+    const todays = D.events.filter(e => e.date === today());
+    if (todays.length === 1) { say.ev = todays[0].id; say.evGuess = true; }
+  }
   renderSay();
+}
+/* v6.0-D: the money around this entry, so it is checked before the form opens.
+   - Paying a vendor: what they are owed and which bills this settles, oldest first (as payments are applied);
+     more than owed: the extra stays with them as an advance; nothing owed: say so and offer a new purchase.
+   - Money from the client: bill, received and balance, before and after; more than the balance is flagged;
+     no bill set yet: it counts as an advance. Nothing here changes any record. */
+function sayMoney() {
+  const { r } = say, k = r.kind, amt = Number(r.amount) || 0, rows = [];
+  if (k === 'payven' && say.ven) {
+    const owed = calcVendorBalance(say.ven, D.expenses, D.vPays).balance;
+    if (!(owed > 0)) return `<div class="say-money due" data-say-money>${tr('Nothing is owed to them now. If this was a new purchase, tap "It was a new purchase".', 'सध्या काही देणे नाही. नवीन खरेदी असल्यास "नवीन खर्च" निवडा.')}</div>`;
+    let left = amt;
+    const bills = unpaidCredit(D.expenses, D.vPays).filter(u => u.x.venId === say.ven).sort((a, b) => (a.x.date || '').localeCompare(b.x.date || ''));
+    for (const u of bills) { if (left <= 0) break; const ev = D.events.find(e => e.id === u.x.evId), take = Math.min(left, u.left); left -= take;
+      rows.push(`<li>${esc(short(u.x.head || u.x.cat))}${ev ? ' · ' + esc(evWhere(ev)) : ''} · ${fmtCurrency(u.left)}${take < u.left ? ` <span class="meta">(${fmtCurrency(take)} of it)</span>` : ''}</li>`); }
+    const extra = Math.round((amt - owed) * 100) / 100;
+    return `<div class="say-money" data-say-money><div>${tr('Owed to them now', 'सध्या देणे')}: <b>${fmtCurrency(owed)}</b></div>
+      ${rows.length ? `<div class="meta">${tr('This pays, oldest first:', 'हे देयक जुन्या बिलांपासून:')}</div><ul>${rows.join('')}</ul>` : ''}
+      ${extra > 0 ? `<div class="due">${tr(`${fmtCurrency(extra)} more than owed: the extra stays with them as an advance.`, `देण्यापेक्षा ${fmtCurrency(extra)} जास्त: आगाऊ म्हणून राहील.`)}</div>` : ''}</div>`;
+  }
+  if (k === 'cpay' && say.ev) {
+    const ev = D.events.find(e => e.id === say.ev); if (!ev) return '';
+    const got = calcEventReceived(ev.id, D.cPays);
+    if (!billSet(ev)) return `<div class="say-money" data-say-money>${tr(`No bill set yet: received so far ${fmtCurrency(got)}. This counts as an advance.`, `बिल अजून नाही: आतापर्यंत ${fmtCurrency(got)}. ही आगाऊ रक्कम.`)}</div>`;
+    const bill = clientDue(ev), left = Math.max(0, bill - got), after = Math.round((left - amt) * 100) / 100;
+    return `<div class="say-money" data-say-money><div>${tr('Bill', 'बिल')} ${fmtCurrency(bill)} · ${tr('received', 'मिळाले')} ${fmtCurrency(got)} · ${tr('balance', 'बाकी')} <b>${fmtCurrency(left)}</b></div>
+      ${after < 0 ? `<div class="due">${tr(`This is ${fmtCurrency(-after)} more than the balance. Check the amount.`, `हे बाकीपेक्षा ${fmtCurrency(-after)} जास्त आहे. रक्कम तपासा.`)}</div>`
+        : `<div class="meta">${tr(`After this: ${fmtCurrency(after)} left.`, `यानंतर बाकी ${fmtCurrency(after)}.`)}</div>`}</div>`;
+  }
+  return '';
 }
 const hasDues = venId => calcVendorBalance(venId, D.expenses, D.vPays).balance > 0;
 function renderSay() {
@@ -3964,9 +3999,10 @@ function renderSay() {
   q('say-result').innerHTML = k === 'unknown'
     ? `<div class="card pad say-card"><div class="say-err">${tr('Not understood. Add the amount and what it was for, e.g. "Gas 1200 cash" – रक्कम आणि कशासाठी ते लिहा.', 'समजले नाही.')}</div></div>`
     : `<div class="sec"><span class="sec-title">I understood – समजले</span></div><div class="card pad say-card">${lines}${r.fromPay ? `<div class="meta">${tr('Nothing is owed to this vendor, so this is a new purchase.', 'या विक्रेत्याचे काही देणे नाही: नवीन खर्च.')}</div>` : ''}
-      ${evSel}${paySeg}${venSel}${modeSel}<div class="say-err" id="say-err" role="alert"></div></div>
+      ${evSel}${say.evGuess && say.ev ? `<div class="meta due" data-say-guess>${tr("Today's only event – check it is the right one.", 'आजचा एकमेव कार्यक्रम – बरोबर आहे का ते तपासा.')}</div>` : ''}${paySeg}${venSel}${sayMoney()}${modeSel}<div class="say-err" id="say-err" role="alert"></div></div>
       <div class="btn-row"><button type="button" class="btn btn-primary" id="btn-say-go">${go[0]} – ${go[1]}</button></div>
-      ${k === 'payven' ? `<button type="button" class="btn btn-secondary" id="btn-say-alt" style="width:100%;margin-top:var(--s2)">It was a new purchase – नवीन खर्च</button>` : ''}`;
+      ${k === 'payven' ? `<button type="button" class="btn btn-secondary" id="btn-say-alt" style="width:100%;margin-top:var(--s2)">It was a new purchase – नवीन खर्च</button>` : ''}
+      ${k === 'payven' && !say.ven && r.who ? `<button type="button" class="btn btn-secondary" id="btn-say-newven" style="width:100%;margin-top:var(--s2)">Add "${esc(r.who)}" as a new vendor – नवीन विक्रेता</button>` : ''}`;
 }
 /* v6.0-C: the page microphone (roadmap v6 rules). Online-first: the button shows only where the browser can turn
    speech into text and the phone is online; offline, the keyboard's 🎤 still works (English best). Speech goes to the
@@ -4051,9 +4087,12 @@ document.addEventListener('click', e => {
   if (e.target.closest('#btn-say-mic')) { toggleMic(); return; }
   if (e.target.closest('#btn-say')) runSay();
   else if (e.target.closest('#btn-say-go')) sayGo();
+  else if (e.target.closest('#btn-say-newven')) { const who = say?.r?.who || ''; closeOverlay().then(() => { openVenModal(null, 'vendor', { cat: say?.r?.head?.cat || '' }); q('ven-name').value = who; }); }
   else if (e.target.closest('#btn-say-alt')) { sayRead(); say.r = { ...say.r, kind: 'expense', head: say.r.head || null }; say.pay = say.mode ? 'paid' : ''; renderSay(); }
 });
-document.addEventListener('change', e => { if (e.target.closest('#say-modal select')) sayRead(); });
+document.addEventListener('change', e => { const sel = e.target.closest('#say-modal select'); if (!sel || !say) return;
+  sayRead(); if (sel.id === 'say-ev') say.evGuess = false;
+  if (sel.id === 'say-ev' || sel.id === 'say-ven') renderSay(); });
 
 /* ── EVENT CLOSING REPORT (5.6.0): closureReport() in utils.js, shown, shared as text or printed ── */
 const RECON_NAME = { reconciled: 'Reconciled', reopened: 'Reopened after changes – check again', pending: 'Not reconciled yet' };

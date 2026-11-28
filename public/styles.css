@@ -788,3 +788,8 @@ button.d-brand:focus-visible { outline: 2px solid var(--brand-text); outline-off
 .say-err { color: var(--neg); font-weight: 600; font-size: var(--fs-sm); }
 .say-err:empty { display: none; }
 #say-result .btn-row { margin-top: var(--s3); }
+/* v6.0-D: what is owed / the balance, shown before the form opens */
+.say-money { margin-top: var(--s3); padding: var(--s2) var(--s3); border-radius: 12px; background: var(--surface-2); font-variant-numeric: tabular-nums; }
+.say-money ul { margin: var(--s1, 4px) 0 0; padding-left: 1.2em; }
+.say-money li { margin: 2px 0; overflow-wrap: anywhere; }
+.say-money .due, .say-money.due, [data-say-guess] { color: var(--due); }

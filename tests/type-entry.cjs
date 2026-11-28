@@ -46,9 +46,11 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
     assert.equal(JSON.stringify((await dump()).expenses), before, 'nothing saved until the form is saved');
   });
 
-  await test('paid with how: "Sabzi ka 4500 cash diya" → paid, cash; the event must be chosen when none was said', async () => {
+  await test('paid with how: "Sabzi ka 4500 cash diya" → paid, cash; today\'s only event shown chosen, marked to check', async () => {
     const t = await sayIt('Sabzi ka 4500 cash diya'); assert.match(t, /₹4,500/);
     assert.equal(await p.locator('#say-pay [data-say-pay="paid"]').getAttribute('aria-pressed'), 'true');
+    assert.equal(await p.inputValue('#say-ev'), 'K'); assert.match(await p.locator('[data-say-guess]').innerText(), /Today's only event/);
+    await p.selectOption('#say-ev', ''); assert.equal(await p.locator('[data-say-guess]').count(), 0, 'chosen by hand: no note');
     await go(); assert.match(await p.locator('#say-err').innerText(), /Choose the event/);
     await p.selectOption('#say-ev', 'K'); await go(); await p.waitForSelector('#exp-modal.active');
     assert.deepEqual([await p.inputValue('#exp-amt'), await p.inputValue('#exp-ev'), await p.locator('#exp-pay').getAttribute('data-value'), await p.inputValue('#exp-mode')], ['4500', 'K', 'paid', 'Cash – रोख']);
@@ -62,6 +64,7 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
   await test('client advance: money received, the bill unchanged; the payment form opens filled in', async () => {
     const t = await sayIt('Desai client ne 50 thousand advance diya UPI');
     assert.match(t, /Money received from the client/); assert.match(t, /bill is not changed/);
+    assert.match(await p.locator('[data-say-money]').innerText(), /Bill ₹1,00,000 · received ₹0 · balance ₹1,00,000[\s\S]*After this: ₹50,000 left/);
     await go(); await p.waitForSelector('#cpay-modal.active');
     assert.deepEqual([await p.inputValue('#cpay-evid'), await p.inputValue('#cpay-amt'), await p.inputValue('#cpay-mode')], ['D', '50000', 'UPI']);
   });
@@ -92,6 +95,29 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
     assert.deepEqual([await p.inputValue('#qev-rec'), await p.inputValue('#qev-bill'), await p.inputValue('#qev-mode')], ['5000', '', 'UPI']);
   });
 
+  await test('paying a vendor shows what is owed and which bills it pays, oldest first; more than owed is an advance', async () => {
+    await sayIt('Ramesh ko 10 hazaar diye cash');
+    const m = await p.locator('[data-say-money]').innerText();
+    assert.match(m, /Owed to them now: ₹12,000/); assert.match(m, /Boys · .* · ₹12,000 \(₹10,000 of it\)/);
+    await sayIt('Ramesh ko 15000 diye cash');
+    assert.match(await p.locator('[data-say-money]').innerText(), /₹3,000 more than owed: the extra stays with them as an advance/);
+  });
+
+  await test('client money more than the balance is flagged; nothing set yet counts as an advance', async () => {
+    await sayIt('Desai client ne 1.5 lakh diye UPI');
+    assert.match(await p.locator('[data-say-money]').innerText(), /₹50,000 more than the balance/);
+    await p.evaluate(async () => { const db = await import('./db.js'); const d = await db.exportAllData(); delete d.manifest; d.events.find(e => e.id === 'P').billing = 0; await db.importAllData(d, 'replace'); });
+    await p.reload(); await p.waitForSelector('#kpi', { state: 'attached' });
+    await sayIt('Patil client ne 20000 advance diya UPI');
+    assert.match(await p.locator('[data-say-money]').innerText(), /No bill set yet[\s\S]*counts as an advance/);
+  });
+
+  await test('someone not in the vendor list: offer to add them, filled in', async () => {
+    await sayIt('Suresh ko 2000 diye cash');
+    await p.locator('#btn-say-newven').click(); await p.waitForSelector('#ven-modal.active');
+    assert.equal(await p.inputValue('#ven-name'), 'Suresh');
+  });
+
   await test('labour need opens the event, with what to add', async () => {
     const t = await sayIt('Patil dinner ke liye 15 boys bulana'); assert.match(t, /15 Boys/); assert.match(t, /Dinner/);
     await go(); await p.waitForSelector('#tab-evdetail.active');
@@ -111,7 +137,7 @@ const DATA = () => ({ version: 'ffv2', photos: [], cPays: [], vPays: [],
     await sayIt('Sabzi ka 4500 cash diya');
     const r = await p.evaluate(() => { const sh = document.querySelector('#say-modal .sheet'); return document.documentElement.scrollWidth <= innerWidth && sh.scrollWidth <= sh.clientWidth; });
     assert.equal(r, true);
-    const d = await dump(); assert.equal(JSON.stringify(d.expenses), before); assert.deepEqual([d.cPays.length, d.vPays.length, d.events.length, d.vendors.length], [0, 0, 3, 3]);
+    const d = await dump(); assert.equal(JSON.stringify(d.expenses.map(({ _rev, ...x }) => x)), JSON.stringify(JSON.parse(before).map(({ _rev, ...x }) => x))); assert.deepEqual([d.cPays.length, d.vPays.length, d.events.length, d.vendors.length], [0, 0, 3, 3]);
   });
 
   await test('no page errors', async () => { assert.deepEqual(errors, []); });
